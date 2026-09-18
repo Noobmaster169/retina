@@ -1,162 +1,131 @@
-# Backend on the Monash server
+# The backend on the Monash server
 
-The school server (`student@118.139.133.14`, reachable via `../../vps/monash.sh`
-from the dev machine) hosts the API, Postgres and llm-proxy. It is the box with
-the GPU (Ollama, Qwen 3) and the Claude Code login, and its firewall blocks
-every inbound connection — so the API is published through an outbound ngrok
-tunnel, and deploys are pulled by cron rather than pushed.
+`student@118.139.133.14`, reachable from the dev machine with
+`../../vps/monash.sh '<command>'`. Its firewall blocks every inbound
+connection, so the API is published through an outbound ngrok tunnel and
+deploys are pulled by cron rather than pushed.
 
-What runs here:
+What runs here for retina, next to the yt-engine stack that was there first:
 
 | Piece | How | Listens on |
 | --- | --- | --- |
-| Postgres 17 | `docker compose` service | `127.0.0.1:5434` |
-| retina API | `docker compose` service, host network | `127.0.0.1:8091` (and the tunnel) |
-| llm-proxy | systemd user service, Python venv | `127.0.0.1:4000` |
-| Ollama | `monash-ollama` container (pre-existing) | `127.0.0.1:11434` |
-| ngrok | `run-ngrok.sh` restart loop | outbound only |
+| Postgres 17 | compose service, private network | — |
+| retina API | compose service | `127.0.0.1:8091` (and the tunnel) |
+| llm-proxy | **shared with yt-engine**: `~/projects/llm-proxy`, run by `~/yt-engine/run-llm-proxy.sh` | `172.17.0.1:4000` (Docker bridge) |
+| Ollama | `monash-ollama` container | `127.0.0.1:11434` |
+| ngrok | `~/retina/run-ngrok.sh` | outbound only |
 
-The API is the only thing behind the tunnel, and its two bearer keys are the
-only auth in front of the proxy. Never bind the proxy or Ollama wider than
-loopback.
+The API's two bearer keys are the only auth in front of the proxy, which
+authenticates nobody. Never bind the proxy or Ollama wider than they are.
 
 ## First-time setup
 
-### 1. This repo
+### 1. Clone
 
-```bash
-mkdir -p ~/projects && cd ~/projects
-git clone git@github.com:Noobmaster169/retina.git
-```
-
-The clone needs a read-only deploy key and `~/.ssh/config` routing GitHub over
-443 (the firewall blocks 22). If yt-engine's setup is already on the box the
-config exists; add a second `IdentityFile` for the retina deploy key or reuse a
-user-level key:
+Retina has its own read-only deploy key, `~/.ssh/retina-deploy`, with an SSH
+host alias so it never collides with yt-engine's key:
 
 ```
-Host github.com
-    Hostname ssh.github.com
+Host github.com-retina
+    Hostname ssh.github.com          # 443: the firewall blocks 22
     Port 443
     User git
-    IdentityFile ~/.ssh/github
+    IdentityFile ~/.ssh/retina-deploy
     IdentitiesOnly yes
 ```
 
-### 2. llm-proxy
-
 ```bash
-cd ~ && git clone git@github.com:Noobmaster169/me-gpt.git llm-proxy
-cd ~/llm-proxy && python3 -m venv .venv && .venv/bin/pip install -e .
+git clone git@github.com-retina:Noobmaster169/retina.git ~/projects/retina
 ```
 
-If the clone is refused (deploy keys are per-repo), copy it from the dev
-machine instead:
+### 2. Qwen aliases in the shared proxy
 
-```bash
-rsync -a --exclude .venv --exclude '*.db*' --exclude '*.jsonl' \
-  -e "sshpass -f ~/.ssh/monash-vps.password ssh -o PubkeyAuthentication=no" \
-  ~/ai/tools/llm-proxy/ student@118.139.133.14:llm-proxy/
+`~/projects/llm-proxy/config/proxy.yaml` already has the `ollama` provider;
+add the aliases under `model_list` (tags must match
+`docker exec monash-ollama ollama list`):
+
+```yaml
+  - model_name: qwen
+    params: { model: ollama/qwen3:14b-ctx16k, max_tokens: 8000 }
+  - model_name: qwen-small
+    params: { model: ollama/qwen3:4b-ctx16k, max_tokens: 8000 }
+  - model_name: qwen-large
+    params: { model: ollama/qwen3.8:27b-ctx16k, max_tokens: 8000 }
 ```
 
-### 3. Claude Code on the box
+Restart by killing the uvicorn process; the runner loop restarts it in 5 s:
+`pkill -f "uvicorn llm_proxy"`, then `curl -s 172.17.0.1:4000/healthz`.
+
+### 3. The stack
 
 ```bash
-curl -fsSL https://claude.ai/install.sh | bash     # or: npm i -g @anthropic-ai/claude-code
-claude                                              # first run: follow the login URL, paste the code
-claude -p "say ok" --model haiku                    # proves the subscription works headless
-```
-
-The login is the student user's; `claude -p` inherits it. The proxy runs as
-that same user, which is why it is a systemd *user* unit.
-
-### 4. The proxy config and service
-
-```bash
-mkdir -p ~/retina && cp ~/projects/retina/deploy/proxy.yaml ~/retina/
-docker exec monash-ollama ollama list          # confirm the qwen tags in proxy.yaml exist
-mkdir -p ~/.config/systemd/user
-cp ~/projects/retina/deploy/llm-proxy.service ~/.config/systemd/user/
-systemctl --user daemon-reload && systemctl --user enable --now llm-proxy
-loginctl enable-linger student
-curl -s 127.0.0.1:4000/healthz
-curl -s 127.0.0.1:4000/v1/messages -H 'content-type: application/json' -H 'x-api-key: smoke' \
-  -d '{"model":"test","max_tokens":20,"messages":[{"role":"user","content":"ping"}]}'
-```
-
-### 5. The stack
-
-```bash
-cd ~/retina
+mkdir -p ~/retina && cd ~/retina
 cp ~/projects/retina/deploy/{compose.yaml,.env.example,auto-deploy.sh,run-ngrok.sh} .
-cp .env.example .env && vi .env      # PG_PASSWORD, API_SHARED_SECRET, TEAM_API_KEY
+cp .env.example .env && vi .env          # PG_PASSWORD, API_SHARED_SECRET, TEAM_API_KEY (openssl rand -hex 32)
 chmod +x auto-deploy.sh run-ngrok.sh
-docker login ghcr.io -u Noobmaster169   # classic PAT, read:packages — or skip and build from source
-docker compose pull && docker compose up -d
-curl -s 127.0.0.1:8091/health                                   # {"status":"ok","database":"up"}
+docker build -t ghcr.io/noobmaster169/retina-api:main ~/projects/retina/backend   # or docker compose pull, once logged in to GHCR
+docker compose up -d
+curl -s 127.0.0.1:8091/health                                          # {"status":"ok","database":"up"}
 curl -s -H "authorization: Bearer $TEAM_API_KEY" 127.0.0.1:8091/ai/models
 ```
 
-Migrations run inside the API container before it listens (see the `CMD` in
-`backend/Dockerfile`); there is no separate migration step.
+Migrations run inside the API container before it listens.
 
-### 6. The tunnel
+### 4. The tunnel
 
-Create a second static domain in an ngrok account (one static domain per free
-account), then:
+ngrok's free plan gives one static domain per account, and yt-engine's tunnel
+uses this account's. Retina needs a second account's authtoken in its own
+config file so the two agents do not share state:
 
 ```bash
-vi ~/retina/run-ngrok.sh            # set NGROK_DOMAIN
+ngrok config add-authtoken <token> --config ~/retina/ngrok.yml
+vi ~/retina/run-ngrok.sh                  # NGROK_DOMAIN = the new account's static domain
 setsid nohup ~/retina/run-ngrok.sh >/dev/null 2>&1 </dev/null &
-crontab -e
-#   @reboot /home/student/retina/run-ngrok.sh
-#   */3 * * * * /home/student/retina/auto-deploy.sh
-curl -s https://<your-domain>.ngrok-free.dev/health
+curl -s https://<domain>.ngrok-free.dev/health
 ```
 
-Put the same hostname in the Vercel project as `BACKEND_URL` (see ../README.md).
+### 5. Cron
+
+```
+@reboot setsid nohup /home/student/retina/run-ngrok.sh >/dev/null 2>&1 </dev/null &
+*/3 * * * * /home/student/retina/auto-deploy.sh
+```
+
+Then set `BACKEND_URL` and `API_SHARED_SECRET` in the Vercel project.
+
+## Deploying a new version
+
+`auto-deploy.sh` runs every 3 minutes and redeploys when `origin/main` moves:
+refuses a dirty clone, fast-forwards only, builds from `backend/` (or pulls
+with `USE_REGISTRY=1`), recreates `api`, polls `/health` for 90 s and rolls
+back to the previous image on failure. It never touches Postgres or the
+proxy. `tail -20 ~/retina/auto-deploy.log`.
 
 ## Calling the API as a teammate
 
 ```bash
-export RETINA_URL=https://<your-domain>.ngrok-free.dev
-export TEAM_API_KEY=...          # from whoever runs the box
-
+export RETINA_URL=https://<domain>.ngrok-free.dev TEAM_API_KEY=...
 curl -s -H "authorization: Bearer $TEAM_API_KEY" $RETINA_URL/ai/models
 curl -s -H "authorization: Bearer $TEAM_API_KEY" -H 'content-type: application/json' \
   -d '{"model":"qwen","messages":[{"role":"user","content":"Explain Docker volumes in two sentences."}]}' \
   $RETINA_URL/ai/chat
-curl -s -H "authorization: Bearer $TEAM_API_KEY" "$RETINA_URL/activity?limit=20"
 ```
 
-`/ai/chat` takes `{ model, messages, system?, maxTokens? }` and returns
-`{ text, model, stopReason, usage, costUsd }`. Aliases come from `/ai/models`:
-`claude`, `claude-fast`, `default` (subscription), `qwen`, `qwen-small`,
-`qwen-large` (local), `test` (echo). Non-streaming; a cold `qwen-large` can take
-a minute on the first call.
-
-## Deploying a new version
-
-Automatic: `auto-deploy.sh` runs from cron every 3 minutes and redeploys when
-`origin/main` moves. It refuses a dirty clone, fast-forwards only, builds (or
-pulls with `USE_REGISTRY=1`), recreates `api`, polls `/health` for 90 s and
-rolls back to the previous image on failure. It never touches Postgres or the
-proxy. Watch it: `tail -20 ~/retina/auto-deploy.log`.
+Aliases: `subscription`, `subscription-sonnet`, `subscription-haiku` (Claude
+Code subscription), `qwen`, `qwen-small`, `qwen-large` (local GPU), `test`
+(echo), plus whatever else the shared proxy serves. Non-streaming; a cold
+`qwen-large` can take a minute on the first call.
 
 ## Looking around
 
 ```bash
-docker compose ps
-docker compose logs -f api
+cd ~/retina && docker compose ps && docker compose logs -f api
 docker compose exec postgres psql -U retina retina_prod
-journalctl --user -u llm-proxy -f
-curl -s 127.0.0.1:4000/admin/usage          # spend and calls, split by project (retina-frontend / retina-team)
+tail -f ~/yt-engine/llm-proxy.log                 # the shared proxy
+curl -s 172.17.0.1:4000/admin/usage               # spend by project: retina-frontend / retina-team
 tail -f ~/retina/ngrok.log
 ```
 
-## If something goes wrong
-
-- **`/ai/chat` returns 503 "llm-proxy unreachable"** — `systemctl --user status llm-proxy`; if it is down, `journalctl --user -u llm-proxy -n 50`.
-- **`claude` aliases fail, qwen works** — the login expired: run `claude` interactively as student, then restart the proxy.
-- **qwen aliases 404 from the proxy** — the Ollama tag in `proxy.yaml` does not exist: `docker exec monash-ollama ollama list`.
-- **Frontend shows "Backend unreachable"** — check the tunnel log, then `curl https://<domain>/health` from anywhere.
+- **503 "llm-proxy unreachable"** — `pgrep -af uvicorn`; if gone, `setsid nohup ~/yt-engine/run-llm-proxy.sh >/dev/null 2>&1 </dev/null &`.
+- **`subscription*` fail, qwen works** — the Claude login expired: run `claude` interactively as student.
+- **Frontend says "Backend unreachable"** — `tail ~/retina/ngrok.log`, then `curl https://<domain>/health` from anywhere.

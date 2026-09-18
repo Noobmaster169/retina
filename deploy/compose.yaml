@@ -1,13 +1,11 @@
-# The backend stack on the Monash server (student@118.139.133.14).
+# The retina backend on the Monash server (student@118.139.133.14).
 #
-# The API runs on the HOST network so it can reach llm-proxy, which runs on
-# the host as a systemd user service bound to 127.0.0.1:4000 (it needs the
-# `claude` binary, the student user's Claude login, and Ollama on host
-# loopback — none of which belong in a container). Postgres therefore
-# publishes on host loopback too, on 5434. Nothing here is reachable from
-# outside the box; the ngrok tunnel to 127.0.0.1:8091 is the only door.
+# Postgres is private to this compose network. The API publishes 8091 on host
+# loopback only — the ngrok tunnel is the single door in. Models go through
+# the llm-proxy that already runs on the host for yt-engine, bound to the
+# Docker bridge address, which `host.docker.internal` resolves to from here.
 #
-# First-time setup and day-to-day commands: see README.md next to this file.
+# Setup and day-to-day commands: README.md next to this file.
 
 services:
   postgres:
@@ -17,8 +15,6 @@ services:
       POSTGRES_DB: retina_prod
       POSTGRES_USER: retina
       POSTGRES_PASSWORD: ${PG_PASSWORD:?set PG_PASSWORD in .env}
-    ports:
-      - "127.0.0.1:5434:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -30,17 +26,20 @@ services:
   api:
     image: ghcr.io/noobmaster169/retina-api:main
     restart: unless-stopped
-    network_mode: host
+    ports:
+      - "127.0.0.1:8091:8091"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       PORT: "8091"
-      PG_HOST: 127.0.0.1
-      PG_PORT: "5434"
+      PG_HOST: postgres
+      PG_PORT: "5432"
       PG_DATABASE: retina_prod
       PG_USER: retina
       PG_PASSWORD: ${PG_PASSWORD:?set PG_PASSWORD in .env}
       API_SHARED_SECRET: ${API_SHARED_SECRET:?set API_SHARED_SECRET in .env}
       TEAM_API_KEY: ${TEAM_API_KEY:?set TEAM_API_KEY in .env}
-      LLM_PROXY_URL: http://127.0.0.1:4000
+      LLM_PROXY_URL: http://host.docker.internal:4000
     depends_on:
       postgres:
         condition: service_healthy
