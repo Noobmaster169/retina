@@ -1,0 +1,113 @@
+import type { RunStatus } from "../../contracts";
+import type { Queryable } from "../../db";
+
+export interface Run {
+  id: string;
+  source: string;
+  ratePerSecond: number;
+  emailLimit: number | null;
+  emailIds: string[] | null;
+  status: RunStatus;
+  totalEmails: number | null;
+  createdBy: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface NewRun {
+  id: string;
+  source: string;
+  ratePerSecond: number;
+  emailLimit?: number;
+  emailIds?: string[];
+  createdBy?: string;
+}
+
+interface RunRow {
+  id: string;
+  source: string;
+  rate_per_second: string;
+  email_limit: number | null;
+  email_ids: string[] | null;
+  status: RunStatus;
+  total_emails: number | null;
+  created_by: string | null;
+  created_at: Date;
+  started_at: Date | null;
+  finished_at: Date | null;
+}
+
+const COLUMNS = `id, source, rate_per_second, email_limit, email_ids, status, total_emails,
+  created_by, created_at, started_at, finished_at`;
+
+function toRun(row: RunRow): Run {
+  return {
+    id: row.id,
+    source: row.source,
+    ratePerSecond: Number(row.rate_per_second),
+    emailLimit: row.email_limit,
+    emailIds: row.email_ids,
+    status: row.status,
+    totalEmails: row.total_emails,
+    createdBy: row.created_by,
+    createdAt: row.created_at.toISOString(),
+    startedAt: row.started_at?.toISOString() ?? null,
+    finishedAt: row.finished_at?.toISOString() ?? null,
+  };
+}
+
+export async function create(db: Queryable, run: NewRun): Promise<Run> {
+  const { rows } = await db.query<RunRow>(
+    `insert into core.runs (id, source, rate_per_second, email_limit, email_ids, status, created_by)
+     values ($1, $2, $3, $4, $5, 'created', $6)
+     returning ${COLUMNS}`,
+    [run.id, run.source, run.ratePerSecond, run.emailLimit ?? null, run.emailIds ?? null, run.createdBy ?? null],
+  );
+  return toRun(rows[0]);
+}
+
+export async function get(db: Queryable, id: string): Promise<Run | null> {
+  const { rows } = await db.query<RunRow>(`select ${COLUMNS} from core.runs where id = $1`, [id]);
+  return rows[0] ? toRun(rows[0]) : null;
+}
+
+export async function list(db: Queryable, limit = 50): Promise<Run[]> {
+  const { rows } = await db.query<RunRow>(`select ${COLUMNS} from core.runs order by created_at desc limit $1`, [limit]);
+  return rows.map(toRun);
+}
+
+export async function status(db: Queryable, id: string): Promise<RunStatus | null> {
+  const { rows } = await db.query<{ status: RunStatus }>("select status from core.runs where id = $1", [id]);
+  return rows[0]?.status ?? null;
+}
+
+/**
+ * Records the size of the run and moves it to `running`, unless someone
+ * paused or cancelled it before the controller got here. Returns the status
+ * the run is in afterwards.
+ */
+export async function markStarted(db: Queryable, id: string, totalEmails: number): Promise<RunStatus | null> {
+  const { rows } = await db.query<{ status: RunStatus }>(
+    `update core.runs
+        set status = case when status in ('created', 'running') then 'running' else status end,
+            total_emails = $2,
+            started_at = coalesce(started_at, now())
+      where id = $1
+      returning status`,
+    [id, totalEmails],
+  );
+  return rows[0]?.status ?? null;
+}
+
+/** Moves a run to `to` only from one of `from`. False when it was somewhere else. */
+export async function setStatus(db: Queryable, id: string, to: RunStatus, from: RunStatus[]): Promise<boolean> {
+  const { rowCount } = await db.query(
+    `update core.runs
+        set status = $2,
+            finished_at = case when $2 in ('completed', 'cancelled', 'failed') then now() else null end
+      where id = $1 and status = any($3)`,
+    [id, to, from],
+  );
+  return (rowCount ?? 0) > 0;
+}
