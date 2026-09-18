@@ -11,9 +11,12 @@ What runs here for retina, next to the yt-engine stack that was there first:
 | --- | --- | --- |
 | Postgres 17 | compose service, private network | — |
 | retina API | compose service | `127.0.0.1:8091` (and the tunnel) |
-| llm-proxy | **shared with yt-engine**: `~/projects/llm-proxy`, run by `~/yt-engine/run-llm-proxy.sh` | `172.17.0.1:4000` (Docker bridge) |
-| Ollama | `monash-ollama` container | `127.0.0.1:11434` |
+| llm-proxy | `proxy/` from the clone at `~/projects/retina`, run on the host by `~/retina/run-proxy.sh` | `172.17.0.1:4001` (Docker bridge; yt-engine's own proxy is on 4000) |
+| Ollama | `monash-ollama` container, pre-existing | `127.0.0.1:11434` |
 | ngrok | `~/retina/run-ngrok.sh` | outbound only |
+
+Directories: `~/projects/retina` is the git clone (code); `~/retina` is the
+running stack (compose, `.env`, runner scripts, logs).
 
 The API's two bearer keys are the only auth in front of the proxy, which
 authenticates nobody. Never bind the proxy or Ollama wider than they are.
@@ -38,31 +41,25 @@ Host github.com-retina
 git clone git@github.com-retina:Noobmaster169/retina.git ~/projects/retina
 ```
 
-### 2. Qwen aliases in the shared proxy (pending a proxy upgrade)
+### 2. The proxy
 
-Qwen 3 on this Ollama build only answers with its thinking turned off, and the
-only switch that works is sending `reasoning_effort: none` — `/no_think` in the
-prompt does not (verified 2026-09-18: content comes back empty). The proxy
-passes that through its provider `extra_body` option, which the box's checkout
-(`Noobmaster169/llm-proxy` at 06a6a4d) predates. Until that proxy is upgraded,
-retina serves the subscription aliases and `test` only.
+The proxy shells out to `claude`, which lives under nvm for the `student`
+user and is already logged in (`claude -p "say ok"` works in a shell). Ollama
+serves the Qwen tags on loopback. `proxy/proxy.yaml` is committed; on this box
+the two Qwen tags are the `-ctx16k` profiles, so check `docker exec
+monash-ollama ollama list` matches what the config names.
 
-When it is: add `extra_body: { reasoning_effort: none }` under the `ollama`
-provider, an `"ollama/*"` capability (`sampling: allow`, `thinking: none`,
-`context_window: 16384`), and these aliases under `model_list` (tags must match
-`docker exec monash-ollama ollama list`):
-
-```yaml
-  - model_name: qwen
-    params: { model: ollama/qwen3:14b-ctx16k, max_tokens: 8000 }
-  - model_name: qwen-small
-    params: { model: ollama/qwen3:4b-ctx16k, max_tokens: 8000 }
-  - model_name: qwen-large
-    params: { model: ollama/qwen3.8:27b-ctx16k, max_tokens: 8000 }
+```bash
+cd ~/projects/retina/proxy && python3 -m venv .venv && .venv/bin/pip install -e .
+cp ~/projects/retina/deploy/run-proxy.sh ~/retina/ && chmod +x ~/retina/run-proxy.sh
+setsid nohup ~/retina/run-proxy.sh >/dev/null 2>&1 </dev/null &
+sleep 5 && curl -s 172.17.0.1:4001/healthz
+curl -s 172.17.0.1:4001/v1/messages -H 'content-type: application/json' -H 'x-api-key: smoke' \
+  -d '{"model":"qwen-small","max_tokens":20,"messages":[{"role":"user","content":"Say hi in one word."}]}'
 ```
 
-Restart by killing the uvicorn process; the runner loop restarts it in 5 s:
-`pkill -f "uvicorn llm_proxy"`, then `curl -s 172.17.0.1:4000/healthz`.
+`auto-deploy.sh` reinstalls and restarts it whenever a push touches `proxy/`.
+By hand: `pkill -f "[u]vicorn.*--port 4001"`; the runner restarts it in 5 s.
 
 ### 3. The stack
 
@@ -95,6 +92,7 @@ curl -s https://<domain>.ngrok-free.dev/health
 ### 5. Cron
 
 ```
+@reboot setsid nohup /home/student/retina/run-proxy.sh >/dev/null 2>&1 </dev/null &
 @reboot setsid nohup /home/student/retina/run-ngrok.sh >/dev/null 2>&1 </dev/null &
 */3 * * * * /home/student/retina/auto-deploy.sh
 ```
@@ -119,21 +117,20 @@ curl -s -H "authorization: Bearer $TEAM_API_KEY" -H 'content-type: application/j
   $RETINA_URL/ai/chat
 ```
 
-Aliases: `subscription`, `subscription-sonnet`, `subscription-haiku` (Claude
-Code subscription), `qwen`, `qwen-small`, `qwen-large` (local GPU), `test`
-(echo), plus whatever else the shared proxy serves. Non-streaming; a cold
-`qwen-large` can take a minute on the first call.
+Aliases come from `proxy/proxy.yaml`: `default`, `claude`, `claude-fast`
+(Claude Code subscription), `qwen`, `qwen-small`, `qwen-large` (local GPU),
+`test` (echo). Non-streaming; a cold `qwen-large` can take a minute on the
+first call.
 
 ## Looking around
 
 ```bash
 cd ~/retina && docker compose ps && docker compose logs -f api
 docker compose exec postgres psql -U retina retina_prod
-tail -f ~/yt-engine/llm-proxy.log                 # the shared proxy
-curl -s 172.17.0.1:4000/admin/usage               # spend by project: retina-frontend / retina-team
+tail -f ~/retina/llm-proxy.log
 tail -f ~/retina/ngrok.log
 ```
 
-- **503 "llm-proxy unreachable"** — `pgrep -af uvicorn`; if gone, `setsid nohup ~/yt-engine/run-llm-proxy.sh >/dev/null 2>&1 </dev/null &`.
+- **503 "llm-proxy unreachable"** — `pgrep -af "port 4001"`; if gone, `setsid nohup ~/retina/run-proxy.sh >/dev/null 2>&1 </dev/null &` and read `~/retina/llm-proxy.log`.
 - **`subscription*` fail, qwen works** — the Claude login expired: run `claude` interactively as student.
 - **Frontend says "Backend unreachable"** — `tail ~/retina/ngrok.log`, then `curl https://<domain>/health` from anywhere.

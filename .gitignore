@@ -20,3 +20,8 @@ next-env.d.ts
 
 docs/superpowers/
 emails/
+# python (proxy/)
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/

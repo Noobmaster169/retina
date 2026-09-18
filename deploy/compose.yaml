@@ -2,8 +2,9 @@
 #
 # Postgres is private to this compose network. The API publishes 8091 on host
 # loopback only — the ngrok tunnel is the single door in. Models go through
-# the llm-proxy that already runs on the host for yt-engine, bound to the
-# Docker bridge address, which `host.docker.internal` resolves to from here.
+# retina's own llm-proxy (proxy/ in this repo), run on the host by
+# run-proxy.sh on the Docker bridge address, port 4001, which
+# `host.docker.internal` resolves to from here. yt-engine's proxy is on 4000.
 #
 # Setup and day-to-day commands: README.md next to this file.
 
@@ -39,7 +40,7 @@ services:
       PG_PASSWORD: ${PG_PASSWORD:?set PG_PASSWORD in .env}
       API_SHARED_SECRET: ${API_SHARED_SECRET:?set API_SHARED_SECRET in .env}
       TEAM_API_KEY: ${TEAM_API_KEY:?set TEAM_API_KEY in .env}
-      LLM_PROXY_URL: http://host.docker.internal:4000
+      LLM_PROXY_URL: http://host.docker.internal:4001
     depends_on:
       postgres:
         condition: service_healthy

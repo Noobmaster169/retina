@@ -1,0 +1,108 @@
+# retina-proxy configuration. Committed and used as-is: nothing in here is a secret.
+#
+# Shaped after LiteLLM's `model_list` on purpose: if this proxy ever stops being worth
+# maintaining, migrating to LiteLLM should be close to a rename.
+
+version: 1
+
+server:
+  host: 127.0.0.1          # loopback only; anything else needs i_know_this_is_exposed
+  port: 4000
+  request_timeout_s: 1800
+  cors_origins: []         # keep empty — see the origin guard in main.py
+
+providers:
+  # The Claude Code subscription, driven as `claude -p`. Needs Claude Code installed
+  # and logged in; the cost it reports is counterfactual (what the call would have
+  # cost via the API) — no money leaves the account.
+  claudecli:
+    type: claudecli
+    binary: claude
+    max_concurrency: 2      # `claude -p` spawns a full agent session per call
+    timeout_s: 1200
+    stream_mode: native
+    neutralise_anthropic_key: true
+
+  ollama:
+    type: openai_compatible
+    base_url: http://127.0.0.1:11434/v1
+    api_key_env: null
+    max_concurrency: 2
+    # "OpenAI-compatible" is a spectrum. Two fixups Ollama needs, both of which
+    # otherwise fail with a perfectly ordinary 200 (measured on 0.32.15):
+    #
+    # It accepts `max_completion_tokens` and ignores it, generating to the
+    # context wall instead — a cap of 16 returned 722 tokens. Under the older
+    # name it honours the cap exactly.
+    max_tokens_field: max_tokens
+    # And `extra_body` is merged into every chat request, for switches the
+    # canonical request has no room for. `reasoning_effort: none` is the only
+    # thing that turns Qwen 3's thinking off; the documented `/no_think` prefix
+    # does not, and without it the reply arrives with `content` empty and the
+    # whole trace in `message.reasoning`, which reads as "the model returned
+    # nothing" to any Anthropic-shaped client.
+    extra_body:
+      reasoning_effort: none
+
+  mock:
+    type: mock
+
+model_list:
+  # Subscription rail. The model_id is passed verbatim to `claude --model`, so the
+  # CLI's own short aliases work and track whatever is current for that tier. All
+  # of these match the `claudecli/*` capability glob automatically.
+  - model_name: default
+    params: { model: claudecli/sonnet }
+
+  - model_name: claude
+    params: { model: claudecli/opus }
+
+  - model_name: claude-fast
+    params: { model: claudecli/haiku }
+
+  # Local Qwen 3 via Ollama. Free and unmetered. Tags must match `ollama list` on
+  # the machine running the proxy: the Monash box has `qwen3:14b-ctx16k` and
+  # `qwen3:4b-ctx16k` (tags built with num_ctx 16384), so edit these there.
+  #
+  # `max_tokens` is capped at 8000 on `qwen`: with Ollama the prompt AND the
+  # completion share one `num_ctx`, so a generous output cap eats the window it is
+  # supposed to be reading.
+  - model_name: qwen
+    params: { model: ollama/qwen3:14b, max_tokens: 8000 }
+
+  - model_name: qwen-small
+    params: { model: ollama/qwen3:4b }
+
+  - model_name: qwen-large
+    params: { model: ollama/qwen3.8:27b-ctx16k }
+
+  # Scripted, free, offline: echoes the prompt back. For smoke tests.
+  - model_name: test
+    params: { model: mock/echo }
+
+# Patches the baseline table in capabilities.py, so a model change is a config edit
+# rather than a release. `sampling: deny` matters more than it looks: current Claude
+# models reject `temperature` with a 400, and many clients send it by default.
+capabilities:
+  # `claude -p` spawns a whole agent session: no tool-use API, no image input, and
+  # no separate system field — the provider folds `system` into the prompt body.
+  "claudecli/*":
+    sampling: deny
+    tools: deny
+    images: deny
+    system: merge_into_first_user
+  # Ollama takes ordinary sampling and has no Anthropic-shaped thinking control, so
+  # `thinking` / `effort` are stripped rather than forwarded (Qwen 3's reasoning is
+  # switched off by `extra_body` above). `context_window` is only real if the
+  # server was started with OLLAMA_CONTEXT_LENGTH, or the model tag carries
+  # `PARAMETER num_ctx` — the default is 4096 and it truncates a longer prompt
+  # without saying so.
+  "ollama/*":
+    sampling: allow
+    thinking: none
+    images: deny
+    context_window: 16384
+
+# What to do with a parameter the target model cannot take: strip it and say so in
+# the X-LLM-Proxy-Warnings response header. `strip_silent` and `reject` also exist.
+on_unsupported_param: strip_and_warn

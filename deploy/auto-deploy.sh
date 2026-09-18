@@ -77,6 +77,15 @@ fi
 
 git pull --ff-only --quiet origin main 2>>"$LOG" || { log "ABORT: pull failed"; exit 1; }
 
+# The proxy runs from this checkout on the host (run-proxy.sh), not from the
+# image. If its files moved, refresh its dependencies and bounce the process;
+# the runner loop brings it back in 5s with the new code and config.
+if [[ -n "$(git diff --name-only "$LOCAL" "$REMOTE" -- proxy/)" ]]; then
+  log "proxy/ changed — reinstalling and restarting the proxy"
+  "$REPO/proxy/.venv/bin/pip" install -q -e "$REPO/proxy" >>"$LOG" 2>&1 || log "  pip install failed; restarting anyway"
+  pkill -f "[u]vicorn.*--port 4001" || true
+fi
+
 # Remember what is running, by image ID, so a bad deploy can be undone even
 # though the new image reuses the same tag.
 PREV_IMAGE="$(docker inspect --format '{{.Image}}' "${STACK##*/}-${SERVICE}-1" 2>/dev/null)"
