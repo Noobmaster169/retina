@@ -68,13 +68,14 @@ frontend/
 |---|---|---|---|---|
 | postgres | postgres:17 | none | pgdata | healthcheck `pg_isready` |
 | redis | redis:7 | none | redisdata | `command: redis-server --appendonly yes --maxmemory-policy noeviction --maxmemory 512mb` |
-| minio | minio/minio | none (console reachable via `docker compose exec` or an SSH tunnel) | miniodata | `server /data --console-address :9001`; init job creates bucket `retina` |
+| minio | quay.io/minio/minio (`minio/minio` is gone from Docker Hub) | none (console reachable via `docker compose exec` or an SSH tunnel) | miniodata | `server /data --console-address :9001`; init job creates bucket `retina` |
 | api | ghcr.io/noobmaster169/retina-api:main | `127.0.0.1:8091:8091` | none | runs migrations then listens; depends on postgres, redis, minio healthy |
-| worker | same image | none | none | `command: node dist/worker.js`; depends on api healthy (migrations done) |
+| worker | same image | none | none | `command: node --import tsx src/worker.ts` (no build step; the image runs TypeScript through tsx); depends on api healthy (migrations done) |
 | doc-extract | built from `services/doc-extract` | none | none | `:8000` inside network; healthcheck `/healthz`; 1 GB memory limit |
 | averis | built from `emails/server` | `127.0.0.1:8080:8000` | `emails/data_v2:/data:ro`, answer key mounted at `/secrets:ro` | organiser image, unchanged code |
 
-Averis is kept in the same compose file so `api` and `worker` reach it as `http://averis:8000`.
+Averis is kept in the same compose file, as the service `inbox`, so `api` and `worker` reach it
+as `http://inbox:8000`.
 The answer key volume is attached to `averis` only. `api` and `worker` never mount it.
 
 Redis settings explained:
@@ -90,7 +91,7 @@ Backend (`deploy/.env`, mirrored in `backend/.env.example`):
 
 | Variable | Example | Used by |
 |---|---|---|
-| `DATABASE_URL` | `postgres://retina:...@postgres:5432/retina_prod` | api, worker |
+| `PG_HOST`, `PG_PORT`, `PG_DATABASE`, `PG_USER`, `PG_PASSWORD` | `postgres`, `5432`, `retina_prod`, `retina`, ... | api, worker. Discrete vars, the house convention; there is no `DATABASE_URL` |
 | `DATABASE_RO_URL` | `postgres://retina_ro:...@postgres:5432/retina_prod` | api (chat agent) |
 | `REDIS_URL` | `redis://redis:6379` | api, worker |
 | `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET` | `minio:9000`, ..., `retina` | api, worker |
@@ -130,7 +131,7 @@ Job options, both queues:
 
 ```ts
 {
-  jobId: `${runId}:${emailId}`,          // idempotency
+  jobId: `${runId}__${emailId}`,         // idempotency; BullMQ rejects a custom id containing ":"
   attempts: 3,
   backoff: { type: "exponential", delay: 5000 },
   removeOnComplete: { age: 86400 },
@@ -172,10 +173,11 @@ there is one worker replica.
 - Attempt 3 fails: `failed` event handler inserts `core.review_cases` with
   `reason = processing_error`, `detail = error message + stack head`, `stage`. Dashboard
   "Failures" tab reads these. "Retry" re-adds the job with `rerunFrom` and a fresh `jobId`
-  suffix `:r{n}`.
+  suffix `__r{n}`.
 - Errors are classified: `RetryableError` (proxy 503, timeouts, doc-extract 5xx) vs
   `TerminalError` (schema validation failed twice, unsupported file type). Terminal errors skip
-  remaining attempts by calling `job.discard()`.
+  remaining attempts: the worker rethrows them as BullMQ's `UnrecoverableError` (`job.discard()`
+  no longer exists in BullMQ 6).
 
 ### 4.6 Stage state machine
 
@@ -529,7 +531,7 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 
 | Method, path | Purpose |
 |---|---|
-| `GET /health` | extended: postgres, redis, minio, doc-extract, averis, proxy reachability |
+| `GET /health` | `{ status: ok \| degraded, checks: { postgres, redis, minio, inbox } }`, 2 s per check. Degraded is still 200; only postgres down is 503, which is the signal auto-deploy rolls back on. The proxy is left out on purpose: a cold model would read as an outage. doc-extract joins in phase 5 |
 | `POST /runs` | start a run `{ source, ratePerSecond, limit?, emailIds?, promptSet? }` |
 | `GET /runs`, `GET /runs/:id` | list, detail with stage counts, queue depth, cost, score |
 | `POST /runs/:id/pause`, `/resume`, `/cancel` | control the replay |

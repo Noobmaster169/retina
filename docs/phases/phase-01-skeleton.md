@@ -1,5 +1,36 @@
 # Phase 1: Skeleton
 
+## As built
+
+Phase 1 is done. Where the work items below disagree with this list, this list is what the code
+does, and `CLAUDE.md` and `03-infra-deep.md` have been corrected to match.
+
+- **No build step.** The image runs TypeScript through tsx, so the scripts are
+  `node --import tsx src/worker.ts` and there is no `dist/`. `pnpm type-check`, not `typecheck`.
+- **Job ids are `${runId}__${emailId}`.** BullMQ 6 rejects a custom id containing `:`.
+  The resume job is `${runId}__resume__${timestamp}`.
+- **`job.discard()` is gone in BullMQ 6.** A `TerminalError` is rethrown as `UnrecoverableError`.
+- **Config keeps the discrete `PG_*` variables** the repo and `deploy/compose.yaml` already use, and
+  `EMAIL_SERVER_URL`. Redis and MinIO have defaults and optional credentials, so the api still boots
+  on the VPS, where they do not exist until phase 3, and reports them `down` in `/health`.
+- **Local Postgres is unchanged** (`postgres` / `localdev`, database `postgres`, port 5433), so
+  nobody's existing volume is orphaned. Tests use `retina_test` in the same instance.
+- **MinIO comes from `quay.io/minio/minio`.** `minio/minio` no longer exists on Docker Hub.
+- **The Averis server is the compose service `inbox`**, built from `../emails/server`. It is the same
+  service `emails/docker-compose.yml` starts, so run one or the other.
+- **`/health` is 503 only when postgres is down**, as before; degraded is 200. The check is called
+  `inbox`, not `averis`.
+- **The frontend gate is the existing one.** `proxy.ts` gained `/runs` and `/api/runs` in its matcher;
+  there is no `middleware.ts`, `FRONTEND_PASSWORD` or `SESSION_SECRET`. The inbox stays public and the
+  chat page stays in the navigation.
+- **Run status moves are conditional updates** (`runs.markStarted`, `runs.setStatus(id, to, from)`)
+  instead of a free `update(id, patch)`: a run paused before its controller starts stays paused.
+- **The replay controller re-enqueues rows left at `ingested`**, which covers a crash between the
+  commit and the enqueue. The ingest queue uses a 30 s lock so a dead worker's run is reclaimed in
+  under a minute; on SIGTERM the ingest job moves itself to `delayed` instead of spending an attempt.
+- **Queue counts add `prioritized` and `delayed` into `waiting`.** A job with a priority never sits
+  in BullMQ's `waiting` list, and every email job has one.
+
 ## Goal
 
 An email travels Averis → Postgres → MinIO → `classify` queue → `compare` queue → stage `done`
