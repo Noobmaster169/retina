@@ -11,7 +11,7 @@ RUN corepack enable && corepack prepare pnpm@11.20.0 --activate
 # ---- dependencies -----------------------------------------------------------
 FROM base AS deps
 WORKDIR /app
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # Dev dependencies stay in on purpose: tsx is one of them.
 RUN pnpm install --frozen-lockfile
 

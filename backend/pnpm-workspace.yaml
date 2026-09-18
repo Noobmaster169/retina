@@ -1,0 +1,8 @@
+# Not a workspace. pnpm 11 reads build-script approvals from this file, and
+# in Docker and CI an unapproved script is a hard error (ERR_PNPM_IGNORED_BUILDS),
+# not a warning. None of these postinstalls are needed: the binaries arrive
+# via optional platform packages.
+allowBuilds:
+  esbuild: false
+  sharp: false
+  unrs-resolver: false
