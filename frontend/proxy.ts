@@ -10,7 +10,9 @@ import { SITE_COOKIE, gateEnabled, isValidSession } from "@/lib/site-gate";
 export function proxy(request: NextRequest) {
   if (!gateEnabled()) return NextResponse.next();
   if (isValidSession(request.cookies.get(SITE_COOKIE)?.value)) return NextResponse.next();
-  return NextResponse.redirect(new URL("/login", request.url));
+  const login = new URL("/login", request.url);
+  login.searchParams.set("next", request.nextUrl.pathname);
+  return NextResponse.redirect(login);
 }
 
 export const config = {

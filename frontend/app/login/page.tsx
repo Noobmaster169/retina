@@ -1,19 +1,21 @@
 import { redirect } from "next/navigation";
 
 import { login } from "@/app/actions/auth";
-import { gateEnabled, hasSiteAccess } from "@/lib/site-gate";
+import { gateEnabled, hasSiteAccess, safeNext } from "@/lib/site-gate";
 
 export const dynamic = "force-dynamic";
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
-  if (!gateEnabled() || (await hasSiteAccess())) redirect("/chat");
-  const { error } = await searchParams;
+  const { error, next } = await searchParams;
+  const destination = safeNext(next);
+  if (!gateEnabled() || (await hasSiteAccess())) redirect(destination);
 
   return (
     <main className="mx-auto w-full max-w-sm px-5 py-16">
       <h1 className="text-xl font-semibold">Password required</h1>
-      <p className="mt-1 text-sm text-muted">Asking a model spends the shared subscription, so that page needs the site password.</p>
+      <p className="mt-1 text-sm text-muted">Asking a model and starting a run both spend shared resources, so those pages need the site password.</p>
       <form action={login} className="mt-6 flex flex-col gap-4">
+        <input type="hidden" name="next" value={destination} />
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-muted">Password</span>
           <input

@@ -40,6 +40,12 @@ export function isValidSession(value: string | undefined): boolean {
   return value !== undefined && sameString(value, sessionToken());
 }
 
+/** Where to go after signing in: a path on this site, never a URL someone put in the query string. */
+export function safeNext(value: unknown): string {
+  // One leading slash and then only path characters: "//evil.com" and "/\evil.com" both fail.
+  return typeof value === "string" && /^\/(?!\/)[\w\-/]*$/.test(value) ? value : "/chat";
+}
+
 /** For server actions and pages: Proxy alone does not cover every server-action path. */
 export async function hasSiteAccess(): Promise<boolean> {
   return isValidSession((await cookies()).get(SITE_COOKIE)?.value);
