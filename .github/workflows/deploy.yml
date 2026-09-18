@@ -34,6 +34,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
+        with:
+          # The action reads packageManager from a root package.json, which
+          # this monorepo does not have. Keep in step with frontend/ and
+          # backend/ package.json.
+          version: 11.20.0
       - uses: actions/setup-node@v7
         with:
           node-version: 24
