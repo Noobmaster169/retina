@@ -38,10 +38,18 @@ Host github.com-retina
 git clone git@github.com-retina:Noobmaster169/retina.git ~/projects/retina
 ```
 
-### 2. Qwen aliases in the shared proxy
+### 2. Qwen aliases in the shared proxy (pending a proxy upgrade)
 
-`~/projects/llm-proxy/config/proxy.yaml` already has the `ollama` provider;
-add the aliases under `model_list` (tags must match
+Qwen 3 on this Ollama build only answers with its thinking turned off, and the
+only switch that works is sending `reasoning_effort: none` — `/no_think` in the
+prompt does not (verified 2026-09-18: content comes back empty). The proxy
+passes that through its provider `extra_body` option, which the box's checkout
+(`Noobmaster169/llm-proxy` at 06a6a4d) predates. Until that proxy is upgraded,
+retina serves the subscription aliases and `test` only.
+
+When it is: add `extra_body: { reasoning_effort: none }` under the `ollama`
+provider, an `"ollama/*"` capability (`sampling: allow`, `thinking: none`,
+`context_window: 16384`), and these aliases under `model_list` (tags must match
 `docker exec monash-ollama ollama list`):
 
 ```yaml
