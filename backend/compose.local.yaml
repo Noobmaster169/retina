@@ -1,0 +1,25 @@
+# Local Postgres for `pnpm dev:server` and the integration tests.
+#
+#   docker compose -f compose.local.yaml up -d
+#   pnpm db:migrate
+#
+# Published on 5433 so it cannot collide with a Postgres already on 5432.
+# The integration suite creates and uses `retina_test` in this instance.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: localdev
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:

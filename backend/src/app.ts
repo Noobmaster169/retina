@@ -1,0 +1,106 @@
+import express, { type NextFunction, type Request, type Response } from "express";
+
+import { type Caller, requireCaller } from "./auth";
+import { getPool } from "./db";
+import { chat, type ChatMessage, type ChatRequest, listModels, LlmProxyError } from "./llm";
+
+const MODEL_REGEX = /^[\w.:-]{1,64}$/;
+const MAX_CONTENT_CHARS = 200_000;
+const MAX_SYSTEM_CHARS = 20_000;
+const MAX_TOKENS_CEILING = 8192;
+
+/** A validated body, or the message to send back as a 400. */
+function parseChatBody(body: unknown): { ok: true; req: ChatRequest } | { ok: false; error: string } {
+  const b = (body ?? {}) as Record<string, unknown>;
+
+  if (typeof b.model !== "string" || !MODEL_REGEX.test(b.model)) {
+    return { ok: false, error: 'model must be an alias like "qwen" or "claude"' };
+  }
+  if (!Array.isArray(b.messages) || b.messages.length === 0) {
+    return { ok: false, error: "messages must be a non-empty array" };
+  }
+
+  const messages: ChatMessage[] = [];
+  let chars = 0;
+  for (const m of b.messages as unknown[]) {
+    const msg = (m ?? {}) as Record<string, unknown>;
+    if ((msg.role !== "user" && msg.role !== "assistant") || typeof msg.content !== "string") {
+      return { ok: false, error: "each message needs role user|assistant and string content" };
+    }
+    chars += msg.content.length;
+    messages.push({ role: msg.role, content: msg.content });
+  }
+  if (messages[0].role !== "user") return { ok: false, error: "the first message must be from the user" };
+  if (chars > MAX_CONTENT_CHARS) return { ok: false, error: `messages exceed ${MAX_CONTENT_CHARS} characters` };
+
+  const req: ChatRequest = { model: b.model, messages };
+  if (b.system !== undefined) {
+    if (typeof b.system !== "string" || b.system.length > MAX_SYSTEM_CHARS) {
+      return { ok: false, error: `system must be a string of at most ${MAX_SYSTEM_CHARS} characters` };
+    }
+    req.system = b.system;
+  }
+  if (b.maxTokens !== undefined) {
+    const n = b.maxTokens;
+    if (typeof n !== "number" || !Number.isInteger(n) || n < 1 || n > MAX_TOKENS_CEILING) {
+      return { ok: false, error: `maxTokens must be an integer from 1 to ${MAX_TOKENS_CEILING}` };
+    }
+    req.maxTokens = n;
+  }
+  return { ok: true, req };
+}
+
+export function createApp(): express.Express {
+  const app = express();
+  app.use(express.json({ limit: "1mb" }));
+
+  // Unauthenticated: the compose healthcheck has no key, and it reveals
+  // nothing but liveness. Deliberately does NOT check the proxy — a probe that
+  // did would report the API down every time a model was cold.
+  app.get("/health", async (_req, res) => {
+    try {
+      await getPool().query("select 1");
+      res.json({ status: "ok", database: "up" });
+    } catch (error) {
+      res.status(503).json({ status: "error", database: "down", message: String(error) });
+    }
+  });
+
+  app.use(requireCaller);
+
+  app.get("/ai/models", async (_req, res, next) => {
+    try {
+      res.json({ models: await listModels() });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/ai/chat", async (req, res, next) => {
+    const parsed = parseChatBody(req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ error: parsed.error });
+      return;
+    }
+    try {
+      res.json(await chat(req.caller as Caller, parsed.req));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.use(
+    // Four parameters are what make Express treat this as an error handler.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    (error: unknown, _req: Request, res: Response, _next: NextFunction) => {
+      if (error instanceof LlmProxyError) {
+        res.status(error.status).json({ error: error.message });
+        return;
+      }
+      console.error("[api] unhandled:", error);
+      res.status(500).json({ error: "Internal error" });
+    },
+  );
+
+  return app;
+}

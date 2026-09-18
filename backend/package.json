@@ -1,0 +1,25 @@
+{
+  "name": "retina-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env --import tsx --watch src/index.ts",
+    "start": "node --env-file-if-exists=.env --import tsx src/index.ts",
+    "type-check": "tsc --noEmit",
+    "db:migrate": "node --env-file-if-exists=.env db/migrate.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.117.1",
+    "express": "^5.2.1",
+    "pg": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^24",
+    "@types/pg": "^8.20.4",
+    "tsx": "^4.23.12",
+    "typescript": "^5"
+  },
+  "packageManager": "pnpm@11.20.0"
+}

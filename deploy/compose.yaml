@@ -1,0 +1,54 @@
+# The backend stack on the Monash server (student@118.139.133.14).
+#
+# The API runs on the HOST network so it can reach llm-proxy, which runs on
+# the host as a systemd user service bound to 127.0.0.1:4000 (it needs the
+# `claude` binary, the student user's Claude login, and Ollama on host
+# loopback — none of which belong in a container). Postgres therefore
+# publishes on host loopback too, on 5434. Nothing here is reachable from
+# outside the box; the ngrok tunnel to 127.0.0.1:8091 is the only door.
+#
+# First-time setup and day-to-day commands: see README.md next to this file.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: retina_prod
+      POSTGRES_USER: retina
+      POSTGRES_PASSWORD: ${PG_PASSWORD:?set PG_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U retina -d retina_prod"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    image: ghcr.io/noobmaster169/retina-api:main
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      PORT: "8091"
+      PG_HOST: 127.0.0.1
+      PG_PORT: "5434"
+      PG_DATABASE: retina_prod
+      PG_USER: retina
+      PG_PASSWORD: ${PG_PASSWORD:?set PG_PASSWORD in .env}
+      API_SHARED_SECRET: ${API_SHARED_SECRET:?set API_SHARED_SECRET in .env}
+      TEAM_API_KEY: ${TEAM_API_KEY:?set TEAM_API_KEY in .env}
+      LLM_PROXY_URL: http://127.0.0.1:4000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8091/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  pgdata:
