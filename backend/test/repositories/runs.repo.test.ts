@@ -42,12 +42,15 @@ describe("runs repository", () => {
 
   it("lists newest first", async () => {
     await inRollback(async (tx) => {
-      const first = await seedRun(tx);
-      await tx.query("update core.runs set created_at = now() - interval '1 hour' where id = $1", [first.id]);
-      const second = await seedRun(tx);
+      // Dated ahead of everything else, so neither can fall past the list's limit
+      // however many runs the committing tests have left in this database.
+      const older = await seedRun(tx);
+      const newer = await seedRun(tx);
+      await tx.query("update core.runs set created_at = now() + interval '1 hour' where id = $1", [older.id]);
+      await tx.query("update core.runs set created_at = now() + interval '2 hours' where id = $1", [newer.id]);
 
       const ids = (await runs.list(tx)).map((run) => run.id);
-      expect(ids.indexOf(second.id)).toBeLessThan(ids.indexOf(first.id));
+      expect(ids.slice(0, 2)).toEqual([newer.id, older.id]);
     });
   });
 
