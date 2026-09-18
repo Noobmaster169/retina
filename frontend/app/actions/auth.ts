@@ -16,5 +16,5 @@ export async function login(formData: FormData): Promise<void> {
     path: "/",
     maxAge: SITE_COOKIE_MAX_AGE,
   });
-  redirect("/");
+  redirect("/chat");
 }

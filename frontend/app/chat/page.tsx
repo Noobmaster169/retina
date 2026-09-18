@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { ChatPanel } from "@/components/chat-panel";
 import { listModels, type ModelInfo } from "@/lib/api-client";
 
@@ -20,10 +22,13 @@ export default async function Home() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-2xl flex-1 px-5 py-10 sm:px-8">
-      <h1 className="text-xl font-semibold">Chat</h1>
+    <main className="mx-auto w-full max-w-2xl px-5 py-10 sm:px-8">
+      <Link href="/" className="text-sm text-muted hover:text-ink">
+        ← Inbox
+      </Link>
+      <h1 className="mt-4 text-xl font-semibold">Ask a model</h1>
       <p className="mt-1 text-sm text-muted">
-        Proves the chain: this page → backend on the Monash box → llm-proxy → a model.
+        Goes through the backend on the Monash box to the llm-proxy and a model.
       </p>
       <div className="mt-8">
         {backendError ? (

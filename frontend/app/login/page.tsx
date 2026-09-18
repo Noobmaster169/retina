@@ -6,12 +6,13 @@ import { gateEnabled, hasSiteAccess } from "@/lib/site-gate";
 export const dynamic = "force-dynamic";
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
-  if (!gateEnabled() || (await hasSiteAccess())) redirect("/");
+  if (!gateEnabled() || (await hasSiteAccess())) redirect("/chat");
   const { error } = await searchParams;
 
   return (
-    <main className="mx-auto w-full max-w-sm flex-1 px-5 py-16">
+    <main className="mx-auto w-full max-w-sm px-5 py-16">
       <h1 className="text-xl font-semibold">Password required</h1>
+      <p className="mt-1 text-sm text-muted">Asking a model spends the shared subscription, so that page needs the site password.</p>
       <form action={login} className="mt-6 flex flex-col gap-4">
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-muted">Password</span>
