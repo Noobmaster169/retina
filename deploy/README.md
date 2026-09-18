@@ -60,9 +60,11 @@ curl -s 172.17.0.1:4001/v1/messages -H 'content-type: application/json' -H 'x-ap
 ```
 
 `auto-deploy.sh` reinstalls and restarts it whenever a push touches `proxy/`.
-By hand: `pkill -f "^/home/student/projects/retina/proxy/.venv/bin/python"`; the
-runner restarts it in 5 s. (Anchored on purpose: an unanchored `pkill -f` whose
-pattern appears in your own ssh command line kills your session.)
+By hand: `pkill -f "^\.venv/bin/python -m uvicorn llm_proxy.*--port 4001"`; the
+runner restarts it in 5 s. (start.sh execs `.venv/bin/python` by relative path,
+and yt-engine's proxy has the same command line on port 4000 — hence the
+anchor and the port. An unanchored `pkill -f` whose pattern appears in your own
+ssh command line kills your session.)
 
 ### 3. The stack
 

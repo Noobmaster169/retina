@@ -14,7 +14,7 @@
 #   crontab -e  ->  @reboot setsid nohup /home/student/retina/run-proxy.sh >/dev/null 2>&1 </dev/null &
 #
 # Restart after a config or code change: kill the uvicorn process and the loop
-# brings it back in 5 s —  pkill -f "^/home/student/projects/retina/proxy/.venv/bin/python"
+# brings it back in 5 s —  pkill -f "^\.venv/bin/python -m uvicorn llm_proxy.*--port 4001"
 set -u
 REPO="${REPO:-$HOME/projects/retina}"
 HOST="${LLM_PROXY_HOST:-172.17.0.1}"
