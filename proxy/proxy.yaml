@@ -51,30 +51,31 @@ model_list:
   # Subscription rail. The model_id is passed verbatim to `claude --model`, so the
   # CLI's own short aliases work and track whatever is current for that tier. All
   # of these match the `claudecli/*` capability glob automatically.
-  - model_name: default
+  # The alias IS the model name — nothing to decode.
+  - model_name: sonnet
     params: { model: claudecli/sonnet }
 
-  - model_name: claude
+  - model_name: opus
     params: { model: claudecli/opus }
 
-  - model_name: claude-fast
+  - model_name: haiku
     params: { model: claudecli/haiku }
 
   # Local Qwen 3 via Ollama. Free and unmetered. Tags must match `ollama list` on
   # the machine running the proxy: the Monash box has `qwen3:14b-ctx16k` and
   # `qwen3:4b-ctx16k` (tags built with num_ctx 16384), so edit these there.
   #
-  # `max_tokens` is capped at 8000 on `qwen`: with Ollama the prompt AND the
-  # completion share one `num_ctx`, so a generous output cap eats the window it is
-  # supposed to be reading.
-  - model_name: qwen
+  # `max_tokens` is capped at 8000: with Ollama the prompt AND the completion
+  # share one `num_ctx`, so a generous output cap eats the window it is supposed
+  # to be reading. The alias is the Ollama tag minus any -ctx suffix.
+  - model_name: qwen3:14b
     params: { model: ollama/qwen3:14b, max_tokens: 8000 }
 
-  - model_name: qwen-small
-    params: { model: ollama/qwen3:4b }
+  - model_name: qwen3:4b
+    params: { model: ollama/qwen3:4b, max_tokens: 8000 }
 
-  - model_name: qwen-large
-    params: { model: ollama/qwen3.8:27b-ctx16k }
+  - model_name: qwen3.8:27b
+    params: { model: ollama/qwen3.8:27b-ctx16k, max_tokens: 8000 }
 
   # Scripted, free, offline: echoes the prompt back. For smoke tests.
   - model_name: test

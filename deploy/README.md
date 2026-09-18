@@ -56,7 +56,7 @@ cp ~/projects/retina/deploy/run-proxy.sh ~/retina/ && chmod +x ~/retina/run-prox
 setsid nohup ~/retina/run-proxy.sh >/dev/null 2>&1 </dev/null &
 sleep 5 && curl -s 172.17.0.1:4001/healthz
 curl -s 172.17.0.1:4001/v1/messages -H 'content-type: application/json' -H 'x-api-key: smoke' \
-  -d '{"model":"qwen-small","max_tokens":20,"messages":[{"role":"user","content":"Say hi in one word."}]}'
+  -d '{"model":"qwen3:4b","max_tokens":20,"messages":[{"role":"user","content":"Say hi in one word."}]}'
 ```
 
 `auto-deploy.sh` reinstalls and restarts it whenever a push touches `proxy/`.
@@ -116,13 +116,13 @@ proxy. `tail -20 ~/retina/auto-deploy.log`.
 export RETINA_URL=https://<domain>.ngrok-free.dev TEAM_API_KEY=...
 curl -s -H "authorization: Bearer $TEAM_API_KEY" $RETINA_URL/ai/models
 curl -s -H "authorization: Bearer $TEAM_API_KEY" -H 'content-type: application/json' \
-  -d '{"model":"qwen","messages":[{"role":"user","content":"Explain Docker volumes in two sentences."}]}' \
+  -d '{"model":"qwen3:14b","messages":[{"role":"user","content":"Explain Docker volumes in two sentences."}]}' \
   $RETINA_URL/ai/chat
 ```
 
-Aliases come from `proxy/proxy.yaml`: `default`, `claude`, `claude-fast`
-(Claude Code subscription), `qwen`, `qwen-small`, `qwen-large` (local GPU),
-`test` (echo). Non-streaming; a cold `qwen-large` can take a minute on the
+Aliases come from `proxy/proxy.yaml`: `sonnet`, `opus`, `haiku`
+(Claude Code subscription), `qwen3:14b`, `qwen3:4b`, `qwen3.8:27b` (local GPU),
+`test` (echo). Non-streaming; a cold `qwen3.8:27b` can take a minute on the
 first call.
 
 ## Looking around
@@ -135,5 +135,5 @@ tail -f ~/retina/ngrok.log
 ```
 
 - **503 "llm-proxy unreachable"** — `pgrep -af "port 4001"`; if gone, `setsid nohup ~/retina/run-proxy.sh >/dev/null 2>&1 </dev/null &` and read `~/retina/llm-proxy.log`.
-- **`subscription*` fail, qwen works** — the Claude login expired: run `claude` interactively as student.
+- **`sonnet`/`opus`/`haiku` fail, qwen works** — the Claude login expired: run `claude` interactively as student.
 - **Frontend says "Backend unreachable"** — `tail ~/retina/ngrok.log`, then `curl https://<domain>/health` from anywhere.

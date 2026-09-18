@@ -23,8 +23,8 @@ Environment overrides: `LLM_PROXY_HOST`, `LLM_PROXY_PORT`, `LLM_PROXY_CONFIG`,
 
 | alias | route | needs |
 |---|---|---|
-| `default`, `claude`, `claude-fast` | `claudecli/sonnet`, `/opus`, `/haiku` | Claude Code installed and logged in: `claude -p "hi"` must work in a shell |
-| `qwen`, `qwen-small`, `qwen-large` | `ollama/qwen3:*` | Ollama running on `127.0.0.1:11434` with those tags pulled (see the comment in `proxy.yaml`; the Monash box uses different tags) |
+| `sonnet`, `opus`, `haiku` | `claudecli/sonnet`, `/opus`, `/haiku` | Claude Code installed and logged in: `claude -p "hi"` must work in a shell |
+| `qwen3:14b`, `qwen3:4b`, `qwen3.8:27b` | `ollama/qwen3:*` | Ollama running on `127.0.0.1:11434` with those tags pulled (see the comment in `proxy.yaml`; the Monash box uses different tags) |
 | `test` | `mock/echo` | nothing |
 
 ## Endpoints

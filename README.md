@@ -23,7 +23,7 @@ Run commands **inside a package**, never at the repo root.
 | Node 24 + pnpm 11 | frontend, backend | `node -v`, `corepack enable && pnpm -v` |
 | Docker | the local Postgres | `docker ps` |
 | Python 3.10+ | proxy | `python3 --version` |
-| Claude Code, logged in | the `claude*` / `default` aliases | `claude -p "say ok"` prints ok |
+| Claude Code, logged in | the `sonnet` / `opus` / `haiku` aliases | `claude -p "say ok"` prints ok |
 | Ollama with a Qwen model (optional) | the `qwen*` aliases | `ollama list` shows `qwen3:14b` |
 
 Without Claude Code you still get the `test` alias, which echoes, and Qwen if
@@ -65,7 +65,7 @@ pnpm install && pnpm dev
 ```
 
 Open http://localhost:3000, pick `test`, send "ping", see "echo: ping". Pick
-`claude-fast` for a real answer through your Claude Code subscription.
+`haiku` for a real answer through your Claude Code subscription.
 
 ### Pointing the frontend at the production backend instead
 
@@ -89,14 +89,14 @@ scripts).
 ```bash
 curl -s 127.0.0.1:8091/ai/chat -H "authorization: Bearer $TEAM_API_KEY" \
   -H 'content-type: application/json' \
-  -d '{"model":"claude-fast","messages":[{"role":"user","content":"hello"}]}'
+  -d '{"model":"haiku","messages":[{"role":"user","content":"hello"}]}'
 ```
 
-Aliases live in `proxy/proxy.yaml`: `default`, `claude`, `claude-fast` (Claude
-Code subscription: Sonnet, Opus, Haiku), `qwen`, `qwen-small`, `qwen-large`
-(Ollama), `test` (echo). `costUsd` on the subscription rail is what the call
-*would* have cost via the API; nothing is billed. `qwen-small` narrates its
-reasoning in the answer; prefer `qwen` for real use.
+Aliases live in `proxy/proxy.yaml` and are just the model names: `sonnet`,
+`opus`, `haiku` (Claude Code subscription), `qwen3:14b`, `qwen3:4b`,
+`qwen3.8:27b` (Ollama), `test` (echo). `costUsd` on the subscription rail is what the call
+*would* have cost via the API; nothing is billed. `qwen3:4b` narrates its
+reasoning in the answer; prefer `qwen3:14b` for real use.
 
 ## Day to day
 
@@ -115,8 +115,9 @@ three packages and publishes the backend image; the Monash box pulls it and
 runs the proxy from the same checkout. Box setup and runbook:
 [deploy/README.md](./deploy/README.md).
 
-The deployed page is public with no sign-in. Do not share the Vercel URL
-outside the team until a gate is added.
+The deployed page is gated by one shared password: set `SITE_PASSWORD` in the
+Vercel project's environment variables. Without it the page is public, and
+anyone with the URL can spend the subscription.
 
 ## Rules
 
