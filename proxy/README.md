@@ -1,55 +1,55 @@
-# retina-proxy
+# proxy
 
-A small local HTTP gateway that speaks the Anthropic Messages API and routes each
-request, by alias, to one of three backends: the Claude Code subscription (driven as
-`claude -p`), a local Ollama, or an offline mock. The retina backend
-(`backend/src/llm.ts`) is its only client. It binds loopback, authenticates nobody,
-and reads the `x-api-key` the SDK sends purely as a project label for the
-`X-LLM-Proxy-Project` header. Per-model parameter stripping (`capabilities` in
-`proxy.yaml`) is what keeps `temperature` away from Claude and `thinking` away from
-Ollama.
+A small HTTP gateway. It speaks the Anthropic Messages API and routes each
+request, by alias, to `claude -p` (your Claude Code login), a local Ollama, or
+an offline echo. The backend is its only client. It listens on loopback and
+has no auth.
 
-## Setup
+## Run
 
 ```sh
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
-./start.sh            # 127.0.0.1:4000, config from ./proxy.yaml
+./start.sh                      # 127.0.0.1:4000, config from ./proxy.yaml
+.venv/bin/pytest -q             # tests, all offline
 ```
 
-Environment overrides: `LLM_PROXY_HOST`, `LLM_PROXY_PORT`, `LLM_PROXY_CONFIG`,
-`LLM_PROXY_LOG_LEVEL`. Extra arguments to `start.sh` pass through to uvicorn.
+Env overrides: `LLM_PROXY_HOST`, `LLM_PROXY_PORT`, `LLM_PROXY_CONFIG`.
 
-## Aliases and what they need
+## Aliases
 
-| alias | route | needs |
-|---|---|---|
-| `sonnet`, `opus`, `haiku` | `claudecli/sonnet`, `/opus`, `/haiku` | Claude Code installed and logged in: `claude -p "hi"` must work in a shell |
-| `qwen3:14b`, `qwen3:4b`, `qwen3.8:27b` | `ollama/qwen3:*` | Ollama running on `127.0.0.1:11434` with those tags pulled (see the comment in `proxy.yaml`; the Monash box uses different tags) |
-| `test` | `mock/echo` | nothing |
+Set in `proxy.yaml`. The alias is the model name.
+
+| Alias | Goes to | Needs |
+| --- | --- | --- |
+| `sonnet`, `opus`, `haiku` | `claude -p --model <alias>` | `claude -p "hi"` works in your shell |
+| `qwen3:14b`, `qwen3:4b`, `qwen3.8:27b` | Ollama on `127.0.0.1:11434` | the tag pulled (`ollama list`) |
+| `test` | echo | nothing |
+
+You can also send `provider/model` directly, e.g. `claudecli/sonnet` or
+`ollama/qwen3:14b`.
 
 ## Endpoints
 
 ```sh
 curl -s 127.0.0.1:4000/healthz
-
 curl -s 127.0.0.1:4000/v1/models
-
 curl -si 127.0.0.1:4000/v1/messages \
-  -H 'content-type: application/json' -H 'x-api-key: retina-dev' \
+  -H 'content-type: application/json' -H 'x-api-key: dev' \
   -d '{"model":"test","max_tokens":20,"messages":[{"role":"user","content":"ping"}]}'
 ```
 
-`POST /v1/messages` takes and returns the Anthropic Messages shape, streaming
-(`"stream": true`, named SSE frames) or not, and adds `X-LLM-Proxy-Model`,
-`X-LLM-Proxy-Cost-USD`, `X-LLM-Proxy-Provider`, `X-LLM-Proxy-Project`,
-`X-LLM-Proxy-Request-Id` and, when a parameter was stripped, `X-LLM-Proxy-Warnings`.
-Errors use the Anthropic error envelope: 404 for an unknown alias, 400 for a request
-the target provider cannot serve, 502/503/504 for upstream failures.
+`/v1/messages` takes and returns the Anthropic Messages shape. `"stream": true`
+gives SSE. `x-api-key` is a label, not a key; it comes back as
+`X-LLM-Proxy-Project`. Other headers: `X-LLM-Proxy-Model`, `-Cost-USD`,
+`-Provider`, `-Request-Id`, and `-Warnings` when a parameter was dropped.
 
-## Tests
+Errors use the Anthropic error shape: 404 unknown alias, 400 unsupported
+request, 502/503/504 upstream failure.
 
-```sh
-.venv/bin/pytest -q
-```
+## What the config does
 
-Everything runs offline against the mock provider and a stub `claude` executable.
+- `capabilities` strips parameters a model rejects. `temperature` never reaches
+  Claude. `thinking` never reaches Ollama.
+- `extra_body: { reasoning_effort: none }` on the Ollama provider turns Qwen's
+  thinking off. `/no_think` in the prompt does not work.
+- `max_tokens: 8000` on Qwen aliases. Prompt and answer share one context window.

@@ -1,89 +1,93 @@
 # Retina
 
-An AI app in three packages, all in this repo:
+Three packages in one repo:
 
 ```
-browser ─▶ frontend (Next.js) ─▶ backend (Express + Postgres) ─▶ proxy (llm-proxy) ─▶ claude -p / Ollama
+browser → frontend (Next.js) → backend (Express + Postgres) → proxy (Python) → claude -p / Ollama
 ```
 
-| Package | What | Runs on |
+| Folder | What it is | Port |
 | --- | --- | --- |
-| `frontend/` | Next.js UI. Talks only to the backend, server-side, with a shared secret. | your laptop; Vercel in prod |
-| `backend/` | Express API. Two bearer keys (frontend, team). Proxies `/ai/chat` to the proxy. Postgres for app data. | your laptop; the Monash box in prod |
-| `proxy/` | llm-proxy: one Anthropic-wire endpoint in front of the Claude Code subscription (`claude -p`) and local Qwen (Ollama). | your laptop; the Monash box in prod |
-| `deploy/` | Everything the Monash box runs: compose, runners, the runbook. | the Monash box |
+| `frontend/` | Next.js app. Calls the backend with a shared secret. | 3000 |
+| `backend/` | Express API. Checks the key, forwards chat to the proxy. | 8091 |
+| `proxy/` | Small LLM gateway. Runs `claude -p` (your Claude Code login) or Ollama. | 4000 |
+| `deploy/` | Scripts and runbook for the Monash server. | — |
 
-Each package is independent: its own dependencies, `.env`, and start command.
-Run commands **inside a package**, never at the repo root.
+Each package has its own deps, `.env` and start command. Always `cd` into a
+package first. Nothing runs from the repo root.
 
-## Prerequisites
+## You need
 
-| Tool | For | Check |
-| --- | --- | --- |
-| Node 24 + pnpm 11 | frontend, backend | `node -v`, `corepack enable && pnpm -v` |
-| Docker | the local Postgres | `docker ps` |
-| Python 3.10+ | proxy | `python3 --version` |
-| Claude Code, logged in | the `sonnet` / `opus` / `haiku` aliases | `claude -p "say ok"` prints ok |
-| Ollama with a Qwen model (optional) | the `qwen*` aliases | `ollama list` shows `qwen3:14b` |
+- Node 24 and pnpm 11 (`corepack enable`)
+- Docker (for the local Postgres)
+- Python 3.10+
+- Claude Code, logged in. `claude -p "say ok"` must print ok.
+- Optional: Ollama with `qwen3:14b` pulled, for the `qwen*` aliases.
 
-Without Claude Code you still get the `test` alias, which echoes, and Qwen if
-you have Ollama. Without either, the app runs but every chat returns an error
-from the proxy, which is the correct behaviour.
-
-## First run
+## Run it
 
 Three terminals, in this order.
 
-**1. Proxy** (port 4000)
+**1. Proxy**
 
 ```bash
 cd proxy
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 ./start.sh
-curl -s 127.0.0.1:4000/healthz
 ```
 
-`proxy/proxy.yaml` is committed and needs no editing. It has no secrets: the
-subscription rail uses your own `claude` login, and Ollama has no key.
-
-**2. Backend** (port 8091)
+**2. Backend**
 
 ```bash
 cd backend
-cp .env.example .env            # defaults work; change the two keys if you like
+cp .env.example .env
 docker compose -f compose.local.yaml up -d      # Postgres on 5433
 pnpm install && pnpm db:migrate && pnpm dev
-curl -s 127.0.0.1:8091/health   # {"status":"ok","database":"up"}
 ```
 
-**3. Frontend** (port 3000)
+**3. Frontend**
 
 ```bash
 cd frontend
-cp .env.example .env.local      # API_SHARED_SECRET must equal the backend's
+cp .env.example .env.local
 pnpm install && pnpm dev
 ```
 
-Open http://localhost:3000, pick `test`, send "ping", see "echo: ping". Pick
-`haiku` for a real answer through your Claude Code subscription.
+Open http://localhost:3000. Pick `test`, send `ping`, get `echo: ping`.
+Pick `haiku`, send anything, get a real answer from Claude.
 
-### Pointing the frontend at the production backend instead
+The default keys in the two `.env.example` files match each other. Change
+them if you want, but change both.
 
-Set `BACKEND_URL=https://purebred-shank-riptide.ngrok-free.dev` in
-`frontend/.env.local`, with the production `API_SHARED_SECRET` (ask whoever
-runs the box). Then you only need terminal 3. Switch back by restoring the
-local URL. That is the only difference between the two modes.
+### Use the deployed backend instead of a local one
 
-## The API
+In `frontend/.env.local` set `BACKEND_URL=https://purebred-shank-riptide.ngrok-free.dev`
+and `API_SHARED_SECRET` to the production value (ask the box owner). Then you
+only need terminal 3.
 
-Every backend route except `/health` takes `Authorization: Bearer <key>`, where
-the key is `API_SHARED_SECRET` (the frontend) or `TEAM_API_KEY` (people and
-scripts).
+## Models
 
-| Route | Returns |
+Aliases are model names. They live in `proxy/proxy.yaml`.
+
+| Alias | Runs on | Needs |
+| --- | --- | --- |
+| `sonnet`, `opus`, `haiku` | Claude Code subscription | `claude` logged in |
+| `qwen3:14b`, `qwen3:4b`, `qwen3.8:27b` | Ollama | model pulled |
+| `test` | nothing | nothing |
+
+Use `qwen3:14b`, not `qwen3:4b`. The 4B model writes its reasoning into the
+answer. `costUsd` on Claude calls is what the API would have charged. Nothing
+is billed.
+
+## API
+
+All routes except `/health` need `Authorization: Bearer <key>`. The key is
+`API_SHARED_SECRET` (frontend) or `TEAM_API_KEY` (you, curl, scripts).
+
+| Route | Body → Result |
 | --- | --- |
 | `GET /health` | `{"status":"ok","database":"up"}` |
-| `GET /ai/models` | `{ models: [{ id, provider, model }] }` — the aliases you can send |
+| `GET /ai/models` | `{ models: [{ id, provider, model }] }` |
 | `POST /ai/chat` | `{ model, messages, system?, maxTokens? }` → `{ text, model, stopReason, usage, costUsd }` |
 
 ```bash
@@ -92,36 +96,30 @@ curl -s 127.0.0.1:8091/ai/chat -H "authorization: Bearer $TEAM_API_KEY" \
   -d '{"model":"haiku","messages":[{"role":"user","content":"hello"}]}'
 ```
 
-Aliases live in `proxy/proxy.yaml` and are just the model names: `sonnet`,
-`opus`, `haiku` (Claude Code subscription), `qwen3:14b`, `qwen3:4b`,
-`qwen3.8:27b` (Ollama), `test` (echo). `costUsd` on the subscription rail is what the call
-*would* have cost via the API; nothing is billed. `qwen3:4b` narrates its
-reasoning in the answer; prefer `qwen3:14b` for real use.
+## Common tasks
 
-## Day to day
-
-| I want to | Do |
+| Task | Where |
 | --- | --- |
-| add an alias or model | edit `proxy/proxy.yaml`, restart `./start.sh` |
-| add a table | add `backend/db/migrations/NNN_name.sql`, run `pnpm db:migrate` |
-| add a backend route | `backend/src/app.ts`; call it from `frontend/lib/api-client.ts` |
-| check types | `pnpm type-check` in `frontend/` or `backend/`; `pytest` in `proxy/` |
-| see the proxy's view of a call | `curl -i` it: every response carries `X-LLM-Proxy-*` headers |
+| Add a model alias | `proxy/proxy.yaml`, restart `./start.sh` |
+| Add a table | new file in `backend/db/migrations/`, then `pnpm db:migrate` |
+| Add a backend route | `backend/src/app.ts`, then call it from `frontend/lib/api-client.ts` |
+| Add a page | `frontend/app/` |
+| Check types | `pnpm type-check` in `frontend/` or `backend/`. `pytest` in `proxy/` |
+| Debug the proxy | `curl -i 127.0.0.1:4000/v1/messages ...`. Look at the `X-LLM-Proxy-*` headers |
 
-## Deploying
+## Deploy
 
-Push to `main`. Vercel builds `frontend/`; GitHub Actions type-checks all
-three packages and publishes the backend image; the Monash box pulls it and
-runs the proxy from the same checkout. Box setup and runbook:
-[deploy/README.md](./deploy/README.md).
+Push to `main`.
 
-The deployed page is gated by one shared password: set `SITE_PASSWORD` in the
-Vercel project's environment variables. Without it the page is public, and
-anyone with the URL can spend the subscription.
+- Vercel builds `frontend/`. Set `BACKEND_URL`, `API_SHARED_SECRET` and
+  `SITE_PASSWORD` in the Vercel project. `SITE_PASSWORD` is the one shared
+  password for the site. Without it the page is public.
+- GitHub Actions type-checks everything and publishes the backend image.
+- The Monash server pulls it every 3 minutes and runs the proxy from the same
+  checkout. See [deploy/README.md](./deploy/README.md).
 
 ## Rules
 
 - Never delete, truncate or drop anything in any database without asking.
-  Schema changes are additive migration files.
-- Secrets never go in git. `.env*` is ignored; `.env.example` files hold
-  placeholders only.
+  Schema changes are new migration files.
+- No secrets in git. `.env*` is ignored. `.env.example` has placeholders only.
