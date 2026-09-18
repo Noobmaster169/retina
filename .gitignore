@@ -19,7 +19,9 @@ next-env.d.ts
 *.log
 
 docs/superpowers/
-emails/
+
+# Windows download metadata next to every file in emails/
+*:Zone.Identifier
 # python (proxy/)
 .venv/
 __pycache__/

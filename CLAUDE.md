@@ -5,6 +5,9 @@ Monorepo. Three independent packages:
 - `frontend/` Next.js 16, on Vercel. Read `frontend/AGENTS.md` before writing Next code.
 - `backend/` Express + Postgres, on the Monash server behind ngrok.
 - `proxy/` Python. Anthropic-wire gateway to `claude -p` and Ollama.
+- `emails/` The hackathon inbox: a FastAPI server in `emails/server` that
+  serves the synthetic dataset in `emails/data_v2`. The backend reads it
+  over HTTP. Do not edit the dataset by hand; `data_v2/generate.py` makes it.
 
 Setup, ports, aliases and the API are in README.md. The server is in
 deploy/README.md. Run commands inside a package, never at the root.
