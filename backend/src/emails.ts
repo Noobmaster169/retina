@@ -8,6 +8,8 @@
  * in frontend/lib/api-client.ts. Keep them in step.
  */
 
+import { config } from "./config";
+
 /** One record exactly as the email server stores it. */
 export interface Email {
   email_id: string;
@@ -57,9 +59,7 @@ export const EMAIL_ID_REGEX = /^email_\d{1,6}$/;
 export const ATTACHMENT_NAME_REGEX = /^[\w.-]{1,128}$/;
 
 function baseUrl(): string {
-  const url = process.env.EMAIL_SERVER_URL;
-  if (!url) throw new EmailServerError("EMAIL_SERVER_URL is not set", 500);
-  return url.replace(/\/+$/, "");
+  return config.EMAIL_SERVER_URL.replace(/\/+$/, "");
 }
 
 async function fetchFromServer(path: string): Promise<Response> {

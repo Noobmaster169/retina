@@ -1,37 +1,46 @@
-import { Pool } from "pg";
+import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from "pg";
 
-// Next.js reloads modules on every request in dev. Without stashing the pool on
-// globalThis you leak a new connection pool per reload until Postgres refuses
-// more connections.
-const globalForDb = globalThis as unknown as { pool?: Pool };
+import { config } from "./config";
 
-function required(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`${name} is not set`);
-  return value;
+/** What a repository needs: satisfied by the pool and by a transaction client. */
+export interface Queryable {
+  query<R extends QueryResultRow>(text: string, values?: unknown[]): Promise<QueryResult<R>>;
 }
 
-/**
- * Lazily opens the shared Postgres pool. Lazy on purpose: reading config at
- * module load would break `next build`, which imports route modules without
- * runtime env vars present.
- *
- * Discrete PG_* variables rather than a single DATABASE_URL, matching the
- * house convention — non-secret parts live in the ConfigMap, PG_PASSWORD alone
- * lives in the Secret.
- */
-export function getPool(): Pool {
-  if (globalForDb.pool) return globalForDb.pool;
+let pool: Pool | undefined;
 
-  const pool = new Pool({
-    host: required("PG_HOST"),
-    port: Number(process.env.PG_PORT ?? "5432"),
-    database: required("PG_DATABASE"),
-    user: required("PG_USER"),
-    password: required("PG_PASSWORD"),
+/** Lazy, so importing a module that can query never opens a connection by itself. */
+export function getPool(): Pool {
+  pool ??= new Pool({
+    host: config.PG_HOST,
+    port: config.PG_PORT,
+    database: config.PG_DATABASE,
+    user: config.PG_USER,
+    password: config.PG_PASSWORD,
     max: 10,
   });
-
-  globalForDb.pool = pool;
   return pool;
+}
+
+export async function closePool(): Promise<void> {
+  if (!pool) return;
+  const closing = pool;
+  pool = undefined;
+  await closing.end();
+}
+
+/** Runs `fn` in one transaction: committed if it returns, rolled back if it throws. */
+export async function withTx<T>(db: Pool, fn: (tx: PoolClient) => Promise<T>): Promise<T> {
+  const client = await db.connect();
+  try {
+    await client.query("begin");
+    const result = await fn(client);
+    await client.query("commit");
+    return result;
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
 }

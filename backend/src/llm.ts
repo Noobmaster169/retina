@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 import type { Caller } from "./auth";
+import { config } from "./config";
 
 /**
  * The llm-proxy client. The proxy speaks the Anthropic wire, owns every
@@ -58,7 +59,7 @@ export class LlmProxyError extends Error {
 }
 
 function baseUrl(): string {
-  return (process.env.LLM_PROXY_URL ?? DEFAULT_PROXY_URL).replace(/\/+$/, "");
+  return config.LLM_PROXY_URL.replace(/\/+$/, "");
 }
 
 /**

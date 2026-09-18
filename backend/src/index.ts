@@ -1,6 +1,7 @@
 import net from "node:net";
 
 import { createApp } from "./app";
+import { config } from "./config";
 import { getPool } from "./db";
 
 // Node's Happy Eyeballs gives each candidate address 250ms to connect, which
@@ -8,7 +9,7 @@ import { getPool } from "./db";
 // This is a connect-attempt budget, not a request timeout.
 net.setDefaultAutoSelectFamilyAttemptTimeout(5000);
 
-const port = Number(process.env.PORT ?? "8091");
+const port = config.PORT;
 
 const server = createApp().listen(port, () => {
   console.log(`[api] listening on :${port}`);
