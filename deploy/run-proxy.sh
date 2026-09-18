@@ -8,13 +8,13 @@
 # `claude`, which lives under nvm's node bin with the student user's login.
 #
 # Install (once the repo is cloned at ~/projects/retina):
-#   cd ~/projects/retina/proxy && python3 -m venv .venv && .venv/bin/pip install -e .
+#   cd ~/projects/retina/proxy && ~/miniforge3/bin/python3 -m venv .venv && .venv/bin/pip install -e .
 #   cp ~/projects/retina/deploy/run-proxy.sh ~/retina/ && chmod +x ~/retina/run-proxy.sh
 #   setsid nohup ~/retina/run-proxy.sh >/dev/null 2>&1 </dev/null &
 #   crontab -e  ->  @reboot setsid nohup /home/student/retina/run-proxy.sh >/dev/null 2>&1 </dev/null &
 #
 # Restart after a config or code change: kill the uvicorn process and the loop
-# brings it back in 5 s —  pkill -f "[u]vicorn.*--port 4001"
+# brings it back in 5 s —  pkill -f "^/home/student/projects/retina/proxy/.venv/bin/python"
 set -u
 REPO="${REPO:-$HOME/projects/retina}"
 HOST="${LLM_PROXY_HOST:-172.17.0.1}"

@@ -50,7 +50,8 @@ the two Qwen tags are the `-ctx16k` profiles, so check `docker exec
 monash-ollama ollama list` matches what the config names.
 
 ```bash
-cd ~/projects/retina/proxy && python3 -m venv .venv && .venv/bin/pip install -e .
+# The system python3 has no venv module and there is no sudo; miniforge's does.
+cd ~/projects/retina/proxy && ~/miniforge3/bin/python3 -m venv .venv && .venv/bin/pip install -e .
 cp ~/projects/retina/deploy/run-proxy.sh ~/retina/ && chmod +x ~/retina/run-proxy.sh
 setsid nohup ~/retina/run-proxy.sh >/dev/null 2>&1 </dev/null &
 sleep 5 && curl -s 172.17.0.1:4001/healthz
@@ -59,7 +60,9 @@ curl -s 172.17.0.1:4001/v1/messages -H 'content-type: application/json' -H 'x-ap
 ```
 
 `auto-deploy.sh` reinstalls and restarts it whenever a push touches `proxy/`.
-By hand: `pkill -f "[u]vicorn.*--port 4001"`; the runner restarts it in 5 s.
+By hand: `pkill -f "^/home/student/projects/retina/proxy/.venv/bin/python"`; the
+runner restarts it in 5 s. (Anchored on purpose: an unanchored `pkill -f` whose
+pattern appears in your own ssh command line kills your session.)
 
 ### 3. The stack
 

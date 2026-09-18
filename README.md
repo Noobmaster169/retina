@@ -95,7 +95,8 @@ curl -s 127.0.0.1:8091/ai/chat -H "authorization: Bearer $TEAM_API_KEY" \
 Aliases live in `proxy/proxy.yaml`: `default`, `claude`, `claude-fast` (Claude
 Code subscription: Sonnet, Opus, Haiku), `qwen`, `qwen-small`, `qwen-large`
 (Ollama), `test` (echo). `costUsd` on the subscription rail is what the call
-*would* have cost via the API; nothing is billed.
+*would* have cost via the API; nothing is billed. `qwen-small` narrates its
+reasoning in the answer; prefer `qwen` for real use.
 
 ## Day to day
 
