@@ -11,6 +11,7 @@ What runs here for retina, next to the yt-engine stack that was there first:
 | --- | --- | --- |
 | Postgres 17 | compose service, private network | — |
 | retina API | compose service | `127.0.0.1:8091` (and the tunnel) |
+| inbox (email server) | compose service, built from `emails/server` in the clone, serving `emails/data_v2` | private network, `inbox:8000` |
 | llm-proxy | `proxy/` from the clone at `~/projects/retina`, run on the host by `~/retina/run-proxy.sh` | `172.17.0.1:4001` (Docker bridge; yt-engine's own proxy is on 4000) |
 | Ollama | `monash-ollama` container, pre-existing | `127.0.0.1:11434` |
 | ngrok | `~/retina/run-ngrok.sh` | outbound only |
@@ -74,12 +75,15 @@ cp ~/projects/retina/deploy/{compose.yaml,.env.example,auto-deploy.sh,run-ngrok.
 cp .env.example .env && vi .env          # PG_PASSWORD, API_SHARED_SECRET, TEAM_API_KEY (openssl rand -hex 32)
 chmod +x auto-deploy.sh run-ngrok.sh
 docker build -t ghcr.io/noobmaster169/retina-api:main ~/projects/retina/backend   # or docker compose pull, once logged in to GHCR
-docker compose up -d
+docker compose up -d --build                                            # --build makes the inbox image from ~/projects/retina/emails/server
 curl -s 127.0.0.1:8091/health                                          # {"status":"ok","database":"up"}
 curl -s -H "authorization: Bearer $TEAM_API_KEY" 127.0.0.1:8091/ai/models
+curl -s -H "authorization: Bearer $TEAM_API_KEY" '127.0.0.1:8091/emails?limit=1'
 ```
 
-Migrations run inside the API container before it listens.
+Migrations run inside the API container before it listens. The compose file
+reaches the clone by relative path (`../projects/retina`), so `~/retina` and
+`~/projects/retina` must stay siblings.
 
 ### 4. The tunnel
 
@@ -139,3 +143,4 @@ tail -f ~/retina/ngrok.log
 - **503 "llm-proxy unreachable"** — `pgrep -af "port 4001"`; if gone, `setsid nohup ~/retina/run-proxy.sh >/dev/null 2>&1 </dev/null &` and read `~/retina/llm-proxy.log`.
 - **`sonnet`/`opus`/`haiku` fail, qwen works** — the Claude login expired: run `claude` interactively as student.
 - **Frontend says "Backend unreachable"** — `tail ~/retina/ngrok.log`, then `curl https://<domain>/health` from anywhere.
+- **Inbox says "not reachable"** (API answers 503 on `/emails`) — `docker compose ps inbox`, `docker compose logs inbox`; `docker compose up -d --build inbox` rebuilds it.

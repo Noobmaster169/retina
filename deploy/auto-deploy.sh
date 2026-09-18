@@ -115,6 +115,14 @@ elif ! docker build -t "$IMAGE" backend >>"$LOG" 2>&1; then
 fi
 
 cd "$STACK" || { log "FATAL: stack dir $STACK missing"; exit 1; }
+
+# The inbox server is built from emails/server in this checkout and mounts
+# emails/data_v2. Data changes are live; server changes need a rebuild.
+if [[ -n "$(git -C "$REPO" diff --name-only "$LOCAL" "$REMOTE" -- emails/server/)" ]]; then
+  log "emails/server changed — rebuilding the inbox"
+  docker compose up -d --build inbox >>"$LOG" 2>&1 || log "  inbox rebuild failed; the api deploy continues"
+fi
+
 docker compose up -d --no-deps "$SERVICE" >>"$LOG" 2>&1
 
 # The container runs migrations before it listens, so give it real time.

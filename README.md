@@ -4,6 +4,7 @@ Three packages in one repo:
 
 ```
 browser → frontend (Next.js) → backend (Express + Postgres) → proxy (Python) → claude -p / Ollama
+                                                  ↘ email server (Python) → emails/data_v2
 ```
 
 | Folder | What it is | Port |
@@ -11,6 +12,7 @@ browser → frontend (Next.js) → backend (Express + Postgres) → proxy (Pytho
 | `frontend/` | Next.js app. Calls the backend with a shared secret. | 3000 |
 | `backend/` | Express API. Checks the key, forwards chat to the proxy. | 8091 |
 | `proxy/` | Small LLM gateway. Runs `claude -p` (your Claude Code login) or Ollama. | 4000 |
+| `emails/` | The inbox: a FastAPI server over the synthetic shipping-documents dataset. The backend reads it. | 8080 |
 | `deploy/` | Scripts and runbook for the Monash server. | — |
 
 Each package has its own deps, `.env` and start command. Always `cd` into a
@@ -19,14 +21,22 @@ package first. Nothing runs from the repo root.
 ## You need
 
 - Node 24 and pnpm 11 (`corepack enable`)
-- Docker (for the local Postgres)
+- Docker (for the local Postgres and the email server)
 - Python 3.10+
 - Claude Code, logged in. `claude -p "say ok"` must print ok.
 - Optional: Ollama with `qwen3:14b` pulled, for the `qwen*` aliases.
 
 ## Run it
 
-Three terminals, in this order.
+Four terminals, in this order.
+
+**0. Email server**
+
+```bash
+cd emails
+docker compose up --build -d          # serves 520 emails on 8080
+curl -s localhost:8080/health
+```
 
 **1. Proxy**
 
@@ -53,8 +63,10 @@ cp .env.example .env.local
 pnpm install && pnpm dev
 ```
 
-Open http://localhost:3000. Pick `test`, send `ping`, get `echo: ping`.
-Pick `haiku`, send anything, get a real answer from Claude.
+Open http://localhost:3000: the inbox, public, straight from the email
+server through the backend. http://localhost:3000/chat is the model page:
+pick `test`, send `ping`, get `echo: ping`. Pick `haiku`, send anything, get
+a real answer from Claude.
 
 The default keys in the two `.env.example` files match each other. Change
 them if you want, but change both.
@@ -89,6 +101,9 @@ All routes except `/health` need `Authorization: Bearer <key>`. The key is
 | `GET /health` | `{"status":"ok","database":"up"}` |
 | `GET /ai/models` | `{ models: [{ id, provider, model }] }` |
 | `POST /ai/chat` | `{ model, messages, system?, maxTokens? }` → `{ text, model, stopReason, usage, costUsd }` |
+| `GET /emails?q=&filter=attachments&page=&limit=` | `{ emails: [{ id, from, subject, snippet, attachmentCount }], total, page, limit, counts }` |
+| `GET /emails/:id` | `{ email_id, from, subject, body, attachments }` |
+| `GET /emails/attachments/:name` | the file |
 
 ```bash
 curl -s 127.0.0.1:8091/ai/chat -H "authorization: Bearer $TEAM_API_KEY" \
@@ -103,7 +118,8 @@ curl -s 127.0.0.1:8091/ai/chat -H "authorization: Bearer $TEAM_API_KEY" \
 | Add a model alias | `proxy/proxy.yaml`, restart `./start.sh` |
 | Add a table | new file in `backend/db/migrations/`, then `pnpm db:migrate` |
 | Add a backend route | `backend/src/app.ts`, then call it from `frontend/lib/api-client.ts` |
-| Add a page | `frontend/app/` |
+| Add a page | `frontend/app/`. `/` is the inbox, `/mail/[id]` a message, `/chat` the model page |
+| Regenerate the emails | `emails/data_v2/README.md` |
 | Check types | `pnpm type-check` in `frontend/` or `backend/`. `pytest` in `proxy/` |
 | Debug the proxy | `curl -i 127.0.0.1:4000/v1/messages ...`. Look at the `X-LLM-Proxy-*` headers |
 
@@ -112,11 +128,12 @@ curl -s 127.0.0.1:8091/ai/chat -H "authorization: Bearer $TEAM_API_KEY" \
 Push to `main`.
 
 - Vercel builds `frontend/`. Set `BACKEND_URL`, `API_SHARED_SECRET` and
-  `SITE_PASSWORD` in the Vercel project. `SITE_PASSWORD` is the one shared
-  password for the site. Without it the page is public.
+  `SITE_PASSWORD` in the Vercel project. The inbox is public. `SITE_PASSWORD`
+  is the one shared password for `/chat`; without it that page is public too.
 - GitHub Actions type-checks everything and publishes the backend image.
-- The Monash server pulls it every 3 minutes and runs the proxy from the same
-  checkout. See [deploy/README.md](./deploy/README.md).
+- The Monash server pulls it every 3 minutes, runs the proxy from the same
+  checkout and builds the email server from `emails/`. See
+  [deploy/README.md](./deploy/README.md).
 
 ## Rules
 

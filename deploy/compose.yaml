@@ -24,6 +24,18 @@ services:
       timeout: 5s
       retries: 10
 
+  # The email server: emails/server from the clone, serving emails/data_v2.
+  # Private to this network; the API is the only thing that reads it.
+  inbox:
+    build: ../projects/retina/emails/server
+    restart: unless-stopped
+    volumes:
+      - ../projects/retina/emails/data_v2:/data:ro
+      - ../projects/retina/emails/data_v2/ground_truth.json:/secrets/ground_truth.json:ro
+    environment:
+      DATA_DIR: /data
+      GROUND_TRUTH: /secrets/ground_truth.json
+
   api:
     image: ghcr.io/noobmaster169/retina-api:main
     restart: unless-stopped
@@ -41,9 +53,12 @@ services:
       API_SHARED_SECRET: ${API_SHARED_SECRET:?set API_SHARED_SECRET in .env}
       TEAM_API_KEY: ${TEAM_API_KEY:?set TEAM_API_KEY in .env}
       LLM_PROXY_URL: http://host.docker.internal:4001
+      EMAIL_SERVER_URL: http://inbox:8000
     depends_on:
       postgres:
         condition: service_healthy
+      inbox:
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8091/health || exit 1"]
       interval: 30s
