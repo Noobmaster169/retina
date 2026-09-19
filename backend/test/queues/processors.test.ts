@@ -33,7 +33,8 @@ describe("classify processor", () => {
         finalCategory: "BL_COMPARISON",
         genConfidence: 0.93,
         decidedBy: "llm",
-        promptVersion: "v1",
+        // Whichever version ships: the registry takes the highest on disk.
+        promptVersion: expect.stringMatching(/^v\d+$/),
       });
       expect(await emailRuns.stageCounts(tx, runId)).toMatchObject({ classified: 1 });
       expect(compare.added).toEqual([

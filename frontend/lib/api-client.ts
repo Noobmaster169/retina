@@ -159,6 +159,93 @@ export interface RunSummary {
   createdAt: string;
   startedAt: string | null;
   finishedAt: string | null;
+  llm: LlmUsage;
+  /** The newest submission to the scorer. */
+  lastSubmission: LastSubmission | null;
+}
+
+export interface LlmUsage {
+  calls: number;
+  failedCalls: number;
+  inputTokens: number;
+  outputTokens: number;
+  /** What the API would have charged. On the subscription rail nothing is billed. */
+  costUsd: number;
+}
+
+export interface HeadlineScores {
+  stage1MacroF1: number;
+  stage3DefectF1: number;
+  endToEndRate: number;
+  escalationRecall: number;
+  escalationPrecision: number;
+}
+
+export interface LastSubmission {
+  id: string;
+  finalScore: number | null;
+  nEmails: number;
+  forced: boolean;
+  createdAt: string;
+  scores: HeadlineScores | null;
+}
+
+// The organisers' enums, value for value (emails/data_v2/README.md, scoring.py).
+// Mirrors backend/src/contracts.scoring.ts. Never add a value.
+export type Category = "BL_COMPARISON" | "SI_REQUEST" | "INVOICE_QUERY" | "GENERAL" | "SPAM";
+export type ComparisonStatus = "OK" | "MISMATCH" | "NEEDS_REVIEW";
+export type ReviewReason = "wrong_doc_type" | "missing_attachment" | "unreadable" | "missing_value";
+export type ComparisonField =
+  | "shipper"
+  | "consignee"
+  | "notify_party"
+  | "port_of_loading"
+  | "port_of_discharge"
+  | "container_count"
+  | "gross_weight_kg";
+
+/** The scorer's JSON, snake_case as the organisers write it. */
+export interface Scoreboard {
+  stage1: {
+    accuracy: number;
+    macro_f1: number;
+    rule_pct: number | null;
+    per: Record<string, { tp: number; fp: number; fn: number }>;
+    confusion: Record<string, Record<string, number>>;
+  };
+  stage3: {
+    defect_precision: number;
+    defect_recall: number;
+    defect_f1: number;
+    field_f1: number;
+    exact_match_rate: number;
+    doc_total: number;
+  };
+  reliability: {
+    escalation_recall: number;
+    escalation_precision: number;
+    escalation_f1: number;
+    gold_review: number;
+    pred_review: number;
+    per_reason: Record<string, { total: number; caught: number }>;
+  };
+  end_to_end: { success: number; total: number; rate: number };
+  weights: { stage1: number; stage3: number; end_to_end: number };
+  final_score: number;
+  n_emails: number;
+}
+
+export type SubmitOutcome =
+  | { ok: true; finalScore: number; scoreboard: Scoreboard }
+  /** `incomplete` is set on a 409: the run has unfinished emails, and `force` submits anyway. */
+  | { ok: false; status: number; message: string; incomplete?: string[] };
+
+/** Dev only: a run scored by the backend against the answer key it holds locally. */
+export interface EvalReport {
+  full: Scoreboard;
+  holdout: Scoreboard;
+  run: Scoreboard;
+  wrong: { stage1: string[]; stage3: string[]; e2e: string[] };
 }
 
 export interface CreateRunInput {
@@ -235,6 +322,33 @@ export async function resumeRun(id: string): Promise<RunOutcome> {
 
 export async function cancelRun(id: string): Promise<RunOutcome> {
   return controlRun(id, "cancel");
+}
+
+export async function submitRun(id: string, force: boolean): Promise<SubmitOutcome> {
+  const response = await request(`/runs/${encodeURIComponent(id)}/submit?force=${force}`, { method: "POST", timeoutMs: 60_000 });
+  const body = (await response.json().catch(() => ({}))) as {
+    finalScore?: number;
+    scoreboard?: Scoreboard;
+    error?: string;
+    incomplete?: string[];
+  };
+  if (!response.ok || body.finalScore === undefined || !body.scoreboard) {
+    return {
+      ok: false,
+      status: response.status,
+      message: body.error ?? `Backend returned ${response.status}`,
+      incomplete: body.incomplete,
+    };
+  }
+  return { ok: true, finalScore: body.finalScore, scoreboard: body.scoreboard };
+}
+
+/** Null where the backend has no answer key, which is everywhere but a dev machine. */
+export async function getEvalReport(id: string): Promise<EvalReport | null> {
+  const response = await request(`/eval/runs/${encodeURIComponent(id)}`, { timeoutMs: 30_000 });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`Backend GET /eval/runs/${id} → ${response.status}`);
+  return (await response.json()) as EvalReport;
 }
 
 export async function listRunEmails(id: string, query: RunEmailsQuery = {}): Promise<RunEmailsPage> {

@@ -25,7 +25,22 @@ export function toSummary(run: Run, parts: SummaryParts): RunSummary {
     finishedAt: run.finishedAt,
     llm,
     lastSubmission: last
-      ? { id: last.id, finalScore: last.finalScore, nEmails: last.nEmails, forced: last.forced, createdAt: last.createdAt }
+      ? {
+          id: last.id,
+          finalScore: last.finalScore,
+          nEmails: last.nEmails,
+          forced: last.forced,
+          createdAt: last.createdAt,
+          scores: last.scoreboard
+            ? {
+                stage1MacroF1: last.scoreboard.stage1.macro_f1,
+                stage3DefectF1: last.scoreboard.stage3.defect_f1,
+                endToEndRate: last.scoreboard.end_to_end.rate,
+                escalationRecall: last.scoreboard.reliability.escalation_recall,
+                escalationPrecision: last.scoreboard.reliability.escalation_precision,
+              }
+            : null,
+        }
       : null,
   };
 }

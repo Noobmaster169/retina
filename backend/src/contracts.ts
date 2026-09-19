@@ -55,7 +55,23 @@ export const RunSummary = z.object({
   llm: LlmUsage,
   /** The newest submission to the scorer, without its full scoreboard. */
   lastSubmission: z
-    .object({ id: z.string(), finalScore: z.number().nullable(), nEmails: z.number(), forced: z.boolean(), createdAt: z.string() })
+    .object({
+      id: z.string(),
+      finalScore: z.number().nullable(),
+      nEmails: z.number(),
+      forced: z.boolean(),
+      createdAt: z.string(),
+      /** The headline numbers of its scoreboard. The full one is in GET /runs/:id/submissions. */
+      scores: z
+        .object({
+          stage1MacroF1: z.number(),
+          stage3DefectF1: z.number(),
+          endToEndRate: z.number(),
+          escalationRecall: z.number(),
+          escalationPrecision: z.number(),
+        })
+        .nullable(),
+    })
     .nullable(),
 });
 export type RunSummary = z.infer<typeof RunSummary>;

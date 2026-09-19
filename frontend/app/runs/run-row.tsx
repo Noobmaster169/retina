@@ -4,6 +4,8 @@ import { useState } from "react";
 
 import type { RunAction, RunStatus, RunSummary, Stage } from "@/lib/api-client";
 
+import { ScoreCell } from "./score-cell";
+
 const STAGES: Stage[] = ["ingested", "classifying", "classified", "comparing", "review", "done", "failed"];
 
 const ACTIONS: Record<RunStatus, RunAction[]> = {
@@ -104,6 +106,9 @@ export function RunRow({ run, onChanged }: Props) {
             {error}
           </p>
         )}
+      </td>
+      <td className="py-3 pr-4">
+        <ScoreCell run={run} onChanged={onChanged} />
       </td>
       <td className="py-3 text-right whitespace-nowrap">
         {ACTIONS[run.status].map((action) => (
