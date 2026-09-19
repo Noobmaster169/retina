@@ -77,6 +77,20 @@ services:
       DATA_DIR: /data
       GROUND_TRUTH: /secrets/ground_truth.json
 
+  # Retina's llm-proxy (../proxy), the one door to the models. Published on
+  # host loopback 4001 for `pnpm dev` and the worker, which set
+  # LLM_PROXY_URL=http://127.0.0.1:4001 (4000 is often another project's
+  # proxy). The login is CLAUDE_CODE_OAUTH_TOKEN, which compose reads from
+  # backend/.env; without it the proxy still starts and every Claude call is
+  # refused as "not logged in". Rebuild after changing proxy/:
+  #   docker compose -f compose.local.yaml up -d --build llm-proxy
+  llm-proxy:
+    build: ../proxy
+    ports:
+      - "127.0.0.1:4001:4000"
+    environment:
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+
 volumes:
   pgdata:
   redisdata:

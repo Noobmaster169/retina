@@ -4,28 +4,23 @@ import { z } from "zod";
 import { config } from "./config";
 import { LlmTimeoutError, relayStatus, UpstreamError } from "./lib/errors";
 import type { ChatRequest, ChatResult, ModelInfo } from "./llm-contract";
-import { chatViaGateway, isGatewayUrl, listModelsViaGateway } from "./llm-gateway";
 
 export type { ChatMessage, ChatRequest, ChatResult, ModelInfo } from "./llm-contract";
 
 /**
- * The llm-proxy client. The proxy speaks the Anthropic wire, owns every
- * provider (Claude Code subscription, local Ollama) and authenticates nobody
- * — the API's bearer check in auth.ts is the only thing in front of it.
- *
- * Where the proxy cannot be reached directly, `LLM_PROXY_URL` may instead name
- * another Retina API's `/ai/chat`, which fronts a proxy on its own host. That
- * door takes a bearer and speaks this project's chat shape rather than the
- * Anthropic wire, so the transport is chosen from the URL. Everything above
- * this module sees one `chat()` either way.
+ * The llm-proxy client. The proxy is the llm-proxy service of this compose
+ * stack (proxy/ in this repo): it speaks the Anthropic wire, drives the Claude
+ * Code subscription and authenticates nobody, so it is reachable only on the
+ * compose network and the API's bearer check in auth.ts is what stands in
+ * front of the models.
  */
 
-/** Cold 27B load plus a long generation can take minutes. */
+/** A long `claude -p` generation can take minutes. Past this an attempt is an LlmTimeoutError. */
 const REQUEST_TIMEOUT_MS = 600_000;
 /**
  * The wire requires a cap, so this is a generous one, not a budget: a cap that
- * bites truncates the answer mid-object. 8000 is the most the proxy passes to
- * Ollama; `claude -p` has no such setting and ignores it.
+ * bites truncates the answer mid-object. `claude -p` has no such setting and
+ * ignores it.
  */
 const DEFAULT_MAX_TOKENS = 8000;
 
@@ -62,32 +57,8 @@ const ModelListBody = z.object({
     .default([]),
 });
 
-/** The `/ai/chat` of another Retina API, or null when the URL is a proxy we speak the Anthropic wire to. */
-function gatewayUrl(): string | null {
-  const url = baseUrl();
-  return isGatewayUrl(url) ? url : null;
-}
-
-/**
- * Qwen 3's reasoning is disabled in the proxy config, but a model tag built
- * from a different template can still inline `<think>…</think>` in front of
- * the answer. Belt to that braces.
- */
-function stripThinking(text: string): string {
-  return text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-}
-
 /** One non-streaming call, billed to `project` in the proxy. `temperature` is never sent: Claude 5 rejects it. */
 export async function chat(project: string, req: ChatRequest): Promise<ChatResult> {
-  const gateway = gatewayUrl();
-  if (gateway) {
-    const result = await chatViaGateway(gateway, req, {
-      defaultMaxTokens: DEFAULT_MAX_TOKENS,
-      timeoutMs: REQUEST_TIMEOUT_MS,
-    });
-    return { ...result, text: stripThinking(result.text) };
-  }
-
   const url = baseUrl();
   const anthropic = new Anthropic({
     baseURL: url,
@@ -132,12 +103,11 @@ export async function chat(project: string, req: ChatRequest): Promise<ChatResul
 
   const cost = Number(response.headers.get("x-llm-proxy-cost-usd"));
   return {
-    text: stripThinking(
-      data.content
-        .filter((b) => b.type === "text")
-        .map((b) => b.text)
-        .join(""),
-    ),
+    text: data.content
+      .filter((b) => b.type === "text")
+      .map((b) => b.text)
+      .join("")
+      .trim(),
     model: response.headers.get("x-llm-proxy-model") ?? data.model ?? null,
     stopReason: data.stop_reason ?? null,
     usage: { inputTokens: data.usage.input_tokens, outputTokens: data.usage.output_tokens },
@@ -147,9 +117,6 @@ export async function chat(project: string, req: ChatRequest): Promise<ChatResul
 
 /** The aliases the proxy is configured with. */
 export async function listModels(): Promise<ModelInfo[]> {
-  const gateway = gatewayUrl();
-  if (gateway) return listModelsViaGateway(gateway, 5000);
-
   const url = baseUrl();
   let response: Response;
   try {

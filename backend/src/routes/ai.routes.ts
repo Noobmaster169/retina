@@ -13,7 +13,7 @@ function parseChatBody(body: unknown): { ok: true; req: ChatRequest } | { ok: fa
   const b = (body ?? {}) as Record<string, unknown>;
 
   if (typeof b.model !== "string" || !MODEL_REGEX.test(b.model)) {
-    return { ok: false, error: 'model must be an alias like "qwen" or "claude"' };
+    return { ok: false, error: 'model must be a proxy alias like "sonnet" or "haiku"' };
   }
   if (!Array.isArray(b.messages) || b.messages.length === 0) {
     return { ok: false, error: "messages must be a non-empty array" };

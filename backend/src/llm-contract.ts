@@ -1,11 +1,7 @@
 /**
- * What a transport to the model takes and answers, independent of which one
- * runs. `llm.ts` speaks the Anthropic wire to the proxy and `llm-gateway.ts`
- * speaks this project's chat shape to another Retina API; both implement these,
- * which is what lets `chat()` hide the choice.
- *
- * Here rather than in either transport so neither has to import the other for a
- * type.
+ * What a call to the model takes and answers, in this project's shape rather
+ * than the Anthropic SDK's. `llm.ts` implements it against the proxy, and the
+ * API's own `/ai/chat` route speaks it to the frontend.
  */
 
 export interface ChatMessage {
@@ -14,15 +10,14 @@ export interface ChatMessage {
 }
 
 export interface ChatRequest {
-  /** A proxy alias such as "qwen" or "claude", never a provider model id. */
+  /** A proxy alias from proxy/proxy.yaml (sonnet, opus, haiku), never a provider model id. */
   model: string;
   messages: ChatMessage[];
   system?: string;
   maxTokens?: number;
   /**
    * A JSON Schema the answer must match. Sent as `output_config.format`, which
-   * the proxy turns into the provider's own structured output (`--json-schema`
-   * for `claude -p`, `response_format` for Ollama), so the text that comes back
+   * the proxy turns into `claude -p --json-schema`, so the text that comes back
    * is that JSON object and nothing else.
    */
   outputSchema?: Record<string, unknown>;

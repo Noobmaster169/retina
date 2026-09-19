@@ -30,7 +30,9 @@ const Env = z.object({
     .transform((value) => value === "true"),
 
   EMAIL_SERVER_URL: z.url(),
-  LLM_PROXY_URL: z.url().default("http://127.0.0.1:4000"),
+  // The llm-proxy service of the compose stack. 4001 is where compose.local.yaml
+  // publishes it on the host; inside compose it is http://llm-proxy:4000.
+  LLM_PROXY_URL: z.url().default("http://127.0.0.1:4001"),
 
   // Either key may be unset, in which case that caller cannot authenticate.
   API_SHARED_SECRET: optionalString,
@@ -58,15 +60,16 @@ const Env = z.object({
   COMPARE_CONCURRENCY: z.coerce.number().int().positive().default(4),
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"]).default("info"),
 }).superRefine((env, ctx) => {
-  // A `/ai/chat` URL is the gateway transport, and that door takes the team
-  // bearer. Without the key every call is a 401, which reads as a request this
-  // side got wrong and fails each email terminally: one unset variable quietly
-  // burns a whole run. Refuse to boot instead.
-  if (env.LLM_PROXY_URL.endsWith("/ai/chat") && !env.TEAM_API_KEY) {
+  // The proxy is a service of this stack now. An .env from before still names
+  // another API's /ai/chat, which this backend no longer speaks to: every call
+  // would fail as a malformed request. Refuse to boot and say what to use.
+  if (/\/ai\/chat\/?$/.test(env.LLM_PROXY_URL)) {
     ctx.addIssue({
       code: "custom",
-      path: ["TEAM_API_KEY"],
-      message: "required when LLM_PROXY_URL names an /ai/chat gateway",
+      path: ["LLM_PROXY_URL"],
+      message:
+        "names a remote /ai/chat gateway, which is gone: point it at the llm-proxy container " +
+        "(http://127.0.0.1:4001 from the host with compose.local.yaml, http://llm-proxy:4000 inside compose)",
     });
   }
 })
