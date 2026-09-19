@@ -44,11 +44,14 @@ set -uo pipefail
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 REPO="${REPO:-$HOME/projects/retina}"
-STACK="${STACK:-$HOME/retina}"
-IMAGE="${IMAGE:-ghcr.io/noobmaster169/retina-api:main}"
+# shellcheck source=lib/stack.sh
+. "$REPO/deploy/lib/stack.sh" 2>/dev/null || {
+  echo "auto-deploy: cannot read $REPO/deploy/lib/stack.sh; is REPO right?" >&2
+  exit 1
+}
+retina_stack_defaults
 # Both run the same image. The api migrates and serves; the worker consumes queues.
 SERVICES="${SERVICES:-api worker}"
-HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8091/health}"
 # Tries are 2 s apart. The api migrates before it listens, and a compose change
 # can be starting Postgres, Redis and MinIO from cold ahead of it.
 HEALTH_TRIES="${HEALTH_TRIES:-60}"
@@ -112,10 +115,16 @@ git pull --ff-only --quiet origin main 2>>"$LOG" || { log "ABORT: pull failed"; 
 # and compose.yaml is deployed by the logic that was written for it.
 # The AUTO_DEPLOY_FROM guard makes the hand-over provably happen at most once
 # per deploy, whatever the two files look like.
-if [[ -z "${AUTO_DEPLOY_FROM:-}" ]] && ! cmp -s "$REPO/deploy/auto-deploy.sh" "$STACK/auto-deploy.sh"; then
-  if install -m 755 "$REPO/deploy/auto-deploy.sh" "$STACK/auto-deploy.sh.new" &&
-     mv -f "$STACK/auto-deploy.sh.new" "$STACK/auto-deploy.sh"; then
-    log "auto-deploy.sh updated from the clone; handing over to it"
+# lib/stack.sh counts as part of this script: it was sourced before the pull,
+# so a commit that changed it is not in effect until the hand-over re-sources it.
+if [[ -z "${AUTO_DEPLOY_FROM:-}" ]] &&
+   { ! cmp -s "$REPO/deploy/auto-deploy.sh" "$STACK/auto-deploy.sh" ||
+     [[ -n "$(git -C "$REPO" diff --name-only "$LOCAL" "$REMOTE" -- deploy/lib/)" ]]; }; then
+  retina_install_if_changed "$REPO/deploy/auto-deploy.sh" "$STACK/auto-deploy.sh" 755
+  # 0 installed, 1 already current. Either way the running shell still holds the
+  # old script and the pre-pull library, so hand over; only a failed write does not.
+  if [[ $? -le 1 ]]; then
+    log "auto-deploy.sh or its library updated from the clone; handing over to it"
     export AUTO_DEPLOY_FROM="$LOCAL"
     exec "$STACK/auto-deploy.sh"
   fi
@@ -146,16 +155,12 @@ fi
 # The stack's compose file is a copy too. Keep the one it replaces: a service
 # definition that cannot start has to be undone along with the image.
 COMPOSE_CHANGED=0
-if ! cmp -s "$REPO/deploy/compose.yaml" "$STACK/compose.yaml"; then
-  cp -f "$STACK/compose.yaml" "$STACK/compose.yaml.previous" 2>/dev/null || true
-  if install -m 644 "$REPO/deploy/compose.yaml" "$STACK/compose.yaml.new" &&
-     mv -f "$STACK/compose.yaml.new" "$STACK/compose.yaml"; then
-    COMPOSE_CHANGED=1
-    log "compose.yaml updated from the clone"
-  else
-    log "  WARNING: could not update compose.yaml; deploying against the old one"
-  fi
-fi
+retina_install_if_changed "$REPO/deploy/compose.yaml" "$STACK/compose.yaml" 644
+case $? in
+  0) COMPOSE_CHANGED=1; log "compose.yaml updated from the clone" ;;
+  1) ;;
+  *) log "  WARNING: could not update compose.yaml; deploying against the old one" ;;
+esac
 
 USE_REGISTRY="${USE_REGISTRY:-0}"
 
@@ -193,13 +198,10 @@ else
   docker compose up -d --no-deps $SERVICES >>"$LOG" 2>&1
 fi
 
-# The report is degraded whenever ANY dependency is down, so "status":"ok" is
-# the wrong gate: it rolls back working code because MinIO is restarting. Gate
-# on the two the api cannot serve a run without, and warn about the rest.
 HEALTH_BODY=""
 probe_health() {
   HEALTH_BODY="$(curl -fsS --max-time 5 "$HEALTH_URL" 2>/dev/null)" || return 1
-  [[ "$HEALTH_BODY" == *'"postgres":"up"'* && "$HEALTH_BODY" == *'"redis":"up"'* ]]
+  retina_health_ready "$HEALTH_BODY"
 }
 
 for _ in $(seq 1 "$HEALTH_TRIES"); do

@@ -223,10 +223,13 @@ fi
 # The copy deletes itself, since the process that made it no longer exists.
 trap 'rm -f "$WIZARD_DETACHED"' EXIT
 
-STACK="${STACK:-$HOME/retina}"
-IMAGE="${IMAGE:-ghcr.io/noobmaster169/retina-api:main}"
+# shellcheck source=lib/stack.sh
+. "$REPO/deploy/lib/stack.sh" 2>/dev/null || {
+  echo "wizard: cannot read $REPO/deploy/lib/stack.sh; is REPO right?" >&2
+  exit 1
+}
+retina_stack_defaults
 PROXY_URL="${PROXY_URL:-http://172.17.0.1:4001}"
-HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8091/health}"
 ENV_FILE="$STACK/.env"
 
 fail() { printf '\n  %s✗ %s%s\n\n' "$RED" "$1" "$RESET"; exit 1; }
@@ -300,12 +303,13 @@ say "anyone has to do it by hand."
 
 install_stack_file() {
   local src="$1" dst="$2" mode="$3" name; name="$(basename "$dst")"
-  [[ -f "$src" ]] || { warn "missing from the clone: $src"; return 1; }
-  if cmp -s "$src" "$dst" 2>/dev/null; then note "$name is already current"; return 0; fi
-  [[ -f "$dst" ]] && cp -f "$dst" "$dst.previous"
-  # By rename, not in place: cron may be executing the old copy right now.
-  install -m "$mode" "$src" "$dst.new" && mv -f "$dst.new" "$dst"
-  ok "installed $name"
+  retina_install_if_changed "$src" "$dst" "$mode"
+  case $? in
+    0) ok "installed $name" ;;
+    1) note "$name is already current" ;;
+    2) warn "missing from the clone: $src"; return 1 ;;
+    *) warn "could not install $name"; return 1 ;;
+  esac
 }
 
 install_stack_file "$REPO/deploy/compose.yaml"   "$STACK/compose.yaml"   644 || fail "could not install compose.yaml"
@@ -371,7 +375,7 @@ say "waiting for the api to migrate and answer /health"
 HEALTH_BODY=""
 for _ in $(seq 1 60); do
   HEALTH_BODY="$(curl -fsS --max-time 5 "$HEALTH_URL" 2>/dev/null || true)"
-  [[ "$HEALTH_BODY" == *'"postgres":"up"'* && "$HEALTH_BODY" == *'"redis":"up"'* ]] && break
+  retina_health_ready "$HEALTH_BODY" && break
   sleep 2
 done
 
