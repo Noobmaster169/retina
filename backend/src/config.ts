@@ -36,6 +36,10 @@ const Env = z.object({
   API_SHARED_SECRET: optionalString,
   TEAM_API_KEY: optionalString,
 
+  // The answer key, for the eval harness only. Set on a dev machine, never on
+  // the VPS: there the key exists only inside the inbox container.
+  EVAL_GROUND_TRUTH_PATH: optionalString,
+
   CLASSIFY_CONCURRENCY: z.coerce.number().int().positive().default(4),
   COMPARE_CONCURRENCY: z.coerce.number().int().positive().default(4),
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"]).default("info"),
