@@ -68,13 +68,14 @@ frontend/
 |---|---|---|---|---|
 | postgres | postgres:17 | none | pgdata | healthcheck `pg_isready` |
 | redis | redis:7 | none | redisdata | `command: redis-server --appendonly yes --maxmemory-policy noeviction --maxmemory 512mb` |
-| minio | minio/minio | none (console reachable via `docker compose exec` or an SSH tunnel) | miniodata | `server /data --console-address :9001`; init job creates bucket `retina` |
+| minio | quay.io/minio/minio (`minio/minio` is gone from Docker Hub) | none (console reachable via `docker compose exec` or an SSH tunnel) | miniodata | `server /data --console-address :9001`; init job creates bucket `retina` |
 | api | ghcr.io/noobmaster169/retina-api:main | `127.0.0.1:8091:8091` | none | runs migrations then listens; depends on postgres, redis, minio healthy |
-| worker | same image | none | none | `command: node dist/worker.js`; depends on api healthy (migrations done) |
+| worker | same image | none | none | `command: node --import tsx src/worker.ts` (no build step; the image runs TypeScript through tsx); depends on api healthy (migrations done) |
 | doc-extract | built from `services/doc-extract` | none | none | `:8000` inside network; healthcheck `/healthz`; 1 GB memory limit |
 | averis | built from `emails/server` | `127.0.0.1:8080:8000` | `emails/data_v2:/data:ro`, answer key mounted at `/secrets:ro` | organiser image, unchanged code |
 
-Averis is kept in the same compose file so `api` and `worker` reach it as `http://averis:8000`.
+Averis is kept in the same compose file, as the service `inbox`, so `api` and `worker` reach it
+as `http://inbox:8000`.
 The answer key volume is attached to `averis` only. `api` and `worker` never mount it.
 
 Redis settings explained:
@@ -90,7 +91,7 @@ Backend (`deploy/.env`, mirrored in `backend/.env.example`):
 
 | Variable | Example | Used by |
 |---|---|---|
-| `DATABASE_URL` | `postgres://retina:...@postgres:5432/retina_prod` | api, worker |
+| `PG_HOST`, `PG_PORT`, `PG_DATABASE`, `PG_USER`, `PG_PASSWORD` | `postgres`, `5432`, `retina_prod`, `retina`, ... | api, worker. Discrete vars, the house convention; there is no `DATABASE_URL` |
 | `DATABASE_RO_URL` | `postgres://retina_ro:...@postgres:5432/retina_prod` | api (chat agent) |
 | `REDIS_URL` | `redis://redis:6379` | api, worker |
 | `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET` | `minio:9000`, ..., `retina` | api, worker |
@@ -130,7 +131,7 @@ Job options, both queues:
 
 ```ts
 {
-  jobId: `${runId}:${emailId}`,          // idempotency
+  jobId: `${runId}__${emailId}`,         // idempotency; BullMQ rejects a custom id containing ":"
   attempts: 3,
   backoff: { type: "exponential", delay: 5000 },
   removeOnComplete: { age: 86400 },
@@ -172,10 +173,11 @@ there is one worker replica.
 - Attempt 3 fails: `failed` event handler inserts `core.review_cases` with
   `reason = processing_error`, `detail = error message + stack head`, `stage`. Dashboard
   "Failures" tab reads these. "Retry" re-adds the job with `rerunFrom` and a fresh `jobId`
-  suffix `:r{n}`.
+  suffix `__r{n}`.
 - Errors are classified: `RetryableError` (proxy 503, timeouts, doc-extract 5xx) vs
   `TerminalError` (schema validation failed twice, unsupported file type). Terminal errors skip
-  remaining attempts by calling `job.discard()`.
+  remaining attempts: the worker rethrows them as BullMQ's `UnrecoverableError` (`job.discard()`
+  no longer exists in BullMQ 6).
 
 ### 4.6 Stage state machine
 
@@ -208,9 +210,21 @@ Replay controller (`ingest/replay.ts`), driven by `core.runs`:
 - `POST /runs { source: "averis", ratePerSecond: 2, limit?: number, emailIds?: string[] }`
   creates a run and adds a single `ingest-run` repeatable-until-done job on a small internal
   queue `ingest`. The worker takes one email per tick, so pausing a run means pausing that job.
-- Per email: insert `core.emails` (upsert on `email_id`; content is identical across runs),
-  insert `core.email_runs`, copy attachments to MinIO under the run prefix, insert
-  `core.attachments`, then enqueue `classify`.
+  Repeated `emailIds` are dropped.
+- The `ingest-run` payload is `{ runId, epoch }`. A new run starts at epoch 0.
+  `POST /runs/:id/resume` raises `core.runs.ingest_epoch` and adds a job
+  `${runId}__resume__${epoch}` carrying the new value. A loop checks status and epoch before
+  every email and stands down as `superseded` when the epoch has moved on, so an older job that
+  was still waiting, or asleep between two emails, never ingests alongside the new one. If the
+  resume job cannot be queued the run goes back to `paused`.
+- Cancel commits `cancelled`, then removes the run's jobs that have not started. A failed
+  removal is logged, not returned. The classify and compare processors return at once for a
+  cancelled run, which covers a job that was already active or added a moment later. The run's
+  emails stay at the stage they had reached.
+- Per email: copy attachments to MinIO under the run prefix, then in one short transaction
+  insert `core.emails` (upsert on `email_id`; content is identical across runs),
+  `core.attachments` and `core.email_runs`, then enqueue `classify`. Downloads and uploads
+  happen before the transaction opens, so a slow inbox or MinIO never holds a pooled connection.
 - `ratePerSecond: 0` means burst: enqueue everything immediately.
 
 ### 5.2 Classify
@@ -433,6 +447,7 @@ Two schemas. `core` is normalised and written by the pipeline. `analytics` is de
 
 ```sql
 runs               (id uuid pk, source text, rate_per_second numeric, status text,
+                    ingest_epoch int default 0,   -- which ingest job owns the run; every resume raises it
                     prompt_set jsonb, started_at, finished_at, created_by text)
 clients            (domain text pk, name text, tier smallint default 3, kind text check (kind in ('customer','internal','forwarder','spam')), updated_at)
 emails             (email_id text pk, from_addr text, sender_domain text, subject text, body text,
@@ -529,9 +544,9 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 
 | Method, path | Purpose |
 |---|---|
-| `GET /health` | extended: postgres, redis, minio, doc-extract, averis, proxy reachability |
+| `GET /health` | `{ status: ok \| degraded, checks: { postgres, redis, minio, inbox } }`, 2 s per check. Degraded is still 200; only postgres down is 503, which is the signal auto-deploy rolls back on. The proxy is left out on purpose: a cold model would read as an outage. doc-extract joins in phase 5 |
 | `POST /runs` | start a run `{ source, ratePerSecond, limit?, emailIds?, promptSet? }` |
-| `GET /runs`, `GET /runs/:id` | list, detail with stage counts, queue depth, cost, score |
+| `GET /runs`, `GET /runs/:id` | list, detail with stage counts, queue depth, cost, score. `queues` is `null` when Redis cannot be reached; the rest comes from Postgres and is still served |
 | `POST /runs/:id/pause`, `/resume`, `/cancel` | control the replay |
 | `POST /runs/:id/submit` | build submission, post to averis, store scoreboard |
 | `GET /runs/:id/submission.json` | download the payload |

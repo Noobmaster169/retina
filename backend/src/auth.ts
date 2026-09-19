@@ -1,6 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 
+import { config } from "./config";
+
 /** Which shared key authenticated a request. */
 export type Caller = "frontend" | "team";
 
@@ -29,7 +31,7 @@ function equal(provided: string, expected: string): boolean {
  * with no key configured this refuses to serve rather than serving everyone.
  */
 export function requireCaller(req: Request, res: Response, next: NextFunction): void {
-  const keys = { frontend: process.env.API_SHARED_SECRET, team: process.env.TEAM_API_KEY };
+  const keys = { frontend: config.API_SHARED_SECRET, team: config.TEAM_API_KEY };
   if (!keys.frontend && !keys.team) {
     res.status(500).json({ error: "No API keys configured" });
     return;

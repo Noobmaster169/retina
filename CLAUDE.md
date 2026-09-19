@@ -46,8 +46,8 @@ pytest
 # backend, inside backend/
 pnpm install && pnpm db:migrate
 pnpm dev                            # api on :8091
-pnpm dev:worker                     # queue consumers + schedulers (phase 1)
-pnpm test                           # vitest, unit + integration (phase 1)
+pnpm dev:worker                     # queue consumers + schedulers
+pnpm test                           # vitest; needs compose.local.yaml up (uses database retina_test)
 pnpm type-check
 pnpm eval:score --run <id> [--holdout]   # (phase 2)
 
@@ -59,7 +59,7 @@ pnpm type-check
 uv run uvicorn app:app --port 8000
 uv run pytest && uv run ruff check .
 
-# local infra, from backend/ (postgres :5433; redis and minio from phase 1)
+# local infra, from backend/ (postgres :5433, redis :6379, minio :9000, the inbox :8080)
 docker compose -f compose.local.yaml up -d
 ```
 
@@ -120,7 +120,8 @@ needed.
 - Zod schema at every boundary: HTTP bodies, job payloads, LLM outputs, env, doc-extract
   responses. Derive TS types from schemas, never the other way around.
 - Errors: throw `RetryableError` or `TerminalError` from `lib/errors.ts`. Workers decide retry
-  from the type. Never swallow an error; never `catch {}`.
+  from the type (a `TerminalError` becomes BullMQ's `UnrecoverableError`). Never swallow an
+  error; never `catch {}`.
 - Comments say why, never what. No banner comments, no commented-out code, no TODO without a
   `PROGRESS.md` entry.
 - No emoji in code, logs, or docs.
@@ -138,7 +139,8 @@ needed.
   existing `db/migrate.mjs`. Never edit an applied one.
 - Hand-written SQL with `pg`, parameterised. No ORM. One repository module per aggregate.
 - Write to Postgres before enqueueing. Job payloads carry ids only.
-- Job id is `${runId}:${emailId}`. Re-running a stage replaces that stage's rows for that run.
+- Job id is `${runId}__${emailId}` (BullMQ rejects a custom id containing `:`). Re-running a
+  stage replaces that stage's rows for that run.
 - `ground_truth.json` lives in `emails/data_v2/` as part of the organiser kit and is mounted
   only into the Averis container. `eval/` is the only code that may read it. Any other import
   fails review. Never copy it anywhere else.

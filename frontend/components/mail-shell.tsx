@@ -68,12 +68,14 @@ export function MailShell({ page, backendError, params, selectedId, children }: 
             );
           })}
         </nav>
-        <Link
-          href="/chat"
-          className="ml-auto whitespace-nowrap text-sm text-muted hover:text-ink lg:mt-auto lg:ml-0 lg:border-t lg:border-line lg:px-5 lg:py-3"
-        >
-          Ask a model
-        </Link>
+        <div className="ml-auto flex gap-4 whitespace-nowrap text-sm text-muted lg:mt-auto lg:ml-0 lg:flex-col lg:gap-0 lg:border-t lg:border-line">
+          <Link href="/runs" className="hover:text-ink lg:px-5 lg:py-3">
+            Pipeline runs
+          </Link>
+          <Link href="/chat" className="hover:text-ink lg:border-t lg:border-line lg:px-5 lg:py-3">
+            Ask a model
+          </Link>
+        </div>
       </aside>
 
       <section

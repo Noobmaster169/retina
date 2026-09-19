@@ -1,10 +1,11 @@
-# Local Postgres for `pnpm dev:server` and the integration tests.
+# Local infrastructure for `pnpm dev`, `pnpm dev:worker` and the integration tests.
 #
 #   docker compose -f compose.local.yaml up -d
 #   pnpm db:migrate
 #
-# Published on 5433 so it cannot collide with a Postgres already on 5432.
-# The integration suite creates and uses `retina_test` in this instance.
+# Everything binds to loopback. Postgres is published on 5433 so it cannot
+# collide with one already on 5432. The integration suite creates and uses
+# `retina_test` in this instance.
 
 services:
   postgres:
@@ -12,7 +13,7 @@ services:
     environment:
       POSTGRES_PASSWORD: localdev
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -21,5 +22,62 @@ services:
       timeout: 5s
       retries: 10
 
+  # AOF so queued jobs survive a restart. noeviction because BullMQ requires
+  # it: under memory pressure Redis must refuse writes, not drop job keys.
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction", "--maxmemory", "512mb"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: quay.io/minio/minio
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: retina
+      MINIO_ROOT_PASSWORD: retinaretina
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio-init:
+    image: quay.io/minio/mc
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "mc alias set local http://minio:9000 retina retinaretina &&
+                  mc mb --ignore-existing local/retina"
+
+  # The Averis kit from ../emails: the inbox and the scorer. The answer key is
+  # mounted here and nowhere else. Same service `docker compose up` in emails/
+  # starts, so run one or the other, not both (they share port 8080).
+  inbox:
+    build: ../emails/server
+    ports:
+      - "127.0.0.1:8080:8000"
+    volumes:
+      - ../emails/data_v2:/data:ro
+      - ../emails/data_v2/ground_truth.json:/secrets/ground_truth.json:ro
+    environment:
+      DATA_DIR: /data
+      GROUND_TRUTH: /secrets/ground_truth.json
+
 volumes:
   pgdata:
+  redisdata:
+  miniodata:

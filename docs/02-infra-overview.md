@@ -34,7 +34,7 @@ prompts, routes) are in `03-infra-deep.md`.
 |---|---|---|---|---|
 | frontend | Vercel | Next.js | Dashboard, email trace, review inbox, chat, eval page. Password gate. | api (server side only, via ngrok) |
 | api | VPS, compose | Express, TypeScript | Only public entry point. Auth, run control, read models, review actions, chat agent loop, presigned file URLs, scorer submission. | postgres, redis, minio, llm-proxy, averis |
-| worker | VPS, compose | Same image as api, `node dist/worker.js` | Consumes both queues, runs the ingest replay, runs scheduled jobs (priority cache refresh, analytics refresh, aging). | postgres, redis, minio, llm-proxy, doc-extract, averis |
+| worker | VPS, compose | Same image as api, `node --import tsx src/worker.ts` (there is no build step) | Consumes both queues, runs the ingest replay, runs scheduled jobs (priority cache refresh, analytics refresh, aging). | postgres, redis, minio, llm-proxy, doc-extract, averis |
 | doc-extract | VPS, compose | FastAPI, PyMuPDF, python-docx, openpyxl, tesseract | Turns any attachment into text plus page images. Reports unreadable files. | minio (reads bytes) |
 | postgres | VPS, compose | Postgres 17 | `core` schema: normalised writes. `analytics` schema: star-schema views. Read-only role for the chat agent. | |
 | redis | VPS, compose | Redis 7, AOF, noeviction | Two BullMQ queues, client priority cache, small counters. | |
@@ -88,7 +88,7 @@ answer key. The api and worker reach it by service name on the compose network.
 ```
 
 Every step writes before it enqueues. Job payloads carry ids only. Job ids are
-`${runId}:${emailId}`, so a retry can never create a duplicate.
+`${runId}__${emailId}`, so a retry can never create a duplicate.
 
 ### 4.2 Browser to dashboard
 
