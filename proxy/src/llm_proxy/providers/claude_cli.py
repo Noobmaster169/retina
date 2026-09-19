@@ -152,6 +152,12 @@ def partial_text(event: dict[str, Any], structured: bool = False) -> str:
     return ""
 
 
+def starts_attempt(event: dict[str, Any]) -> bool:
+    """Whether a raw stream event opens a tool call: with a schema, a new attempt at the answer."""
+    block = event.get("content_block") or {}
+    return event.get("type") == "content_block_start" and block.get("type") == "tool_use"
+
+
 def tool_args(tools: list[str]) -> list[str]:
     """`--tools` always, so a session gets exactly the configured built-ins and no
     default set. The same list is pre-approved with `--allowedTools`: in `-p` mode
@@ -324,6 +330,8 @@ class ClaudeCliProvider(BlockingOnly):
             id=req.request_id, provider=self.name, model_id=req.model_id, alias=req.alias
         )
         yield BlockStart(index=0, block=TextBlock(text=""))
+        block = 0
+        block_has_text = False
 
         usage = CanonUsage()
         emitted = False
@@ -356,10 +364,20 @@ class ClaudeCliProvider(BlockingOnly):
                     kind = event.get("type")
                     if kind == "stream_event":
                         # A raw Anthropic stream event, from --include-partial-messages.
-                        text = partial_text(event.get("event") or {}, structured=schema is not None)
+                        raw = event.get("event") or {}
+                        # With a schema, each StructuredOutput call is one attempt at the
+                        # answer, and the CLI makes the model try again when an attempt
+                        # fails validation. Each attempt gets its own block, so a viewer
+                        # restarts its preview instead of reading two attempts run together.
+                        if schema is not None and starts_attempt(raw) and block_has_text:
+                            yield BlockStop(index=block)
+                            block += 1
+                            block_has_text = False
+                            yield BlockStart(index=block, block=TextBlock(text=""))
+                        text = partial_text(raw, structured=schema is not None)
                         if text:
-                            emitted = streamed = True
-                            yield TextDelta(index=0, text=text)
+                            emitted = streamed = block_has_text = True
+                            yield TextDelta(index=block, text=text)
                     elif kind == "assistant" and event.get("error"):
                         # The CLI reports a failed session as a synthetic assistant
                         # message with `error` set (authentication_failed, ...). Its
@@ -371,10 +389,10 @@ class ClaudeCliProvider(BlockingOnly):
                         message = event.get("message") or {}
                         # The finished message repeats text the partials already
                         # sent; only a CLI that sends no partials needs it again.
-                        for block in message.get("content") or []:
-                            if not streamed and block.get("type") == "text" and block.get("text"):
+                        for part in message.get("content") or []:
+                            if not streamed and part.get("type") == "text" and part.get("text"):
                                 emitted = True
-                                yield TextDelta(index=0, text=block["text"])
+                                yield TextDelta(index=0, text=part["text"])
                         if message.get("usage"):
                             u = message["usage"]
                             usage = CanonUsage(
@@ -446,6 +464,6 @@ class ClaudeCliProvider(BlockingOnly):
                 message=f"{self.name}: a JSON schema was sent but the CLI returned no structured_output",
             )
             return
-        yield BlockStop(index=0)
+        yield BlockStop(index=block)
         yield MessageDelta(stop_reason=StopReason.END_TURN, usage=usage, structured=structured)
         yield MessageStop()

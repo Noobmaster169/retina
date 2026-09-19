@@ -31,6 +31,7 @@ from llm_proxy.providers.claude_cli import (
     failure_detail,
     flatten,
     partial_text,
+    starts_attempt,
     tool_args,
 )
 from llm_proxy.providers.retry import is_login_failure
@@ -710,3 +711,41 @@ def test_a_stream_error_frame_carries_the_verdict():
     assert name == "error"
     assert payload["error"]["code"] == "provider_not_logged_in"
     assert payload["error"]["retryable"] is False
+
+
+RETRIED_SCHEMA_STREAM_STUB = textwrap.dedent("""\
+    #!/usr/bin/env python3
+    import json, sys
+    sys.stdin.read()
+    def event(e):
+        print(json.dumps({"type": "stream_event", "event": e}))
+    def attempt(pieces):
+        event({"type": "content_block_start", "index": 1,
+               "content_block": {"type": "tool_use", "name": "StructuredOutput", "input": {}}})
+        for piece in pieces:
+            event({"type": "content_block_delta", "index": 1,
+                   "delta": {"type": "input_json_delta", "partial_json": piece}})
+    attempt(['{"$PARAMETER_NAME": ', '"broken"}'])
+    attempt(['{"category": ', '"SPAM"}'])
+    print(json.dumps({"type": "result", "subtype": "success", "result": "done",
+                      "structured_output": {"category": "SPAM"}, "total_cost_usd": 0.001}))
+""")
+
+
+async def test_each_attempt_at_a_schema_answer_streams_as_its_own_block(fake_claude):
+    fake_claude(RETRIED_SCHEMA_STREAM_STUB)
+    provider = ClaudeCliProvider("claudecli", ProviderConfig(type="claudecli"))
+    events = [e async for e in provider.stream(canon_req("claudecli", "haiku", response_format=JSON_FORMAT))]
+    by_block: dict[int, str] = {}
+    for e in events:
+        if e.type == "text_delta":
+            by_block[e.index] = by_block.get(e.index, "") + e.text
+    assert by_block == {0: '{"$PARAMETER_NAME": "broken"}', 1: '{"category": "SPAM"}'}
+    assert [e.index for e in events if e.type == "block_stop"] == [0, 1]
+    assert next(e for e in events if e.type == "message_delta").structured == {"category": "SPAM"}
+
+
+def test_only_a_tool_call_opens_an_attempt():
+    assert starts_attempt({"type": "content_block_start", "content_block": {"type": "tool_use"}})
+    assert not starts_attempt({"type": "content_block_start", "content_block": {"type": "thinking"}})
+    assert not starts_attempt({"type": "content_block_delta", "delta": {}})

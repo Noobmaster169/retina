@@ -19,6 +19,9 @@ const FinalDelta = z.object({
   structured_output: z.unknown().optional(),
 });
 
+/** With a schema, each block is one attempt at the answer; a new one means the last failed validation. */
+const BlockStart = z.object({ type: z.literal("content_block_start") });
+
 const TextDelta = z.object({
   type: z.literal("content_block_delta"),
   delta: z.object({ type: z.literal("text_delta"), text: z.string() }),
@@ -43,6 +46,11 @@ export async function chatStream(
       .withResponse();
     model = response.headers.get("x-llm-proxy-model");
     for await (const event of data) {
+      // A new attempt: the preview restarts rather than running two attempts together.
+      if (BlockStart.safeParse(event).success && text) {
+        text = "";
+        continue;
+      }
       const piece = TextDelta.safeParse(event);
       if (piece.success) {
         text += piece.data.delta.text;
