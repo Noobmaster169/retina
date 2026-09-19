@@ -56,7 +56,8 @@ export function RunRow({ run, onChanged }: Props) {
         setError(body.error ?? `Request failed with ${response.status}`);
       }
       onChanged();
-    } catch {
+    } catch (cause) {
+      console.error("[runs] action failed:", cause);
       setError("Could not reach the server.");
     } finally {
       setPending(null);

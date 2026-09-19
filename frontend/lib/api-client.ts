@@ -154,7 +154,8 @@ export interface RunSummary {
   ratePerSecond: number;
   totalEmails: number | null;
   stageCounts: Record<Stage, number>;
-  queues: { classify: QueueCounts; compare: QueueCounts };
+  /** Null when the backend cannot reach its queues. Everything else is still served. */
+  queues: { classify: QueueCounts; compare: QueueCounts } | null;
   createdAt: string;
   startedAt: string | null;
   finishedAt: string | null;

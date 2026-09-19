@@ -49,6 +49,8 @@ export function RunsTable({ initialRuns, initialError }: Props) {
         </dl>
       )}
 
+      {runs.length > 0 && !queues && <p className="mt-6 text-sm text-muted">Queue counts are unavailable right now.</p>}
+
       {message && (
         <p role="alert" className="mt-4 border-l-2 border-red-700 pl-3 text-sm text-red-700">
           {message}

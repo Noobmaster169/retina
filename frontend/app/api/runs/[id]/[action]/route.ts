@@ -4,7 +4,8 @@ import { hasSiteAccess } from "@/lib/site-gate";
 const ACTIONS = { pause: pauseRun, resume: resumeRun, cancel: cancelRun };
 
 function isAction(value: string): value is keyof typeof ACTIONS {
-  return value in ACTIONS;
+  // Not `in`: that also accepts inherited keys such as "constructor".
+  return Object.hasOwn(ACTIONS, value);
 }
 
 /** Pause, resume or cancel one run. */

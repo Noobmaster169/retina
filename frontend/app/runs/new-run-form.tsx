@@ -32,7 +32,8 @@ export function NewRunForm({ onCreated }: Props) {
         return;
       }
       onCreated();
-    } catch {
+    } catch (cause) {
+      console.error("[runs] create failed:", cause);
       setError("Could not reach the server.");
     } finally {
       setPending(false);
