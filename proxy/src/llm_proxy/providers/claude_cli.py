@@ -42,9 +42,15 @@ from ..canon.stream import (
     TextDelta,
 )
 from ..config import ProviderConfig
-from ..errors import InvalidRequest, ProviderError, ProviderTimeout, RateLimited
+from ..errors import (
+    InvalidRequest,
+    ProviderError,
+    ProviderNotLoggedIn,
+    ProviderTimeout,
+    RateLimited,
+)
 from .base import BlockingOnly
-from .retry import ConcurrencyGate, is_retryable
+from .retry import ConcurrencyGate, is_login_failure, is_retryable
 
 
 def child_env(cfg: ProviderConfig) -> dict[str, str]:
@@ -94,6 +100,36 @@ def output_schema(req: CanonRequest) -> dict[str, Any] | None:
             detail={"param": "output_config.format"},
         )
     return schema
+
+
+def failure_detail(out: str, err: str) -> str:
+    """What a failed `claude -p` said, for the error and for classifying it.
+
+    With `--output-format json` the CLI reports a failure inside its envelope, whose
+    `result` is the message (`Not logged in`, a rate limit) and comes after a block
+    of usage counters. Reading `result` keeps the classifiers on the message rather
+    than on whichever counters fit in the first few hundred characters.
+    """
+    parts: list[str] = []
+    try:
+        envelope = orjson.loads(out) if out else None
+    except orjson.JSONDecodeError:
+        envelope = None
+    if isinstance(envelope, dict) and envelope.get("result"):
+        parts.append(str(envelope["result"]))
+    if err.strip():
+        parts.append(err.strip())
+    if not parts and out.strip():
+        parts.append(out.strip())
+    return " | ".join(parts)[:400]
+
+
+def not_logged_in_message(provider: str, detail: str) -> str:
+    return (
+        f"{provider}: `claude` is not logged in ({detail}). In the compose stack set "
+        "CLAUDE_CODE_OAUTH_TOKEN in .env (make one with `claude setup-token`) and "
+        "recreate the llm-proxy container; on a laptop, run `claude` once and log in."
+    )
 
 
 def cli_args(exe: str, req: CanonRequest, output_format: str) -> list[str]:
@@ -197,9 +233,11 @@ class ClaudeCliProvider(BlockingOnly):
         for attempt in range(len(BACKOFF_S) + 1):
             async with self.gate.semaphore():
                 rc, out, err = await self._run(args, prompt)
-                last = (err or out or "").strip()[:400]
+                last = failure_detail(out, err)
             if rc == 0:
                 break
+            if is_login_failure(last):
+                raise ProviderNotLoggedIn(not_logged_in_message(self.name, last), provider=self.name)
             if attempt == len(BACKOFF_S) or not is_retryable(last):
                 if is_retryable(last):
                     raise RateLimited(
@@ -298,6 +336,13 @@ class ClaudeCliProvider(BlockingOnly):
                 await proc.wait()
                 if proc.returncode not in (0, None):
                     stderr = (await proc.stderr.read()).decode(errors="replace")[:400]
+                    if is_login_failure(stderr):
+                        yield StreamError(
+                            code=ProviderNotLoggedIn.code,
+                            message=not_logged_in_message(self.name, stderr),
+                            retryable=False,
+                        )
+                        return
                     yield StreamError(
                         code="provider_error",
                         message=f"{self.name}: `claude` exited {proc.returncode}: {stderr}",

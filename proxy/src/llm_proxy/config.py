@@ -7,6 +7,7 @@ close to a rename rather than a rewrite.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any, Literal
 
@@ -169,12 +170,36 @@ class ProxyConfig(BaseModel):
             )
 
 
+_ENV_REF = re.compile(r"\$\{([A-Z_][A-Z0-9_]*)(?::-([^}]*))?\}")
+
+
+def expand_env(text: str) -> str:
+    """`${NAME}` and `${NAME:-default}` from the environment, before YAML parsing.
+
+    One file serves a proxy on a laptop and one in a container: only what differs
+    between them (the bind address, the exposure flag) is read from the env. A
+    reference with no default and no value is an error, not an empty string, so a
+    missing variable never silently becomes a blank setting.
+    """
+
+    def value(match: re.Match[str]) -> str:
+        name, default = match.group(1), match.group(2)
+        found = os.environ.get(name)
+        if found:
+            return found
+        if default is not None:
+            return default
+        raise ConfigError(f"proxy config reads ${{{name}}}, which is not set and has no default")
+
+    return _ENV_REF.sub(value, text)
+
+
 def load(path: str | Path) -> ProxyConfig:
     p = Path(path)
     if not p.exists():
         raise ConfigError(f"config file not found: {p}")
     try:
-        raw = yaml.safe_load(p.read_text()) or {}
+        raw = yaml.safe_load(expand_env(p.read_text())) or {}
     except yaml.YAMLError as e:
         raise ConfigError(f"{p} is not valid YAML: {e}") from e
     try:

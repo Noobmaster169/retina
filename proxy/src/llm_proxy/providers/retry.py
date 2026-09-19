@@ -27,6 +27,18 @@ RETRYABLE = (
 )
 BACKOFF_S = (30, 90, 300, 900)
 
+# Fragments meaning the CLI has no usable login. Checked before RETRYABLE: waiting
+# does not log anyone in.
+NOT_LOGGED_IN = (
+    "not logged in", "please run /login", "invalid api key", "oauth token has expired",
+    "token has been revoked", "authentication_error",
+)
+
+
+def is_login_failure(detail: str) -> bool:
+    low = (detail or "").lower()
+    return any(p in low for p in NOT_LOGGED_IN)
+
 
 def is_retryable(detail: str) -> bool:
     low = (detail or "").lower()

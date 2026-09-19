@@ -17,8 +17,21 @@ import pytest
 from llm_proxy.canon.request import CanonMessage, CanonRequest, TextBlock
 from llm_proxy.canon.stream import aggregate
 from llm_proxy.config import ProviderConfig
-from llm_proxy.errors import InvalidRequest, ProviderError, ProviderTimeout, RateLimited
-from llm_proxy.providers.claude_cli import ClaudeCliProvider, child_env, cli_args, flatten
+from llm_proxy.errors import (
+    InvalidRequest,
+    ProviderError,
+    ProviderNotLoggedIn,
+    ProviderTimeout,
+    RateLimited,
+)
+from llm_proxy.providers.claude_cli import (
+    ClaudeCliProvider,
+    child_env,
+    cli_args,
+    failure_detail,
+    flatten,
+)
+from llm_proxy.providers.retry import is_login_failure
 from llm_proxy.providers.openai_api import OpenAIProvider
 
 
@@ -492,3 +505,41 @@ async def test_openai_wire_nests_the_schema_the_way_openai_expects():
         "type": "json_schema",
         "json_schema": {"name": "output", "schema": SCHEMA, "strict": True},
     }
+
+
+async def test_not_logged_in_is_permanent_and_says_what_to_set(fake_claude):
+    fake_claude(textwrap.dedent("""\
+        #!/usr/bin/env python3
+        import json, sys
+        sys.stdin.read()
+        print(json.dumps({"type": "result", "subtype": "success", "is_error": True,
+                          "total_cost_usd": 0, "usage": {"input_tokens": 0},
+                          "result": "Not logged in \u00b7 Please run /login"}))
+        sys.exit(1)
+    """))
+    provider = ClaudeCliProvider("claudecli", ProviderConfig(type="claudecli"))
+    with pytest.raises(ProviderNotLoggedIn) as exc:
+        await provider.complete(canon_req("claudecli", "opus"))
+    assert exc.value.retryable is False
+    assert "CLAUDE_CODE_OAUTH_TOKEN" in str(exc.value)
+
+
+def test_failure_detail_reads_the_envelope_result_not_its_counters():
+    envelope = '{"type":"result","usage":{"service_tier":"standard"},"result":"Not logged in"}'
+    assert failure_detail(envelope, "") == "Not logged in"
+    assert failure_detail("not json at all", "boom") == "boom"
+    assert failure_detail("", "") == ""
+
+
+@pytest.mark.parametrize(
+    "detail, login",
+    [
+        ("Not logged in · Please run /login", True),
+        ("Invalid API key · Fix external API key", True),
+        ("OAuth token has expired. Please obtain a new token", True),
+        ("Error: usage limit reached", False),
+        ("something broke permanently", False),
+    ],
+)
+def test_login_failures_are_told_apart_from_outages(detail, login):
+    assert is_login_failure(detail) is login
