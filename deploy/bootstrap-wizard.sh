@@ -363,7 +363,7 @@ pause "Press Enter to bring the stack up."
 
 # ── 4 ─────────────────────────────────────────────────────────────────────
 stage "The stack"
-say "postgres, redis, minio, inbox, llm-proxy, api, worker. Only the api publishes"
+say "postgres, redis, minio, inbox, llm-proxy, doc-extract, api, worker. Only the api publishes"
 say "a port, on loopback; ngrok is the single door in."
 
 # Always, never "only when absent": the tag on this box may be an image from
@@ -379,6 +379,8 @@ cd "$STACK"
 # run picks up proxy/ as it is now rather than whatever image a past run left.
 say "building the llm-proxy image from the clone (node and the claude CLI, a few minutes the first time)."
 docker compose build llm-proxy || fail "the llm-proxy image would not build"
+say "building the doc-extract image from the clone (python and tesseract)."
+docker compose build doc-extract || fail "the doc-extract image would not build"
 docker compose up -d || fail "docker compose up failed; docker compose logs will say why"
 
 say "waiting for the api to migrate and answer /health"

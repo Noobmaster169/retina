@@ -158,6 +158,38 @@ jobs:
           curl -fsS 127.0.0.1:4010/v1/models | grep -q '"sonnet"'
           docker rm -f probe
 
+  doc-extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/doc-extract/uv.lock
+      # The OCR test needs the same engine and language packs the image carries.
+      - name: Install tesseract
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim
+      - name: Install
+        run: uv sync --frozen
+        working-directory: services/doc-extract
+      - name: Lint
+        run: uv run ruff check .
+        working-directory: services/doc-extract
+      - name: Test
+        run: uv run pytest -q
+        working-directory: services/doc-extract
+      # The box builds this image from the clone on deploy; a Dockerfile that
+      # cannot build should fail here, not on a box nobody can SSH into.
+      - name: Build the doc-extract image
+        run: docker build -t retina-doc-extract services/doc-extract
+      - name: The image answers its health route with tesseract present
+        run: |
+          docker run -d --name probe -p 127.0.0.1:8010:8000 retina-doc-extract
+          for _ in $(seq 1 20); do curl -fsS 127.0.0.1:8010/healthz && break; sleep 1; done
+          curl -fsS 127.0.0.1:8010/healthz | grep -q '"tesseract":"5'
+          docker rm -f probe
+
   # score.ts is a hand port of the organisers' scoring.py, which this repo does
   # not control. parity.ts is the only thing that proves they still agree, and
   # until now it only ran when someone remembered to run it.
@@ -198,7 +230,7 @@ jobs:
   # Monash compose file names; the immutable tag is for pinning a rollback.
   # Pull requests stop at the gates above: nothing they run may publish.
   build-api:
-    needs: [quality, test, proxy, parity]
+    needs: [quality, test, proxy, doc-extract, parity]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15

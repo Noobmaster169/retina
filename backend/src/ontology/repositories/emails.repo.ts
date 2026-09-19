@@ -106,6 +106,7 @@ export interface RunEmailFilters {
   stage?: Stage;
   category?: Category;
   decidedBy?: DecidedBy;
+  outcome?: string;
   q?: string;
 }
 
@@ -126,8 +127,16 @@ export async function listForRun(
      and ($2::text is null or er.stage = $2)
      and ($3::text is null or e.subject ilike $3 or e.from_addr ilike $3)
      and ($4::text is null or c.final_category = $4)
-     and ($5::text is null or c.decided_by = $5)`;
-  const params = [runId, filters.stage ?? null, likePattern(filters.q), filters.category ?? null, filters.decidedBy ?? null];
+     and ($5::text is null or c.decided_by = $5)
+     and ($6::text is null or er.outcome = $6)`;
+  const params = [
+    runId,
+    filters.stage ?? null,
+    likePattern(filters.q),
+    filters.category ?? null,
+    filters.decidedBy ?? null,
+    filters.outcome ?? null,
+  ];
 
   const counted = await db.query<{ total: string }>(`select count(*) as total from ${from} where ${where}`, params);
   const { rows } = await db.query<ListRow>(
@@ -137,7 +146,7 @@ export async function listForRun(
        from ${from}
       where ${where}
       order by e.email_id
-      limit $6 offset $7`,
+      limit $7 offset $8`,
     [...params, page.pageSize, (page.page - 1) * page.pageSize],
   );
   return { emails: rows.map(toListItem), total: Number(counted.rows[0].total) };

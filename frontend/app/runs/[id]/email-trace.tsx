@@ -7,6 +7,7 @@ import { EmailTrace as EmailTraceSchema } from "@/lib/api/trace-schemas";
 import { parsedFetcher } from "@/lib/poll";
 
 import { CallCard } from "./call-card";
+import { DocumentsPanel } from "./documents-panel";
 import { StreamingText } from "./streaming-text";
 import { VerdictPanel } from "./verdict-panel";
 
@@ -25,7 +26,8 @@ interface Props {
 /** One email: the verdict, the call being written right now, and every call made for it in order. */
 export function EmailTrace({ runId, emailId, live }: Props) {
   const { data, error } = useSWR(emailId ? `/api/runs/${runId}/emails/${emailId}/trace` : null, fetchTrace, {
-    refreshInterval: (latest) => (!live ? 0 : latest?.live || latest?.stage === "classifying" ? WORKING_POLL_MS : IDLE_POLL_MS),
+    refreshInterval: (latest) =>
+      !live ? 0 : latest?.live || latest?.stage === "classifying" || latest?.stage === "comparing" ? WORKING_POLL_MS : IDLE_POLL_MS,
   });
 
   if (!emailId) {
@@ -54,6 +56,7 @@ export function EmailTrace({ runId, emailId, live }: Props) {
       {data?.error && <p className="mt-2 text-sm text-red-700">{data.error}</p>}
       <div className="mt-3 flex flex-col gap-3">
         {data?.classification && <VerdictPanel classification={data.classification} />}
+        {data && <DocumentsPanel documents={data.documents} review={data.review} />}
         {data?.live && <StreamingText call={data.live} />}
         {data && data.calls.length === 0 && !data.live && <p className="text-sm text-muted">No model call yet.</p>}
         {data?.calls.map((call) => (

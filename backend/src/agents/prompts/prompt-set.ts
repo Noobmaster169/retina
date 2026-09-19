@@ -3,9 +3,16 @@ import { PromptStep, type PromptSet } from "../../contracts";
 import { TerminalError } from "../../lib/errors";
 import { latestVersion, loadPrompt, type Prompt } from "./registry";
 
-/** `LLM_MODEL_<STEP>`: an experiment's model for every run, where a run names none. */
-function envModel(step: PromptStep): string | undefined {
-  return step === "classify" ? config.LLM_MODEL_CLASSIFY : config.LLM_MODEL_VERIFY;
+/** `LLM_MODEL_<STEP>`: an experiment's model for every run, where a run names none. One entry per step, so a new step gets its own or none. */
+const ENV_MODELS: Record<PromptStep, string | undefined> = {
+  classify: config.LLM_MODEL_CLASSIFY,
+  "classify-verify": config.LLM_MODEL_VERIFY,
+  triage: config.LLM_MODEL_TRIAGE,
+  "doc-type": config.LLM_MODEL_DOC_TYPE,
+};
+
+export function envModel(step: PromptStep): string | undefined {
+  return ENV_MODELS[step];
 }
 
 export interface PinRequest {

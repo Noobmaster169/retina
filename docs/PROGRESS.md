@@ -1,12 +1,16 @@
 # Progress
 
-Current phase: 4, in progress on `phase-04-classification-quality`. Everything is built and
-tested; what is left is measurement on the holdout, which the user runs (see "Phase 4" below for
-the exact runs and commands). Development runs stay at the 30-email dev sample.
+Current phase: 5, on `phase-05-parsing-and-triage`. Built, tested and checked on a 24-email
+run locally (see "Phase 5" below). Left for the user: the box (the doc-extract container comes
+up with the next deploy, and `/health` must show `docExtract` up there), the holdout run that
+decides whether classify `v5` (the attachments' text as context) becomes active, and
+`pnpm eval:score --holdout` on a run that includes the 20 edge cases. Phase 4's open items
+(the few-shot `v4` holdout, the model comparison) are still the user's.
 
-**Starting phase 5: read `docs/phases/phase-05-handover.md` before the phase 5 spec.** It lists
-what phase 4 changed under it: migration numbering, wiring new prompt steps into the pinning,
-the compare worker's outage policy, `review` in the run summary, and the proxy as it is now.
+**Starting phase 6: read the hand-off notes at the end of `docs/phases/phase-05-parsing-and-triage.md`.**
+Every document's text is in MinIO under `text/`, typed on its `documents` row; the scanned
+escalation carries `provisional: null` for phase 6 to fill; comparable pairs end `OK` with
+`detail.placeholder = true` and are where the field extraction goes.
 
 Phase 3: closed. The code is merged to `main`; the box is not deployed yet. Everything
 that could be built and tested without SSH access to the Monash box is done and green in
@@ -39,11 +43,53 @@ corrected where it described the old behaviour:
 | 2, prompt v3 | 0.3000 | 0.2992 | 1.0000 holdout (104 of 104) | 0 | 0 | `v2` with the schema as a provider constraint: no "reason briefly" ending, `rationale` first in the schema, no `max_tokens`. Holdout run `0a8ed5a5`, 104 calls. Full run `044367f9`, 520 calls, 0 failed, stage 1 macro-F1 0.9975 (518 of 520). Fixes `v2`'s only miss, `email_504` |
 | 4, v3 + verifier, full inbox | 0.2996 | 0.2996 (scorer) | 0.9938 holdout, 0.9987 full | 0 | 0 | Run `69ee1e42`, started by the user, 520 emails at 8 in parallel in 7 min 46 s. 595 calls, 0 failed, verifier on 14.4%. One wrong category: `email_504`, SI_REQUEST for BL_COMPARISON |
 | 4, v3 + verifier, dev sample | not run | not run | 1.0000 dev (30 of 30) | 0 | 0 | Run `0d09d887`, 30 train emails, 37 calls, 0 failed, verifier on 7 (23.3%), agreed every time. Not a holdout number |
+| 5, structural escalations | not run | not run | n/a | 0 | 0 | Run `cd96e1c0`, 24 emails (the 20 edge cases and one pair per format): 14 escalated with the right reason, 0 failed. Not a scored number; the holdout is the user's to run |
 
 Stage 1 carries 0.30 of the final score, so 0.3000 is exactly what a perfect classifier with no
 document check gets, and `v3` is there. The holdout final cannot rise further until phase 5.
 
 ## Phase checklists
+### Phase 5 (built 2026-09-20, local)
+Exit checklist from `docs/phases/phase-05-parsing-and-triage.md`, checked on run `cd96e1c0`
+(24 emails: `email_001`, `005`, `055`, `059`, one pair per format, and `email_501` to `520`,
+8 in parallel, 85 s, 68 calls, 0 failed). A full 520 run is the user's.
+- [ ] All 250 attachments produce a `documents` row: 38 of 38 did on this 24-email run (24 txt,
+      8 pdf, 3 xlsx, 1 docx, and the two garbled and six scanned PDFs are the only `unreadable` or
+      `scanned` rows). Text is in MinIO under `text/`, page images for the scanned pairs under
+      `pages/`. The box the spec words is the full 520 run, which is the user's.
+- [ ] Exactly the 15 reference emails escalate, 14 of 15 on this run. The three reasons:
+      `wrong_doc_type` on 501, 502, 503, 505 with the
+      model's type, confidence and rationale (invoice, packing list, certificate of origin,
+      certificate of origin); `missing_attachment` on 506 to 510 (three by the triage model on an
+      empty request, two by code with the SI alone); `unreadable` on 511 to 515 (two would not
+      open, three read by OCR and escalated as scanned with their page images). No other email has
+      an open case; 516 to 520 (`missing_value`, phase 6) and the four normal pairs end `OK`.
+      `email_504` is the one miss: the active classifier `v3` reads it as `SI_REQUEST`, the same
+      miss phase 4 recorded, so it never reaches compare. See the `v5` line below.
+- [ ] The 94 awaiting-draft emails end `OK` with `detail.awaiting_draft = true`: the mechanism is
+      built and tested (the triage model reads the request; `send_draft` ends `OK`), but no
+      awaiting-draft email was in this run. The full run will show it; the user runs that.
+- [x] Python tests pass: 26 in `services/doc-extract` (25 here, the OCR one skipped without
+      tesseract; all 26 inside the image, tesseract 5.5.0). A 0-byte file, a garbled PDF and an
+      unknown extension answer HTTP 200 with `unreadable: true`.
+- [ ] doc-extract on the box: `/health` shows `docExtract` up locally and in the simulator; the
+      box gets it on the next deploy (compose.yaml changed, so `auto-deploy.sh` converges the
+      whole stack). Someone with SSH checks `docker compose ps doc-extract` and `/health` after.
+- [ ] Escalation recall 15/15 in `pnpm eval:score`: 14 of 15 on this run by the outcomes above
+      (`email_504` misclassified). The scored number needs the answer key and is the user's run.
+- [x] 354 backend tests and 25 doc-extract tests, type-check clean in both packages, frontend
+      lint and ruff clean; the deploy simulator's suite passes with three new checks (doc-extract
+      answers with tesseract, the worker reaches it by name, `/health` reports it).
+
+What a run costs now, from `cd96e1c0` at API prices: classify 24 calls at 7.1 s, verifier 5 at
+18.6 s, doc-type 36 at 5.8 s, triage 3 at 4.3 s; 1.10 USD for 24 emails. A comparison email with
+two readable attachments is three calls; with none, two.
+
+Classify `v5` reads the attachments' text. Run `ed20b880` pinned it on `email_501` to `505`:
+see the line under "Found while building". It stays inactive until the user's holdout run says
+it helps; to switch: `update core.prompt_versions set active = (version = 'v5') where step =
+'classify'` and the same for `classify-verify` `v2`. The runs page pins it without that.
+
 ### Phase 1 (done, 2026-09-19, local)
 - [x] POST /runs ingests all 520 emails; email_runs has 520 rows at done
       (run 4d04592a at 5/s: 520 rows, 520 distinct emails, all `done`, 0 retried)
@@ -394,7 +440,78 @@ dev machine:
   ids only, to start a dev or holdout run. It still never reads `ground_truth.json`:
   `eval/id-lists.ts` is split from `eval/ground-truth.ts` so the api does not even import it.
 
+## Design decisions (phase 5 review pass, 2026-09-20)
+Found by a two-axis review of the branch against `CLAUDE.md` and the phase 5 spec, and fixed on
+the same branch. The behaviour changes are the first three.
+- **A wrong document is only wrong in a place it was meant to fill.** `checkStructure` checked
+  every attachment, so a correct SI and BL pair with an invoice also attached was escalated
+  `wrong_doc_type`, reproduced on a fixture. It now resolves roles first and checks only the
+  files filling the SI and BL places; an extra is carried in `extras` as `triage` always meant it
+  to be. The reference emails are unaffected: `email_501` to `505` name their wrong file
+  `email_50N_BL.txt`, so it claims the BL place and is still checked.
+- **A reading the model is unsure of does not park an email.** A document typed `OTHER` at 0.31
+  escalated exactly as one at 0.97 did; `doc_type_confidence` was stored and shown but never
+  read. `DOC_TYPE_TRUST_FROM` (0.7, in `pipeline/compare/structure.ts`) is now the bar, below
+  which the file name's claim stands, as it already did for a document with no reading at all.
+  **The number is a guess with one calibration point behind it** and is under Deferred.
+- **A page with no text beside a page OCR could not read is unreadable.** `is_unreadable` only
+  applied the confidence floor when every page came from OCR, so a mixed document fell through
+  as readable whatever the recogniser said. It now asks per page whether anything can be worked
+  from it, which subsumes the old all-`none` and all-OCR rules. Nothing had tested the floor.
+- **One reading of the documents, shown rather than remade.** `documents-panel.tsx` decided on
+  its own that a document disagreed with its name, by a different rule from the backend's, so a
+  crossed pair showed amber beside an `OK` verdict. `documentVerdicts` now answers once and the
+  api puts it on `DocumentView.typeVerdict`.
+- **A crossed pair is said out loud.** The spec asked the swap to warn; it was silent. The
+  `compare` outcome carries `swapped`, the comparison detail records it and the processor logs it.
+- **Page images only for the files that need eyes.** Rendering covered every PDF among the
+  documents, including readable ones. On this seed the set is identical (511 and 515 pair a bad
+  PDF with a txt SI; 512 to 514 are scanned pairs), so this is waste removed, not behaviour.
+- Also: `envModel` through the `agents` barrel; one `EmailRunIds` for the four copies of
+  `{runId, emailId, emailRunId}`; one `DocumentFormat`; an `Outcome` enum for the email-list
+  filter that the frontend reads instead of rebuilding; `SHIPPING_DOCUMENTS` in place of an
+  enumerated complement; a pydantic `ErrorBody` for doc-extract's failure envelope; a named
+  `Word` for PyMuPDF's word boxes; and `bytes` dropped from the triage types, where it was never
+  read and the processor was filling it with the length of the extracted text.
+- **Not changed, for you to rule on:** classify `v5` and `classify-verify v2` reading the
+  attachments' text is outside the phase 5 scope line ("Out: LLM extraction, comparison, review
+  UI"). It is seeded inactive and costs nothing until a holdout run says it helps, so it stands.
+
+## Design decisions (phase 5)
+- 2026-09-20, **the model types documents; code only combines claims.** Work item 5's fingerprint
+  (title and label tables) was a rule read off this renderer. `prompts/doc-type/v1.md` reads each
+  document's text and names it; `resolveRoles` takes the filename's claim first and the model's
+  word only for a file that claims nothing, and swaps a pair the model reads the other way round.
+  A document the model calls INVOICE, PACKING_LIST, COO or OTHER is `wrong_doc_type` whatever the
+  name says; a disagreement between SI and BL is not, because neither is the wrong kind.
+- 2026-09-20, **the input shape follows the pinned prompt.** `reads_attachments: true` in a
+  prompt's frontmatter is what adds the "attachment contents" section, so `v3` runs exactly as it
+  did and a run pinned to `v5` sees the text. Parsing happens once wherever it happens first
+  (classify for such a run, compare otherwise) and the other stage finds the rows.
+- 2026-09-20, **a scan is escalated, never silently trusted.** OCR text is stored, the document is
+  typed from it, and the email still goes to review as `unreadable` with `scanned: true` and its
+  page images, as the spec's policy says. Phase 6 adds the provisional comparison.
+- 2026-09-20, **an email at `review` is finished for the run.** `finishedEmails` counts it, so a
+  run with escalations reads as done and its clock stops; the email's `finished_at` is stamped.
+- 2026-09-20, **doc-extract is a compose service with its own outage class.**
+  `DocExtractUnavailableError` and `LlmUnavailableError` share `DependencyUnavailableError`, and
+  `pausingOnOutage` (was `pausingOnLlmOutage`) pauses either queue on either, attempts untouched.
+  A bad file is never an outage: the service answers 200 with `unreadable: true`.
+- 2026-09-20, **`v5` and `classify-verify v2` are seeded inactive.** The eval harness, not the
+  dev sample, decides a prompt switch; the runs page can pin them meanwhile.
+
 ## Deferred
+- `DOC_TYPE_TRUST_FROM` (0.7) is not a measured number. It is the bar under which the doc-type
+  model's reading does not displace the file name's claim, and the only calibration point behind
+  it is the 0.62 misread below. The eval harness decides it: a holdout run that moves it to 0.5
+  and to 0.85 and reads escalation recall and false escalations at each is what settles it.
+- The doc-type model read `email_005_BL.xlsx` (title row `BILL OF LADING`, a flattened field list)
+  as `SI` at 0.62. The filename's claim stood and the pair was compared, so nothing was lost, but
+  the same reading on a file named nothing would make it `missing_attachment`. Watch it on the
+  full run; if it repeats, the prompt's SI/BL paragraph needs a sentence on flattened
+  spreadsheets, not a title rule.
+- `email_504` reaches compare only if classification gets it right; the holdout run of `v5` is
+  what says whether the attachments' text fixes that without costing elsewhere.
 - `deploy/compose.yaml` does not pass `CLASSIFY_CONCURRENCY` or `LLM_MAX_CONCURRENCY`, so the box
   runs the defaults (2 and 2). Add them to the env anchor when the box's proxy serves more, and
   run `deploy/sim` then, since it is the only gate on `deploy/`.
@@ -483,6 +600,25 @@ in brackets.
       `RecordingLlmClient` was missing; the unknown-provider processor test bypassed the client.
 
 ## Found while building
+- 2026-09-20, **the attachments' text first made classification worse, then better.** The first
+  wording of `classify/v5.md` only said the contents were context. On `email_501` to `505` (an SI
+  plus a wrong document) the model reasoned "no draft BL is attached, so the substance is the SI
+  being handed over: stage 1", and the verifier `v2` agreed at 0.6 to 0.75: one of five right,
+  where `v3` had four (run `ed20b880`). The fix is a principle, not a rule: at stage 3 the SI is
+  already in hand as the reference for the check, so an SI beside a request to check or confirm
+  is stage 3, and whether the draft arrived, or a file is what its name says, does not change the
+  category (the organisers' own definition of the edge cases: all `BL_COMPARISON`, ending
+  `NEEDS_REVIEW`). With that sentence, run `b18629b5` on the four train ids (`email_504` is a
+  holdout id and was left out) read all four as `BL_COMPARISON` and escalated all four as
+  `wrong_doc_type`. Four emails is not a measurement; the holdout run is.
+- 2026-09-20, **the twenty edge cases are not in `dev`**: the dev sample is stratified from train
+  by category, and 501 to 520 are all `BL_COMPARISON`. A phase 5 check is a run of explicit ids
+  (`emailIds`), 20 to 25 emails, not the dev sample.
+- 2026-09-20, **on this seed no attachment is 0 bytes**: the generator's `unreadable` flavour drew
+  three image pairs and two garbled files. The empty-file path is covered by the service's own
+  test, not by the inbox.
+- 2026-09-20, **the api reloaded the new `/health` before the migration ran**, which is fine: the
+  check hits doc-extract over HTTP and reads no table.
 - The CLI streams a schema-bound answer after all: a StructuredOutput tool call whose input
   arrives as `input_json_delta` pieces. That is what makes the live preview possible. Two
   things seen in it: the model does not keep the schema's property order (it wrote `category`

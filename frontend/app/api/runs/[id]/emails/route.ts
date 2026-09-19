@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { Category, DecidedBy, listRunEmails, Stage } from "@/lib/api-client";
+import { Category, DecidedBy, listRunEmails, Outcome, Stage } from "@/lib/api-client";
 import { badQuery, passThrough } from "@/lib/api-route";
 
 /** Mirrors RunEmailsQuery in backend/src/contracts.ts; change both or neither. */
@@ -8,6 +8,7 @@ const Query = z.object({
   stage: Stage.optional(),
   category: Category.optional(),
   decidedBy: DecidedBy.optional(),
+  outcome: Outcome.optional(),
   q: z.string().max(200).optional(),
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(200).default(50),

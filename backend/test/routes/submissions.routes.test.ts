@@ -25,7 +25,7 @@ function app() {
     runQueues: new MemoryRunQueues(),
     store,
     scorer,
-    health: async () => ({ status: "ok", checks: { postgres: "up", redis: "up", minio: "up", inbox: "up" } }),
+    health: async () => ({ status: "ok", checks: { postgres: "up", redis: "up", minio: "up", inbox: "up", docExtract: "up" } }),
   });
 }
 

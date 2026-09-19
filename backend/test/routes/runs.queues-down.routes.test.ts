@@ -20,7 +20,7 @@ function app() {
     runQueues,
     store: new MemoryStore(),
     scorer: new FakeScorer(),
-    health: async () => ({ status: "ok", checks: { postgres: "up", redis: "up", minio: "up", inbox: "up" } }),
+    health: async () => ({ status: "ok", checks: { postgres: "up", redis: "up", minio: "up", inbox: "up", docExtract: "up" } }),
   });
 }
 

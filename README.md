@@ -14,6 +14,7 @@ browser → frontend (Next.js) → backend api (Express + Postgres) → llm-prox
 | `backend/` | Express API, plus a worker process that runs the pipeline off Redis queues. | 8091 |
 | `proxy/` | Small LLM gateway, run as the `llm-proxy` container of the compose stack. Drives `claude -p` on the Claude subscription. | 4001 on the host (4000 in the container) |
 | `emails/` | The inbox: a FastAPI server over the synthetic shipping-documents dataset. The backend reads it. | 8080 |
+| `services/doc-extract/` | The parser, run as the `doc-extract` container of the compose stack. Every attachment becomes text (txt, pdf with OCR, docx, xlsx) or is declared unreadable. | 8000 on the host |
 | `deploy/` | Scripts and runbook for the Monash server. | — |
 
 Each package has its own deps, `.env` and start command. Always `cd` into a
@@ -37,7 +38,7 @@ the backend's local compose file runs both.
 ```bash
 cd backend
 cp .env.example .env                            # then set CLAUDE_CODE_OAUTH_TOKEN in it
-docker compose -f compose.local.yaml up -d      # Postgres 5433, Redis 6379, MinIO 9000, email server 8080, llm-proxy 4001
+docker compose -f compose.local.yaml up -d      # Postgres 5433, Redis 6379, MinIO 9000, email server 8080, llm-proxy 4001, doc-extract 8000
 pnpm install && pnpm db:migrate && pnpm dev     # the api
 ```
 
@@ -148,7 +149,8 @@ curl -s 127.0.0.1:8091/ai/chat -H "authorization: Bearer $TEAM_API_KEY" \
 | Run the backend tests | `pnpm test` in `backend/`, with `compose.local.yaml` up. They use the database `retina_test` |
 | Add a page | `frontend/app/`. `/` is the inbox, `/mail/[id]` a message, `/chat` the model page, `/runs` the pipeline runs |
 | Regenerate the emails | `emails/data_v2/README.md` |
-| Check types | `pnpm type-check` in `frontend/` or `backend/`. `pytest` in `proxy/` |
+| Check types | `pnpm type-check` in `frontend/` or `backend/`. `pytest` in `proxy/`; `uv run pytest && uv run ruff check .` in `services/doc-extract/` |
+| Change how a document is parsed | an extractor in `services/doc-extract/extractors/`, then `docker compose -f compose.local.yaml up -d --build doc-extract` in `backend/` |
 | Debug the proxy | `curl -i 127.0.0.1:4000/v1/messages ...`. Look at the `X-LLM-Proxy-*` headers |
 
 ## Deploy

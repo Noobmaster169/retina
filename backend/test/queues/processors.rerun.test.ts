@@ -2,14 +2,20 @@ import type { PoolClient } from "pg";
 import { describe, expect, it } from "vitest";
 
 import { FakeLlmClient } from "../../src/agents/__fakes__/fake.llm-client";
+import { MemoryDocExtractClient } from "../../src/doc-extract/__fakes__/memory.client";
 import { classifications, emailRuns, runs } from "../../src/ontology/repositories";
 import { RecordingAdder } from "../../src/queues/__fakes__/recording.adder";
 import type { CompareJob } from "../../src/queues/names";
 import { processClassify } from "../../src/queues/processors/classify.processor";
 import { processCompare } from "../../src/queues/processors/compare.processor";
+import { MemoryStore } from "../../src/storage/__fakes__/memory.store";
 import { inRollback, seedEmail, seedRun } from "../db";
 
 const answer = (category: string) => JSON.stringify({ rationale: "because of the request", category, confidence: 0.9 });
+const sendDraft = JSON.stringify({ rationale: "asks for the draft", request: "send_draft", confidence: 0.9 });
+
+/** No attachment rows are seeded here, so nothing is parsed; the fakes only have to exist. */
+const parsers = () => ({ docExtract: new MemoryDocExtractClient(), store: new MemoryStore() });
 
 async function ingested(tx: PoolClient) {
   const run = await seedRun(tx);
@@ -23,9 +29,10 @@ describe("a classify job that runs again", () => {
   it("does not drag an email that compare already finished back to classified", async () => {
     await inRollback(async (tx) => {
       const { runId, emailId } = await ingested(tx);
-      const deps = { pool: tx, llm: new FakeLlmClient(answer("BL_COMPARISON")), compare: new RecordingAdder<CompareJob>() };
+      const deps = { ...parsers(), pool: tx, llm: new FakeLlmClient(answer("BL_COMPARISON")), compare: new RecordingAdder<CompareJob>() };
       await processClassify(deps, { runId, emailId }, 600);
-      await processCompare({ pool: tx }, { runId, emailId });
+      // With nothing attached, compare asks the model what the sender wants; the classify answer is not reused for that.
+      await processCompare({ ...parsers(), pool: tx, llm: new FakeLlmClient(sendDraft) }, { runId, emailId });
 
       await processClassify(deps, { runId, emailId }, 600);
 
@@ -52,7 +59,7 @@ describe("a classify job that runs again", () => {
         model: "sonnet",
         promptVersion: "v3",
       });
-      const deps = { pool: tx, llm: new FakeLlmClient(answer("SPAM")), compare: new RecordingAdder<CompareJob>() };
+      const deps = { ...parsers(), pool: tx, llm: new FakeLlmClient(answer("SPAM")), compare: new RecordingAdder<CompareJob>() };
 
       await processClassify(deps, { runId, emailId }, 600);
 
@@ -76,7 +83,7 @@ describe("a run cancelled while the model is answering", () => {
         return complete(request);
       };
 
-      await processClassify({ pool: tx, llm, compare }, { runId, emailId }, 600);
+      await processClassify({ ...parsers(), pool: tx, llm, compare }, { runId, emailId }, 600);
 
       expect(await classifications.get(tx, emailRunId)).toBeNull();
       expect(await emailRuns.stageCounts(tx, runId)).toMatchObject({ classifying: 1, classified: 0, done: 0 });

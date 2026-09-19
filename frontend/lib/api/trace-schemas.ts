@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { Stage } from "./runs-schemas";
+import { Outcome, ReviewReason, Stage } from "./runs-schemas";
 
 /**
  * Mirrors backend/src/contracts.ts; change both or neither. No transport here,
@@ -43,6 +43,8 @@ export interface RunEmailsQuery {
   stage?: Stage;
   category?: Category;
   decidedBy?: DecidedBy;
+  /** How the email ended: `not_comparable`, `OK`, or a review reason. */
+  outcome?: Outcome;
   q?: string;
   page?: number;
   pageSize?: number;
@@ -110,12 +112,56 @@ export const ClassificationView = z.object({
 });
 export type ClassificationView = z.infer<typeof ClassificationView>;
 
+/**
+ * How a document's reading stands against the place its file name claims.
+ * Decided by the compare stage, never by a page. Mirrors contracts.review.ts.
+ */
+export const TypeVerdict = z.enum(["unknown", "ok", "crossed", "wrong_type"]);
+export type TypeVerdict = z.infer<typeof TypeVerdict>;
+
+/** Ours, not an organiser enum: what the model says a document is. */
+export const DocType = z.enum(["SI", "BL", "INVOICE", "PACKING_LIST", "COO", "OTHER"]);
+export type DocType = z.infer<typeof DocType>;
+
+/** One attachment of one email run, as the parser saw it and as the model typed it. Mirrors contracts.review.ts. */
+export const DocumentView = z.object({
+  filename: z.string(),
+  /** What the filename claims. */
+  role: z.enum(["SI", "BL", "UNKNOWN"]),
+  /** What the model says, or null before it has read the text or when there was none. */
+  docType: DocType.nullable(),
+  docTypeConfidence: z.number().nullable(),
+  docTypeRationale: z.string().nullable(),
+  /** What the compare stage makes of that reading. Shown as given; never recomputed here. */
+  typeVerdict: TypeVerdict,
+  format: z.enum(["txt", "pdf", "docx", "xlsx", "unknown"]),
+  pages: z.number(),
+  scanned: z.boolean(),
+  unreadable: z.boolean(),
+  warnings: z.array(z.string()),
+});
+export type DocumentView = z.infer<typeof DocumentView>;
+
+/** Why the email is waiting for a person, with what the stage found. */
+export const ReviewCaseView = z.object({
+  reason: ReviewReason,
+  stage: z.string(),
+  status: z.enum(["open", "resolved"]),
+  detail: z.record(z.string(), z.unknown()),
+  openedAt: z.string(),
+});
+export type ReviewCaseView = z.infer<typeof ReviewCaseView>;
+
 /** Everything about one email of a run. Mirrors EmailTrace in backend/src/contracts.trace.ts. */
 export const EmailTrace = z.object({
   emailId: z.string(),
   stage: Stage,
   error: z.string().nullable(),
   classification: ClassificationView.nullable(),
+  /** The email's attachments as the parser and the model saw them. Empty before compare reads them. */
+  documents: z.array(DocumentView),
+  /** Why the email is waiting for a person, when it is. */
+  review: ReviewCaseView.nullable(),
   live: LiveCallView.nullable(),
   calls: z.array(LlmCall),
 });

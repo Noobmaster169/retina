@@ -28,6 +28,7 @@ x-backend-env: &backend-env
   MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?set MINIO_ACCESS_KEY in .env}
   MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?set MINIO_SECRET_KEY in .env}
   LLM_PROXY_URL: http://llm-proxy:4000
+  DOC_EXTRACT_URL: http://doc-extract:8000
   EMAIL_SERVER_URL: http://inbox:8000
 
 services:
@@ -100,6 +101,24 @@ services:
     environment:
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
 
+  # The parser: services/doc-extract from the clone, tesseract inside. It reads
+  # attachments from MinIO by key and writes page images back, so the worker
+  # never carries file bytes. No published port: only the worker calls it.
+  # auto-deploy.sh rebuilds it when services/doc-extract/ changes. The memory
+  # cap is for a runaway OCR of a large scan, not a sizing.
+  doc-extract:
+    build: ../projects/retina/services/doc-extract
+    restart: unless-stopped
+    mem_limit: 1g
+    environment:
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?set MINIO_ACCESS_KEY in .env}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?set MINIO_SECRET_KEY in .env}
+      MINIO_BUCKET: retina
+    depends_on:
+      minio:
+        condition: service_healthy
+
   # The email server: emails/server from the clone, serving emails/data_v2.
   # Private to this network; the API is the only thing that reads it. The
   # answer key is mounted here and into nothing else.
@@ -160,6 +179,8 @@ services:
       api:
         condition: service_started
       llm-proxy:
+        condition: service_started
+      doc-extract:
         condition: service_started
 
 volumes:

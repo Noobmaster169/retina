@@ -1,6 +1,7 @@
 import { proxyLlmClient } from "./agents";
 import { config } from "./config";
 import { closePool, getPool } from "./db";
+import { httpDocExtractClient } from "./doc-extract";
 import { AverisSource } from "./ingest";
 import { childLogger } from "./lib/logger";
 import { redisLiveCalls } from "./live";
@@ -22,6 +23,7 @@ const workers = startWorkers(
     source: new AverisSource(config.EMAIL_SERVER_URL),
     store,
     llm: proxyLlmClient({ maxConcurrency: config.LLM_MAX_CONCURRENCY }),
+    docExtract: httpDocExtractClient(config.DOC_EXTRACT_URL),
     live,
     classify: queues.classify,
     compare: queues.compare,

@@ -5,6 +5,7 @@
 import { z } from "zod";
 
 import { DecidedBy, Stage } from "./contracts.enums";
+import { Outcome, RunReview } from "./contracts.review";
 import { Category } from "./contracts.scoring";
 
 export const RunStatus = z.enum(["created", "running", "paused", "completed", "cancelled", "failed"]);
@@ -14,7 +15,7 @@ export const AttachmentRole = z.enum(["SI", "BL", "UNKNOWN"]);
 export type AttachmentRole = z.infer<typeof AttachmentRole>;
 
 /** Ours, not an organiser enum: the LLM steps whose prompt a run pins. */
-export const PromptStep = z.enum(["classify", "classify-verify"]);
+export const PromptStep = z.enum(["classify", "classify-verify", "triage", "doc-type"]);
 export type PromptStep = z.infer<typeof PromptStep>;
 
 /** What one step of a run runs: a prompt file and a proxy alias. Fixed when the run is created. */
@@ -27,7 +28,12 @@ export type PinnedPrompt = z.infer<typeof PinnedPrompt>;
  * know instead of refusing it, so rolling back to this code after a later
  * phase added a step still reads that phase's runs.
  */
-export const PromptSet = z.object({ classify: PinnedPrompt.optional(), "classify-verify": PinnedPrompt.optional() });
+export const PromptSet = z.object({
+  classify: PinnedPrompt.optional(),
+  "classify-verify": PinnedPrompt.optional(),
+  triage: PinnedPrompt.optional(),
+  "doc-type": PinnedPrompt.optional(),
+});
 export type PromptSet = z.infer<typeof PromptSet>;
 
 /**
@@ -79,7 +85,7 @@ export const RunSummary = z.object({
   status: RunStatus,
   ratePerSecond: z.number(),
   totalEmails: z.number().nullable(),
-  /** Emails that will not move again: done or failed. */
+  /** Emails that will not move again on their own: done, failed, or waiting for a person. */
   finishedEmails: z.number(),
   /** Nothing more will happen in this run: every email finished, or it was cancelled or failed. */
   processingDone: z.boolean(),
@@ -93,6 +99,8 @@ export const RunSummary = z.object({
   finishedAt: z.string().nullable(),
   promptSet: PromptSet,
   llm: LlmUsage,
+  /** The emails waiting for a person, and why. */
+  review: RunReview,
   /** The newest submission to the scorer, without its full scoreboard. */
   lastSubmission: z
     .object({
@@ -148,6 +156,8 @@ export const RunEmailsQuery = z.object({
   stage: Stage.optional(),
   category: Category.optional(),
   decidedBy: DecidedBy.optional(),
+  /** How the email ended. The stored value stays a plain string, so a later phase can add one without breaking a read. */
+  outcome: Outcome.optional(),
   q: z.string().max(200).optional(),
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(200).default(50),
@@ -167,11 +177,18 @@ export type CheckStatus = z.infer<typeof CheckStatus>;
 
 export const HealthReport = z.object({
   status: z.enum(["ok", "degraded"]),
-  checks: z.object({ postgres: CheckStatus, redis: CheckStatus, minio: CheckStatus, inbox: CheckStatus }),
+  checks: z.object({
+    postgres: CheckStatus,
+    redis: CheckStatus,
+    minio: CheckStatus,
+    inbox: CheckStatus,
+    docExtract: CheckStatus,
+  }),
 });
 export type HealthReport = z.infer<typeof HealthReport>;
 
 export * from "./contracts.enums";
 export * from "./contracts.prompts";
+export * from "./contracts.review";
 export * from "./contracts.scoring";
 export * from "./contracts.trace";

@@ -15,6 +15,11 @@ const Frontmatter = z.object({
   model: z.string().min(1),
   /** Only for a step with a reason to cap its answer. Without it the client's generous default applies. */
   max_tokens: z.coerce.number().int().positive().optional(),
+  /** A classify-step prompt that is given the attachments' extracted text. The input shape follows the prompt, not the other way round. */
+  reads_attachments: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
 });
 
 /** Few-shot examples a prompt version reads, from `examples.<version>.json` beside it. Data the model reads, never a lookup. */
@@ -25,6 +30,8 @@ export interface Prompt {
   version: string;
   model: string;
   maxTokens?: number;
+  /** Whether the step's input carries the attachments' extracted text. Only a classify-step prompt says so. */
+  readsAttachments: boolean;
   /** The system text, with `{{schema}}` still in place and any `{{examples}}` filled. */
   text: string;
 }
@@ -58,14 +65,14 @@ function parsePromptFile(path: string, examplesPath: string): Prompt {
   );
   const parsed = Frontmatter.safeParse(fields);
   if (!parsed.success) throw new TerminalError(`${path} has bad frontmatter`, { cause: parsed.error });
-  const { step, version, model, max_tokens: maxTokens } = parsed.data;
+  const { step, version, model, max_tokens: maxTokens, reads_attachments: readsAttachments } = parsed.data;
 
   let text = match[2].trim();
   if (text.includes("{{examples}}")) {
     if (!existsSync(examplesPath)) throw new TerminalError(`${path} reads examples but ${examplesPath} is missing`);
     text = text.replace("{{examples}}", renderExamples(examplesPath));
   }
-  return { step, version, model, maxTokens, text };
+  return { step, version, model, maxTokens, readsAttachments, text };
 }
 
 function versionNumber(version: string): number {

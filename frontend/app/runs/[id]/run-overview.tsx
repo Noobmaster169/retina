@@ -1,6 +1,6 @@
 "use client";
 
-import type { RunSummary, Stage } from "@/lib/api/runs-schemas";
+import { ReviewReason, type RunSummary, type Stage } from "@/lib/api/runs-schemas";
 import { formatDuration } from "@/lib/duration";
 
 const STAGES: Stage[] = ["ingested", "classifying", "classified", "comparing", "review", "done", "failed"];
@@ -49,6 +49,14 @@ export function RunOverview({ run, error }: { run: RunSummary; error: string | n
         )}
         <Stat label="Model calls" value={String(run.llm.calls)} hint={run.llm.failedCalls ? `${run.llm.failedCalls} failed` : undefined} />
         <Stat label="Verifier ran on" value={percent(run.llm.verifierShare)} hint="of classified emails" />
+        <Stat
+          label="Needs review"
+          value={String(run.review.open)}
+          hint={ReviewReason.options
+            .filter((reason) => run.review.byReason[reason] > 0)
+            .map((reason) => `${run.review.byReason[reason]} ${reason}`)
+            .join(", ") || undefined}
+        />
         <Stat label="Tokens" value={`${run.llm.inputTokens.toLocaleString()} in`} hint={`${run.llm.outputTokens.toLocaleString()} out`} />
         <Stat label="Cost at API prices" value={`$${run.llm.costUsd.toFixed(2)}`} hint="not billed on the subscription" />
         {run.lastSubmission?.scores && (

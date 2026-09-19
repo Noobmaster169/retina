@@ -10,7 +10,7 @@ import { MemoryStore } from "../../src/storage/__fakes__/memory.store";
 import { TEST_ENV } from "../../vitest.config";
 
 const TEAM = { authorization: `Bearer ${TEST_ENV.TEAM_API_KEY}` };
-const UP: HealthReport = { status: "ok", checks: { postgres: "up", redis: "up", minio: "up", inbox: "up" } };
+const UP: HealthReport = { status: "ok", checks: { postgres: "up", redis: "up", minio: "up", inbox: "up", docExtract: "up" } };
 const app = () =>
   createApp({ pool: getPool(), runQueues: new MemoryRunQueues(), store: new MemoryStore(), scorer: new FakeScorer(), health: async () => UP });
 
@@ -22,10 +22,11 @@ describe("GET /prompts", () => {
 
     expect(response.status).toBe(200);
     const classify = response.body.steps.find((s: { step: string }) => s.step === "classify");
-    expect(classify.versions.map((v: { version: string }) => v.version)).toEqual(["v4", "v3"]);
+    expect(classify.versions.map((v: { version: string }) => v.version)).toEqual(["v5", "v4", "v3"]);
     expect(classify.versions.filter((v: { active: boolean }) => v.active).map((v: { version: string }) => v.version)).toEqual(["v3"]);
-    expect(classify.versions[1]).toMatchObject({ model: "sonnet", notes: expect.stringContaining("Phase 2 final") });
-    expect(response.body.steps.map((s: { step: string }) => s.step)).toEqual(["classify", "classify-verify"]);
+    expect(classify.versions[2]).toMatchObject({ model: "sonnet", notes: expect.stringContaining("Phase 2 final") });
+    expect(classify.versions[0]).toMatchObject({ active: false, notes: expect.stringContaining("attachments") });
+    expect(response.body.steps.map((s: { step: string }) => s.step)).toEqual(["classify", "classify-verify", "triage", "doc-type"]);
   });
 
   it("needs a key", async () => {

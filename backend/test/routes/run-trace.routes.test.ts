@@ -25,7 +25,7 @@ vi.mock("../../src/llm", () => ({
 }));
 
 const TEAM = { authorization: `Bearer ${TEST_ENV.TEAM_API_KEY}` };
-const UP: HealthReport = { status: "ok", checks: { postgres: "up", redis: "up", minio: "up", inbox: "up" } };
+const UP: HealthReport = { status: "ok", checks: { postgres: "up", redis: "up", minio: "up", inbox: "up", docExtract: "up" } };
 
 function app(live?: MemoryLiveCalls) {
   return createApp({
@@ -48,6 +48,8 @@ describe("POST /runs, choosing what and how", () => {
     expect(response.body.promptSet).toEqual({
       classify: { version: "v3", model: "sonnet" },
       "classify-verify": { version: "v1", model: "sonnet" },
+      triage: { version: "v1", model: "sonnet" },
+      "doc-type": { version: "v1", model: "sonnet" },
     });
     expect((await runs.get(getPool(), response.body.id))?.promptSet).toEqual(response.body.promptSet);
   });
@@ -60,6 +62,8 @@ describe("POST /runs, choosing what and how", () => {
     expect(response.body.promptSet).toEqual({
       classify: { version: "v4", model: "sonnet" },
       "classify-verify": { version: "v1", model: "haiku" },
+      triage: { version: "v1", model: "sonnet" },
+      "doc-type": { version: "v1", model: "sonnet" },
     });
   });
 

@@ -34,6 +34,10 @@ const Env = z.object({
   // publishes it on the host; inside compose it is http://llm-proxy:4000.
   LLM_PROXY_URL: z.url().default("http://127.0.0.1:4001"),
 
+  // The doc-extract service of the compose stack. 8000 is where compose.local.yaml
+  // publishes it on the host; inside compose it is http://doc-extract:8000.
+  DOC_EXTRACT_URL: z.url().default("http://127.0.0.1:8000"),
+
   // Either key may be unset, in which case that caller cannot authenticate.
   API_SHARED_SECRET: optionalString,
   TEAM_API_KEY: optionalString,
@@ -46,6 +50,8 @@ const Env = z.object({
   // replaces it for an experiment; it must be an alias from proxy/proxy.yaml.
   LLM_MODEL_CLASSIFY: optionalString,
   LLM_MODEL_VERIFY: optionalString,
+  LLM_MODEL_TRIAGE: optionalString,
+  LLM_MODEL_DOC_TYPE: optionalString,
   // How many model calls the worker has in flight at once, across every queue. Unset, it follows
   // CLASSIFY_CONCURRENCY, so one number sets how parallel a run is. Keep both at or under what the
   // proxy serves at once (max_concurrency in proxy/proxy.yaml): more only wait inside the proxy
@@ -53,6 +59,10 @@ const Env = z.object({
   LLM_MAX_CONCURRENCY: z.coerce.number().int().positive().optional(),
   // How much of a body the classifier reads. A cost guard, not a judgement.
   CLASSIFY_BODY_CHARS: z.coerce.number().int().positive().default(4000),
+  // How much of each attachment's extracted text a classifier that reads attachments sees. The same kind of guard.
+  CLASSIFY_ATTACHMENT_CHARS: z.coerce.number().int().positive().default(2000),
+  // How much of a document the doc-type step reads. A shipping document is a page or two; this is the same kind of guard.
+  DOC_TYPE_TEXT_CHARS: z.coerce.number().int().positive().default(12_000),
 
   // The proxy serves eight `claude -p` calls at a time (max_concurrency in proxy/proxy.yaml). More
   // workers than that only queue inside the proxy with their request timeout already running.

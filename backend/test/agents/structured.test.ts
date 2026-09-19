@@ -8,7 +8,7 @@ import { TerminalError } from "../../src/lib/errors";
 import { inRollback, seedRun } from "../db";
 
 const Answer = z.object({ colour: z.enum(["red", "blue"]), confidence: z.number().min(0).max(1) });
-const prompt: Prompt = { step: "colour", version: "v3", model: "sonnet", maxTokens: 100, text: "Pick a colour.\n{{schema}}" };
+const prompt: Prompt = { step: "colour", version: "v3", model: "sonnet", maxTokens: 100, readsAttachments: false, text: "Pick a colour.\n{{schema}}" };
 
 describe("extractJson", () => {
   it.each([

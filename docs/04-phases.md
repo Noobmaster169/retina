@@ -172,10 +172,14 @@ identified by content, and the three structural escalations exist. No field extr
   OCR fallback with tesseract (`eng+chi_sim`), `/extract`, `/render`, `/healthz`, Dockerfile,
   pytest with one fixture per format plus the scanned and garbled PDFs.
 - `DocExtractClient` interface + fake in the worker.
-- `pipeline/compare/triage.ts` (attachment count, roles, comparison-requested detection),
-  `fingerprint.ts`, both table-driven tested.
-- Compare processor: triage → fingerprint → parse → persist `documents` → outcome
+- `pipeline/compare/triage.ts` (roles from the filename's claim and the model's word, which parts
+  are present) and `structure.ts` (the escalation order), both table-driven tested. No
+  fingerprint: `prompts/doc-type/v1.md` reads each document and names what it is, and
+  `prompts/triage/v1.md` reads an empty comparison request.
+- Compare processor: parse → doc-type → structure → persist `documents` → outcome
   `NEEDS_REVIEW` with `missing_attachment`, `wrong_doc_type`, or `unreadable`, else still `OK`.
+- `classify/v5.md` (and `classify-verify/v2.md`): the attachments' extracted text as context for
+  the category, inactive until a holdout run says it helps.
 - `pipeline/escalate.ts` + `review_cases` migration.
 - Compose (local and VPS): doc-extract service; `auto-deploy.sh` builds and recreates it.
 - Frontend: review reason counts on `/runs/[id]`.
