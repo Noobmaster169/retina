@@ -3,12 +3,7 @@
 import { useState } from "react";
 
 import type { RunSummary } from "@/lib/api-client";
-
-interface LocalEval {
-  run: { finalScore: number; stage1MacroF1: number; endToEndRate: number; nEmails: number };
-  holdout: { finalScore: number; stage1MacroF1: number; endToEndRate: number; nEmails: number };
-  wrongCategory: number;
-}
+import { LocalEval } from "@/lib/local-eval";
 
 const BUTTON =
   "rounded-md border border-line px-2.5 py-1 text-xs hover:border-accent hover:text-accent-ink disabled:opacity-50";
@@ -59,7 +54,8 @@ export function ScoreCell({ run, onChanged }: Props) {
     setPending(true);
     try {
       const response = await fetch(`/api/runs/${run.id}/eval`);
-      setLocal(response.ok ? ((await response.json()) as LocalEval) : "unavailable");
+      const parsed = response.ok ? LocalEval.safeParse(await response.json()) : null;
+      setLocal(parsed?.success ? parsed.data : "unavailable");
     } catch (cause) {
       console.error("[runs] eval failed:", cause);
       setLocal("unavailable");

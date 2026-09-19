@@ -1,4 +1,5 @@
 import { getEvalReport } from "@/lib/api-client";
+import type { LocalEval } from "@/lib/local-eval";
 import { hasSiteAccess } from "@/lib/site-gate";
 
 /** Dev only. 404 wherever the backend has no answer key, and the page hides the readout. */
@@ -17,7 +18,12 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/runs/[id]/e
       endToEndRate: board.end_to_end.rate,
       nEmails: board.n_emails,
     });
-    return Response.json({ run: headline(report.run), holdout: headline(report.holdout), wrongCategory: report.wrong.stage1.length });
+    const body: LocalEval = {
+      run: headline(report.run),
+      holdout: headline(report.holdout),
+      wrongCategory: report.wrong.stage1.length,
+    };
+    return Response.json(body);
   } catch (error) {
     console.error("[api/runs] eval failed:", error);
     return Response.json({ error: "Could not reach the backend." }, { status: 503 });

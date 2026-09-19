@@ -3,7 +3,10 @@ import { z } from "zod";
 
 import { config } from "./config";
 import { relayStatus, UpstreamError } from "./lib/errors";
+import type { ChatRequest, ChatResult, ModelInfo } from "./llm-contract";
 import { chatViaGateway, isGatewayUrl, listModelsViaGateway } from "./llm-gateway";
+
+export type { ChatMessage, ChatRequest, ChatResult, ModelInfo } from "./llm-contract";
 
 /**
  * The llm-proxy client. The proxy speaks the Anthropic wire, owns every
@@ -17,46 +20,6 @@ import { chatViaGateway, isGatewayUrl, listModelsViaGateway } from "./llm-gatewa
  * this module sees one `chat()` either way.
  */
 
-export interface ChatMessage {
-  role: "user" | "assistant";
-  content: string;
-}
-
-export interface ChatRequest {
-  /** A proxy alias such as "qwen" or "claude", never a provider model id. */
-  model: string;
-  messages: ChatMessage[];
-  system?: string;
-  maxTokens?: number;
-  /**
-   * A JSON Schema the answer must match. Sent as `output_config.format`, which
-   * the proxy turns into the provider's own structured output (`--json-schema`
-   * for `claude -p`, `response_format` for Ollama), so the text that comes back
-   * is that JSON object and nothing else.
-   */
-  outputSchema?: Record<string, unknown>;
-}
-
-export interface ChatResult {
-  text: string;
-  /** The provider/model the proxy resolved the alias to, when it says. */
-  model: string | null;
-  stopReason: string | null;
-  usage: { inputTokens: number; outputTokens: number };
-  /** From the proxy's X-LLM-Proxy-Cost-USD header; null when absent. */
-  costUsd: number | null;
-}
-
-export interface ModelInfo {
-  /** The alias to send as `model`. */
-  id: string;
-  provider: string;
-  /** The provider's model id behind the alias. */
-  model: string;
-}
-
-/** Loopback on the Monash box; loopback on the dev machine. */
-const DEFAULT_PROXY_URL = "http://127.0.0.1:4000";
 /** Cold 27B load plus a long generation can take minutes. */
 const REQUEST_TIMEOUT_MS = 600_000;
 /**

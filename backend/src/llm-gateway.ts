@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { config } from "./config";
 import { relayStatus, TerminalError, UpstreamError } from "./lib/errors";
-import type { ChatRequest, ChatResult, ModelInfo } from "./llm";
+import type { ChatRequest, ChatResult, ModelInfo } from "./llm-contract";
 
 /**
  * The second door to a proxy. Where the proxy itself cannot be reached, another
