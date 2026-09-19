@@ -8,10 +8,11 @@ import { childLogger } from "../../lib/logger";
 import type { LiveCalls } from "../../live";
 import { attachments, comparisons, documents, emailRuns, emails, llmCalls, type Run, runs } from "../../ontology/repositories";
 import { buildClassifyInput } from "../../pipeline/classify";
-import { checkStructure, type DocumentSummary, type TriageRequest } from "../../pipeline/compare";
+import { checkStructure, type TriageRequest } from "../../pipeline/compare";
 import { keys, type ObjectStore } from "../../storage";
 import type { CompareJob } from "../names";
 import { escalate } from "./escalate";
+import type { EmailRunIds } from "./ids";
 import { type ParsedDocument, parseDocuments } from "./parse-documents";
 import { promptSetOf } from "./prompt-set-of";
 
@@ -26,16 +27,10 @@ export interface CompareDeps {
   live?: LiveCalls;
 }
 
-interface Ids {
-  runId: string;
-  emailId: string;
-  emailRunId: string;
-}
-
 const TEXT_CUT = "\n[the text was cut here for length]";
 
 /** The model's word on what each readable document is. A document already typed is not asked about again. */
-async function typeDocuments(deps: CompareDeps, set: PromptSet, docs: ParsedDocument[], ids: Ids): Promise<ParsedDocument[]> {
+async function typeDocuments(deps: CompareDeps, set: PromptSet, docs: ParsedDocument[], ids: EmailRunIds): Promise<ParsedDocument[]> {
   const prompt = promptFor("doc-type", set);
   const typed: ParsedDocument[] = [];
   for (const doc of docs) {
@@ -53,7 +48,7 @@ async function typeDocuments(deps: CompareDeps, set: PromptSet, docs: ParsedDocu
 }
 
 /** What an email with nothing attached asks for. An answer already paid for on an earlier attempt is reused. */
-async function readRequest(deps: CompareDeps, set: PromptSet, ids: Ids): Promise<TriageRequest> {
+async function readRequest(deps: CompareDeps, set: PromptSet, ids: EmailRunIds): Promise<TriageRequest> {
   const prompt = promptFor("triage", set);
   const earlier = TriageOutput.safeParse(await llmCalls.latestAccepted(deps.pool, ids.emailRunId, "triage", prompt.version));
   if (earlier.success) return earlier.data.request;
@@ -63,10 +58,15 @@ async function readRequest(deps: CompareDeps, set: PromptSet, ids: Ids): Promise
   return (await triageRequest(deps, prompt, input, ids)).value.request;
 }
 
-/** Page images of every PDF among the documents, for the reviewer. A file that will not open has none. */
-async function renderPages(deps: CompareDeps, docs: ParsedDocument[], ids: Ids): Promise<string[]> {
+/**
+ * Page images for the reviewer, of the documents that are the reason they were
+ * called: the ones that could not be read and the ones read by OCR. A readable
+ * file beside them has its text and needs no picture, and a file that will not
+ * open has no pages to draw.
+ */
+async function renderPages(deps: CompareDeps, docs: ParsedDocument[], ids: EmailRunIds): Promise<string[]> {
   const pages: string[] = [];
-  for (const doc of docs.filter((d) => d.format === "pdf")) {
+  for (const doc of docs.filter((d) => d.format === "pdf" && (d.unreadable || d.scanned))) {
     const rendered = await deps.docExtract.render({
       key: doc.objectKey,
       filename: doc.filename,
@@ -77,36 +77,30 @@ async function renderPages(deps: CompareDeps, docs: ParsedDocument[], ids: Ids):
   return pages;
 }
 
-function summarise(doc: ParsedDocument): DocumentSummary {
-  return {
-    filename: doc.filename,
-    role: doc.role,
-    docType: doc.docType,
-    bytes: doc.text === null ? 0 : Buffer.byteLength(doc.text),
-    format: doc.format,
-    unreadable: doc.unreadable,
-    scanned: doc.scanned,
-    warnings: doc.warnings,
-    docTypeConfidence: doc.docTypeConfidence,
-    docTypeRationale: doc.docTypeRationale,
-  };
-}
-
-/** Parse, type, check the structure, then record what it found. Null when the run was cancelled meanwhile. */
-async function compareOnce(deps: CompareDeps, run: Run, ids: Ids): Promise<void> {
+/** Parse, type, check the structure, then record what it found. Returns early when the run was cancelled meanwhile. */
+async function compareOnce(deps: CompareDeps, run: Run, ids: EmailRunIds): Promise<void> {
   const set = await promptSetOf(deps.pool, run);
   const files = await attachments.listForEmail(deps.pool, run.id, ids.emailId);
   const docs = files.length > 0 ? await typeDocuments(deps, set, await parseDocuments(deps, ids, files), ids) : [];
   const request = files.length === 0 ? await readRequest(deps, set, ids) : null;
   if ((await runs.status(deps.pool, run.id)) === "cancelled") return;
 
-  const outcome = checkStructure(docs.map(summarise), request);
+  const outcome = checkStructure(docs, request);
   if (outcome.kind === "review") {
     const pages = outcome.reason === "unreadable" ? await renderPages(deps, docs, ids) : [];
     await escalate(deps.pool, ids, outcome.reason, { ...outcome.detail, pages });
     return;
   }
-  const detail = outcome.kind === "awaiting_draft" ? outcome.detail : { placeholder: true, si: outcome.si, bl: outcome.bl, extras: outcome.extras };
+  if (outcome.kind === "compare" && outcome.swapped) {
+    log.warn(
+      { runId: ids.runId, emailId: ids.emailId, stage: "compare", si: outcome.si, bl: outcome.bl },
+      "the file names had the pair the other way round; the model's reading decided",
+    );
+  }
+  const detail =
+    outcome.kind === "awaiting_draft"
+      ? outcome.detail
+      : { placeholder: true, si: outcome.si, bl: outcome.bl, extras: outcome.extras, swapped: outcome.swapped };
   await comparisons.upsert(deps.pool, { emailRunId: ids.emailRunId, status: "OK", reviewReason: null, detail });
   await emailRuns.moveStage(deps.pool, ids.runId, ids.emailId, ["comparing"], "done", { outcome: "OK", finished: true });
   log.info({ runId: ids.runId, emailId: ids.emailId, stage: "compare", outcome: outcome.kind }, "compared");

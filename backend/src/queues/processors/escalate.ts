@@ -2,14 +2,9 @@ import type { ReviewReason } from "../../contracts";
 import type { Queryable } from "../../db";
 import { childLogger } from "../../lib/logger";
 import { comparisons, emailRuns, reviewCases } from "../../ontology/repositories";
+import type { EmailRunIds } from "./ids";
 
 const log = childLogger({ module: "escalate" });
-
-export interface EscalateIds {
-  runId: string;
-  emailId: string;
-  emailRunId: string;
-}
 
 /**
  * The email needs a person: one open case, the comparison row saying
@@ -18,7 +13,7 @@ export interface EscalateIds {
  */
 export async function escalate(
   pool: Queryable,
-  ids: EscalateIds,
+  ids: EmailRunIds,
   reason: ReviewReason,
   detail: Record<string, unknown>,
   stage = "compare",

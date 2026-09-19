@@ -10,6 +10,7 @@ import { attachments, classifications, emailRuns, emails, llmCalls, type Run, ru
 import { buildClassifyInput, type ClassifyInput, decide, describeAttachments, needsVerifier } from "../../pipeline/classify";
 import type { ObjectStore } from "../../storage";
 import { type ClassifyJob, type CompareJob, JOB_NAMES, type JobAdder, jobOptions } from "../names";
+import type { EmailRunIds } from "./ids";
 import { parseDocuments } from "./parse-documents";
 import { promptSetOf } from "./prompt-set-of";
 
@@ -25,18 +26,12 @@ export interface ClassifyDeps {
   live?: LiveCalls;
 }
 
-interface Ids {
-  runId: string;
-  emailId: string;
-  emailRunId: string;
-}
-
 /**
  * The attachments' text, for a prompt that reads it: the files are parsed
  * here and compare finds the rows. A prompt that does not read attachments
  * leaves parsing to compare, so its input is exactly what it was before.
  */
-async function attachmentContents(deps: ClassifyDeps, set: PromptSet, files: StoredAttachment[], ids: Ids): Promise<string | undefined> {
+async function attachmentContents(deps: ClassifyDeps, set: PromptSet, files: StoredAttachment[], ids: EmailRunIds): Promise<string | undefined> {
   const reads = promptFor("classify", set).readsAttachments || promptFor("classify-verify", set).readsAttachments;
   if (!reads) return undefined;
   const docs = await parseDocuments(deps, ids, files);
@@ -48,7 +43,7 @@ async function attachmentContents(deps: ClassifyDeps, set: PromptSet, files: Sto
  * under the same prompt and then failed later (a verifier outage), that answer
  * is reused rather than paid for again.
  */
-async function generate(deps: ClassifyDeps, set: PromptSet, input: ClassifyInput, ids: Ids): Promise<ClassifyOutput> {
+async function generate(deps: ClassifyDeps, set: PromptSet, input: ClassifyInput, ids: EmailRunIds): Promise<ClassifyOutput> {
   const prompt = promptFor("classify", set);
   const earlier = ClassifyOutput.safeParse(await llmCalls.latestAccepted(deps.pool, ids.emailRunId, "classify", prompt.version));
   if (earlier.success) return earlier.data;
@@ -61,7 +56,7 @@ async function generate(deps: ClassifyDeps, set: PromptSet, input: ClassifyInput
  * the email keeps the generator's category and the failure is recorded. A
  * transient failure still propagates, and the retry reuses the generator.
  */
-async function verify(deps: ClassifyDeps, set: PromptSet, input: ClassifyInput, gen: ClassifyOutput, ids: Ids) {
+async function verify(deps: ClassifyDeps, set: PromptSet, input: ClassifyInput, gen: ClassifyOutput, ids: EmailRunIds) {
   try {
     return { value: (await verifyClassification(deps, promptFor("classify-verify", set), input, gen, ids)).value, error: null };
   } catch (error) {
@@ -72,7 +67,7 @@ async function verify(deps: ClassifyDeps, set: PromptSet, input: ClassifyInput, 
 }
 
 /** Generator, the verifier when the generator is unsure, then the decision. Null when the run was cancelled meanwhile. */
-async function classifyOnce(deps: ClassifyDeps, run: Run, ids: Ids): Promise<Category | null> {
+async function classifyOnce(deps: ClassifyDeps, run: Run, ids: EmailRunIds): Promise<Category | null> {
   const email = await emails.get(deps.pool, ids.emailId);
   if (!email) throw new TerminalError(`email ${ids.emailId} is not stored`);
   const files = await attachments.listForEmail(deps.pool, run.id, ids.emailId);

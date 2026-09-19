@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { resolveRoles, triage, type TriageAttachment } from "../../src/pipeline/compare";
 
-const file = (filename: string, role: TriageAttachment["role"]): TriageAttachment => ({ filename, role, bytes: 600 });
+const file = (filename: string, role: TriageAttachment["role"]): TriageAttachment => ({ filename, role });
 const si = file("email_004_SI.txt", "SI");
 const bl = file("email_004_BL.txt", "BL");
 
@@ -47,25 +47,26 @@ describe("triage: with nothing attached, the model's reading of the request deci
 });
 
 describe("resolveRoles: the filename's claim first, then the model's word", () => {
-  const doc = (filename: string, role: TriageAttachment["role"], docType: "SI" | "BL" | "INVOICE" | null) => ({ filename, role, docType, bytes: 1 });
+  const doc = (filename: string, role: TriageAttachment["role"], docType: "SI" | "BL" | "INVOICE" | null) => ({ filename, role, docType });
 
   it("keeps a claimed role even when the model reads it as another shipping document", () => {
-    expect(resolveRoles([doc("a_SI.txt", "SI", "SI"), doc("b_BL.txt", "BL", "BL")]).map((d) => d.role)).toEqual(["SI", "BL"]);
+    expect(resolveRoles([doc("a_SI.txt", "SI", "SI"), doc("b_BL.txt", "BL", "BL")]).attachments.map((d) => d.role)).toEqual(["SI", "BL"]);
   });
 
   it("gives a file that claims nothing the role the model read", () => {
-    expect(resolveRoles([doc("scan1.pdf", "UNKNOWN", "SI"), doc("scan2.pdf", "UNKNOWN", "BL")]).map((d) => d.role)).toEqual(["SI", "BL"]);
+    expect(resolveRoles([doc("scan1.pdf", "UNKNOWN", "SI"), doc("scan2.pdf", "UNKNOWN", "BL")]).attachments.map((d) => d.role)).toEqual(["SI", "BL"]);
   });
 
   it("leaves a file that claims nothing and is not a shipping document as unknown", () => {
-    expect(resolveRoles([doc("inv.txt", "UNKNOWN", "INVOICE"), doc("x.pdf", "UNKNOWN", null)]).map((d) => d.role)).toEqual(["UNKNOWN", "UNKNOWN"]);
+    expect(resolveRoles([doc("inv.txt", "UNKNOWN", "INVOICE"), doc("x.pdf", "UNKNOWN", null)]).attachments.map((d) => d.role)).toEqual(["UNKNOWN", "UNKNOWN"]);
   });
 
   it("swaps a pair the model reads the other way round", () => {
     const roles = resolveRoles([doc("a_SI.txt", "SI", "BL"), doc("b_BL.txt", "BL", "SI")]);
-    expect(roles).toEqual([
-      { filename: "a_SI.txt", role: "BL", bytes: 1 },
-      { filename: "b_BL.txt", role: "SI", bytes: 1 },
+    expect(roles.attachments).toEqual([
+      { filename: "a_SI.txt", role: "BL" },
+      { filename: "b_BL.txt", role: "SI" },
     ]);
+    expect(roles.swapped).toBe(true);
   });
 });

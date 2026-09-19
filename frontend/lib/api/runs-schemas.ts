@@ -15,6 +15,10 @@ export type Stage = z.infer<typeof Stage>;
 export const ReviewReason = z.enum(["wrong_doc_type", "missing_attachment", "unreadable", "missing_value"]);
 export type ReviewReason = z.infer<typeof ReviewReason>;
 
+/** How an email ended: never sent to compare, compared, or parked with one of the reasons. */
+export const Outcome = z.enum(["not_comparable", "OK", ...ReviewReason.options]);
+export type Outcome = z.infer<typeof Outcome>;
+
 export type RunAction = "pause" | "resume" | "cancel";
 
 export const QueueCounts = z.object({ waiting: z.number(), active: z.number(), failed: z.number() });

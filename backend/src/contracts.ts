@@ -5,7 +5,7 @@
 import { z } from "zod";
 
 import { DecidedBy, Stage } from "./contracts.enums";
-import { RunReview } from "./contracts.review";
+import { Outcome, RunReview } from "./contracts.review";
 import { Category } from "./contracts.scoring";
 
 export const RunStatus = z.enum(["created", "running", "paused", "completed", "cancelled", "failed"]);
@@ -156,8 +156,8 @@ export const RunEmailsQuery = z.object({
   stage: Stage.optional(),
   category: Category.optional(),
   decidedBy: DecidedBy.optional(),
-  /** How the email ended: `not_comparable`, `OK`, or a review reason. */
-  outcome: z.string().max(40).optional(),
+  /** How the email ended. The stored value stays a plain string, so a later phase can add one without breaking a read. */
+  outcome: Outcome.optional(),
   q: z.string().max(200).optional(),
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(200).default(50),

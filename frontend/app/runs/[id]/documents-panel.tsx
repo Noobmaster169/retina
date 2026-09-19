@@ -7,17 +7,26 @@ const REASON: Record<ReviewCaseView["reason"], string> = {
   missing_value: "a required value is blank",
 };
 
+/** What the compare stage made of the model's reading. The stage decides; this only says it. */
+const VERDICT: Record<DocumentView["typeVerdict"], { note: string; className: string }> = {
+  unknown: { note: "", className: "text-muted" },
+  ok: { note: "", className: "text-muted" },
+  crossed: { note: "the file names had the pair the other way round", className: "text-muted" },
+  wrong_type: { note: "not the document its name claims", className: "font-medium text-amber-700" },
+};
+
 function DocumentRow({ doc }: { doc: DocumentView }) {
   const read = doc.unreadable ? "unreadable" : doc.scanned ? "read by OCR" : `${doc.format}, ${doc.pages} page${doc.pages === 1 ? "" : "s"}`;
   const typed = doc.docType ? `${doc.docType} at ${doc.docTypeConfidence?.toFixed(2) ?? "?"}` : "not typed";
-  const disagrees = doc.docType !== null && doc.role !== "UNKNOWN" && doc.docType !== doc.role;
+  const verdict = VERDICT[doc.typeVerdict];
   return (
     <li className="py-2">
       <div className="flex flex-wrap items-baseline gap-x-3">
         <span className="font-mono text-xs">{doc.filename}</span>
         <span className="text-xs text-muted">claims {doc.role}</span>
-        <span className={`text-xs ${disagrees ? "font-medium text-amber-700" : "text-muted"}`}>model says {typed}</span>
+        <span className={`text-xs ${verdict.className}`}>model says {typed}</span>
         <span className={`text-xs ${doc.unreadable ? "text-red-700" : "text-muted"}`}>{read}</span>
+        {verdict.note && <span className={`text-xs ${verdict.className}`}>{verdict.note}</span>}
       </div>
       {doc.docTypeRationale && <p className="mt-0.5 text-sm">{doc.docTypeRationale}</p>}
       {doc.warnings.length > 0 && <p className="mt-0.5 text-xs text-muted">{doc.warnings.join("; ")}</p>}

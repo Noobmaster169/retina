@@ -1,12 +1,11 @@
 import { z } from "zod";
 
+import { DocumentFormat } from "../contracts";
+
 /**
  * The doc-extract service's contract, mirrored from services/doc-extract/models.py
  * by hand; change both or neither. Field names stay snake_case: this is its JSON.
  */
-
-export const DocumentFormat = z.enum(["txt", "pdf", "docx", "xlsx", "unknown"]);
-export type DocumentFormat = z.infer<typeof DocumentFormat>;
 
 export const ExtractedPage = z.object({
   index: z.number().int(),

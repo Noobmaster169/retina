@@ -1,5 +1,4 @@
-import { pinPromptSet } from "../agents";
-import { envModel } from "../agents/prompts/prompt-set";
+import { envModel, pinPromptSet } from "../agents";
 import { type CreateRunBody, type PromptSet, PromptStep } from "../contracts";
 import type { Queryable } from "../db";
 import { subsetIds } from "../eval/id-lists";

@@ -5,7 +5,6 @@ export type TriageRequest = "send_draft" | "compare_documents";
 export interface TriageAttachment {
   filename: string;
   role: AttachmentRole;
-  bytes: number;
 }
 
 export interface TriageInput {
@@ -29,28 +28,35 @@ export interface RoledDocument {
   role: AttachmentRole;
   /** What the model said the document is, or null where it could not read it or has not yet. */
   docType: DocType | null;
-  bytes: number;
+}
+
+export interface ResolvedRoles {
+  attachments: TriageAttachment[];
+  /** A pair the model read the other way round and this put back. Said out loud rather than done quietly. */
+  swapped: boolean;
 }
 
 /**
  * Which file plays which part. The filename's claim comes first; a file that
  * claims nothing takes the model's word when that names an SI or a BL; and a
- * pair the model reads the other way round is swapped.
+ * pair the model reads the other way round is swapped. A file left UNKNOWN
+ * here plays no part: it came along with the pair rather than filling a place
+ * in it.
  */
-export function resolveRoles(docs: RoledDocument[]): TriageAttachment[] {
+export function resolveRoles(docs: RoledDocument[]): ResolvedRoles {
   const roleOf = (doc: RoledDocument): AttachmentRole => {
     if (doc.role !== "UNKNOWN") return doc.role;
     return doc.docType === "SI" || doc.docType === "BL" ? doc.docType : "UNKNOWN";
   };
-  const roled = docs.map((doc) => ({ filename: doc.filename, bytes: doc.bytes, role: roleOf(doc), docType: doc.docType }));
+  const roled = docs.map((doc) => ({ filename: doc.filename, role: roleOf(doc), docType: doc.docType }));
   const si = roled.find((doc) => doc.role === "SI");
   const bl = roled.find((doc) => doc.role === "BL");
-  const crossed = si && bl && si.docType === "BL" && bl.docType === "SI";
-  if (crossed) {
+  const crossed = Boolean(si && bl && si.docType === "BL" && bl.docType === "SI");
+  if (crossed && si && bl) {
     si.role = "BL";
     bl.role = "SI";
   }
-  return roled.map(({ filename, role, bytes }) => ({ filename, role, bytes }));
+  return { attachments: roled.map(({ filename, role }) => ({ filename, role })), swapped: crossed };
 }
 
 /**

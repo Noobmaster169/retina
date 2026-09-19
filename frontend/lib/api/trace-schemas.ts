@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { ReviewReason, Stage } from "./runs-schemas";
+import { Outcome, ReviewReason, Stage } from "./runs-schemas";
 
 /**
  * Mirrors backend/src/contracts.ts; change both or neither. No transport here,
@@ -44,7 +44,7 @@ export interface RunEmailsQuery {
   category?: Category;
   decidedBy?: DecidedBy;
   /** How the email ended: `not_comparable`, `OK`, or a review reason. */
-  outcome?: string;
+  outcome?: Outcome;
   q?: string;
   page?: number;
   pageSize?: number;
@@ -112,6 +112,13 @@ export const ClassificationView = z.object({
 });
 export type ClassificationView = z.infer<typeof ClassificationView>;
 
+/**
+ * How a document's reading stands against the place its file name claims.
+ * Decided by the compare stage, never by a page. Mirrors contracts.review.ts.
+ */
+export const TypeVerdict = z.enum(["unknown", "ok", "crossed", "wrong_type"]);
+export type TypeVerdict = z.infer<typeof TypeVerdict>;
+
 /** Ours, not an organiser enum: what the model says a document is. */
 export const DocType = z.enum(["SI", "BL", "INVOICE", "PACKING_LIST", "COO", "OTHER"]);
 export type DocType = z.infer<typeof DocType>;
@@ -125,6 +132,8 @@ export const DocumentView = z.object({
   docType: DocType.nullable(),
   docTypeConfidence: z.number().nullable(),
   docTypeRationale: z.string().nullable(),
+  /** What the compare stage makes of that reading. Shown as given; never recomputed here. */
+  typeVerdict: TypeVerdict,
   format: z.enum(["txt", "pdf", "docx", "xlsx", "unknown"]),
   pages: z.number(),
   scanned: z.boolean(),

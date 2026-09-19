@@ -3,7 +3,7 @@
 import { useState } from "react";
 import useSWR from "swr";
 
-import { ReviewReason } from "@/lib/api/runs-schemas";
+import { Outcome } from "@/lib/api/runs-schemas";
 import { Category, DecidedBy, RunEmailsPage } from "@/lib/api/trace-schemas";
 import { parsedFetcher } from "@/lib/poll";
 
@@ -13,8 +13,7 @@ const POLL_MS = 3000;
 const PAGE_SIZE = 50;
 const fetchPage = parsedFetcher(RunEmailsPage);
 const SELECT = "rounded-md border border-line bg-paper px-2 py-1.5 text-sm";
-/** How an email can end: not sent to compare, compared, or parked for a person with the organisers' reason. */
-const OUTCOMES = ["not_comparable", "OK", ...ReviewReason.options];
+
 
 interface Props {
   runId: string;
@@ -64,7 +63,7 @@ export function RunEmails({ runId, live, selected, onSelect }: Props) {
         </select>
         <select aria-label="Outcome" value={outcome} onChange={(e) => { setOutcome(e.target.value); setPage(1); }} className={SELECT}>
           <option value="">Every outcome</option>
-          {OUTCOMES.map((o) => (
+          {Outcome.options.map((o) => (
             <option key={o} value={o}>
               {o}
             </option>

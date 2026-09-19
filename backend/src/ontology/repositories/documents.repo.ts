@@ -1,4 +1,4 @@
-import type { AttachmentRole, DocType, DocumentFormat, DocumentView } from "../../contracts";
+import type { AttachmentRole, DocType, DocumentFormat, DocumentView, TypeVerdict } from "../../contracts";
 import type { Queryable } from "../../db";
 
 export interface NewDocument {
@@ -72,13 +72,15 @@ function toDocument(row: DocumentRow): StoredDocument {
   };
 }
 
-export function toView(doc: StoredDocument): DocumentView {
+/** The verdict comes from the compare pipeline, which reads the documents together; a row on its own cannot tell. */
+export function toView(doc: StoredDocument, typeVerdict: TypeVerdict): DocumentView {
   return {
     filename: doc.filename,
     role: doc.role,
     docType: doc.docType,
     docTypeConfidence: doc.docTypeConfidence,
     docTypeRationale: doc.docTypeRationale,
+    typeVerdict,
     format: doc.format,
     pages: doc.pages,
     scanned: doc.scanned,

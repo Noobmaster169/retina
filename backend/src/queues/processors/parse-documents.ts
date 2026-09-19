@@ -3,6 +3,7 @@ import type { DocExtractClient } from "../../doc-extract";
 import { childLogger } from "../../lib/logger";
 import { documents, type StoredAttachment, type StoredDocument } from "../../ontology/repositories";
 import { keys, type ObjectStore } from "../../storage";
+import type { EmailRunIds } from "./ids";
 
 const log = childLogger({ module: "parse-documents" });
 
@@ -10,12 +11,6 @@ export interface ParseDeps {
   pool: Queryable;
   docExtract: DocExtractClient;
   store: ObjectStore;
-}
-
-export interface ParseIds {
-  runId: string;
-  emailId: string;
-  emailRunId: string;
 }
 
 /** A document row with its text in hand. Null text where the parser could not read the file. */
@@ -29,7 +24,7 @@ export interface ParsedDocument extends StoredDocument {
  * written to the store and a row is kept. Idempotent: classify may parse first
  * for a prompt that reads attachments, and compare then finds the rows.
  */
-export async function parseDocuments(deps: ParseDeps, ids: ParseIds, files: StoredAttachment[]): Promise<ParsedDocument[]> {
+export async function parseDocuments(deps: ParseDeps, ids: EmailRunIds, files: StoredAttachment[]): Promise<ParsedDocument[]> {
   const known = new Map((await documents.listForEmailRun(deps.pool, ids.emailRunId)).map((doc) => [doc.attachmentId, doc]));
   const texts = new Map<string, string | null>();
 

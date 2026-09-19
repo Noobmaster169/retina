@@ -1,6 +1,5 @@
 export {
   type DocExtractClient,
-  DocumentFormat,
   type ExtractRequest,
   ExtractResponse,
   type RenderRequest,

@@ -22,6 +22,7 @@ export {
   listRuns,
   type LlmUsage,
   pauseRun,
+  Outcome,
   type PromptSet,
   type PromptStep,
   type QueueCounts,

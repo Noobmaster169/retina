@@ -2,10 +2,19 @@ import { Router } from "express";
 import type { Pool } from "pg";
 import { z } from "zod";
 
-import { type EmailTrace, type LiveCallView, type LlmCallSummaryList, RunCallsQuery, RunEmailsQuery, type RunLive } from "../contracts";
+import {
+  type DocumentView,
+  type EmailTrace,
+  type LiveCallView,
+  type LlmCallSummaryList,
+  RunCallsQuery,
+  RunEmailsQuery,
+  type RunLive,
+} from "../contracts";
 import { childLogger } from "../lib/logger";
 import type { LiveCall, LiveCalls } from "../live";
-import { classifications, documents, emailRuns, emails, llmCalls, reviewCases } from "../ontology/repositories";
+import { classifications, documents, emailRuns, emails, llmCalls, reviewCases, type StoredDocument } from "../ontology/repositories";
+import { documentVerdicts } from "../pipeline/compare";
 import { runIdParam } from "./params";
 
 const EmailIdParam = z.string().regex(/^email_\w{1,32}$/);
@@ -15,6 +24,12 @@ export interface RunTraceDeps {
   pool: Pool;
   /** Where in-flight calls are kept. Absent, nothing is ever shown as live. */
   live?: LiveCalls;
+}
+
+/** The email's documents with the compare stage's verdict on each, so the page shows a reading rather than making one. */
+function withVerdicts(docs: StoredDocument[]): DocumentView[] {
+  const verdicts = documentVerdicts(docs);
+  return docs.map((doc) => documents.toView(doc, verdicts.get(doc.filename) ?? "unknown"));
 }
 
 /** What a run did, email by email and call by call: the list, the live feed, and one email's trace. */
@@ -96,7 +111,7 @@ export function runTraceRouter(deps: RunTraceDeps): Router {
       stage: state.stage,
       error: state.error,
       classification,
-      documents: docs.map(documents.toView),
+      documents: withVerdicts(docs),
       review,
       live: live[0] ?? null,
       calls,
