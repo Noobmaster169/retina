@@ -54,7 +54,7 @@ serves the Qwen tags on loopback.
 **Claude Code must be 2.1.274 or newer on this box.** Every pipeline step asks the
 proxy for structured output, which it serves with `claude -p --json-schema`; an older
 CLI does not have the flag and the proxy answers 502 rather than pass prose on. Check
-with `claude --version`, and after an upgrade re-run the smoke call below with a schema. `proxy/proxy.yaml` is committed; on this box
+with `claude --version`, and after an upgrade re-run `deploy/smoke-test.sh --schema`. `proxy/proxy.yaml` is committed; on this box
 the two Qwen tags are the `-ctx16k` profiles, so check `docker exec
 monash-ollama ollama list` matches what the config names.
 
