@@ -4,6 +4,10 @@ Current phase: 4, in progress on `phase-04-classification-quality`. Everything i
 tested; what is left is measurement on the holdout, which the user runs (see "Phase 4" below for
 the exact runs and commands). Development runs stay at the 30-email dev sample.
 
+**Starting phase 5: read `docs/phases/phase-05-handover.md` before the phase 5 spec.** It lists
+what phase 4 changed under it: migration numbering, wiring new prompt steps into the pinning,
+the compare worker's outage policy, `review` in the run summary, and the proxy as it is now.
+
 Phase 3: closed. The code is merged to `main`; the box is not deployed yet. Everything
 that could be built and tested without SSH access to the Monash box is done and green in
 `deploy/sim` (18 checks). The one manual step left, and everything to check after it, is
