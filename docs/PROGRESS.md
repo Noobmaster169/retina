@@ -1,6 +1,6 @@
 # Progress
 
-Current phase: 2 (complete, merging); 3 next
+Current phase: 3. Phase 2 merged to `main` on 2026-09-19 with its exit checklist green.
 
 ## Scores
 | Phase | Holdout final | Full final | Stage1 | Stage3 | E2E | Notes |
