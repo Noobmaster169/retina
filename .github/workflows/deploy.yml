@@ -129,7 +129,7 @@ jobs:
 
   proxy:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -146,6 +146,17 @@ jobs:
       - name: Test
         run: pytest -q
         working-directory: proxy
+      # The box builds this image from the clone on deploy; a Dockerfile that
+      # cannot build should fail here, not on a box nobody can SSH into.
+      - name: Build the llm-proxy image
+        run: docker build -t retina-llm-proxy proxy
+      - name: The image carries the pinned claude CLI and serves its aliases
+        run: |
+          docker run --rm retina-llm-proxy claude --version
+          docker run -d --name probe -p 127.0.0.1:4010:4000 retina-llm-proxy
+          for _ in $(seq 1 20); do curl -fsS 127.0.0.1:4010/healthz && break; sleep 1; done
+          curl -fsS 127.0.0.1:4010/v1/models | grep -q '"sonnet"'
+          docker rm -f probe
 
   # score.ts is a hand port of the organisers' scoring.py, which this repo does
   # not control. parity.ts is the only thing that proves they still agree, and
