@@ -47,4 +47,14 @@ export {
   type RunEmailsPage,
   type RunEmailsQuery,
 } from "./api/trace-client";
-export { type EvalReport, getEvalReport, type ScoreboardHeadline, type SubmitOutcome, submitRun } from "./api/scoring-client";
+export {
+  type EmailVerdict,
+  type EvalReport,
+  getEvalReport,
+  listSubmissions,
+  type Scoreboard,
+  type ScoreboardHeadline,
+  type SubmissionList,
+  type SubmitOutcome,
+  submitRun,
+} from "./api/scoring-client";

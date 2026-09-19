@@ -41,6 +41,9 @@ export default async function RunPage({ params }: PageProps<"/runs/[id]">) {
           Runs
         </Link>
         <span className="font-mono text-sm text-muted">{id.slice(0, 8)}</span>
+        <Link href={`/runs/${id}/results`} className="ml-auto text-sm text-accent-ink hover:underline">
+          Results
+        </Link>
       </header>
       <main className="mx-auto w-full max-w-7xl flex-1 px-5 py-6">
         {run ? (

@@ -27,3 +27,15 @@ export async function inFlight(db: Queryable, runId: string): Promise<{ id: stri
   );
   return rows.map((row) => ({ id: row.id, emailId: row.email_id }));
 }
+
+/** When each run's last email finished, as a total lookup: null for a run with none finished. */
+export async function lastFinishedForRuns(db: Queryable, runIds: string[]): Promise<(runId: string) => string | null> {
+  if (runIds.length === 0) return () => null;
+  const { rows } = await db.query<{ run_id: string; last: Date }>(
+    `select run_id, max(finished_at) as last from core.email_runs
+      where run_id = any($1::uuid[]) and finished_at is not null group by run_id`,
+    [runIds],
+  );
+  const last = new Map(rows.map((row) => [row.run_id, row.last.toISOString()]));
+  return (runId) => last.get(runId) ?? null;
+}

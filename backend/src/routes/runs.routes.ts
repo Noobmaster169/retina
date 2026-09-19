@@ -37,19 +37,23 @@ export function runsRouter(deps: RunsDeps): Router {
   /** Every run's summary from one round of reads. The repositories answer for every id asked for. */
   async function summariesOf(all: Run[]): Promise<RunSummary[]> {
     const ids = all.map((run) => run.id);
-    const [stageCounts, queues, usage, verifierShare, latest] = await Promise.all([
+    const [stageCounts, queues, usage, verifierShare, latest, lastFinished] = await Promise.all([
       emailRuns.stageCountsForRuns(pool, ids),
       queueSnapshot(),
       llmCalls.usageForRuns(pool, ids),
       classifications.verifierShareForRuns(pool, ids),
       submissions.latestForRuns(pool, ids),
+      emailRuns.lastFinishedForRuns(pool, ids),
     ]);
+    const now = Date.now();
     return all.map((run) =>
       toSummary(run, {
         stageCounts: stageCounts(run.id),
         queues,
         llm: { ...usage(run.id), verifierShare: verifierShare(run.id) },
         lastSubmission: latest.get(run.id),
+        lastFinishedAt: lastFinished(run.id),
+        now,
       }),
     );
   }

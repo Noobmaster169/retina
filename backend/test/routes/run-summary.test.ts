@@ -4,7 +4,7 @@ import type { RunStatus } from "../../src/contracts";
 import type { Run } from "../../src/ontology/repositories";
 import { toSummary } from "../../src/routes/run-summary";
 
-function run(status: RunStatus, totalEmails: number | null): Run {
+function run(status: RunStatus, totalEmails: number | null, startedAt: string | null = null): Run {
   return {
     id: "00000000-0000-0000-0000-000000000000",
     source: "averis",
@@ -17,7 +17,7 @@ function run(status: RunStatus, totalEmails: number | null): Run {
     promptSet: {},
     createdBy: null,
     createdAt: "2026-09-19T00:00:00.000Z",
-    startedAt: null,
+    startedAt,
     finishedAt: null,
   };
 }
@@ -42,7 +42,33 @@ describe("toSummary: when a run is finished", () => {
     ["cancelled with emails left where they stopped", "cancelled", 3, counts(1, 0, 1), 1, true],
     ["failed before ingesting everything", "failed", null, counts(0, 0), 0, true],
   ] as const)("%s", (_name, status, total, stageCounts, finishedEmails, processingDone) => {
-    const summary = toSummary(run(status, total), { stageCounts, queues: null, llm: usage, lastSubmission: undefined });
+    const summary = toSummary(run(status, total), { stageCounts, queues: null, llm: usage, lastSubmission: undefined, lastFinishedAt: null, now: 0 });
     expect(summary).toMatchObject({ finishedEmails, processingDone });
+  });
+});
+
+describe("toSummary: how long the run took", () => {
+  const parts = (lastFinishedAt: string | null, now: number) => ({
+    stageCounts: counts(3, 0),
+    queues: null,
+    llm: usage,
+    lastSubmission: undefined,
+    lastFinishedAt,
+    now,
+  });
+  const start = "2026-09-20T10:00:00.000Z";
+
+  it("is start to the last email finishing once the run is done, however long ago that was", () => {
+    const summary = toSummary(run("completed", 3, start), parts("2026-09-20T10:01:30.000Z", Date.parse("2026-09-21T00:00:00Z")));
+    expect(summary.elapsedMs).toBe(90_000);
+  });
+
+  it("is start to now while emails are still being worked on", () => {
+    const working = { ...parts(null, Date.parse("2026-09-20T10:00:45.000Z")), stageCounts: counts(1, 0, 2) };
+    expect(toSummary(run("completed", 3, start), working).elapsedMs).toBe(45_000);
+  });
+
+  it("is null before the run starts", () => {
+    expect(toSummary(run("created", null), parts(null, 1)).elapsedMs).toBeNull();
   });
 });

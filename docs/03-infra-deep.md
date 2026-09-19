@@ -620,7 +620,7 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 |---|---|
 | `GET /health` | `{ status: ok \| degraded, checks: { postgres, redis, minio, inbox } }`, 2 s per check. Degraded is still 200; only postgres down is 503, which is the signal auto-deploy rolls back on. The proxy is left out on purpose: a cold model would read as an outage. doc-extract joins in phase 5 |
 | `POST /runs` | start a run `{ source, ratePerSecond, limit?, emailIds?, subset?: dev \| holdout, promptSet?: { step: vN }, models?: { step: alias } }`. `subset` reads the id lists in `backend/eval/` (ids only). 400 for an unknown prompt version or a model that is not a proxy alias, before anything is queued |
-| `GET /runs`, `GET /runs/:id` | list, detail with stage counts, `finishedEmails`, `processingDone`, queue depth, `promptSet`, `llm` usage with `verifierShare`, score. The list also carries `concurrency: { classify, llm }` from the env. `queues` is `null` when Redis cannot be reached; the rest comes from Postgres and is still served |
+| `GET /runs`, `GET /runs/:id` | list, detail with stage counts, `finishedEmails`, `processingDone`, `elapsedMs` (start to the last email finishing, or to now), queue depth, `promptSet`, `llm` usage with `verifierShare`, score. The list also carries `concurrency: { classify, llm }` from the env. `queues` is `null` when Redis cannot be reached; the rest comes from Postgres and is still served |
 | `POST /runs/:id/pause`, `/resume`, `/cancel` | control the replay |
 | `POST /runs/:id/submit?force=false` | build submission, post to averis, store scoreboard. 409 when the run holds fewer rows than `totalEmails` (still ingesting) or holds unfinished emails, both overridden by `?force=true`; 409 while another submission for the same run is being scored. The `core.submissions` row is written before the scorer is called and updated with the scoreboard after, so a scorer failure leaves an unscored row (null `scoreboard`, null `final_score`) pointing at the stored payload rather than an orphan payload. Only scored rows count as a run's last submission |
 | `GET /runs/:id/submission.json` | download the payload |
@@ -636,7 +636,7 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 | `GET /queues` | waiting/active/failed per queue |
 | `GET /clients`, `PUT /clients/:domain` | tiers |
 | `POST /chat/conversations`, `POST /chat/:id/messages`, `GET /chat/:id` | chat agent |
-| `GET /eval/runs/:id` | holdout and full-set score computed locally (dev only; returns 404 on the VPS where ground truth is absent) |
+| `GET /eval/runs/:id` | holdout, full-set and this-run scoreboards computed locally, plus `emails`: each email of the run, its answer beside the truth, check by check on the scorer's definitions (`EmailVerdict`), shown at `/runs/[id]/results`. Dev only; 404 on the VPS where ground truth is absent |
 | `GET /lessons`, `POST /lessons/:id/approve|reject` | gated self-improvement |
 | `GET /files/*key` | stream object |
 

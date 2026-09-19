@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 import type { RunSummary } from "@/lib/api-client";
@@ -72,6 +73,9 @@ export function ScoreCell({ run, onChanged }: Props) {
           <span className="ml-2 text-muted">
             over {last.nEmails} emails{last.forced ? ", forced" : ""}
           </span>
+          <Link href={`/runs/${run.id}/results`} className="ml-2 text-accent-ink hover:underline">
+            see results
+          </Link>
           {last.scores && (
             <dl className="mt-0.5 flex flex-wrap gap-x-3 text-muted">
               <div>
@@ -107,7 +111,10 @@ export function ScoreCell({ run, onChanged }: Props) {
       {local && local !== "unavailable" && (
         <div className="tabular-nums text-muted">
           local eval: this run {score(local.run.stage1MacroF1)} stage 1 over {local.run.nEmails}, holdout{" "}
-          {score(local.holdout.stage1MacroF1)} over {local.holdout.nEmails}, {local.wrongCategory} wrong
+          {score(local.holdout.stage1MacroF1)} over {local.holdout.nEmails}, {local.wrongCategory} wrong{" "}
+          <Link href={`/runs/${run.id}/results`} className="text-accent-ink hover:underline">
+            email by email
+          </Link>
         </div>
       )}
 

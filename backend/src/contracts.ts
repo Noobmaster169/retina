@@ -83,6 +83,8 @@ export const RunSummary = z.object({
   finishedEmails: z.number(),
   /** Nothing more will happen in this run: every email finished, or it was cancelled or failed. */
   processingDone: z.boolean(),
+  /** From the start to the last email finishing, or to now while it runs. Null before it starts. */
+  elapsedMs: z.number().nullable(),
   stageCounts: z.record(Stage, z.number()),
   /** Null when the queues cannot be reached. Everything else comes from Postgres and is still served. */
   queues: z.object({ classify: QueueCounts, compare: QueueCounts }).nullable(),

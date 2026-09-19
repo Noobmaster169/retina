@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import type { RunAction, RunStatus, RunSummary, Stage } from "@/lib/api-client";
+import { formatDuration } from "@/lib/duration";
 
 import { ScoreCell } from "./score-cell";
 
@@ -94,6 +95,11 @@ export function RunRow({ run, onChanged }: Props) {
             {run.finishedEmails} / {run.totalEmails ?? "?"}
           </span>
         </div>
+        {run.elapsedMs !== null && (
+          <div className="mt-1 text-xs tabular-nums text-muted">
+            {run.processingDone ? "took" : "running for"} {formatDuration(run.elapsedMs)}
+          </div>
+        )}
       </td>
       <td className="py-3 pr-4">
         <ul className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted">

@@ -37,6 +37,7 @@ corrected where it described the old behaviour:
 | 2, prompt v1 | 0.2129 | not run | 0.7098 holdout | 0 | 0 | Zero-shot sonnet. All 25 holdout SI_REQUEST read as BL_COMPARISON: the definition was wrong |
 | 2, prompt v2 | 0.2981 | incomplete, see below | 0.9938 holdout (103 of 104) | 0 | 0 | Zero-shot sonnet, categories defined by paperwork stage. Stage 3 and E2E are 0 until phases 5 and 6 read the documents |
 | 2, prompt v3 | 0.3000 | 0.2992 | 1.0000 holdout (104 of 104) | 0 | 0 | `v2` with the schema as a provider constraint: no "reason briefly" ending, `rationale` first in the schema, no `max_tokens`. Holdout run `0a8ed5a5`, 104 calls. Full run `044367f9`, 520 calls, 0 failed, stage 1 macro-F1 0.9975 (518 of 520). Fixes `v2`'s only miss, `email_504` |
+| 4, v3 + verifier, full inbox | 0.2996 | 0.2996 (scorer) | 0.9938 holdout, 0.9987 full | 0 | 0 | Run `69ee1e42`, started by the user, 520 emails at 8 in parallel in 7 min 46 s. 595 calls, 0 failed, verifier on 14.4%. One wrong category: `email_504`, SI_REQUEST for BL_COMPARISON |
 | 4, v3 + verifier, dev sample | not run | not run | 1.0000 dev (30 of 30) | 0 | 0 | Run `0d09d887`, 30 train emails, 37 calls, 0 failed, verifier on 7 (23.3%), agreed every time. Not a holdout number |
 
 Stage 1 carries 0.30 of the final score, so 0.3000 is exactly what a perfect classifier with no
@@ -283,12 +284,13 @@ The user asked (2026-09-19) that development runs stay at 20 to 30 emails and th
 larger be theirs to start: from the runs page, or with the commands below. So the holdout items
 are open, not failed.
 
-- [ ] Stage 1 macro-F1 on the holdout at or above 0.95, with the verifier. Phase 2's `v3` was
+- [x] Stage 1 macro-F1 on the holdout at or above 0.95, with the verifier: 0.9938 (run `69ee1e42`,
+      the user's full run; the one miss, `email_504`, is in the holdout). Phase 2's `v3` was
       1.0000 without it. **To run**: runs page, Emails = Holdout, New run; then
       `cd backend && pnpm eval:score --run <id> --holdout`.
-- [ ] The full-set confusion matrix. **To run**: Emails = Whole inbox (520). About 40 minutes at
-      2 in parallel.
-- [ ] The verifier ran on under 25% of emails. Dev sample: 7 of 30 (23.3%), but the sample is six
+- [x] The full-set confusion matrix: run `69ee1e42`, stage 1 macro-F1 0.9987, 519 of 520, on
+      `/runs/69ee1e42-f2cb-46b3-8fd0-fb623e4e2d71/results`. 7 min 46 s at 8 in parallel.
+- [x] The verifier ran on under 25% of emails: 14.4% of the full inbox (run `69ee1e42`). Dev sample: 7 of 30 (23.3%), but the sample is six
       of each category and over-weights the categories the generator is least sure of (all 7
       were GENERAL or INVOICE_QUERY, at 0.62 to 0.88). On 401 train emails under `v2`, 24 (6.0%)
       were below 0.9. The holdout run above settles it.

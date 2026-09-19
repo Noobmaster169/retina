@@ -65,6 +65,8 @@ export const RunSummary = z.object({
   finishedEmails: z.number(),
   /** Nothing more will happen in this run, so a page watching it can stop polling. */
   processingDone: z.boolean(),
+  /** From the start to the last email finishing, or to now while it runs. Null before it starts. */
+  elapsedMs: z.number().nullable(),
   stageCounts: z.record(Stage, z.number()),
   /** Null when the backend cannot reach its queues. Everything else is still served. */
   queues: z.object({ classify: QueueCounts, compare: QueueCounts }).nullable(),

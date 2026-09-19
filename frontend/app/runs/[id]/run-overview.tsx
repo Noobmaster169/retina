@@ -1,6 +1,7 @@
 "use client";
 
 import type { RunSummary, Stage } from "@/lib/api/runs-schemas";
+import { formatDuration } from "@/lib/duration";
 
 const STAGES: Stage[] = ["ingested", "classifying", "classified", "comparing", "review", "done", "failed"];
 
@@ -39,6 +40,13 @@ export function RunOverview({ run, error }: { run: RunSummary; error: string | n
 
       <dl className="mt-4 flex flex-wrap gap-x-10 gap-y-4 border-y border-line py-4">
         <Stat label="Finished" value={`${run.finishedEmails} / ${run.totalEmails ?? "?"}`} hint={run.stageCounts.failed ? `${run.stageCounts.failed} failed` : undefined} />
+        {run.elapsedMs !== null && (
+          <Stat
+            label={run.processingDone ? "Took" : "Running for"}
+            value={formatDuration(run.elapsedMs)}
+            hint={run.finishedEmails ? `${formatDuration(run.elapsedMs / run.finishedEmails)} per email` : undefined}
+          />
+        )}
         <Stat label="Model calls" value={String(run.llm.calls)} hint={run.llm.failedCalls ? `${run.llm.failedCalls} failed` : undefined} />
         <Stat label="Verifier ran on" value={percent(run.llm.verifierShare)} hint="of classified emails" />
         <Stat label="Tokens" value={`${run.llm.inputTokens.toLocaleString()} in`} hint={`${run.llm.outputTokens.toLocaleString()} out`} />
