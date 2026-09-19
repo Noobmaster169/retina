@@ -1,6 +1,9 @@
 import { z } from "zod";
 
-import { Outcome, ReviewReason, Stage } from "./runs-schemas";
+import { ComparisonView, ExtractionView } from "./comparison-schemas";
+import { ComparisonField, Outcome, ReviewReason, Stage } from "./runs-schemas";
+
+export * from "./comparison-schemas";
 
 /**
  * Mirrors backend/src/contracts.ts; change both or neither. No transport here,
@@ -27,6 +30,8 @@ export const RunEmailItem = z.object({
   /** The generator's own stated confidence, which decides whether the verifier runs. */
   confidence: z.number().nullable(),
   verifierCategory: Category.nullable(),
+  /** The fields the judge found different. Empty until the pair is compared. */
+  defectFields: z.array(ComparisonField),
   error: z.string().nullable(),
 });
 export type RunEmailItem = z.infer<typeof RunEmailItem>;
@@ -162,6 +167,10 @@ export const EmailTrace = z.object({
   documents: z.array(DocumentView),
   /** Why the email is waiting for a person, when it is. */
   review: ReviewCaseView.nullable(),
+  /** What the extractor read from the SI and the BL. Empty until the pair is extracted. */
+  extractions: z.array(ExtractionView),
+  /** How the pair was judged. Null until it was. */
+  comparison: ComparisonView.nullable(),
   live: LiveCallView.nullable(),
   calls: z.array(LlmCall),
 });

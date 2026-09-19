@@ -4,9 +4,9 @@
  */
 import { z } from "zod";
 
-import { DecidedBy, Stage } from "./contracts.enums";
-import { Outcome, RunReview } from "./contracts.review";
-import { Category } from "./contracts.scoring";
+import { Stage } from "./contracts.enums";
+import { RunOutcomes } from "./contracts.extraction";
+import { RunReview } from "./contracts.review";
 
 export const RunStatus = z.enum(["created", "running", "paused", "completed", "cancelled", "failed"]);
 export type RunStatus = z.infer<typeof RunStatus>;
@@ -15,7 +15,7 @@ export const AttachmentRole = z.enum(["SI", "BL", "UNKNOWN"]);
 export type AttachmentRole = z.infer<typeof AttachmentRole>;
 
 /** Ours, not an organiser enum: the LLM steps whose prompt a run pins. */
-export const PromptStep = z.enum(["classify", "classify-verify", "triage", "doc-type"]);
+export const PromptStep = z.enum(["classify", "classify-verify", "triage", "doc-type", "extract", "extract-verify", "field-judge"]);
 export type PromptStep = z.infer<typeof PromptStep>;
 
 /** What one step of a run runs: a prompt file and a proxy alias. Fixed when the run is created. */
@@ -33,6 +33,9 @@ export const PromptSet = z.object({
   "classify-verify": PinnedPrompt.optional(),
   triage: PinnedPrompt.optional(),
   "doc-type": PinnedPrompt.optional(),
+  extract: PinnedPrompt.optional(),
+  "extract-verify": PinnedPrompt.optional(),
+  "field-judge": PinnedPrompt.optional(),
 });
 export type PromptSet = z.infer<typeof PromptSet>;
 
@@ -101,6 +104,8 @@ export const RunSummary = z.object({
   llm: LlmUsage,
   /** The emails waiting for a person, and why. */
   review: RunReview,
+  /** How the compared pairs came out, and which fields differed. */
+  outcomes: RunOutcomes,
   /** The newest submission to the scorer, without its full scoreboard. */
   lastSubmission: z
     .object({
@@ -134,44 +139,6 @@ export type Concurrency = z.infer<typeof Concurrency>;
 export const RunList = z.object({ runs: z.array(RunSummary), concurrency: Concurrency });
 export type RunList = z.infer<typeof RunList>;
 
-export const EmailListItem = z.object({
-  emailId: z.string(),
-  from: z.string(),
-  subject: z.string(),
-  stage: Stage,
-  attachmentCount: z.number(),
-  outcome: z.string().nullable(),
-  /** Null until the email is classified. */
-  category: Category.nullable(),
-  decidedBy: DecidedBy.nullable(),
-  /** The generator's own stated confidence, which is what decides whether the verifier runs. */
-  confidence: z.number().nullable(),
-  /** The verifier's category, when it ran. Differs from the generator's when it overruled it. */
-  verifierCategory: Category.nullable(),
-  error: z.string().nullable(),
-});
-export type EmailListItem = z.infer<typeof EmailListItem>;
-
-export const RunEmailsQuery = z.object({
-  stage: Stage.optional(),
-  category: Category.optional(),
-  decidedBy: DecidedBy.optional(),
-  /** How the email ended. The stored value stays a plain string, so a later phase can add one without breaking a read. */
-  outcome: Outcome.optional(),
-  q: z.string().max(200).optional(),
-  page: z.coerce.number().int().positive().default(1),
-  pageSize: z.coerce.number().int().positive().max(200).default(50),
-});
-export type RunEmailsQuery = z.infer<typeof RunEmailsQuery>;
-
-export const RunEmailsPage = z.object({
-  emails: z.array(EmailListItem),
-  total: z.number(),
-  page: z.number(),
-  pageSize: z.number(),
-});
-export type RunEmailsPage = z.infer<typeof RunEmailsPage>;
-
 export const CheckStatus = z.enum(["up", "down"]);
 export type CheckStatus = z.infer<typeof CheckStatus>;
 
@@ -187,7 +154,9 @@ export const HealthReport = z.object({
 });
 export type HealthReport = z.infer<typeof HealthReport>;
 
+export * from "./contracts.emails";
 export * from "./contracts.enums";
+export * from "./contracts.extraction";
 export * from "./contracts.prompts";
 export * from "./contracts.review";
 export * from "./contracts.scoring";

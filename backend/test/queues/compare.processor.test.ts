@@ -1,269 +1,279 @@
-import type { PoolClient } from "pg";
 import { describe, expect, it } from "vitest";
 
 import { FakeLlmClient } from "../../src/agents/__fakes__/fake.llm-client";
 import type { LlmRequest } from "../../src/agents/llm-client";
-import { MemoryDocExtractClient, readable, scanned, unreadable } from "../../src/doc-extract/__fakes__/memory.client";
-import { DocExtractUnavailableError } from "../../src/lib/errors";
+import { MemoryDocExtractClient, readable, scanned } from "../../src/doc-extract/__fakes__/memory.client";
+import { TerminalError } from "../../src/lib/errors";
 import { MemoryLiveCalls } from "../../src/live/__fakes__/memory.live-calls";
-import { attachments, comparisons, documents, emailRuns, llmCalls, reviewCases } from "../../src/ontology/repositories";
+import { comparisons, emailRuns, extractions, llmCalls, reviewCases } from "../../src/ontology/repositories";
 import { processCompare } from "../../src/queues/processors/compare.processor";
-import { keys } from "../../src/storage";
 import { MemoryStore } from "../../src/storage/__fakes__/memory.store";
-import { inRollback, seedEmail, seedRun } from "../db";
+import { inRollback } from "../db";
+import { BL_004, byContent, SI_004, SI_004_FIELDS, SI_516, SI_516_FIELDS } from "./compare.fixtures";
+import { classified, outcome, pair } from "./compare.harness";
 
-const SI_TEXT = "SHIPPING INSTRUCTION\n\nShipper: ACME\nConsignee: BETA\nPort of Loading: NANTONG\n";
-const BL_TEXT = "BILL OF LADING (DRAFT)\n\nShipper: ACME\nTo the Order of: BETA\nBill of Lading No.: SINF1\n";
-const INVOICE_TEXT = "COMMERCIAL INVOICE\n\nInvoice No.: 1\nTotal Amount: USD 22,500.00\n";
+const EXTRACTING = "You read one shipping document";
+const VERIFYING = "You check a reading";
+const JUDGING = "You compare a Shipping Instruction";
 
-const docType = (doc_type: string, confidence = 0.96) => JSON.stringify({ rationale: "It says what it is.", doc_type, confidence });
-const triage = (request: string) => JSON.stringify({ rationale: "The sender asks for it.", request, confidence: 0.9 });
-
-/** The model reads the file's own text: an invoice is an invoice whatever the name says. */
-function byContent(request: LlmRequest): string {
-  if (request.user.includes("COMMERCIAL INVOICE")) return docType("INVOICE");
-  if (request.user.includes("BILL OF LADING")) return docType("BL");
-  return docType("SI");
-}
-
-async function classified(tx: PoolClient, files: { filename: string; role: "SI" | "BL" | "UNKNOWN" }[]) {
-  const run = await seedRun(tx);
-  const emailId = await seedEmail(tx);
-  await emailRuns.insert(tx, { runId: run.id, emailId, stage: "classified", priority: 600 });
-  for (const file of files) {
-    await attachments.insert(tx, {
-      runId: run.id,
-      emailId,
-      filename: file.filename,
-      sourcePath: `attachments/${file.filename}`,
-      role: file.role,
-      objectKey: keys.attachment(run.id, emailId, file.filename),
-      contentType: file.filename.endsWith(".pdf") ? "application/pdf" : "text/plain",
-      bytes: 600,
-      sha256: "0".repeat(64),
-    });
-  }
-  const emailRunId = (await emailRuns.idOf(tx, run.id, emailId)) as string;
-  const key = (filename: string) => keys.attachment(run.id, emailId, filename);
-  return { runId: run.id, emailId, emailRunId, key };
-}
-
-async function outcome(tx: PoolClient, emailRunId: string) {
-  const { rows } = await tx.query(
-    `select er.stage, er.outcome, er.finished_at, c.status, c.review_reason, c.detail
-       from core.email_runs er left join core.comparisons c on c.email_run_id = er.id where er.id = $1`,
-    [emailRunId],
-  );
-  return rows[0];
-}
-
-describe("compare processor, phase 5: parse, type, and the structural escalations", () => {
-  it("a readable SI and BL: both parsed, both typed by the model, placeholder OK", async () => {
+describe("compare processor: a pair that can be compared", () => {
+  it("email_004: both extracted, the judge asked once about all seven, MISMATCH on consignee and notify_party", async () => {
     await inRollback(async (tx) => {
-      const { runId, emailId, emailRunId, key } = await classified(tx, [
-        { filename: "e_SI.txt", role: "SI" },
-        { filename: "e_BL.txt", role: "BL" },
-      ]);
-      const docExtract = new MemoryDocExtractClient().on(key("e_SI.txt"), readable(SI_TEXT)).on(key("e_BL.txt"), readable(BL_TEXT));
-      const store = new MemoryStore();
+      const { runId, emailId, emailRunId, key } = await pair(tx);
+      const docExtract = new MemoryDocExtractClient().on(key("e_SI.txt"), readable(SI_004)).on(key("e_BL.txt"), readable(BL_004));
       const llm = new FakeLlmClient(byContent);
 
-      await processCompare({ pool: tx, llm, docExtract, store }, { runId, emailId });
+      await processCompare({ pool: tx, llm, docExtract, store: new MemoryStore() }, { runId, emailId });
 
       expect(await outcome(tx, emailRunId)).toMatchObject({
         stage: "done",
-        outcome: "OK",
-        status: "OK",
+        outcome: "MISMATCH",
+        status: "MISMATCH",
         review_reason: null,
-        detail: { placeholder: true, si: "e_SI.txt", bl: "e_BL.txt", extras: [] },
+        detail: { si: "e_SI.txt", bl: "e_BL.txt", extras: [], swapped: false, status: "MISMATCH", defect_fields: ["consignee", "notify_party"], missing: [] },
       });
-      const docs = await documents.listForEmailRun(tx, emailRunId);
-      expect(docs.map((d) => [d.filename, d.role, d.docType, d.format, d.unreadable])).toEqual([
-        ["e_BL.txt", "BL", "BL", "txt", false],
-        ["e_SI.txt", "SI", "SI", "txt", false],
+      const calls = await llmCalls.listForEmail(tx, runId, emailId);
+      expect(calls.map((c) => c.step)).toEqual(["doc-type", "doc-type", "extract", "extract", "field-judge"]);
+      expect(calls.every((c) => c.ok)).toBe(true);
+
+      const judge = llm.requests[4];
+      expect(judge.user).toContain("## consignee\n- SI value: EAST BRIGHT FZ-LLC");
+      expect(judge.user).toContain("- BL value: UAB NOVAKOPA");
+      expect(judge.user).toContain("- BL quoted from: To the Order of: UAB NOVAKOPA");
+
+      const stored = await extractions.listForEmailRun(tx, emailRunId);
+      expect(stored.map((x) => [x.role, x.filename, x.verified])).toEqual([
+        ["SI", "e_SI.txt", false],
+        ["BL", "e_BL.txt", false],
       ]);
-      expect(docs[0].docTypeConfidence).toBe(0.96);
-      // The text is in the store for phase 6 to read, not re-parsed.
-      expect((await store.get(keys.text(runId, emailId, "e_SI.txt"))).toString()).toBe(SI_TEXT);
-      expect(llm.requests).toHaveLength(2);
-      expect(llm.requests[0].user).toContain("## claim\nthe file name says it is a Bill of Lading");
-      expect(llm.requests[0].user).toContain(BL_TEXT.trim());
-      expect(await llmCalls.listForEmail(tx, runId, emailId)).toMatchObject([{ step: "doc-type", ok: true }, { step: "doc-type", ok: true }]);
+      expect(stored[0].fields).toEqual(SI_004_FIELDS);
+      expect(Object.values(stored[0].evidenceOk).every(Boolean)).toBe(true);
+
+      const view = await comparisons.view(tx, emailRunId);
+      expect(view?.defectFields).toEqual(["consignee", "notify_party"]);
+      expect(view?.fields).toHaveLength(7);
+      expect(view?.fields[1]).toMatchObject({ field: "consignee", siValue: "EAST BRIGHT FZ-LLC", blValue: "UAB NOVAKOPA", same: false, missing: false });
       expect(await reviewCases.latestFor(tx, emailRunId)).toBeNull();
     });
   });
 
-  it("a BL that is an invoice: wrong_doc_type, with the model's evidence, and the email waits for a person", async () => {
+  it("a pair the judge finds the same on every field ends OK with no defect fields", async () => {
     await inRollback(async (tx) => {
-      const { runId, emailId, emailRunId, key } = await classified(tx, [
-        { filename: "e_SI.txt", role: "SI" },
-        { filename: "e_BL.txt", role: "BL" },
-      ]);
-      const docExtract = new MemoryDocExtractClient().on(key("e_SI.txt"), readable(SI_TEXT)).on(key("e_BL.txt"), readable(INVOICE_TEXT));
+      const { runId, emailId, emailRunId, key } = await pair(tx);
+      const docExtract = new MemoryDocExtractClient().on(key("e_SI.txt"), readable(SI_004)).on(key("e_BL.txt"), readable(SI_004));
+
+      await processCompare({ pool: tx, llm: new FakeLlmClient(byContent), docExtract, store: new MemoryStore() }, { runId, emailId });
+
+      expect(await outcome(tx, emailRunId)).toMatchObject({ stage: "done", outcome: "OK", status: "OK", detail: { defect_fields: [] } });
+      expect((await comparisons.view(tx, emailRunId))?.fields.every((f) => f.same)).toBe(true);
+    });
+  });
+
+  it("a crossed pair: the file names the other way round, the model's reading decides, and each extraction records the place the file filled", async () => {
+    await inRollback(async (tx) => {
+      const { runId, emailId, emailRunId, key } = await pair(tx);
+      const docExtract = new MemoryDocExtractClient().on(key("e_SI.txt"), readable(BL_004)).on(key("e_BL.txt"), readable(SI_004));
 
       await processCompare({ pool: tx, llm: new FakeLlmClient(byContent), docExtract, store: new MemoryStore() }, { runId, emailId });
 
       expect(await outcome(tx, emailRunId)).toMatchObject({
-        stage: "review",
-        outcome: "wrong_doc_type",
-        status: "NEEDS_REVIEW",
-        review_reason: "wrong_doc_type",
-        detail: { files: [{ filename: "e_BL.txt", claimed: "BL", detected: "INVOICE", confidence: 0.96 }], pages: [] },
+        status: "MISMATCH",
+        detail: { si: "e_BL.txt", bl: "e_SI.txt", swapped: true, defect_fields: ["consignee", "notify_party"] },
       });
-      expect((await outcome(tx, emailRunId)).finished_at).not.toBeNull();
-      expect(await reviewCases.latestFor(tx, emailRunId)).toMatchObject({ reason: "wrong_doc_type", stage: "compare", status: "open" });
+      const stored = await extractions.listForEmailRun(tx, emailRunId);
+      expect(stored.map((x) => [x.role, x.filename])).toEqual([
+        ["SI", "e_BL.txt"],
+        ["BL", "e_SI.txt"],
+      ]);
+      expect((await comparisons.view(tx, emailRunId))?.fields[1]).toMatchObject({ siValue: "EAST BRIGHT FZ-LLC", blValue: "UAB NOVAKOPA" });
     });
   });
 
-  it("a BL that will not open: unreadable, with the parser's reason; nothing is asked of the model about it", async () => {
+  it("email_516: a placeholder on the SI is a missing_value escalation with the other fields judged, never a MISMATCH", async () => {
     await inRollback(async (tx) => {
-      const { runId, emailId, emailRunId, key } = await classified(tx, [
-        { filename: "e_SI.txt", role: "SI" },
-        { filename: "e_BL.pdf", role: "BL" },
-      ]);
-      const docExtract = new MemoryDocExtractClient()
-        .on(key("e_SI.txt"), readable(SI_TEXT))
-        .on(key("e_BL.pdf"), unreadable("could not open: no xref"));
+      const { runId, emailId, emailRunId, key } = await pair(tx);
+      const docExtract = new MemoryDocExtractClient().on(key("e_SI.txt"), readable(SI_516)).on(key("e_BL.txt"), readable(BL_004));
       const llm = new FakeLlmClient(byContent);
 
       await processCompare({ pool: tx, llm, docExtract, store: new MemoryStore() }, { runId, emailId });
 
       expect(await outcome(tx, emailRunId)).toMatchObject({
         stage: "review",
-        outcome: "unreadable",
-        review_reason: "unreadable",
-        detail: { files: [{ filename: "e_BL.pdf", warnings: ["could not open: no xref"] }], pages: [] },
+        outcome: "missing_value",
+        status: "NEEDS_REVIEW",
+        review_reason: "missing_value",
+        detail: { missing: ["gross_weight_kg"], si: "e_SI.txt", bl: "e_BL.txt" },
       });
-      expect(llm.requests).toHaveLength(1);
-      expect(docExtract.renderCalls.map((r) => r.filename)).toEqual(["e_BL.pdf"]);
-      const docs = await documents.listForEmailRun(tx, emailRunId);
-      expect(docs.find((d) => d.filename === "e_BL.pdf")).toMatchObject({ unreadable: true, docType: null, textObjectKey: null });
+      expect(await reviewCases.latestFor(tx, emailRunId)).toMatchObject({ reason: "missing_value", stage: "compare", status: "open" });
+      // The judge is asked about the six fields with a value on both sides, not the one the SI leaves blank.
+      expect(llm.requests[4].user).not.toContain("## gross_weight_kg");
+      expect(llm.requests[4].user).toContain("## shipper");
+      const view = await comparisons.view(tx, emailRunId);
+      expect(view?.fields.find((f) => f.field === "gross_weight_kg")).toMatchObject({ missing: true, siValue: null, blValue: "131,058 KG" });
+      expect((await extractions.listForEmailRun(tx, emailRunId))[0].fields).toEqual(SI_516_FIELDS);
     });
   });
 
-  it("a scanned pair: read by OCR, typed, and still escalated as unreadable with its page images", async () => {
+  it("a quote the document does not carry sends the document to the verifier, whose reading replaces only the fields in doubt", async () => {
+    await inRollback(async (tx) => {
+      const { runId, emailId, emailRunId, key } = await pair(tx);
+      const docExtract = new MemoryDocExtractClient().on(key("e_SI.txt"), readable(SI_004)).on(key("e_BL.txt"), readable(BL_004));
+      // The first reading of the SI misquotes the weight line. The verifier gets the weight right but
+      // re-copies the shipper with a quote of its own that is not in the document: that copy must not win.
+      const llm = new FakeLlmClient((request: LlmRequest) => {
+        const aboutTheSi = request.user.includes("SHIPPING INSTRUCTION");
+        if (request.system.startsWith(EXTRACTING) && aboutTheSi) {
+          return JSON.stringify({ ...SI_004_FIELDS, gross_weight_kg: { ...SI_004_FIELDS.gross_weight_kg, source_quote: "Gross Weight: 131,058 KG" } });
+        }
+        if (request.system.startsWith(VERIFYING) && aboutTheSi) {
+          return JSON.stringify({ ...SI_004_FIELDS, shipper: { ...SI_004_FIELDS.shipper, source_quote: "Shipper APRIL FAR EAST" } });
+        }
+        return byContent(request);
+      });
+
+      await processCompare({ pool: tx, llm, docExtract, store: new MemoryStore() }, { runId, emailId });
+
+      const calls = await llmCalls.listForEmail(tx, runId, emailId);
+      expect(calls.map((c) => c.step)).toEqual(["doc-type", "doc-type", "extract", "extract-verify", "extract", "field-judge"]);
+      const verify = llm.requests[3];
+      expect(verify.user).toContain("## in doubt\n- gross_weight_kg: the quoted line is not in the document");
+      expect(verify.user).toContain("## first reading");
+      const si = (await extractions.listForEmailRun(tx, emailRunId)).find((x) => x.role === "SI");
+      expect(si).toMatchObject({ verified: true, fields: SI_004_FIELDS });
+      expect(Object.values(si?.evidenceOk ?? {}).every(Boolean)).toBe(true);
+      expect(await outcome(tx, emailRunId)).toMatchObject({ status: "MISMATCH" });
+    });
+  });
+
+  it("a field the verifier still cannot place is not given, carries no evidence, and the pair goes to a person as missing_value", async () => {
+    await inRollback(async (tx) => {
+      const { runId, emailId, emailRunId, key } = await pair(tx);
+      const docExtract = new MemoryDocExtractClient().on(key("e_SI.txt"), readable(SI_004)).on(key("e_BL.txt"), readable(BL_004));
+      const wrong = JSON.stringify({ ...SI_004_FIELDS, shipper: { ...SI_004_FIELDS.shipper, value: "SOMEONE ELSE", source_quote: "Shipper: SOMEONE ELSE" } });
+      const llm = new FakeLlmClient((request: LlmRequest) => {
+        const aboutTheSi = request.user.includes("SHIPPING INSTRUCTION");
+        if ((request.system.startsWith(EXTRACTING) || request.system.startsWith(VERIFYING)) && aboutTheSi) return wrong;
+        return byContent(request);
+      });
+
+      await processCompare({ pool: tx, llm, docExtract, store: new MemoryStore() }, { runId, emailId });
+
+      expect(await outcome(tx, emailRunId)).toMatchObject({ review_reason: "missing_value", detail: { missing: ["shipper"], defect_fields: ["consignee", "notify_party"] } });
+      const si = (await extractions.listForEmailRun(tx, emailRunId)).find((x) => x.role === "SI");
+      expect(si?.fields.shipper).toMatchObject({ value: null, placeholder: null, note: "the verifier could not locate this value in the document" });
+      expect(si?.evidenceOk.shipper).toBe(false);
+      expect(si?.evidenceOk.consignee).toBe(true);
+    });
+  });
+
+  it("a verifier whose answer never fits its schema degrades: the fields in doubt stand as not given", async () => {
+    await inRollback(async (tx) => {
+      const { runId, emailId, emailRunId, key } = await pair(tx);
+      const docExtract = new MemoryDocExtractClient().on(key("e_SI.txt"), readable(SI_004)).on(key("e_BL.txt"), readable(BL_004));
+      const llm = new FakeLlmClient((request: LlmRequest) => {
+        if (request.system.startsWith(VERIFYING)) return "not json at all";
+        if (request.system.startsWith(EXTRACTING) && request.user.includes("SHIPPING INSTRUCTION")) {
+          return JSON.stringify({ ...SI_004_FIELDS, shipper: { ...SI_004_FIELDS.shipper, confidence: 0.4 } });
+        }
+        return byContent(request);
+      });
+
+      await processCompare({ pool: tx, llm, docExtract, store: new MemoryStore() }, { runId, emailId });
+
+      expect(await outcome(tx, emailRunId)).toMatchObject({ review_reason: "missing_value", detail: { missing: ["shipper"] } });
+      const calls = await llmCalls.listForEmail(tx, runId, emailId);
+      expect(calls.filter((c) => c.step === "extract-verify").map((c) => c.ok)).toEqual([false, false]);
+      const si = (await extractions.listForEmailRun(tx, emailRunId)).find((x) => x.role === "SI");
+      expect(si?.fields.shipper.note).toContain("the verifier failed");
+      expect(si?.evidenceOk.shipper).toBe(false);
+    });
+  });
+
+  it("a judge whose answer never fits its schema fails the email, with the extractions kept for the retry", async () => {
+    await inRollback(async (tx) => {
+      const { runId, emailId, emailRunId, key } = await pair(tx);
+      const docExtract = new MemoryDocExtractClient().on(key("e_SI.txt"), readable(SI_004)).on(key("e_BL.txt"), readable(BL_004));
+      const llm = new FakeLlmClient((request: LlmRequest) => (request.system.startsWith(JUDGING) ? "not json" : byContent(request)));
+
+      await expect(processCompare({ pool: tx, llm, docExtract, store: new MemoryStore() }, { runId, emailId })).rejects.toBeInstanceOf(TerminalError);
+
+      expect(await outcome(tx, emailRunId)).toMatchObject({ stage: "comparing", status: null });
+      expect(await extractions.listForEmailRun(tx, emailRunId)).toHaveLength(2);
+    });
+  });
+
+  it("a second pass reads the extractions and the judge's answer back instead of paying for them again", async () => {
+    await inRollback(async (tx) => {
+      const { runId, emailId, emailRunId, key } = await pair(tx);
+      const docExtract = new MemoryDocExtractClient().on(key("e_SI.txt"), readable(SI_004)).on(key("e_BL.txt"), readable(BL_004));
+      const deps = { pool: tx, llm: new FakeLlmClient(byContent), docExtract, store: new MemoryStore() };
+
+      await processCompare(deps, { runId, emailId });
+      await emailRuns.setStage(tx, runId, emailId, "comparing");
+      await processCompare(deps, { runId, emailId });
+
+      expect(docExtract.extractCalls).toHaveLength(2);
+      // Two doc-type calls, two extractions and one judge the first time; nothing the second.
+      expect(deps.llm.requests).toHaveLength(5);
+      expect(await outcome(tx, emailRunId)).toMatchObject({ stage: "done", status: "MISMATCH" });
+      expect((await comparisons.view(tx, emailRunId))?.fields).toHaveLength(7);
+    });
+  });
+
+  it("a scanned pair: escalated unreadable, with the comparison on the OCR text attached as provisional", async () => {
     await inRollback(async (tx) => {
       const { runId, emailId, emailRunId, key } = await classified(tx, [
         { filename: "e_SI.pdf", role: "SI" },
         { filename: "e_BL.pdf", role: "BL" },
       ]);
-      const docExtract = new MemoryDocExtractClient().on(key("e_SI.pdf"), scanned(SI_TEXT)).on(key("e_BL.pdf"), scanned(BL_TEXT));
+      const docExtract = new MemoryDocExtractClient().on(key("e_SI.pdf"), scanned(SI_004)).on(key("e_BL.pdf"), scanned(BL_004));
 
       await processCompare({ pool: tx, llm: new FakeLlmClient(byContent), docExtract, store: new MemoryStore() }, { runId, emailId });
 
       const result = await outcome(tx, emailRunId);
-      expect(result).toMatchObject({ stage: "review", review_reason: "unreadable", detail: { scanned: true, provisional: null } });
-      expect(result.detail.pages).toEqual([
-        `${keys.pages(runId, emailId, "e_BL.pdf")}/1.png`,
-        `${keys.pages(runId, emailId, "e_SI.pdf")}/1.png`,
-      ]);
-      expect((await documents.listForEmailRun(tx, emailRunId)).map((d) => [d.scanned, d.docType])).toEqual([[true, "BL"], [true, "SI"]]);
+      expect(result).toMatchObject({
+        stage: "review",
+        outcome: "unreadable",
+        review_reason: "unreadable",
+        detail: { scanned: true, provisional: { status: "MISMATCH", review_reason: null, defect_fields: ["consignee", "notify_party"], missing: [] } },
+      });
+      expect(result.detail.pages).toHaveLength(2);
+      expect((await comparisons.view(tx, emailRunId))?.fields).toHaveLength(7);
+      expect(await extractions.listForEmailRun(tx, emailRunId)).toHaveLength(2);
     });
   });
 
-  it("only the SI attached: missing_attachment, decided by code", async () => {
+  it("a scanned pair whose comparison fails for good is still escalated unreadable, without a provisional result", async () => {
     await inRollback(async (tx) => {
-      const { runId, emailId, emailRunId, key } = await classified(tx, [{ filename: "e_SI.txt", role: "SI" }]);
-      const docExtract = new MemoryDocExtractClient().on(key("e_SI.txt"), readable(SI_TEXT));
-      const llm = new FakeLlmClient(byContent);
+      const { runId, emailId, emailRunId, key } = await classified(tx, [
+        { filename: "e_SI.pdf", role: "SI" },
+        { filename: "e_BL.pdf", role: "BL" },
+      ]);
+      const docExtract = new MemoryDocExtractClient().on(key("e_SI.pdf"), scanned(SI_004)).on(key("e_BL.pdf"), scanned(BL_004));
+      const llm = new FakeLlmClient((request: LlmRequest) => (request.system.startsWith(JUDGING) ? "garbled" : byContent(request)));
 
       await processCompare({ pool: tx, llm, docExtract, store: new MemoryStore() }, { runId, emailId });
 
-      expect(await outcome(tx, emailRunId)).toMatchObject({
-        stage: "review",
-        review_reason: "missing_attachment",
-        detail: { missing: ["BL"], attachments: ["e_SI.txt"] },
-      });
-      expect(llm.requests.map((r) => r.system.includes("what kind of document"))).toEqual([true]);
+      const result = await outcome(tx, emailRunId);
+      expect(result).toMatchObject({ stage: "review", review_reason: "unreadable", detail: { scanned: true, provisional: null } });
+      expect((await comparisons.view(tx, emailRunId))?.fields).toEqual([]);
+      expect(await reviewCases.latestFor(tx, emailRunId)).toMatchObject({ reason: "unreadable", status: "open" });
     });
   });
 
-  it("nothing attached and the sender asks for the draft: OK, awaiting the draft, decided by the model", async () => {
+  it("streams each call where the run page can watch it", async () => {
     await inRollback(async (tx) => {
-      const { runId, emailId, emailRunId } = await classified(tx, []);
-      const llm = new FakeLlmClient(triage("send_draft"));
-
-      await processCompare({ pool: tx, llm, docExtract: new MemoryDocExtractClient(), store: new MemoryStore() }, { runId, emailId });
-
-      expect(await outcome(tx, emailRunId)).toMatchObject({ stage: "done", outcome: "OK", status: "OK", detail: { awaiting_draft: true } });
-      expect(llm.requests).toHaveLength(1);
-      expect(llm.requests[0].system).toContain("nothing attached");
-      expect(llm.requests[0].user).toContain("## body\nHi Mitchelle, please compare the SI and draft BL.");
-      expect(await llmCalls.listForEmail(tx, runId, emailId)).toMatchObject([{ step: "triage", ok: true }]);
-    });
-  });
-
-  it("nothing attached and the sender asks for a comparison: missing_attachment", async () => {
-    await inRollback(async (tx) => {
-      const { runId, emailId, emailRunId } = await classified(tx, []);
-      const deps = { pool: tx, llm: new FakeLlmClient(triage("compare_documents")), docExtract: new MemoryDocExtractClient(), store: new MemoryStore() };
-
-      await processCompare(deps, { runId, emailId });
-
-      expect(await outcome(tx, emailRunId)).toMatchObject({ stage: "review", review_reason: "missing_attachment", detail: { missing: ["SI", "BL"] } });
-    });
-  });
-
-  it("a second pass reuses the parsed rows, the typed documents and the triage answer: nothing is paid for twice", async () => {
-    await inRollback(async (tx) => {
-      const { runId, emailId, emailRunId, key } = await classified(tx, [
-        { filename: "e_SI.txt", role: "SI" },
-        { filename: "e_BL.txt", role: "BL" },
-      ]);
-      const docExtract = new MemoryDocExtractClient().on(key("e_SI.txt"), readable(SI_TEXT)).on(key("e_BL.txt"), readable(BL_TEXT));
-      const deps = { pool: tx, llm: new FakeLlmClient(byContent), docExtract, store: new MemoryStore() };
-
-      await processCompare(deps, { runId, emailId });
-      // As a retry would: the first pass moved the email on, so the second is a no-op at the stage check.
-      await processCompare(deps, { runId, emailId });
-      // And as a reclaimed stalled job would, from `comparing` with the rows already there.
-      await emailRuns.setStage(tx, runId, emailId, "comparing");
-      await processCompare(deps, { runId, emailId });
-
-      expect(docExtract.extractCalls).toHaveLength(2);
-      expect(deps.llm.requests).toHaveLength(2);
-      expect(await outcome(tx, emailRunId)).toMatchObject({ stage: "done", status: "OK" });
-    });
-  });
-
-  it("a doc-extract outage is let through as an outage, and no row is written for the file", async () => {
-    await inRollback(async (tx) => {
-      const { runId, emailId, emailRunId, key } = await classified(tx, [{ filename: "e_SI.txt", role: "SI" }]);
-      const docExtract = new MemoryDocExtractClient().on(key("e_SI.txt"), new DocExtractUnavailableError("doc-extract unreachable"));
-
-      await expect(
-        processCompare({ pool: tx, llm: new FakeLlmClient(byContent), docExtract, store: new MemoryStore() }, { runId, emailId }),
-      ).rejects.toBeInstanceOf(DocExtractUnavailableError);
-
-      expect(await documents.listForEmailRun(tx, emailRunId)).toEqual([]);
-      expect(await outcome(tx, emailRunId)).toMatchObject({ stage: "comparing", status: null });
-    });
-  });
-
-  it("escalating twice leaves one open case", async () => {
-    await inRollback(async (tx) => {
-      const { runId, emailId, emailRunId } = await classified(tx, []);
-      const deps = { pool: tx, llm: new FakeLlmClient(triage("compare_documents")), docExtract: new MemoryDocExtractClient(), store: new MemoryStore() };
-      await processCompare(deps, { runId, emailId });
-      await emailRuns.setStage(tx, runId, emailId, "comparing");
-      await processCompare(deps, { runId, emailId });
-
-      const { rows } = await tx.query("select count(*)::int as n from core.review_cases where email_run_id = $1 and status = 'open'", [emailRunId]);
-      expect(rows[0].n).toBe(1);
-      expect(await comparisons.upsert).toBeDefined();
-    });
-  });
-
-  it("streams each doc-type and triage call where the run page can watch it", async () => {
-    await inRollback(async (tx) => {
-      const { runId, emailId, emailRunId } = await classified(tx, []);
+      const { runId, emailId, emailRunId, key } = await pair(tx);
+      const docExtract = new MemoryDocExtractClient().on(key("e_SI.txt"), readable(SI_004)).on(key("e_BL.txt"), readable(BL_004));
       const live = new MemoryLiveCalls();
-      const llm = new FakeLlmClient(triage("send_draft"));
+      const llm = new FakeLlmClient(byContent);
 
-      await processCompare({ pool: tx, llm, live, docExtract: new MemoryDocExtractClient(), store: new MemoryStore() }, { runId, emailId });
+      await processCompare({ pool: tx, llm, live, docExtract, store: new MemoryStore() }, { runId, emailId });
 
-      expect(llm.requests[0].onText).toBeTypeOf("function");
-      expect(live.writes[0]).toMatchObject({ emailRunId, step: "triage" });
+      expect(llm.requests.every((r) => typeof r.onText === "function")).toBe(true);
+      expect(live.writes.map((w) => w.step)).toContain("field-judge");
+      expect(live.writes.map((w) => w.step)).toContain("extract");
+      expect(live.writes[0]).toMatchObject({ emailRunId });
       expect(await live.get([emailRunId])).toEqual([]);
     });
   });

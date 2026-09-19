@@ -8,6 +8,7 @@ export interface SummaryParts {
   queues: QueueSnapshot;
   llm: RunSummary["llm"];
   review: RunSummary["review"];
+  outcomes: RunSummary["outcomes"];
   lastSubmission: StoredSubmission | undefined;
   /** When the run's last email finished, if one has. */
   lastFinishedAt: string | null;
@@ -16,7 +17,7 @@ export interface SummaryParts {
 
 /** One run as the API reports it: its row, where its emails are, what it cost, how it scored. */
 export function toSummary(run: Run, parts: SummaryParts): RunSummary {
-  const { stageCounts, queues, llm, review, lastSubmission: last } = parts;
+  const { stageCounts, queues, llm, review, outcomes, lastSubmission: last } = parts;
   // An email at `review` waits for a person, not for the pipeline: the run is finished with it.
   const finishedEmails = stageCounts.done + stageCounts.failed + stageCounts.review;
   const stopped = run.status === "cancelled" || run.status === "failed";
@@ -38,6 +39,7 @@ export function toSummary(run: Run, parts: SummaryParts): RunSummary {
     promptSet: run.promptSet,
     llm,
     review,
+    outcomes,
     lastSubmission: last
       ? {
           id: last.id,

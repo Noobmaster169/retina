@@ -199,24 +199,28 @@ end-to-end component.
 
 **Build.**
 
-- `prompts/extract/v1.md`, `prompts/extract-verify/v1.md`, `prompts/party-judge/v1.md`.
-- `pipeline/compare/extract.ts` (calls structured LLM per document), `evidence.ts`,
-  `normalise.ts`, `compare.ts`, `decide.ts`. Normalisers and compare are pure and heavily
-  tested with the cases in `SDOC_BRIEF.md` section 7.6 and 7.5.
-- Compare processor completes: extract → evidence → verifier on failure → normalise →
-  compare → judge → decide → persist `extractions`, `extraction_fields`, `field_diffs`,
-  update `comparisons`; `missing_value` escalations.
-- Migrations: `extractions`, `extraction_fields`, `field_diffs`.
-- Vision check: try one scanned page through the proxy; record the result in `PROGRESS.md`
-  and wire vision only if it works.
+- `prompts/extract/v1.md`, `prompts/extract-verify/v1.md`, `prompts/field-judge/v1.md`: the
+  model reads, the model judges. No normalisers, no label tables (amended 2026-09-19, see the
+  phase spec).
+- `agents/extract.ts` and `agents/field-judge.ts` (the calls), `pipeline/compare/evidence.ts`,
+  `assemble.ts`, `decide.ts` (pure, table-driven tested with the cases in `SDOC_BRIEF.md`
+  sections 7.5 and 9.3).
+- Compare processor completes: extract → evidence → verifier on doubt → judge → assemble →
+  decide → persist `extractions`, `extraction_fields`, `field_diffs`, update `comparisons`;
+  `missing_value` escalations; a provisional result on scans.
+- Migration `006`: `extractions`, `extraction_fields`, `field_diffs`.
+- Vision check: the proxy's `claudecli` capabilities deny images, so page PNGs never reach the
+  model; scans are compared on OCR text. Recorded in `PROGRESS.md`.
 
 **Exit checklist.**
 
 - [ ] End-to-end on holdout at or above 0.80; full-set final score at or above 0.85. Numbers in `PROGRESS.md`.
-- [ ] Zero self-inflicted `missing_value` escalations on `.txt`, `.docx`, `.xlsx` pairs.
+- [ ] Zero self-inflicted `missing_value` escalations on `.txt`, `.docx`, `.xlsx`, `.pdf` pairs of the main 500.
 - [ ] The 5 `missing_value` reference cases escalate as `missing_value`, not `MISMATCH`.
-- [ ] The 3 UN/LOCODE false alarms from the brief (516, 518) produce no diff.
+- [ ] Port mutations with stale codes are caught (spot-check two `port_of_discharge` defects in txt pairs).
 - [ ] Extraction verifier ran on under 20% of documents.
+- [ ] Scanned pairs (512 to 514) escalate `unreadable` with a `provisional` result attached.
+- [ ] Every judged field is in `field_diffs` and every extracted value in `extraction_fields` with its quote.
 
 ## Phase 7: Dashboard and email trace
 

@@ -13,7 +13,17 @@ import {
 } from "../contracts";
 import { childLogger } from "../lib/logger";
 import type { LiveCall, LiveCalls } from "../live";
-import { classifications, documents, emailRuns, emails, llmCalls, reviewCases, type StoredDocument } from "../ontology/repositories";
+import {
+  classifications,
+  comparisons,
+  documents,
+  emailRuns,
+  emails,
+  extractions,
+  llmCalls,
+  reviewCases,
+  type StoredDocument,
+} from "../ontology/repositories";
 import { documentVerdicts } from "../pipeline/compare";
 import { runIdParam } from "./params";
 
@@ -99,10 +109,12 @@ export function runTraceRouter(deps: RunTraceDeps): Router {
       res.status(404).json({ error: "no such email in this run" });
       return;
     }
-    const [classification, docs, review, calls, live] = await Promise.all([
+    const [classification, docs, review, extracted, comparison, calls, live] = await Promise.all([
       classifications.view(pool, state.id),
       documents.listForEmailRun(pool, state.id),
       reviewCases.latestFor(pool, state.id),
+      extractions.listForEmailRun(pool, state.id),
+      comparisons.view(pool, state.id),
       llmCalls.listForEmail(pool, id, emailId.data),
       liveOf([{ id: state.id, emailId: emailId.data }]),
     ]);
@@ -113,6 +125,8 @@ export function runTraceRouter(deps: RunTraceDeps): Router {
       classification,
       documents: withVerdicts(docs),
       review,
+      extractions: extracted.map(extractions.toView),
+      comparison,
       live: live[0] ?? null,
       calls,
     };

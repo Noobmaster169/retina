@@ -1,5 +1,7 @@
 export { classifyEmail, ClassifyOutput } from "./classify";
 export { DocTypeOutput, identifyDocument } from "./doc-type";
+export { type ExtractInput, extractFields, type ExtractionRole, ExtractOutput, verifyExtraction } from "./extract";
+export { judgeFields, type JudgeOutput, judgeSchema } from "./field-judge";
 export { type LlmClient, type LlmRequest, type LlmResponse, proxyLlmClient } from "./llm-client";
 export { completePromptSet, envModel, pinPromptSet, promptFor } from "./prompts/prompt-set";
 export type { Prompt } from "./prompts/registry";

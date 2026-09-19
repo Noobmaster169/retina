@@ -43,6 +43,17 @@ file("classify", "v3.md", prompt("classify", "v3", "Classify three."));
 file("classify-verify", "v1.md", prompt("classify-verify", "v1", "Verify one."));
 file("triage", "v1.md", prompt("triage", "v1", "Triage one."));
 file("doc-type", "v1.md", prompt("doc-type", "v1", "Type one."));
+file("extract", "v1.md", prompt("extract", "v1", "Extract one."));
+file("extract-verify", "v1.md", prompt("extract-verify", "v1", "Verify extraction one."));
+file("field-judge", "v1.md", prompt("field-judge", "v1", "Judge one."));
+
+const PHASE_5_AND_6 = {
+  triage: { version: "v1", model: "sonnet" },
+  "doc-type": { version: "v1", model: "sonnet" },
+  extract: { version: "v1", model: "sonnet" },
+  "extract-verify": { version: "v1", model: "sonnet" },
+  "field-judge": { version: "v1", model: "sonnet" },
+};
 
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -116,8 +127,7 @@ describe("pinPromptSet", () => {
     expect(pinPromptSet({}, {}, dir)).toEqual({
       classify: { version: "v3", model: "sonnet" },
       "classify-verify": { version: "v1", model: "opus" },
-      triage: { version: "v1", model: "sonnet" },
-      "doc-type": { version: "v1", model: "sonnet" },
+      ...PHASE_5_AND_6,
     });
   });
 
@@ -144,8 +154,7 @@ describe("completePromptSet", () => {
     expect(completePromptSet({}, { classify: "v2", "classify-verify": "v1" }, dir)).toEqual({
       classify: { version: "v2", model: "sonnet" },
       "classify-verify": { version: "v1", model: "opus" },
-      triage: { version: "v1", model: "sonnet" },
-      "doc-type": { version: "v1", model: "sonnet" },
+      ...PHASE_5_AND_6,
     });
   });
 
@@ -156,7 +165,7 @@ describe("completePromptSet", () => {
 
   it("leaves a fully pinned set alone", () => {
     const pin = { version: "v1", model: "haiku" };
-    const full = { classify: pin, "classify-verify": pin, triage: pin, "doc-type": pin };
+    const full = { classify: pin, "classify-verify": pin, triage: pin, "doc-type": pin, extract: pin, "extract-verify": pin, "field-judge": pin };
     expect(completePromptSet(full, {}, dir)).toBe(full);
   });
 });
@@ -169,7 +178,21 @@ describe("the prompts that ship", () => {
     loadPrompt("classify", "v5"),
     loadPrompt("classify-verify", "v2"),
   ];
-  const shipped = [...classifiers, loadPrompt("triage", "v1"), loadPrompt("doc-type", "v1")];
+  const readers = [loadPrompt("extract", "v1"), loadPrompt("extract-verify", "v1"), loadPrompt("field-judge", "v1")];
+  const shipped = [...classifiers, loadPrompt("triage", "v1"), loadPrompt("doc-type", "v1"), ...readers];
+
+  it.each(readers.slice(0, 2))("$step $version names all seven of the organisers' fields", (prompt) => {
+    for (const field of ["shipper", "consignee", "notify_party", "port_of_loading", "port_of_discharge", "container_count", "gross_weight_kg"]) {
+      expect(prompt.text).toContain(`- ${field}:`);
+    }
+  });
+
+  it("the field judge states the two words it answers with, and that an absent value is never a difference", () => {
+    const text = loadPrompt("field-judge", "v1").text;
+    expect(text).toContain('What "the same" means');
+    expect(text).toContain('What "missing" means');
+    expect(text).toContain("never a difference");
+  });
   const v4Instructions = { ...loadPrompt("classify", "v4"), text: loadPrompt("classify", "v4").text.split("<example")[0] };
 
   it.each(shipped)("$step $version has a place for the schema and no cap of its own", (prompt) => {

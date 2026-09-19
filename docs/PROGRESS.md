@@ -1,16 +1,13 @@
 # Progress
 
-Current phase: 5, on `phase-05-parsing-and-triage`. Built, tested and checked on a 24-email
-run locally (see "Phase 5" below). Left for the user: the box (the doc-extract container comes
-up with the next deploy, and `/health` must show `docExtract` up there), the holdout run that
-decides whether classify `v5` (the attachments' text as context) becomes active, and
-`pnpm eval:score --holdout` on a run that includes the 20 edge cases. Phase 4's open items
-(the few-shot `v4` holdout, the model comparison) are still the user's.
+Current phase: 6, on `phase-06-extraction-and-comparison`. Built and tested; checked on a
+24-email run locally (see "Phase 6" below). Left for the user: the holdout run and the full 520
+run that decide the exit checklist's score lines (`pnpm eval:score --run <id> --holdout`), and
+phase 5's open items (the box check of doc-extract, the classify `v5` holdout). Phase 4's open
+items (the few-shot `v4` holdout, the model comparison) are still the user's.
 
-**Starting phase 6: read the hand-off notes at the end of `docs/phases/phase-05-parsing-and-triage.md`.**
-Every document's text is in MinIO under `text/`, typed on its `documents` row; the scanned
-escalation carries `provisional: null` for phase 6 to fill; comparable pairs end `OK` with
-`detail.placeholder = true` and are where the field extraction goes.
+Phase 5 merged to `main` on 2026-09-20. Every document's text is in MinIO under `text/`, typed
+on its `documents` row; phase 6 reads it from there.
 
 Phase 3: closed. The code is merged to `main`; the box is not deployed yet. Everything
 that could be built and tested without SSH access to the Monash box is done and green in
@@ -44,11 +41,51 @@ corrected where it described the old behaviour:
 | 4, v3 + verifier, full inbox | 0.2996 | 0.2996 (scorer) | 0.9938 holdout, 0.9987 full | 0 | 0 | Run `69ee1e42`, started by the user, 520 emails at 8 in parallel in 7 min 46 s. 595 calls, 0 failed, verifier on 14.4%. One wrong category: `email_504`, SI_REQUEST for BL_COMPARISON |
 | 4, v3 + verifier, dev sample | not run | not run | 1.0000 dev (30 of 30) | 0 | 0 | Run `0d09d887`, 30 train emails, 37 calls, 0 failed, verifier on 7 (23.3%), agreed every time. Not a holdout number |
 | 5, structural escalations | not run | not run | n/a | 0 | 0 | Run `cd96e1c0`, 24 emails (the 20 edge cases and one pair per format): 14 escalated with the right reason, 0 failed. Not a scored number; the holdout is the user's to run |
+| 6, extraction and judge, 24 train pairs | not run | not run | 1.0000 accuracy (all 24 BL_COMPARISON) | 1.0000 over 18 | 1.0000, 8 of 8 | Run `0011eb39`, 24 train ids (12 txt pairs, 6 binary-format pairs, 2 scanned, 4 missing_value): 8 MISMATCH with the exact field sets, 10 OK, 4 missing_value, 2 unreadable with provisional; escalation recall and precision 1.0. 146 calls, 0 failed, verifier on 1 of 48 documents. Macro-F1 reads 0.2 only because four categories are absent from the run. Not a holdout number |
 
 Stage 1 carries 0.30 of the final score, so 0.3000 is exactly what a perfect classifier with no
 document check gets, and `v3` is there. The holdout final cannot rise further until phase 5.
 
 ## Phase checklists
+### Phase 6 (built 2026-09-20, local)
+Exit checklist from `docs/phases/phase-06-extraction-and-comparison.md`, checked on run
+`0011eb39` (24 train ids: `email_001`, `004`, `009`, `013`, `025`, `031`, `032`, `034`, `040`,
+`043`, `044`, `046` as txt pairs; `055`, `107` xlsx+docx; `171`, `243` xlsx+xlsx; `059`, `208`
+pdf+pdf; `513`, `514` scanned; `516`, `517`, `518`, `520` missing_value. 4 in parallel, 7 min,
+146 calls, 0 failed). The holdout and the full 520 are the user's.
+- [ ] End-to-end on holdout at or above 0.80; full-set final at or above 0.85: not run. On this
+      run end to end is 1.0000 (8 of 8 defect emails with the exact field set) and stage 3
+      defect-F1 1.0000 over 18 comparable emails. Not a holdout number.
+- [x] Zero self-inflicted `missing_value` escalations on the main-500 pairs of this run: the 18
+      pairs in four formats all ended OK or MISMATCH. The full run is the box the spec words.
+- [x] The train `missing_value` emails (516, 517, 518, 520) escalate as `missing_value`, none as
+      `MISMATCH`, each naming exactly the blank fields (`N/A`, `TBA`, `____MT`, an empty label).
+      519 is a holdout id and was left out.
+- [x] Port mutations with stale codes are caught: `email_013` `MOMBASA, KENYA (KEMBA)` against
+      `TUTICORIN, INDIA (KEMBA)` and `email_025` `FREMANTLE, AUSTRALIA (AUFRE)` against
+      `BUSAN, SOUTH KOREA (AUFRE)` both judged different, at 0.90 and 0.95, with the rationale
+      naming the place.
+- [x] Extraction verifier ran on 1 of 48 documents (2.1%).
+- [x] Scanned pairs 513 and 514 escalate `unreadable` with `provisional` attached (both `OK` on
+      the OCR text; the judge read `NANTONG CHIMA` and `FZ-LLG` as recognition errors at 0.85 and
+      0.65). 512 is a holdout id and was left out.
+- [x] Every judged field is in `field_diffs` (168 rows, 7 per judged pair) and every extracted
+      value in `extraction_fields` with its quote; 0 of 336 stored fields failed the evidence check.
+- [x] 410 backend tests, type-check clean in both packages, frontend lint clean.
+
+What a run costs now, from `0011eb39` at API prices: extract 48 calls at 16.8 s and 2.11 USD,
+field-judge 24 at 10.7 s and 0.81 USD, doc-type 48 at 6.3 s, classify 24 at 7.0 s; 4.25 USD for
+24 emails. A comparable pair is six calls: classify, two doc-type, two extract, one judge, plus a
+verifier where a quote fails.
+
+Seen on this run and left as is: on the flattened xlsx and pdf documents (`055`, `059`) the
+extractor returned the shipper with a second line or the address cells attached; the judge still
+called the pair the same at 0.85 and 0.75. The extract prompt now says the name only, not the
+cells after a bar; that sentence describes our parser's output format (`03-infra-deep.md`
+section 6), not the dataset. A sentence about the second line itself was written and then
+removed by the review pass below, because it came from the sample. Whether the pairs still read
+the same is the holdout's to say.
+
 ### Phase 5 (built 2026-09-20, local)
 Exit checklist from `docs/phases/phase-05-parsing-and-triage.md`, checked on run `cd96e1c0`
 (24 emails: `email_001`, `005`, `055`, `059`, one pair per format, and `email_501` to `520`,
@@ -440,6 +477,82 @@ dev machine:
   ids only, to start a dev or holdout run. It still never reads `ground_truth.json`:
   `eval/id-lists.ts` is split from `eval/ground-truth.ts` so the api does not even import it.
 
+## Design decisions (phase 6 review pass, 2026-09-20)
+Found by a reviewer given only the branch, `CLAUDE.md`, the spec and the checklist, with none of
+the building session's context, and fixed on the same branch. The behaviour changes are the
+first four.
+- **The verdict is written before the courtesy.** A scanned pair's provisional comparison ran
+  before the `unreadable` escalation was written, so a judge answer that never fit its schema on
+  garbled OCR text failed an email whose verdict was already known, and the submission would have
+  sent it as `OK`. The comparison now runs first inside a `TerminalError` guard, the escalation is
+  written whatever it returns, and a failed comparison leaves `provisional: null`. Outages still
+  pause the queue. A test drives the failing case.
+- **Rows before the stage move, on every path.** The `missing_value` and scanned paths wrote
+  `field_diffs` after `escalate` had moved the email to `review`, so a failed write was never
+  retried: the retry hit the stage guard and the trace stayed empty. The comparison row and its
+  judgements are now written first on every path, and the stage moves last.
+- **The verifier replaces only the fields it was asked about.** Its answer replaced all seven,
+  so a proven field re-copied with a slightly different quote was nulled and the pair escalated
+  for a field the first reading had proved. The second reading is merged into the first on the
+  doubted fields alone; a test re-copies a proven field with a bad quote and expects it kept.
+- **A field given up on carries no evidence.** `evidence_ok` was computed after the unlocated
+  fields were nulled, and a null with no placeholder passes the check by definition, so a value
+  the verifier could not find was stored as proven and shown as "quote found". It is stored
+  `false` now; the checklist's "0 of 336 failed" line above was partly this and is restated.
+- **Two prompt phrases came from the sample, not the brief.** "A line saying on whose behalf the
+  party acts" named a rendering the generator makes 56 times and the organisers' text never
+  mentions; "TBC" and "N/A" are generator tokens where the brief lists `???`, underscores, `TBA`
+  and `TBD`. Both removed; "or another stand-in for a value not yet known" stays.
+- **A half-written extraction is no extraction.** The row and its seven fields are separate
+  statements; a crash between them left a reading with fields missing that a retry read back and
+  tripped over. `forDocument` now answers null for fewer than seven fields, and the retry reads
+  the document again.
+- **The judge's answer is reused on a retry**, as the handover said every step's should be:
+  `llmCalls.latestAccepted` under the run's prompt version, parsed against the schema for the
+  same fields, so a retry after a failed write costs no call.
+- Also: the SQL fragment that names a defect field lives in `field-diffs.repo.ts`, the
+  aggregate that owns the table, instead of one repository importing it from another; the seven
+  field names are ordered in code, not in a third SQL copy; the frontend reuses the scoring
+  schema's `ComparisonStatus` and shows an empty placeholder as such; the processor tests are two
+  files, the pair path and the structural escalations, with a shared harness; and the infra doc's
+  extract paragraph, decide pseudocode, timeouts line and write order now describe the code.
+- Checked live after the fixes on run `7a6e83bd` (`email_004`, `513`, `516`, 18 calls, 0 failed):
+  MISMATCH on consignee and notify_party, `unreadable` with a provisional `OK`, `missing_value` on
+  the weight, the `N/A` still read as a placeholder without the token in the prompt.
+- **Not changed, noted:** an absent field the extractor is unsure of still goes to the verifier
+  (`fieldsInDoubt` on low confidence); on this run the model gave absent fields high confidence
+  and 1 of 48 documents was verified, so the "under 20%" line holds. Watch it on the full run.
+
+## Design decisions (phase 6)
+- 2026-09-20, **the model reads and the model judges; code assembles.** Extraction is one call
+  per document returning the seven fields verbatim with a `source_quote`; the comparison is one
+  call per pair in which the field judge says, field by field, whether the two values denote the
+  same thing. There is no normaliser, no label table and no suffix list in code: those were rules
+  read off this generator (the phase spec's original items are in git history before this date).
+  `assemble.ts` turns the judgements into the defect and missing sets and validates every name
+  against the organisers' enum; `decide.ts` turns the sets into the status.
+- 2026-09-20, **a side the extractor found nothing on is not sent to the judge.** The extractor
+  already said the document does not give the value (a placeholder, or no label at all); code
+  records the field as missing by that word and asks the judge only about fields with a value on
+  both sides. The judge can still call one of those missing. The judge's schema is built per
+  call from exactly those fields, so it can neither skip one nor answer for one it was not given.
+- 2026-09-20, **a value that cannot be located is a missing value.** A field whose quote is not
+  in the document after the verifier has read it again becomes `value: null` and the pair goes to
+  a person as `missing_value`: the organisers' enum has one reason for uncertainty and none is
+  added. A verifier whose answer never fits its schema degrades the same way; an outage pauses.
+- 2026-09-20, **every judgement is stored, not only the differences.** `field_diffs` holds all
+  seven fields of every judged pair, on a `missing_value` escalation and a scan's provisional
+  result too, so the trace shows the whole comparison. `defect_fields` is derived from it (rows
+  with `same` and `missing` both false), and the submission takes it from there.
+- 2026-09-20, **images do not reach the model.** `proxy/proxy.yaml` denies image blocks for the
+  `claudecli` provider (`claude -p` takes no image input), so the vision path of the design is
+  off: a scanned pair is compared on its OCR text and the reviewer sees the page PNGs beside the
+  provisional result. Nothing is wired for images.
+- 2026-09-20, **`MISMATCH` is an outcome.** `email_runs.outcome` carries the comparison status,
+  so the email list filters on it; `Outcome` gains the value in both contracts.
+- 2026-09-20, **no few-shot examples for the three new steps.** They ship only when a holdout run
+  shows they help, as the phase 4 rule says; `v1` of each is zero-shot.
+
 ## Design decisions (phase 5 review pass, 2026-09-20)
 Found by a two-axis review of the branch against `CLAUDE.md` and the phase 5 spec, and fixed on
 the same branch. The behaviour changes are the first three.
@@ -501,6 +614,24 @@ the same branch. The behaviour changes are the first three.
   dev sample, decides a prompt switch; the runs page can pin them meanwhile.
 
 ## Deferred
+- `EXTRACT_TRUST_FROM` (0.7, `pipeline/compare/evidence.ts`) is the classify verifier's bar
+  carried over, not a measured one. On the 24-email check it sent 1 of 48 documents to the
+  verifier; the holdout run says whether that is too few (a wrong value passing at 0.8) or fine.
+- The field judge runs on every compared pair, one call each, about 11 s and 0.03 USD. The spec's
+  original design had a judge only on party names that differed after normalising; that design
+  was dropped with the normalisers. If cost matters on the full 520, the eval harness can say
+  whether a judge on the fields whose values differ textually loses anything: that would be a
+  rule again, so it needs the number first.
+- The extractor's values on flattened xlsx and pdf documents (`email_055`, `059`) carried the
+  address cells or the on-behalf-of line with the party name; the judge coped. The prompt was
+  tightened after the run and not re-measured. Read the trace of a binary-format pair on the
+  full run.
+- Few-shot examples for `extract`, `extract-verify` and `field-judge`: none yet. `pnpm
+  eval:examples` writes only classify examples; extending it is worth doing only if the holdout
+  shows an extraction miss that an example would teach.
+- `rerunFrom: "compare"` and `"extract"` from the spec's original item 10 are not wired: there is
+  no review action yet to raise them (phase 8). The extraction is already reused from the
+  `extractions` row on a second pass, so a rerun from compare costs one judge call.
 - `DOC_TYPE_TRUST_FROM` (0.7) is not a measured number. It is the bar under which the doc-type
   model's reading does not displace the file name's claim, and the only calibration point behind
   it is the 0.62 misread below. The eval harness decides it: a holdout run that moves it to 0.5

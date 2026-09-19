@@ -15,8 +15,24 @@ export type Stage = z.infer<typeof Stage>;
 export const ReviewReason = z.enum(["wrong_doc_type", "missing_attachment", "unreadable", "missing_value"]);
 export type ReviewReason = z.infer<typeof ReviewReason>;
 
-/** How an email ended: never sent to compare, compared, or parked with one of the reasons. */
-export const Outcome = z.enum(["not_comparable", "OK", ...ReviewReason.options]);
+/** How an email ended: never sent to compare, compared clean or with a defect, or parked with one of the reasons. */
+export const Outcome = z.enum(["not_comparable", "OK", "MISMATCH", ...ReviewReason.options]);
+
+/** The seven fields an SI and a BL are compared on, value for value the organisers'. */
+export const ComparisonField = z.enum([
+  "shipper",
+  "consignee",
+  "notify_party",
+  "port_of_loading",
+  "port_of_discharge",
+  "container_count",
+  "gross_weight_kg",
+]);
+export type ComparisonField = z.infer<typeof ComparisonField>;
+
+/** A run's compared pairs: how many came out clean or with a defect, and which fields differed how often. */
+export const RunOutcomes = z.object({ ok: z.number(), mismatch: z.number(), byField: z.record(ComparisonField, z.number()) });
+export type RunOutcomes = z.infer<typeof RunOutcomes>;
 export type Outcome = z.infer<typeof Outcome>;
 
 export type RunAction = "pause" | "resume" | "cancel";
@@ -59,7 +75,7 @@ export const LastSubmission = z.object({
 });
 export type LastSubmission = z.infer<typeof LastSubmission>;
 
-export const PromptStep = z.enum(["classify", "classify-verify", "triage", "doc-type"]);
+export const PromptStep = z.enum(["classify", "classify-verify", "triage", "doc-type", "extract", "extract-verify", "field-judge"]);
 export type PromptStep = z.infer<typeof PromptStep>;
 
 /** What each LLM step of a run runs, fixed when the run was created. Empty for a run from before phase 4. */
@@ -69,6 +85,9 @@ export const PromptSet = z.object({
   "classify-verify": PinnedPrompt.optional(),
   triage: PinnedPrompt.optional(),
   "doc-type": PinnedPrompt.optional(),
+  extract: PinnedPrompt.optional(),
+  "extract-verify": PinnedPrompt.optional(),
+  "field-judge": PinnedPrompt.optional(),
 });
 export type PromptSet = z.infer<typeof PromptSet>;
 
@@ -93,6 +112,8 @@ export const RunSummary = z.object({
   promptSet: PromptSet,
   llm: LlmUsage,
   review: RunReview,
+  /** How the compared pairs came out, and which fields differed. */
+  outcomes: RunOutcomes,
   /** The newest submission to the scorer. */
   lastSubmission: LastSubmission.nullable(),
 });

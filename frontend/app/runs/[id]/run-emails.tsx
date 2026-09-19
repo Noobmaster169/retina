@@ -86,6 +86,7 @@ export function RunEmails({ runId, live, selected, onSelect }: Props) {
               <th className="py-2 pr-3 font-medium">Category</th>
               <th className="py-2 pr-3 font-medium">Confidence</th>
               <th className="py-2 pr-3 font-medium">Outcome</th>
+              <th className="py-2 pr-3 font-medium">Defect fields</th>
               <th className="py-2 font-medium">Stage</th>
             </tr>
           </thead>
@@ -106,7 +107,10 @@ export function RunEmails({ runId, live, selected, onSelect }: Props) {
                   <CategoryBadge email={email} />
                 </td>
                 <td className="py-2 pr-3 tabular-nums">{email.confidence === null ? "" : email.confidence.toFixed(2)}</td>
-                <td className={`py-2 pr-3 text-xs ${email.stage === "review" ? "text-amber-700" : "text-muted"}`}>{email.outcome ?? ""}</td>
+                <td className={`py-2 pr-3 text-xs ${email.stage === "review" ? "text-amber-700" : email.outcome === "MISMATCH" ? "text-red-700" : "text-muted"}`}>
+                  {email.outcome ?? ""}
+                </td>
+                <td className="py-2 pr-3 font-mono text-xs text-muted">{email.defectFields.join(", ")}</td>
                 <td className={`py-2 text-xs ${email.stage === "failed" ? "text-red-700" : "text-muted"}`} title={email.error ?? undefined}>
                   {email.stage}
                 </td>

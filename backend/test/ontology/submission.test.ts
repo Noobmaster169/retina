@@ -2,8 +2,9 @@ import type { PoolClient } from "pg";
 import { describe, expect, it } from "vitest";
 
 import type { Category } from "../../src/contracts";
-import { classifications, comparisons, emailRuns } from "../../src/ontology/repositories";
+import { classifications, comparisons, emailRuns, fieldDiffs } from "../../src/ontology/repositories";
 import { buildSubmission } from "../../src/ontology/submission";
+import type { FieldJudgement } from "../../src/pipeline/compare";
 import { inRollback, seedEmail, seedRun } from "../db";
 
 async function email(tx: PoolClient, runId: string, category: Category | null, stage: "done" | "classifying" | "failed" = "done") {
@@ -68,9 +69,36 @@ describe("buildSubmission", () => {
       const run = await seedRun(tx);
       const bl = await email(tx, run.id, "BL_COMPARISON");
       await comparisons.upsert(tx, { emailRunId: bl.emailRunId, status: "MISMATCH", reviewReason: null, detail: {} });
+      const comparisonId = (await comparisons.idFor(tx, bl.emailRunId)) as string;
+      const judged = (field: FieldJudgement["field"], same: boolean, missing = false): FieldJudgement => ({
+        field,
+        siValue: "a",
+        blValue: "b",
+        same,
+        missing,
+        confidence: 0.9,
+        rationale: null,
+      });
+      await fieldDiffs.replaceAll(tx, comparisonId, [judged("notify_party", false), judged("shipper", true), judged("consignee", false), judged("gross_weight_kg", false, true)]);
 
       const { payload } = await buildSubmission(tx, run.id);
-      expect(payload[bl.emailId]).toMatchObject({ status: "MISMATCH", has_defect: true, review_reason: null });
+      expect(payload[bl.emailId]).toMatchObject({ status: "MISMATCH", has_defect: true, review_reason: null, defect_fields: ["consignee", "notify_party"] });
+    });
+  });
+
+  it("a pair sent to review submits no defect fields, whatever the judge saw on the other fields", async () => {
+    await inRollback(async (tx) => {
+      const run = await seedRun(tx);
+      const bl = await email(tx, run.id, "BL_COMPARISON");
+      await comparisons.upsert(tx, { emailRunId: bl.emailRunId, status: "NEEDS_REVIEW", reviewReason: "missing_value", detail: {} });
+      const comparisonId = (await comparisons.idFor(tx, bl.emailRunId)) as string;
+      await fieldDiffs.replaceAll(tx, comparisonId, [
+        { field: "consignee", siValue: "a", blValue: "b", same: false, missing: false, confidence: 0.9, rationale: null },
+        { field: "gross_weight_kg", siValue: null, blValue: "b", same: false, missing: true, confidence: null, rationale: null },
+      ]);
+
+      const { payload } = await buildSubmission(tx, run.id);
+      expect(payload[bl.emailId]).toMatchObject({ status: "NEEDS_REVIEW", review_reason: "missing_value", has_defect: false, defect_fields: [] });
     });
   });
 
