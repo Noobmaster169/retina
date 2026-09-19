@@ -64,6 +64,12 @@ class ProviderConfig(BaseModel):
     binary: str = "claude"
     stream_mode: Literal["native", "synthetic"] = "native"
     neutralise_anthropic_key: bool = True
+    # claudecli only. The CLI's built-in tools this provider's sessions may use,
+    # and may use without a permission prompt (e.g. ["WebSearch"]). Empty, the
+    # default, means none: without `--tools` a `claude -p` session loads Bash,
+    # Edit, Write, WebFetch and twenty more, which a completion never needs and
+    # which a crafted input could try to steer.
+    tools: list[str] = Field(default_factory=list)
 
     def api_key(self) -> str | None:
         return os.getenv(self.api_key_env) if self.api_key_env else None

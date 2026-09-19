@@ -31,6 +31,21 @@ providers:
     timeout_s: 1200
     stream_mode: native
     neutralise_anthropic_key: true
+    # The CLI's built-in tools a session may use. None: a completion needs none,
+    # and a crafted email must have nothing to steer.
+    tools: []
+
+  # Template for a tool-using rail, off until needed. Uncomment this and the
+  # `sonnet-web` alias below: that alias gets web search, `sonnet` keeps none.
+  # Any built-in the CLI lists works here (WebSearch, WebFetch, Read...).
+  # claudecli_web:
+  #   type: claudecli
+  #   binary: claude
+  #   max_concurrency: 2
+  #   timeout_s: 1200
+  #   stream_mode: native
+  #   neutralise_anthropic_key: true
+  #   tools: [WebSearch]
 
   mock:
     type: mock
@@ -49,6 +64,10 @@ model_list:
   - model_name: haiku
     params: { model: claudecli/haiku }
 
+  # With the claudecli_web provider above:
+  # - model_name: sonnet-web
+  #   params: { model: claudecli_web/sonnet }
+
   # Scripted, free, offline: echoes the prompt back. For smoke tests.
   - model_name: test
     params: { model: mock/echo }
@@ -59,11 +78,15 @@ model_list:
 capabilities:
   # `claude -p` spawns a whole agent session: no tool-use API, no image input, and
   # no separate system field; the provider folds `system` into the prompt body.
+  # `tools: deny` here is the Messages API's client-defined tools, which the CLI
+  # cannot take. The CLI's own built-ins are the provider's `tools` list above.
   "claudecli/*":
     sampling: deny
     tools: deny
     images: deny
     system: merge_into_first_user
+  # With the claudecli_web template: capabilities match by provider name.
+  # "claudecli_web/*": { sampling: deny, tools: deny, images: deny, system: merge_into_first_user }
 
 # What to do with a parameter the target model cannot take: strip it and say so in
 # the X-LLM-Proxy-Warnings response header. `strip_silent` and `reject` also exist.

@@ -30,6 +30,8 @@ from llm_proxy.providers.claude_cli import (
     cli_args,
     failure_detail,
     flatten,
+    partial_text,
+    tool_args,
 )
 from llm_proxy.providers.retry import is_login_failure
 from llm_proxy.providers.openai_api import OpenAIProvider
@@ -284,6 +286,8 @@ STREAM_STUB = textwrap.dedent("""\
     import json, sys
     args = sys.argv[1:]
     assert "stream-json" in args and "--verbose" in args, args
+    assert "--include-partial-messages" in args, args
+    assert args[args.index("--tools") + 1] == "", args
     assert args[args.index("--model") + 1] == "haiku", args
     prompt = sys.stdin.read()
     assert prompt.startswith("Be terse."), prompt
@@ -543,3 +547,90 @@ def test_failure_detail_reads_the_envelope_result_not_its_counters():
 )
 def test_login_failures_are_told_apart_from_outages(detail, login):
     assert is_login_failure(detail) is login
+
+
+
+# With --include-partial-messages the CLI sends raw stream events as the tokens
+# arrive, then the finished message, which repeats the same text.
+PARTIAL_STREAM_STUB = textwrap.dedent("""\
+    #!/usr/bin/env python3
+    import json, sys
+    sys.stdin.read()
+    def event(e):
+        print(json.dumps({"type": "stream_event", "event": e}))
+    print(json.dumps({"type": "system", "subtype": "init", "tools": []}))
+    event({"type": "message_start", "message": {}})
+    event({"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}})
+    for piece in ["pro", "xy ", "ok"]:
+        event({"type": "content_block_delta", "index": 0,
+               "delta": {"type": "text_delta", "text": piece}})
+    event({"type": "content_block_stop", "index": 0})
+    print(json.dumps({"type": "assistant", "message": {
+        "content": [{"type": "text", "text": "proxy ok"}],
+        "usage": {"input_tokens": 9, "output_tokens": 3}}}))
+    print(json.dumps({"type": "result", "subtype": "success", "result": "proxy ok",
+                      "total_cost_usd": 0.001}))
+""")
+
+
+async def test_partial_messages_stream_token_by_token_without_repeating_the_text(fake_claude):
+    fake_claude(PARTIAL_STREAM_STUB)
+    provider = ClaudeCliProvider("claudecli", ProviderConfig(type="claudecli"))
+    events = [e async for e in provider.stream(canon_req("claudecli", "haiku"))]
+    deltas = [e.text for e in events if e.type == "text_delta"]
+    assert deltas == ["pro", "xy ", "ok"]
+    resp = aggregate(events)
+    assert resp.text() == "proxy ok"
+    assert resp.usage.output_tokens == 3
+
+
+@pytest.mark.parametrize(
+    "event, text",
+    [
+        ({"type": "content_block_delta", "delta": {"type": "text_delta", "text": "hi"}}, "hi"),
+        ({"type": "content_block_delta", "delta": {"type": "input_json_delta", "partial_json": "{"}}, ""),
+        ({"type": "message_start", "message": {}}, ""),
+        ({}, ""),
+    ],
+)
+def test_partial_text_reads_only_text_deltas(event, text):
+    assert partial_text(event) == text
+
+
+def test_no_tools_unless_configured():
+    args = cli_args("claude", canon_req("claudecli", "sonnet"), "json")
+    assert args[args.index("--tools") + 1] == ""
+    assert "--allowedTools" not in args
+
+
+def test_configured_tools_are_enabled_and_pre_approved():
+    assert tool_args(["WebSearch", "WebFetch"]) == [
+        "--tools", "WebSearch,WebFetch", "--allowedTools", "WebSearch,WebFetch",
+    ]
+    args = cli_args("claude", canon_req("claudecli", "sonnet"), "json", ["WebSearch"])
+    assert args[args.index("--tools") + 1] == "WebSearch"
+
+
+STREAM_NOT_LOGGED_IN_STUB = textwrap.dedent("""\
+    #!/usr/bin/env python3
+    import json, sys
+    sys.stdin.read()
+    print(json.dumps({"type": "system", "subtype": "init", "tools": []}))
+    # What the pinned CLI (2.1.278) really sends first: a synthetic message.
+    print(json.dumps({"type": "assistant", "error": "authentication_failed", "message": {
+        "model": "<synthetic>",
+        "content": [{"type": "text", "text": "Not logged in \\u00b7 Please run /login"}]}}))
+    print(json.dumps({"type": "result", "subtype": "success", "is_error": True,
+                      "result": "Not logged in \\u00b7 Please run /login", "total_cost_usd": 0}))
+    sys.exit(1)
+""")
+
+
+async def test_a_failed_stream_never_sends_the_error_as_text_and_names_the_login(fake_claude):
+    fake_claude(STREAM_NOT_LOGGED_IN_STUB)
+    provider = ClaudeCliProvider("claudecli", ProviderConfig(type="claudecli"))
+    events = [e async for e in provider.stream(canon_req("claudecli", "haiku"))]
+    assert [e for e in events if e.type == "text_delta"] == []
+    error = next(e for e in events if e.type == "error")
+    assert error.code == "provider_not_logged_in"
+    assert error.retryable is False

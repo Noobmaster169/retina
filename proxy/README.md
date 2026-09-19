@@ -65,6 +65,27 @@ gives SSE. `x-api-key` is a label, not a key; it comes back as
 Errors use the Anthropic error shape: 404 unknown alias, 400 unsupported
 request, 502/503/504 upstream failure.
 
+## Streaming
+
+`"stream": true` streams token by token: the provider runs `claude -p --output-format
+stream-json --verbose --include-partial-messages` and forwards each text delta as an
+Anthropic `content_block_delta`. Verified live: the first delta at about 2.4 s, then
+deltas as the model writes. A request with a schema does not stream (the answer is
+validated whole), and a failed session ends in an `error` event, never in text.
+
+## Tools
+
+A `claude -p` session gets exactly the built-in tools its provider lists in
+`proxy.yaml` (`tools:`), and none by default. Without a `--tools` flag the CLI would
+load its whole default set (Bash, Edit, Write, WebFetch, WebSearch and twenty more)
+into every call. The listed tools are also pre-approved with `--allowedTools`, since
+nobody answers a permission prompt in `-p` mode.
+
+To give a model web search, uncomment the `claudecli_web` provider, its `sonnet-web`
+alias and its capabilities entry in `proxy.yaml`, then rebuild the container. The
+pipeline's `sonnet` keeps no tools. This is the CLI's own tool use; the Messages API's
+client-defined `tools` field is still refused for `claudecli`.
+
 ## Structured output
 
 `output_config: { format: { type: "json_schema", schema } }` on a request makes the

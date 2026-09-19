@@ -12,7 +12,8 @@ Two things about this adapter are non-obvious and both are load-bearing:
 
 Capability-wise this is a poor cousin of the HTTP API: `claude -p` spawns a whole
 agent session per call, so there is no tool-use API, no separate system prompt, and
-seconds of startup latency. The `claudecli/*` entry in capabilities.py says so, and
+seconds of startup latency. The session's built-in tools are the provider's `tools`
+list, none by default (see `tool_args`). The `claudecli/*` entry in capabilities.py says so, and
 rejects requests it cannot honour rather than silently degrading them.
 
 Structured output is the exception: `output_config.format` maps onto the CLI's own
@@ -132,8 +133,30 @@ def not_logged_in_message(provider: str, detail: str) -> str:
     )
 
 
-def cli_args(exe: str, req: CanonRequest, output_format: str) -> list[str]:
+def partial_text(event: dict[str, Any]) -> str:
+    """The text a partial stream event adds, or "" for any other event."""
+    if event.get("type") != "content_block_delta":
+        return ""
+    delta = event.get("delta") or {}
+    return str(delta.get("text") or "") if delta.get("type") == "text_delta" else ""
+
+
+def tool_args(tools: list[str]) -> list[str]:
+    """`--tools` always, so a session gets exactly the configured built-ins and no
+    default set. The same list is pre-approved with `--allowedTools`: in `-p` mode
+    nobody answers a permission prompt, so an enabled tool that still needs one is
+    denied at the moment it is called."""
+    if not tools:
+        return ["--tools", ""]
+    listed = ",".join(tools)
+    return ["--tools", listed, "--allowedTools", listed]
+
+
+def cli_args(
+    exe: str, req: CanonRequest, output_format: str, tools: list[str] | None = None
+) -> list[str]:
     args = [exe, "-p", "--output-format", output_format, "--model", req.model_id]
+    args += tool_args(tools or [])
     schema = output_schema(req)
     if schema is not None:
         args += ["--json-schema", orjson.dumps(schema).decode()]
@@ -225,7 +248,7 @@ class ClaudeCliProvider(BlockingOnly):
     async def complete(self, req: CanonRequest) -> CanonResponse:
         exe = self._binary()
         prompt = flatten(req)
-        args = cli_args(exe, req, "json")
+        args = cli_args(exe, req, "json", self.cfg.tools)
 
         from .retry import BACKOFF_S
 
@@ -272,9 +295,12 @@ class ClaudeCliProvider(BlockingOnly):
 
         exe = self._binary()
         prompt = flatten(req)
+        # --include-partial-messages is what makes this a token stream: without it
+        # the CLI emits each assistant message only once it is complete.
         args = [
             exe, "-p", "--output-format", "stream-json", "--verbose",
-            "--model", req.model_id,
+            "--include-partial-messages", "--model", req.model_id,
+            *tool_args(self.cfg.tools),
         ]
 
         yield MessageStart(
@@ -284,6 +310,8 @@ class ClaudeCliProvider(BlockingOnly):
 
         usage = CanonUsage()
         emitted = False
+        streamed = False
+        failure = ""
         proc: asyncio.subprocess.Process | None = None
         try:
             async with self.gate.semaphore():
@@ -309,10 +337,25 @@ class ClaudeCliProvider(BlockingOnly):
                         continue
 
                     kind = event.get("type")
-                    if kind == "assistant":
+                    if kind == "stream_event":
+                        # A raw Anthropic stream event, from --include-partial-messages.
+                        text = partial_text(event.get("event") or {})
+                        if text:
+                            emitted = streamed = True
+                            yield TextDelta(index=0, text=text)
+                    elif kind == "assistant" and event.get("error"):
+                        # The CLI reports a failed session as a synthetic assistant
+                        # message with `error` set (authentication_failed, ...). Its
+                        # text is the failure, never an answer to stream.
                         message = event.get("message") or {}
+                        texts = [b.get("text", "") for b in message.get("content") or []]
+                        failure = " ".join(t for t in texts if t) or str(event["error"])
+                    elif kind == "assistant":
+                        message = event.get("message") or {}
+                        # The finished message repeats text the partials already
+                        # sent; only a CLI that sends no partials needs it again.
                         for block in message.get("content") or []:
-                            if block.get("type") == "text" and block.get("text"):
+                            if not streamed and block.get("type") == "text" and block.get("text"):
                                 emitted = True
                                 yield TextDelta(index=0, text=block["text"])
                         if message.get("usage"):
@@ -329,24 +372,29 @@ class ClaudeCliProvider(BlockingOnly):
                     elif kind == "result":
                         if event.get("total_cost_usd") is not None:
                             usage.reported_cost_usd = event["total_cost_usd"]
-                        if not emitted and event.get("result"):
+                        # A failed session reports why in `result` ("Not logged in").
+                        # That is an error message, never text for the caller.
+                        if event.get("is_error"):
+                            failure = str(event.get("result") or "")
+                        elif not emitted and event.get("result"):
                             yield TextDelta(index=0, text=event["result"])
                             emitted = True
 
                 await proc.wait()
                 if proc.returncode not in (0, None):
-                    stderr = (await proc.stderr.read()).decode(errors="replace")[:400]
-                    if is_login_failure(stderr):
+                    stderr = (await proc.stderr.read()).decode(errors="replace")
+                    detail = " | ".join(part for part in (failure, stderr.strip()) if part)[:400]
+                    if is_login_failure(detail):
                         yield StreamError(
                             code=ProviderNotLoggedIn.code,
-                            message=not_logged_in_message(self.name, stderr),
+                            message=not_logged_in_message(self.name, detail),
                             retryable=False,
                         )
                         return
                     yield StreamError(
                         code="provider_error",
-                        message=f"{self.name}: `claude` exited {proc.returncode}: {stderr}",
-                        retryable=is_retryable(stderr),
+                        message=f"{self.name}: `claude` exited {proc.returncode}: {detail}",
+                        retryable=is_retryable(detail),
                     )
                     return
         except asyncio.CancelledError:
