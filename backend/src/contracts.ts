@@ -18,7 +18,12 @@ export const CreateRunBody = z.object({
   /** 0 is a burst: everything is enqueued at once. */
   ratePerSecond: z.number().min(0).max(50).default(2),
   limit: z.number().int().positive().optional(),
-  emailIds: z.array(z.string().regex(/^email_\d{1,6}$/)).min(1).optional(),
+  /** Deduplicated: a repeated id would count twice in totalEmails and the run would never read as finished. */
+  emailIds: z
+    .array(z.string().regex(/^email_\d{1,6}$/))
+    .min(1)
+    .transform((ids) => [...new Set(ids)])
+    .optional(),
 });
 export type CreateRunBody = z.infer<typeof CreateRunBody>;
 
@@ -32,7 +37,8 @@ export const RunSummary = z.object({
   ratePerSecond: z.number(),
   totalEmails: z.number().nullable(),
   stageCounts: z.record(Stage, z.number()),
-  queues: z.object({ classify: QueueCounts, compare: QueueCounts }),
+  /** Null when the queues cannot be reached. Everything else comes from Postgres and is still served. */
+  queues: z.object({ classify: QueueCounts, compare: QueueCounts }).nullable(),
   createdAt: z.string(),
   startedAt: z.string().nullable(),
   finishedAt: z.string().nullable(),

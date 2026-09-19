@@ -13,9 +13,9 @@ export function jobId(runId: string, emailId: string): string {
   return `${runId}__${emailId}`;
 }
 
-/** A fresh id for the ingest job that resumes a paused run. */
-export function resumeJobId(runId: string, now: number): string {
-  return `${runId}__resume__${now}`;
+/** The ingest job that resumes a paused run. One per epoch, so a repeated resume cannot add two. */
+export function resumeJobId(runId: string, epoch: number): string {
+  return `${runId}__resume__${epoch}`;
 }
 
 export function runIdOfJob(id: string): string {

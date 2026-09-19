@@ -11,7 +11,8 @@ export const JOB_NAMES = {
   compare: "compare-email",
 } as const;
 
-export const IngestJob = z.object({ runId: z.uuid() });
+/** `epoch` is the run's ingest epoch when the job was added. A job from before it existed holds 0. */
+export const IngestJob = z.object({ runId: z.uuid(), epoch: z.number().int().min(0).default(0) });
 export type IngestJob = z.infer<typeof IngestJob>;
 
 export const ClassifyJob = z.object({ runId: z.uuid(), emailId: z.string().min(1) });

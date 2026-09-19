@@ -46,8 +46,26 @@ function isFinalFailure(job: Job, error: Error): boolean {
   return error instanceof UnrecoverableError || job.attemptsMade >= (job.opts.attempts ?? 1);
 }
 
-function onEmailJobFailed(deps: WorkerDeps, stage: string) {
+type FailedListener = (job: Job | undefined, error: Error) => Promise<void>;
+
+/**
+ * An emitter drops the promise a listener returns, so a rejection in one
+ * would be unhandled and take the worker down. Often the database outage
+ * that failed the job is the same one that fails the bookkeeping.
+ */
+function guarded(queue: string, record: FailedListener) {
   return async (job: Job | undefined, error: Error): Promise<void> => {
+    try {
+      await record(job, error);
+    } catch (recordError) {
+      const err = recordError instanceof Error ? recordError.message : String(recordError);
+      log.error({ queue, jobId: job?.id, err }, "could not record a job failure");
+    }
+  };
+}
+
+function onEmailJobFailed(deps: WorkerDeps, stage: string): FailedListener {
+  return async (job, error) => {
     const data = ClassifyJob.safeParse(job?.data);
     if (!job || !data.success) return;
     const { runId, emailId } = data.data;
@@ -58,6 +76,15 @@ function onEmailJobFailed(deps: WorkerDeps, stage: string) {
     }
     log.warn({ runId, emailId, stage, attempt: job.attemptsMade, err: error.message }, "job failed, will retry");
     await emailRuns.incrementAttempt(deps.pool, runId, emailId);
+  };
+}
+
+function onIngestJobFailed(deps: WorkerDeps): FailedListener {
+  return async (job, error) => {
+    const data = IngestJob.safeParse(job?.data);
+    if (!job || !data.success || !isFinalFailure(job, error)) return;
+    log.error({ runId: data.data.runId, err: error.message }, "ingest failed for good");
+    await runs.setStatus(deps.pool, data.data.runId, "failed", ["created", "running"]);
   };
 }
 
@@ -73,8 +100,7 @@ export function startWorkers(deps: WorkerDeps, connection: Redis): RunningWorker
     QUEUES.ingest,
     (job, token) =>
       noRetryOnTerminal(async () => {
-        const { runId } = parse(IngestJob, job);
-        const outcome = await replayRun(deps, runId, {
+        const outcome = await replayRun(deps, parse(IngestJob, job), {
           stopping: () => stopping,
           onProgress: (fraction) => job.updateProgress(Math.round(fraction * 100)),
         });
@@ -101,14 +127,9 @@ export function startWorkers(deps: WorkerDeps, connection: Redis): RunningWorker
     { connection, concurrency: config.COMPARE_CONCURRENCY, ...EMAIL_LOCK },
   );
 
-  ingest.on("failed", async (job, error) => {
-    const data = IngestJob.safeParse(job?.data);
-    if (!job || !data.success || !isFinalFailure(job, error)) return;
-    log.error({ runId: data.data.runId, err: error.message }, "ingest failed for good");
-    await runs.setStatus(deps.pool, data.data.runId, "failed", ["created", "running"]);
-  });
-  classify.on("failed", onEmailJobFailed(deps, "classify"));
-  compare.on("failed", onEmailJobFailed(deps, "compare"));
+  ingest.on("failed", guarded(QUEUES.ingest, onIngestJobFailed(deps)));
+  classify.on("failed", guarded(QUEUES.classify, onEmailJobFailed(deps, "classify")));
+  compare.on("failed", guarded(QUEUES.compare, onEmailJobFailed(deps, "compare")));
 
   const workers = [ingest, classify, compare];
   for (const worker of workers) {

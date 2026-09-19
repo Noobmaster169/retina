@@ -9,6 +9,8 @@ export interface Run {
   emailIds: string[] | null;
   status: RunStatus;
   totalEmails: number | null;
+  /** Which ingest job owns the run. Every resume raises it. */
+  ingestEpoch: number;
   createdBy: string | null;
   createdAt: string;
   startedAt: string | null;
@@ -32,6 +34,7 @@ interface RunRow {
   email_ids: string[] | null;
   status: RunStatus;
   total_emails: number | null;
+  ingest_epoch: number;
   created_by: string | null;
   created_at: Date;
   started_at: Date | null;
@@ -39,7 +42,7 @@ interface RunRow {
 }
 
 const COLUMNS = `id, source, rate_per_second, email_limit, email_ids, status, total_emails,
-  created_by, created_at, started_at, finished_at`;
+  ingest_epoch, created_by, created_at, started_at, finished_at`;
 
 function toRun(row: RunRow): Run {
   return {
@@ -50,6 +53,7 @@ function toRun(row: RunRow): Run {
     emailIds: row.email_ids,
     status: row.status,
     totalEmails: row.total_emails,
+    ingestEpoch: row.ingest_epoch,
     createdBy: row.created_by,
     createdAt: row.created_at.toISOString(),
     startedAt: row.started_at?.toISOString() ?? null,
@@ -80,6 +84,36 @@ export async function list(db: Queryable, limit = 50): Promise<Run[]> {
 export async function status(db: Queryable, id: string): Promise<RunStatus | null> {
   const { rows } = await db.query<{ status: RunStatus }>("select status from core.runs where id = $1", [id]);
   return rows[0]?.status ?? null;
+}
+
+export interface IngestState {
+  status: RunStatus;
+  ingestEpoch: number;
+}
+
+/** What the ingest loop checks before every email. */
+export async function ingestState(db: Queryable, id: string): Promise<IngestState | null> {
+  const { rows } = await db.query<{ status: RunStatus; ingest_epoch: number }>(
+    "select status, ingest_epoch from core.runs where id = $1",
+    [id],
+  );
+  return rows[0] ? { status: rows[0].status, ingestEpoch: rows[0].ingest_epoch } : null;
+}
+
+/**
+ * Moves a paused run back to `running` under a new epoch, which retires any
+ * ingest job still holding the old one. Returns the new epoch, or null when
+ * the run was not paused.
+ */
+export async function resume(db: Queryable, id: string): Promise<number | null> {
+  const { rows } = await db.query<{ ingest_epoch: number }>(
+    `update core.runs
+        set status = 'running', ingest_epoch = ingest_epoch + 1, finished_at = null
+      where id = $1 and status = 'paused'
+      returning ingest_epoch`,
+    [id],
+  );
+  return rows[0]?.ingest_epoch ?? null;
 }
 
 /**

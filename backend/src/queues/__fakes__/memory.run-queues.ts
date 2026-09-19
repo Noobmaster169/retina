@@ -1,14 +1,14 @@
 import type { RunQueues } from "../run-queues";
 
 export class MemoryRunQueues implements RunQueues {
-  readonly started: { runId: string; jobId: string }[] = [];
+  readonly started: { runId: string; jobId: string; epoch: number }[] = [];
   readonly removedFor: string[] = [];
   /** Set to make every call fail the way an unreachable Redis does. */
   failWith: Error | undefined;
 
-  async startIngest(runId: string, jobId: string): Promise<void> {
+  async startIngest(runId: string, jobId: string, epoch: number): Promise<void> {
     if (this.failWith) throw this.failWith;
-    this.started.push({ runId, jobId });
+    this.started.push({ runId, jobId, epoch });
   }
 
   async counts() {

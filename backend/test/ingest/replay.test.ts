@@ -44,7 +44,7 @@ describe("replayRun", () => {
     const runId = await newRun();
     const progress: number[] = [];
 
-    const outcome = await replayRun(deps, runId, { onProgress: async (fraction) => void progress.push(fraction) });
+    const outcome = await replayRun(deps, { runId, epoch: 0 }, { onProgress: async (fraction) => void progress.push(fraction) });
 
     expect(outcome).toBe("completed");
     expect(await emailRuns.emailIdsForRun(deps.pool, runId)).toEqual(ids);
@@ -57,7 +57,7 @@ describe("replayRun", () => {
     const { ids, deps } = inbox(4);
     const runId = await newRun({ emailLimit: 2 });
 
-    await replayRun(deps, runId);
+    await replayRun(deps, { runId, epoch: 0 });
 
     expect(await emailRuns.emailIdsForRun(deps.pool, runId)).toEqual(ids.slice(0, 2));
     expect((await runs.get(deps.pool, runId))?.totalEmails).toBe(2);
@@ -67,7 +67,7 @@ describe("replayRun", () => {
     const { ids, deps } = inbox(4);
     const runId = await newRun({ emailIds: [ids[3], ids[1]] });
 
-    await replayRun(deps, runId);
+    await replayRun(deps, { runId, epoch: 0 });
 
     expect(await emailRuns.emailIdsForRun(deps.pool, runId)).toEqual([ids[1], ids[3]]);
   });
@@ -76,7 +76,7 @@ describe("replayRun", () => {
     const { ids, deps, classify } = inbox(4);
     const runId = await newRun();
 
-    const paused = await replayRun(deps, runId, {
+    const paused = await replayRun(deps, { runId, epoch: 0 }, {
       onProgress: async (fraction) => {
         if (fraction === 0.5) await runs.setStatus(deps.pool, runId, "paused", ["running"]);
       },
@@ -84,10 +84,44 @@ describe("replayRun", () => {
     expect(paused).toBe("paused");
     expect(await emailRuns.emailIdsForRun(deps.pool, runId)).toEqual(ids.slice(0, 2));
 
-    await runs.setStatus(deps.pool, runId, "running", ["paused"]);
-    expect(await replayRun(deps, runId)).toBe("completed");
+    const epoch = await runs.resume(deps.pool, runId);
+    expect(epoch).toBe(1);
+    expect(await replayRun(deps, { runId, epoch: 1 })).toBe("completed");
     expect(await emailRuns.emailIdsForRun(deps.pool, runId)).toEqual(ids);
     expect(classify.added).toHaveLength(4);
+  });
+
+  it("stands down at once when a resume has already handed the run to a newer job", async () => {
+    const { deps, classify } = inbox(2);
+    const runId = await newRun();
+    await runs.setStatus(deps.pool, runId, "paused", ["created"]);
+    await runs.resume(deps.pool, runId);
+
+    expect(await replayRun(deps, { runId, epoch: 0 })).toBe("superseded");
+    expect(classify.added).toEqual([]);
+    expect(await runs.status(deps.pool, runId)).toBe("running");
+  });
+
+  it("stands down mid-run when paused and resumed between two emails, leaving the rest to the new job", async () => {
+    const { ids, deps } = inbox(4);
+    const runId = await newRun();
+
+    const outcome = await replayRun(
+      deps,
+      { runId, epoch: 0 },
+      {
+        onProgress: async (fraction) => {
+          if (fraction !== 0.5) return;
+          await runs.setStatus(deps.pool, runId, "paused", ["running"]);
+          await runs.resume(deps.pool, runId);
+        },
+      },
+    );
+
+    expect(outcome).toBe("superseded");
+    expect(await emailRuns.emailIdsForRun(deps.pool, runId)).toEqual(ids.slice(0, 2));
+    expect(await replayRun(deps, { runId, epoch: 1 })).toBe("completed");
+    expect(await emailRuns.emailIdsForRun(deps.pool, runId)).toEqual(ids);
   });
 
   it("does not start a run that was cancelled first", async () => {
@@ -95,7 +129,7 @@ describe("replayRun", () => {
     const runId = await newRun();
     await runs.setStatus(deps.pool, runId, "cancelled", ["created"]);
 
-    expect(await replayRun(deps, runId)).toBe("cancelled");
+    expect(await replayRun(deps, { runId, epoch: 0 })).toBe("cancelled");
     expect(classify.added).toEqual([]);
   });
 
@@ -104,7 +138,7 @@ describe("replayRun", () => {
     const runId = await newRun();
     let ingested = 0;
 
-    const outcome = await replayRun(deps, runId, {
+    const outcome = await replayRun(deps, { runId, epoch: 0 }, {
       onProgress: async () => void ingested++,
       stopping: () => ingested >= 1,
     });
@@ -117,10 +151,10 @@ describe("replayRun", () => {
   it("re-enqueues an email whose row committed but whose job was lost", async () => {
     const { ids, deps, classify } = inbox(2);
     const runId = await newRun();
-    await replayRun(deps, runId, { stopping: () => classify.added.length >= 1 });
+    await replayRun(deps, { runId, epoch: 0 }, { stopping: () => classify.added.length >= 1 });
     classify.added.length = 0;
 
-    await replayRun(deps, runId);
+    await replayRun(deps, { runId, epoch: 0 });
 
     expect(classify.added.map((job) => job.data.emailId).sort()).toEqual(ids);
   });

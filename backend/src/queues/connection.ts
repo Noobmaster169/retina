@@ -19,6 +19,15 @@ export function getRedis(): Redis {
   return shared;
 }
 
+/**
+ * True while the shared connection is known to be down. A command issued then
+ * would wait for the reconnect and still run long after its caller gave up.
+ */
+export function redisIsDown(): boolean {
+  const { status } = getRedis();
+  return status === "reconnecting" || status === "close" || status === "end";
+}
+
 export async function closeRedis(): Promise<void> {
   if (!shared) return;
   const closing = shared;

@@ -73,7 +73,7 @@ describe("POST /runs", () => {
       stageCounts: { ingested: 0, classifying: 0, classified: 0, comparing: 0, review: 0, done: 0, failed: 0 },
       queues: { classify: { waiting: 0, active: 0, failed: 0 }, compare: { waiting: 0, active: 0, failed: 0 } },
     });
-    expect(runQueues.started).toEqual([{ runId: response.body.id, jobId: response.body.id }]);
+    expect(runQueues.started).toEqual([{ runId: response.body.id, jobId: response.body.id, epoch: 0 }]);
     expect(await runs.get(getPool(), response.body.id)).toMatchObject({ emailLimit: 10, createdBy: "team" });
   });
 
@@ -109,6 +109,16 @@ describe("POST /runs", () => {
     const { rows } = await getPool().query("select status from core.runs where created_at >= $1", [before]);
     expect(rows.map((row) => row.status)).toEqual(["failed"]);
   });
+
+  it("drops repeated emailIds, which would inflate totalEmails", async () => {
+    const response = await request(app())
+      .post("/runs")
+      .set(TEAM)
+      .send({ emailIds: ["email_001", "email_002", "email_001"] });
+
+    expect(response.status).toBe(201);
+    expect((await runs.get(getPool(), response.body.id))?.emailIds).toEqual(["email_001", "email_002"]);
+  });
 });
 
 describe("run control", () => {
@@ -122,10 +132,19 @@ describe("run control", () => {
     expect((await request(app()).post(`/runs/${id}/pause`).set(TEAM)).body.status).toBe("paused");
     expect((await request(app()).post(`/runs/${id}/resume`).set(TEAM)).body.status).toBe("running");
     expect(runQueues.started).toHaveLength(2);
-    expect(runQueues.started[1].jobId).toMatch(new RegExp(`^${id}__resume__\\d+$`));
+    expect(runQueues.started[1]).toEqual({ runId: id, jobId: `${id}__resume__1`, epoch: 1 });
 
     expect((await request(app()).post(`/runs/${id}/cancel`).set(TEAM)).body.status).toBe("cancelled");
     expect(runQueues.removedFor).toEqual([id]);
+  });
+
+  it("raises the epoch on every resume, so each one gets its own job", async () => {
+    const id = await created();
+    for (let round = 0; round < 2; round++) {
+      await request(app()).post(`/runs/${id}/pause`).set(TEAM);
+      await request(app()).post(`/runs/${id}/resume`).set(TEAM);
+    }
+    expect(runQueues.started.map((job) => job.epoch)).toEqual([0, 1, 2]);
   });
 
   it("answers 409 for a move the status does not allow", async () => {
