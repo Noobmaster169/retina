@@ -134,9 +134,12 @@ Extractor behaviour:
 - `xlsx.py`: first sheet (all sheets if more than one, separated by `\f`); each row → `A: B`
   when both non-empty, `A` when only the first, skip empty rows; numbers via `str()` (no
   separators, ints not floats when integral).
-- Unreadable rule (applied in `app.py`): `bytes == 0`, or open failed, or no pages, or every
-  page has `source == "none"`, or total text under 40 characters after OCR, or OCR mean
-  confidence under 40 on every page.
+- Unreadable rule (applied in `app.py`, as built): `bytes == 0`, or open failed, or no pages, or
+  no page anything can be worked from, or total text under 40 characters. A page can be worked
+  from when it yielded text and, where that text came from OCR, tesseract's mean word confidence
+  reached 40. Asking it per page and then over the document subsumes the "every page is `none`"
+  and "every page is OCR under 40" clauses and closes the case they both missed: a blank page
+  beside a page OCR could not read.
 - Every extractor is wrapped: unexpected exceptions become `unreadable: true` with the
   exception in `warnings`, HTTP 200. HTTP 5xx only for MinIO failures (retryable).
 
@@ -262,14 +265,22 @@ req   = files ? null : triage model (prompts/triage/v1.md)      # send_draft | c
 outcome = checkStructure(docs, req):
   any doc unreadable                       -> unreadable   { files: [{ filename, warnings, scanned }] }
   any doc scanned (OCR)                    -> unreadable   { scanned: true, files, provisional: null }
-  any doc typed INVOICE/PACKING_LIST/COO/OTHER -> wrong_doc_type { files: [{ filename, claimed, detected, confidence, rationale }] }
-  triage(resolveRoles(docs), req):
-    SI and BL present                      -> compare      (placeholder OK: { placeholder: true, si, bl, extras })
+  resolveRoles(docs) -> roles, swapped
+  a doc FILLING THE SI OR BL PLACE typed INVOICE/PACKING_LIST/COO/OTHER at >= DOC_TYPE_TRUST_FROM
+                                           -> wrong_doc_type { files: [{ filename, claimed, detected, confidence, rationale }] }
+  triage(roles, req):
+    SI and BL present                      -> compare      (placeholder OK: { placeholder: true, si, bl, extras, swapped })
     nothing attached, send_draft           -> awaiting_draft (OK: { awaiting_draft: true, note })
     nothing attached, compare_documents    -> missing_attachment { missing: [SI, BL], note, attachments: [] }
     a role absent                          -> missing_attachment { missing, note, attachments }
 review outcomes: pages rendered for every PDF (unreadable only), then escalate(reason, detail)
 ```
+
+Amended 2026-09-20 by the review pass (see `PROGRESS.md`, "Design decisions (phase 5 review
+pass)"): the type check covers only the files filling the SI and BL places, because an extra
+attachment is not the pair being wrong, and a reading below `DOC_TYPE_TRUST_FROM` (0.7) leaves
+the file name's claim standing. `documentVerdicts` in the same module gives each document its
+verdict for the trace, from that one reading.
 
 `escalate.ts` (an orchestration module, it writes): one open `review_cases` row per email run,
 `comparisons` upserted as `NEEDS_REVIEW` with the reason, the email moved from `comparing` to

@@ -53,10 +53,12 @@ document check gets, and `v3` is there. The holdout final cannot rise further un
 Exit checklist from `docs/phases/phase-05-parsing-and-triage.md`, checked on run `cd96e1c0`
 (24 emails: `email_001`, `005`, `055`, `059`, one pair per format, and `email_501` to `520`,
 8 in parallel, 85 s, 68 calls, 0 failed). A full 520 run is the user's.
-- [x] Every attachment produces a `documents` row (38 of 38 on this run: 24 txt, 8 pdf, 3 xlsx,
-      1 docx, and the two garbled and six scanned PDFs are the only `unreadable` or `scanned` rows).
-      Text is in MinIO under `text/`, page images for the scanned pairs under `pages/`.
-- [x] The three reasons on the reference emails: `wrong_doc_type` on 501, 502, 503, 505 with the
+- [ ] All 250 attachments produce a `documents` row: 38 of 38 did on this 24-email run (24 txt,
+      8 pdf, 3 xlsx, 1 docx, and the two garbled and six scanned PDFs are the only `unreadable` or
+      `scanned` rows). Text is in MinIO under `text/`, page images for the scanned pairs under
+      `pages/`. The box the spec words is the full 520 run, which is the user's.
+- [ ] Exactly the 15 reference emails escalate, 14 of 15 on this run. The three reasons:
+      `wrong_doc_type` on 501, 502, 503, 505 with the
       model's type, confidence and rationale (invoice, packing list, certificate of origin,
       certificate of origin); `missing_attachment` on 506 to 510 (three by the triage model on an
       empty request, two by code with the SI alone); `unreadable` on 511 to 515 (two would not
@@ -67,17 +69,17 @@ Exit checklist from `docs/phases/phase-05-parsing-and-triage.md`, checked on run
 - [ ] The 94 awaiting-draft emails end `OK` with `detail.awaiting_draft = true`: the mechanism is
       built and tested (the triage model reads the request; `send_draft` ends `OK`), but no
       awaiting-draft email was in this run. The full run will show it; the user runs that.
-- [x] Python tests pass: 22 in `services/doc-extract` (21 here, the OCR one skipped without
-      tesseract; all 22 inside the image, tesseract 5.5.0). A 0-byte file, a garbled PDF and an
+- [x] Python tests pass: 26 in `services/doc-extract` (25 here, the OCR one skipped without
+      tesseract; all 26 inside the image, tesseract 5.5.0). A 0-byte file, a garbled PDF and an
       unknown extension answer HTTP 200 with `unreadable: true`.
 - [ ] doc-extract on the box: `/health` shows `docExtract` up locally and in the simulator; the
       box gets it on the next deploy (compose.yaml changed, so `auto-deploy.sh` converges the
       whole stack). Someone with SSH checks `docker compose ps doc-extract` and `/health` after.
 - [ ] Escalation recall 15/15 in `pnpm eval:score`: 14 of 15 on this run by the outcomes above
       (`email_504` misclassified). The scored number needs the answer key and is the user's run.
-- [x] 348 backend tests, type-check clean in both packages, frontend lint clean; the deploy
-      simulator's suite passes with three new checks (doc-extract answers with tesseract, the
-      worker reaches it by name, `/health` reports it).
+- [x] 354 backend tests and 25 doc-extract tests, type-check clean in both packages, frontend
+      lint and ruff clean; the deploy simulator's suite passes with three new checks (doc-extract
+      answers with tesseract, the worker reaches it by name, `/health` reports it).
 
 What a run costs now, from `cd96e1c0` at API prices: classify 24 calls at 7.1 s, verifier 5 at
 18.6 s, doc-type 36 at 5.8 s, triage 3 at 4.3 s; 1.10 USD for 24 emails. A comparison email with
@@ -438,6 +440,43 @@ dev machine:
   ids only, to start a dev or holdout run. It still never reads `ground_truth.json`:
   `eval/id-lists.ts` is split from `eval/ground-truth.ts` so the api does not even import it.
 
+## Design decisions (phase 5 review pass, 2026-09-20)
+Found by a two-axis review of the branch against `CLAUDE.md` and the phase 5 spec, and fixed on
+the same branch. The behaviour changes are the first three.
+- **A wrong document is only wrong in a place it was meant to fill.** `checkStructure` checked
+  every attachment, so a correct SI and BL pair with an invoice also attached was escalated
+  `wrong_doc_type`, reproduced on a fixture. It now resolves roles first and checks only the
+  files filling the SI and BL places; an extra is carried in `extras` as `triage` always meant it
+  to be. The reference emails are unaffected: `email_501` to `505` name their wrong file
+  `email_50N_BL.txt`, so it claims the BL place and is still checked.
+- **A reading the model is unsure of does not park an email.** A document typed `OTHER` at 0.31
+  escalated exactly as one at 0.97 did; `doc_type_confidence` was stored and shown but never
+  read. `DOC_TYPE_TRUST_FROM` (0.7, in `pipeline/compare/structure.ts`) is now the bar, below
+  which the file name's claim stands, as it already did for a document with no reading at all.
+  **The number is a guess with one calibration point behind it** and is under Deferred.
+- **A page with no text beside a page OCR could not read is unreadable.** `is_unreadable` only
+  applied the confidence floor when every page came from OCR, so a mixed document fell through
+  as readable whatever the recogniser said. It now asks per page whether anything can be worked
+  from it, which subsumes the old all-`none` and all-OCR rules. Nothing had tested the floor.
+- **One reading of the documents, shown rather than remade.** `documents-panel.tsx` decided on
+  its own that a document disagreed with its name, by a different rule from the backend's, so a
+  crossed pair showed amber beside an `OK` verdict. `documentVerdicts` now answers once and the
+  api puts it on `DocumentView.typeVerdict`.
+- **A crossed pair is said out loud.** The spec asked the swap to warn; it was silent. The
+  `compare` outcome carries `swapped`, the comparison detail records it and the processor logs it.
+- **Page images only for the files that need eyes.** Rendering covered every PDF among the
+  documents, including readable ones. On this seed the set is identical (511 and 515 pair a bad
+  PDF with a txt SI; 512 to 514 are scanned pairs), so this is waste removed, not behaviour.
+- Also: `envModel` through the `agents` barrel; one `EmailRunIds` for the four copies of
+  `{runId, emailId, emailRunId}`; one `DocumentFormat`; an `Outcome` enum for the email-list
+  filter that the frontend reads instead of rebuilding; `SHIPPING_DOCUMENTS` in place of an
+  enumerated complement; a pydantic `ErrorBody` for doc-extract's failure envelope; a named
+  `Word` for PyMuPDF's word boxes; and `bytes` dropped from the triage types, where it was never
+  read and the processor was filling it with the length of the extracted text.
+- **Not changed, for you to rule on:** classify `v5` and `classify-verify v2` reading the
+  attachments' text is outside the phase 5 scope line ("Out: LLM extraction, comparison, review
+  UI"). It is seeded inactive and costs nothing until a holdout run says it helps, so it stands.
+
 ## Design decisions (phase 5)
 - 2026-09-20, **the model types documents; code only combines claims.** Work item 5's fingerprint
   (title and label tables) was a rule read off this renderer. `prompts/doc-type/v1.md` reads each
@@ -462,6 +501,10 @@ dev machine:
   dev sample, decides a prompt switch; the runs page can pin them meanwhile.
 
 ## Deferred
+- `DOC_TYPE_TRUST_FROM` (0.7) is not a measured number. It is the bar under which the doc-type
+  model's reading does not displace the file name's claim, and the only calibration point behind
+  it is the 0.62 misread below. The eval harness decides it: a holdout run that moves it to 0.5
+  and to 0.85 and reads escalation recall and false escalations at each is what settles it.
 - The doc-type model read `email_005_BL.xlsx` (title row `BILL OF LADING`, a flattened field list)
   as `SI` at 0.62. The filename's claim stood and the pair was compared, so nothing was lost, but
   the same reading on a file named nothing would make it `missing_attachment`. Watch it on the

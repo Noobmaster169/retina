@@ -89,6 +89,30 @@ already has a `missing_value` slot, and the email list's outcome filter lists it
 cells of the comparable emails should turn from red to right, and the `missing_value` five
 (`email_516` to `520`, all train) should turn their review-reason cell.
 
+## 6a. What the review pass changed under section 1
+
+Read this with section 1; it was written before the review and section 1's shape still holds.
+
+- `checkStructure` now returns `swapped` on the `compare` outcome, and the placeholder detail
+  carries it. Your branch replaces that detail, so carry `si`, `bl`, `extras` and `swapped`
+  through into whatever you write in its place.
+- The wrong-document check covers only the files filling the SI and BL places, and only a reading
+  at `DOC_TYPE_TRUST_FROM` (0.7) or above. An extra attachment no longer escalates, so a pair you
+  get handed may have a third file beside it that the model called an invoice. That is expected.
+- `DocumentSummary` lost `bytes`, so a `ParsedDocument` is one already and `checkStructure` takes
+  your parsed documents directly. There is no `summarise` step any more.
+- `documentVerdicts(docs)` in `pipeline/compare` gives each document `unknown | ok | crossed |
+  wrong_type` from the same reading the check acts on. `DocumentView.typeVerdict` carries it to
+  the page. If you add a panel that judges a document, take the verdict from here rather than
+  working one out: that is the bug this replaced.
+- The four `{ runId, emailId, emailRunId }` interfaces are one `EmailRunIds` in
+  `queues/processors/ids.ts`. Take that in any new processor helper.
+- `Outcome` in `contracts.review.ts` is the closed set of `email_runs.outcome` values the email
+  list filters on. It already contains `missing_value`, so phase 6 adds nothing to it. The stored
+  column stays a plain string on the way out, so an outcome a later phase invents still reads.
+- doc-extract's failure envelope is the pydantic `ErrorBody`, and `is_unreadable` now judges a
+  page at a time. Neither changes the wire contract.
+
 ## 7. Gotchas from phase 5
 
 - Git Bash eats quotes and backslashes in an inline heredoc that carries Python with triple

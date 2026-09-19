@@ -323,17 +323,27 @@ the body, for the same reason there are no classification rules.
 **Structure** (`pipeline/compare/structure.ts`, pure, table-driven tested). Given the typed
 documents and the triage answer, in this order: any document unreadable → `unreadable`; any
 document read by OCR → `unreadable` with `scanned: true` and `provisional: null` (a scan is
-escalated, never silently trusted; phase 6 fills the provisional comparison); any document the
-model says is an invoice, packing list, certificate of origin or other → `wrong_doc_type`; then
+escalated, never silently trusted; phase 6 fills the provisional comparison); then
 `compare/triage.ts` resolves roles (the filename's claim first, the model's word for a file that
-claims nothing, a crossed pair swapped) and decides `compare`, `awaiting_draft` or
-`missing_attachment`. Which files are present is a fact code decides on; what an email with none
-asks for is the model's reading.
+claims nothing, a crossed pair swapped and the swap reported as `swapped`); then any document
+**filling the SI or BL place** that the model confidently says is neither → `wrong_doc_type`;
+then `compare`, `awaiting_draft` or `missing_attachment`. Which files are present is a fact code
+decides on; what an email with none asks for is the model's reading.
+
+Two limits on that middle step. A file that fills no place in the pair is an extra, and its kind
+is not this check's business: an invoice travels with shipping paperwork all the time, and
+`extras` carries it. And a reading below `DOC_TYPE_TRUST_FROM` (0.7) does not displace the file
+name's claim, because parking an email costs a person either way and a reading the model itself
+is unsure of is not enough to do it. `documentVerdicts` in the same module gives each document
+its verdict (`unknown`, `ok`, `crossed`, `wrong_type`) from that one reading, and the trace route
+puts it on `DocumentView.typeVerdict`, so a page shows the stage's verdict instead of making a
+second rule of its own.
 
 `escalate.ts` opens one review case per email run, writes the comparison row as
 `NEEDS_REVIEW` with the reason, and parks the email at `review` with `outcome = reason`. An email
 at `review` counts as finished for the run. In phase 5 a comparable pair ends `OK` with
-`detail.placeholder = true`; the rest of this section is phase 6.
+`detail.placeholder = true`, plus `si`, `bl`, `extras` and `swapped`; the rest of this section is
+phase 6.
 
 **Extract** (`prompts/extract/v1.md`), one call per document. Input: document role, full text
 (or OCR text with per-page confidence), the label synonym table as guidance, and the note that
@@ -401,7 +411,7 @@ decided_by    = llm            (the scorer's unscored cost diagnostic; this pipe
 | Reason | Trigger | Evidence attached |
 |---|---|---|
 | `unreadable` | doc-extract reports the file empty, unopenable, or without text even after OCR; or any page was read by OCR (`scanned: true`) | the files with the parser's warnings, page PNGs under `pages/` |
-| `wrong_doc_type` | the doc-type model says a file is an invoice, packing list, certificate of origin or other | the file, the role it claimed, the model's type, confidence and rationale |
+| `wrong_doc_type` | the doc-type model says, at `DOC_TYPE_TRUST_FROM` (0.7) or above, that a file filling the SI or BL place is an invoice, packing list, certificate of origin or other. An extra beside a good pair never raises it | the file, the role it claimed, the model's type, confidence and rationale |
 | `missing_attachment` | no SI or no BL among the attachments; or nothing attached and the triage model reads a comparison request | which roles are missing, what arrived |
 | `missing_value` | placeholder or null on a required field on either side after verification, including a value the extractor and its verifier could not locate | both raw values |
 
