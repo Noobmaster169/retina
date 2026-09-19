@@ -14,6 +14,10 @@ Capability-wise this is a poor cousin of the HTTP API: `claude -p` spawns a whol
 agent session per call, so there is no tool-use API, no separate system prompt, and
 seconds of startup latency. The `claudecli/*` entry in capabilities.py says so, and
 rejects requests it cannot honour rather than silently degrading them.
+
+Structured output is the exception: `output_config.format` maps onto the CLI's own
+`--json-schema`, which validates the answer against the schema and returns it in the
+envelope's `structured_output`. `max_tokens` has no CLI equivalent and is ignored.
 """
 
 from __future__ import annotations
@@ -38,7 +42,7 @@ from ..canon.stream import (
     TextDelta,
 )
 from ..config import ProviderConfig
-from ..errors import ProviderError, ProviderTimeout, RateLimited
+from ..errors import InvalidRequest, ProviderError, ProviderTimeout, RateLimited
 from .base import BlockingOnly
 from .retry import ConcurrencyGate, is_retryable
 
@@ -76,6 +80,28 @@ def flatten(req: CanonRequest) -> str:
             continue
         parts.append(text if len(req.messages) == 1 else f"{msg.role.capitalize()}: {text}")
     return "\n\n".join(parts)
+
+
+def output_schema(req: CanonRequest) -> dict[str, Any] | None:
+    """The JSON Schema from `output_config.format`, or None when the caller wants prose."""
+    fmt = req.response_format
+    if not fmt:
+        return None
+    schema = fmt.get("schema")
+    if fmt.get("type") != "json_schema" or not isinstance(schema, dict):
+        raise InvalidRequest(
+            "output_config.format must be {type: 'json_schema', schema: {...}}",
+            detail={"param": "output_config.format"},
+        )
+    return schema
+
+
+def cli_args(exe: str, req: CanonRequest, output_format: str) -> list[str]:
+    args = [exe, "-p", "--output-format", output_format, "--model", req.model_id]
+    schema = output_schema(req)
+    if schema is not None:
+        args += ["--json-schema", orjson.dumps(schema).decode()]
+    return args
 
 
 class ClaudeCliProvider(BlockingOnly):
@@ -130,6 +156,18 @@ class ClaudeCliProvider(BlockingOnly):
                 provider=self.name,
             )
         text = envelope.get("result") or ""
+        if output_schema(req) is not None:
+            # The validated object, not `result`: that is the model's prose and only
+            # usually the same JSON. Missing means the CLI did not honour the schema,
+            # and passing prose on would defeat the point of asking.
+            structured = envelope.get("structured_output")
+            if structured is None:
+                raise ProviderError(
+                    f"{self.name}: a JSON schema was sent but the CLI returned no "
+                    "structured_output (is this Claude Code too old for --json-schema?)",
+                    provider=self.name,
+                )
+            text = orjson.dumps(structured).decode()
         usage_raw = envelope.get("usage") or {}
         usage = CanonUsage(
             input_tokens=usage_raw.get("input_tokens") or 0,
@@ -151,7 +189,7 @@ class ClaudeCliProvider(BlockingOnly):
     async def complete(self, req: CanonRequest) -> CanonResponse:
         exe = self._binary()
         prompt = flatten(req)
-        args = [exe, "-p", "--output-format", "json", "--model", req.model_id]
+        args = cli_args(exe, req, "json")
 
         from .retry import BACKOFF_S
 
@@ -187,7 +225,9 @@ class ClaudeCliProvider(BlockingOnly):
         return self._envelope_to_response(envelope, req)
 
     async def stream(self, req: CanonRequest) -> AsyncIterator[CanonEvent]:
-        if self.cfg.stream_mode != "native":
+        # A schema-bound answer arrives whole in the final envelope, so there is
+        # nothing to stream natively: the text deltas would be unvalidated prose.
+        if self.cfg.stream_mode != "native" or output_schema(req) is not None:
             async for event in super().stream(req):
                 yield event
             return
