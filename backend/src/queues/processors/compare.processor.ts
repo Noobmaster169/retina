@@ -19,7 +19,8 @@ export async function processCompare(deps: CompareDeps, data: CompareJob): Promi
   const emailRunId = await emailRuns.idOf(deps.pool, runId, emailId);
   if (!emailRunId) throw new TerminalError(`email ${emailId} is not in run ${runId}`);
 
-  await emailRuns.setStage(deps.pool, runId, emailId, "comparing");
+  // From `classified` or `comparing` only: a second pass over a finished email changes nothing.
+  if (!(await emailRuns.moveStage(deps.pool, runId, emailId, ["classified", "comparing"], "comparing"))) return;
   await comparisons.upsert(deps.pool, { emailRunId, status: "OK", reviewReason: null, detail: { placeholder: true } });
-  await emailRuns.setStage(deps.pool, runId, emailId, "done", { outcome: "OK", finished: true });
+  await emailRuns.moveStage(deps.pool, runId, emailId, ["comparing"], "done", { outcome: "OK", finished: true });
 }

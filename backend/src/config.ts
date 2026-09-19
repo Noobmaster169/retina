@@ -46,7 +46,9 @@ const Env = z.object({
   // How much of a body the classifier reads. A cost guard, not a judgement.
   CLASSIFY_BODY_CHARS: z.coerce.number().int().positive().default(4000),
 
-  CLASSIFY_CONCURRENCY: z.coerce.number().int().positive().default(4),
+  // The proxy serves two `claude -p` calls at a time (max_concurrency in proxy/proxy.yaml). More
+  // workers than that only queue inside the proxy with their request timeout already running.
+  CLASSIFY_CONCURRENCY: z.coerce.number().int().positive().default(2),
   COMPARE_CONCURRENCY: z.coerce.number().int().positive().default(4),
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"]).default("info"),
 });

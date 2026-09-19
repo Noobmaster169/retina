@@ -30,9 +30,14 @@ function app() {
 }
 
 /** A committed run with one email per given category. `null` is an email still being classified. */
-async function runWith(categories: (Category | null)[]): Promise<{ runId: string; emailIds: string[] }> {
+async function runWith(
+  categories: (Category | null)[],
+  ingestion: { totalEmails?: number; finished?: boolean } = {},
+): Promise<{ runId: string; emailIds: string[] }> {
   const pool = getPool();
   const run = await runs.create(pool, { id: randomUUID(), source: "averis", ratePerSecond: 0 });
+  await runs.markStarted(pool, run.id, ingestion.totalEmails ?? categories.length);
+  if (ingestion.finished ?? true) await runs.setStatus(pool, run.id, "completed", ["running"]);
   const emailIds: string[] = [];
   for (const category of categories) {
     const emailId = uniqueEmailId();
@@ -114,7 +119,7 @@ describe("POST /runs/:id/submit", () => {
     expect(history.body.submissions[0].forced).toBe(true);
   });
 
-  it("relays the scorer's refusal as a 502 and records no submission", async () => {
+  it("relays the scorer's refusal as a 502, keeps the attempt on record unscored, and does not call it the run's score", async () => {
     const { runId } = await runWith(["SPAM"]);
     scorer.failWith = new ScorerRefused("the scorer answered 503: ground truth not mounted");
 
@@ -122,7 +127,34 @@ describe("POST /runs/:id/submit", () => {
 
     expect(response.status).toBe(502);
     expect(response.body.error).toContain("ground truth not mounted");
-    expect((await request(app()).get(`/runs/${runId}/submissions`).set(TEAM)).body.submissions).toEqual([]);
+    const { submissions } = (await request(app()).get(`/runs/${runId}/submissions`).set(TEAM)).body;
+    expect(submissions).toEqual([expect.objectContaining({ finalScore: null, scoreboard: null, nEmails: 1 })]);
+    expect((await request(app()).get(`/runs/${runId}`).set(TEAM)).body.lastSubmission).toBeNull();
+  });
+
+  it("refuses a run that has not finished ingesting, whose missing emails the scorer would count as GENERAL", async () => {
+    const paused = await runWith(["SPAM", "GENERAL"], { totalEmails: 520, finished: false });
+    const refused = await request(app()).post(`/runs/${paused.runId}/submit`).set(TEAM);
+    expect(refused.status).toBe(409);
+    expect(refused.body.error).toContain("has not finished ingesting");
+    expect(refused.body.error).toContain("2 of 520");
+    expect(scorer.received).toEqual([]);
+
+    expect((await request(app()).post(`/runs/${paused.runId}/submit?force=true`).set(TEAM)).status).toBe(201);
+  });
+
+  it("scores a run once when two submits arrive together", async () => {
+    const { runId } = await runWith(["SPAM"]);
+    scorer.delayMs = 150;
+    const server = app();
+
+    const both = await Promise.all([
+      request(server).post(`/runs/${runId}/submit`).set(TEAM),
+      request(server).post(`/runs/${runId}/submit`).set(TEAM),
+    ]);
+
+    expect(both.map((response) => response.status).sort()).toEqual([201, 409]);
+    expect(scorer.received).toHaveLength(1);
   });
 
   it("answers 503 where object storage is not configured", async () => {

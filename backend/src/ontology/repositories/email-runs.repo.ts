@@ -68,6 +68,31 @@ export async function setStage(
   );
 }
 
+/**
+ * Moves the email to `to` only from one of `from`. False when it was somewhere
+ * else, which is how a job that runs twice (a retry, a stalled job reclaimed
+ * while the first copy finishes) is kept from dragging a finished email backwards.
+ */
+export async function moveStage(
+  db: Queryable,
+  runId: string,
+  emailId: string,
+  from: Stage[],
+  to: Stage,
+  change: StageChange = {},
+): Promise<boolean> {
+  const { rowCount } = await db.query(
+    `update core.email_runs
+        set stage = $3,
+            outcome = coalesce($4, outcome),
+            error = $5,
+            finished_at = case when $6 then now() else null end
+      where run_id = $1 and email_id = $2 and stage = any($7)`,
+    [runId, emailId, to, change.outcome ?? null, change.error ?? null, change.finished ?? false, from],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
 export async function incrementAttempt(db: Queryable, runId: string, emailId: string): Promise<void> {
   await db.query("update core.email_runs set attempt = attempt + 1 where run_id = $1 and email_id = $2", [
     runId,

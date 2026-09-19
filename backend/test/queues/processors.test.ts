@@ -118,6 +118,8 @@ describe("classify processor", () => {
       );
       expect(rows[0].n).toBe(1);
       expect(deps.compare.added).toHaveLength(1);
+      // The model is paid for once. The second pass reads the stored category.
+      expect(deps.llm.requests).toHaveLength(1);
     });
   });
 });
@@ -144,6 +146,7 @@ describe("compare processor (placeholder until phases 5 and 6)", () => {
   it("finishes the email OK and says it was not really compared", async () => {
     await inRollback(async (tx) => {
       const { runId, emailId, emailRunId } = await ingested(tx);
+      await emailRuns.setStage(tx, runId, emailId, "classified");
 
       await processCompare({ pool: tx }, { runId, emailId });
       await processCompare({ pool: tx }, { runId, emailId });

@@ -1,4 +1,5 @@
 import type { Scoreboard, SubmissionRow } from "../../contracts";
+import { sleep } from "../../lib/time";
 import type { Scorer } from "../scorer";
 
 export function scoreboardOf(finalScore: number, nEmails: number): Scoreboard {
@@ -16,10 +17,13 @@ export function scoreboardOf(finalScore: number, nEmails: number): Scoreboard {
 export class FakeScorer implements Scorer {
   readonly received: Record<string, SubmissionRow>[] = [];
   failWith: Error | undefined;
+  /** How long scoring takes, for tests of what happens meanwhile. */
+  delayMs = 0;
 
   constructor(private readonly finalScore = 0.42) {}
 
   async score(payload: Record<string, SubmissionRow>): Promise<Scoreboard> {
+    if (this.delayMs > 0) await sleep(this.delayMs);
     if (this.failWith) throw this.failWith;
     this.received.push(payload);
     return scoreboardOf(this.finalScore, Object.keys(payload).length);

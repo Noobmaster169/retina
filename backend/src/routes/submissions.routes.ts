@@ -2,7 +2,7 @@ import { type Request, type Response, Router } from "express";
 import type { Pool } from "pg";
 import { z } from "zod";
 
-import type { SubmissionSummary } from "../contracts";
+import type { SubmissionSummary, SubmitRefused, SubmitResult } from "../contracts";
 import { RetryableError } from "../lib/errors";
 import { runs, type StoredSubmission, submissions } from "../ontology/repositories";
 import { buildSubmission } from "../ontology/submission";
@@ -26,6 +26,9 @@ function toSummary(row: StoredSubmission): SubmissionSummary {
 export function submissionsRouter(deps: SubmissionsDeps): Router {
   const router = Router();
   const { pool, store, scorer } = deps;
+  // The api is one process, so this is enough to stop two tabs, or a retried
+  // request, from scoring the same run twice at once.
+  const submitting = new Set<string>();
 
   /** The run id from the path once the run is known to exist, else null after answering 400 or 404. */
   async function knownRun(req: Request, res: Response): Promise<string | null> {
@@ -51,27 +54,47 @@ export function submissionsRouter(deps: SubmissionsDeps): Router {
     }
     const forced = query.data.force === "true";
 
+    if (submitting.has(runId)) {
+      const busy: SubmitRefused = { error: "a submission for this run is already being scored", incomplete: [] };
+      res.status(409).json(busy);
+      return;
+    }
+    submitting.add(runId);
+    try {
+      await submit(runId, forced, res);
+    } finally {
+      submitting.delete(runId);
+    }
+  });
+
+  async function submit(runId: string, forced: boolean, res: Response): Promise<void> {
+    const run = await runs.get(pool, runId);
     const { payload, incomplete } = await buildSubmission(pool, runId);
-    if (incomplete.length > 0 && !forced) {
-      res.status(409).json({ error: `${incomplete.length} emails are not finished`, incomplete });
+    const nEmails = Object.keys(payload).length;
+    // `incomplete` only knows the emails the run holds. One that is paused or still
+    // ingesting holds a finished few, and the scorer would count the rest as GENERAL.
+    const notIngested = run?.status === "completed" ? Math.max(0, (run.totalEmails ?? 0) - nEmails) : null;
+    if (!forced && (incomplete.length > 0 || notIngested !== 0)) {
+      const error =
+        notIngested === 0
+          ? `${incomplete.length} emails are not finished`
+          : `the run has not finished ingesting (status ${run?.status}, ${nEmails} of ${run?.totalEmails ?? "?"} emails)`;
+      const refused: SubmitRefused = { error, incomplete };
+      res.status(409).json(refused);
       return;
     }
     if (!store) throw new RetryableError("object storage is not configured");
 
-    // Stored before it is sent: what the scorer was given stays on record even if scoring fails.
+    // Stored and recorded before it is sent: what the scorer was given stays on record even if scoring fails.
     const payloadKey = keys.submission(runId, new Date().toISOString().replace(/[:.]/g, "-"));
     await store.put(payloadKey, Buffer.from(JSON.stringify(payload)), "application/json");
+    const stored = await submissions.insert(pool, { runId, payloadKey, nEmails, forced });
 
     const scoreboard = await scorer.score(payload);
-    const stored = await submissions.insert(pool, {
-      runId,
-      payloadKey,
-      scoreboard,
-      nEmails: Object.keys(payload).length,
-      forced,
-    });
-    res.status(201).json({ submissionId: stored.id, finalScore: scoreboard.final_score, scoreboard });
-  });
+    await submissions.recordScore(pool, stored.id, scoreboard);
+    const result: SubmitResult = { submissionId: stored.id, finalScore: scoreboard.final_score, scoreboard };
+    res.status(201).json(result);
+  }
 
   router.get("/:id/submission.json", async (req, res) => {
     const runId = await knownRun(req, res);

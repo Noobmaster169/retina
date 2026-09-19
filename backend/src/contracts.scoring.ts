@@ -98,7 +98,7 @@ export type SubmissionSummary = z.infer<typeof SubmissionSummary>;
 export const SubmitResult = z.object({ submissionId: z.string(), finalScore: z.number(), scoreboard: Scoreboard });
 export type SubmitResult = z.infer<typeof SubmitResult>;
 
-/** 409: the run has emails the pipeline has not finished with. `?force=true` submits anyway. */
+/** 409: the run has not finished ingesting, or holds emails the pipeline has not finished with (`?force=true` submits anyway), or is being scored right now. */
 export const SubmitRefused = z.object({ error: z.string(), incomplete: z.array(z.string()) });
 export type SubmitRefused = z.infer<typeof SubmitRefused>;
 

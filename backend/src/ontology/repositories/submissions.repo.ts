@@ -4,7 +4,6 @@ import type { Queryable } from "../../db";
 export interface NewSubmission {
   runId: string;
   payloadKey: string;
-  scoreboard: Scoreboard;
   nEmails: number;
   forced: boolean;
 }
@@ -46,21 +45,23 @@ function toSubmission(row: SubmissionDbRow): StoredSubmission {
   };
 }
 
+/** Recorded before the scorer is called, unscored, so a payload that was stored always has a row pointing at it. */
 export async function insert(db: Queryable, submission: NewSubmission): Promise<StoredSubmission> {
   const { rows } = await db.query<SubmissionDbRow>(
-    `insert into core.submissions (run_id, payload_key, scoreboard, final_score, n_emails, forced)
-     values ($1, $2, $3, $4, $5, $6)
+    `insert into core.submissions (run_id, payload_key, n_emails, forced)
+     values ($1, $2, $3, $4)
      returning ${COLUMNS}`,
-    [
-      submission.runId,
-      submission.payloadKey,
-      JSON.stringify(submission.scoreboard),
-      submission.scoreboard.final_score,
-      submission.nEmails,
-      submission.forced,
-    ],
+    [submission.runId, submission.payloadKey, submission.nEmails, submission.forced],
   );
   return toSubmission(rows[0]);
+}
+
+export async function recordScore(db: Queryable, id: string, scoreboard: Scoreboard): Promise<void> {
+  await db.query("update core.submissions set scoreboard = $2, final_score = $3 where id = $1", [
+    id,
+    JSON.stringify(scoreboard),
+    scoreboard.final_score,
+  ]);
 }
 
 export async function listForRun(db: Queryable, runId: string): Promise<StoredSubmission[]> {
@@ -71,12 +72,12 @@ export async function listForRun(db: Queryable, runId: string): Promise<StoredSu
   return rows.map(toSubmission);
 }
 
-/** The newest submission of each run that has one. */
+/** The newest scored submission of each run that has one. An attempt the scorer never answered does not hide an earlier score. */
 export async function latestForRuns(db: Queryable, runIds: string[]): Promise<Map<string, StoredSubmission>> {
   if (runIds.length === 0) return new Map();
   const { rows } = await db.query<SubmissionDbRow>(
     `select distinct on (run_id) ${COLUMNS} from core.submissions
-      where run_id = any($1::uuid[])
+      where run_id = any($1::uuid[]) and scoreboard is not null
       order by run_id, created_at desc, id desc`,
     [runIds],
   );
