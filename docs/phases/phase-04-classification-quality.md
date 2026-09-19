@@ -99,7 +99,7 @@ sender, subject or body.
 Picks a seeded few per category from `split.json.train`, asserts no holdout id appears, writes
 `prompts/classify/examples.v4.json` for a new prompt version (`v4`), and leaves `v3` untouched.
 Examples ship only if a holdout run of `v4` beats `v3`; both numbers go in `PROGRESS.md`. If it
-does not, `v2` is deleted and the result is still recorded, so nobody repeats the experiment
+does not, `v4` is deleted and the result is still recorded, so nobody repeats the experiment
 blind. Examples are data the model reads, never a lookup: the pipeline does not match an incoming
 email against them.
 
