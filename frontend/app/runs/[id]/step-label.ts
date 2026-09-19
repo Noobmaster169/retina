@@ -4,6 +4,9 @@ const LABELS: Record<string, string> = {
   "classify-verify": "Verifier",
   triage: "Triage",
   "doc-type": "Document type",
+  extract: "Extractor",
+  "extract-verify": "Extraction verifier",
+  "field-judge": "Field judge",
 };
 
 export function stepLabel(step: string): string {

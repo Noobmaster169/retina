@@ -36,6 +36,9 @@ const STEPS: { step: PromptStep; label: string }[] = [
   { step: "classify-verify", label: "Verifier prompt" },
   { step: "triage", label: "Triage prompt" },
   { step: "doc-type", label: "Document type prompt" },
+  { step: "extract", label: "Extractor prompt" },
+  { step: "extract-verify", label: "Extraction verifier prompt" },
+  { step: "field-judge", label: "Field judge prompt" },
 ];
 
 export function NewRunForm({ onCreated }: Props) {

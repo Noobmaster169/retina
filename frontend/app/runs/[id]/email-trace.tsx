@@ -7,6 +7,7 @@ import { EmailTrace as EmailTraceSchema } from "@/lib/api/trace-schemas";
 import { parsedFetcher } from "@/lib/poll";
 
 import { CallCard } from "./call-card";
+import { ComparisonPanel } from "./comparison-panel";
 import { DocumentsPanel } from "./documents-panel";
 import { StreamingText } from "./streaming-text";
 import { VerdictPanel } from "./verdict-panel";
@@ -57,6 +58,7 @@ export function EmailTrace({ runId, emailId, live }: Props) {
       <div className="mt-3 flex flex-col gap-3">
         {data?.classification && <VerdictPanel classification={data.classification} />}
         {data && <DocumentsPanel documents={data.documents} review={data.review} />}
+        {data && <ComparisonPanel comparison={data.comparison} extractions={data.extractions} />}
         {data?.live && <StreamingText call={data.live} />}
         {data && data.calls.length === 0 && !data.live && <p className="text-sm text-muted">No model call yet.</p>}
         {data?.calls.map((call) => (
