@@ -73,7 +73,7 @@ frontend/
 | api | ghcr.io/noobmaster169/retina-api:main | `127.0.0.1:8091:8091` | none | runs migrations then listens; depends on postgres, redis, minio healthy |
 | worker | same image | none | none | `command: node --import tsx src/worker.ts` (no build step; the image runs TypeScript through tsx); `depends_on: api, llm-proxy: service_started`, not `service_healthy`: an unhealthy api must not also take the worker down, and waiting on it aborted a deploy |
 | llm-proxy | built from `proxy/` in the clone (Python, plus the Claude Code CLI pinned by `CLAUDE_CODE_VERSION`) | none (private to the network) | none | `http://llm-proxy:4000` inside the network. Logged in by `CLAUDE_CODE_OAUTH_TOKEN` from `.env`, optional so the stack comes up without it; a call without a login is `provider_not_logged_in`, never retried. `auto-deploy.sh` rebuilds it when `proxy/` changes |
-| doc-extract | built from `services/doc-extract` | none | none | `:8000` inside network; healthcheck `/healthz`; 1 GB memory limit |
+| doc-extract | built from `services/doc-extract` in the clone (Python on uv, tesseract with `eng` and `chi_sim`) | none (private to the network) | none | `http://doc-extract:8000`; healthcheck `/healthz`; 1 GB memory limit. `auto-deploy.sh` rebuilds it when `services/doc-extract/` changes |
 | inbox | built from `emails/server` in the clone | none (private to the network) | `emails/data_v2:/data:ro`, `emails/data_v2/ground_truth.json:/secrets/ground_truth.json:ro` | organiser image, unchanged code |
 
 The organiser kit is kept in the same compose file, as the service `inbox`, so `api` and
@@ -99,11 +99,11 @@ Backend (`deploy/.env`, mirrored in `backend/.env.example`):
 | `REDIS_URL` | `redis://redis:6379` | api, worker |
 | `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET` | `minio:9000`, ..., `retina` | api, worker |
 | `MINIO_PUBLIC_ENDPOINT` | `https://<ngrok>/files` | api (presigned URLs are proxied, see 10) |
-| `DOC_EXTRACT_URL` | `http://doc-extract:8000` | worker |
+| `DOC_EXTRACT_URL` | `http://doc-extract:8000` in compose; `http://127.0.0.1:8000` from the host with `compose.local.yaml` | worker (parse), api (/health) |
 | `EMAIL_SERVER_URL` | `http://inbox:8000` (already set in `deploy/compose.yaml`) | api, worker |
 | `LLM_PROXY_URL` | `http://llm-proxy:4000` in compose; `http://127.0.0.1:4001` from the host with `compose.local.yaml`. A remote `/ai/chat` is refused at boot | api, worker |
 | `CLAUDE_CODE_OAUTH_TOKEN` | from `claude setup-token`; read by compose into the llm-proxy container only | llm-proxy |
-| `LLM_MODEL_CLASSIFY`, `LLM_MODEL_VERIFY`, `LLM_MODEL_EXTRACT`, `LLM_MODEL_CHAT` | `sonnet` for every step. Must be a proxy alias from `proxy/proxy.yaml` | worker, api |
+| `LLM_MODEL_CLASSIFY`, `LLM_MODEL_VERIFY`, `LLM_MODEL_TRIAGE`, `LLM_MODEL_DOC_TYPE` | unset: every step runs the model its prompt file names, sonnet. An override must be a proxy alias from `proxy/proxy.yaml` | worker, api |
 | `LLM_MAX_CONCURRENCY` | follows `CLASSIFY_CONCURRENCY` when unset, so one number sets how parallel every run is. Model calls in flight per worker process | worker (in-process semaphore) |
 | `CLASSIFY_CONCURRENCY`, `COMPARE_CONCURRENCY` | `2`, `4`. Classify is 2 because the `claudecli` provider serves two calls at a time; more workers only queue inside the proxy with their request timeout already running | worker |
 | `API_SHARED_SECRET`, `TEAM_API_KEY` | hex | api |
@@ -254,7 +254,11 @@ about the next draw. The model classifies, and the eval harness measures it.
 
 **Input** (`classify/input.ts`, pure): the sender address, the subject, the attachment file names
 and the body, cut at `CLASSIFY_BODY_CHARS` with a marker when cut. The cap is a cost guard.
-Nothing is stripped, reordered or normalised.
+Nothing is stripped, reordered or normalised. A prompt whose frontmatter says
+`reads_attachments: true` (`classify/v5.md`, `classify-verify/v2.md`) also gets an
+"attachment contents" section (`classify/attachments.ts`): each file's name and the text
+doc-extract recovered, cut at `CLASSIFY_ATTACHMENT_CHARS`, an unreadable file named with the
+parser's reason. The input shape follows the pinned prompt, so `v3` runs exactly as before.
 
 **Generator** (`prompts/classify/v3.md`, the active version; v1 and v2 are kept for comparison). Defines the five categories in the organisers' words
 (the brief and `emails/data_v2/README.md`), says that a body may carry a forwarded thread, a
@@ -297,26 +301,39 @@ until human review (phase 8).
 
 ### 5.3 Compare
 
-**Triage** (`compare/triage.ts`):
+**Parse** (`queues/processors/parse-documents.ts`): every attachment goes through doc-extract
+(section 6) once. The text lands in MinIO under `text/`, and a `documents` row keeps the format,
+page count, whether OCR was used, whether the file was unreadable, and the parser's warnings.
+Idempotent: a classify prompt that reads attachments (`reads_attachments: true` in its
+frontmatter, `classify/v5.md`) parses first, and compare finds the rows.
 
-- Count attachments; assign roles from the filename suffix (`_SI`, `_BL`), otherwise from the
-  fingerprint below.
-- Detect whether a comparison was requested: body verbs. `compare`, `check the attached`,
-  `verify against`, `confirm the draft` with attachments expected → comparison requested.
-  `please send`, `share the draft`, `forward the BL` with no attachments → nothing to compare,
-  outcome `OK`, no escalation.
-- Comparison requested and BL missing (0 files, or SI only) → `NEEDS_REVIEW / missing_attachment`.
+**Document type** (`prompts/doc-type/v1.md`, one call per readable document). The model reads
+the extracted text and answers `{ rationale, doc_type: "SI" | "BL" | "INVOICE" | "PACKING_LIST"
+| "COO" | "OTHER", confidence }`, stored on the `documents` row. There is no title table or label
+list in code: what a Commercial Invoice looks like is the model's knowledge, not a pattern read
+off this dataset. The filename's role is passed in as a claim to check, never trusted. A document
+already typed is not asked about again.
 
-**Document type** (`prompts/doc-type/v1.md`). The model reads the extracted text of each file
-and answers `{ doc_type: "SI" | "BL" | "INVOICE" | "PACKING_LIST" | "COO" | "OTHER", confidence,
-rationale }`. There is no title table or label list in code: what a Commercial Invoice looks like
-is the model's knowledge, not a pattern read off this dataset. The filename suffix is passed in as
-a claim to check, never trusted.
+**Triage** (`prompts/triage/v1.md`, only for an email with nothing attached). The model reads the
+email and answers `{ rationale, request: "send_draft" | "compare_documents", confidence }`: the
+organisers' distinction between a request for the draft BL (nothing to compare yet, `OK`) and a
+comparison whose documents did not arrive (`missing_attachment`). No verb list or regex over
+the body, for the same reason there are no classification rules.
 
-Expected role BL but the model says it is another document → `NEEDS_REVIEW / wrong_doc_type`.
+**Structure** (`pipeline/compare/structure.ts`, pure, table-driven tested). Given the typed
+documents and the triage answer, in this order: any document unreadable → `unreadable`; any
+document read by OCR → `unreadable` with `scanned: true` and `provisional: null` (a scan is
+escalated, never silently trusted; phase 6 fills the provisional comparison); any document the
+model says is an invoice, packing list, certificate of origin or other → `wrong_doc_type`; then
+`compare/triage.ts` resolves roles (the filename's claim first, the model's word for a file that
+claims nothing, a crossed pair swapped) and decides `compare`, `awaiting_draft` or
+`missing_attachment`. Which files are present is a fact code decides on; what an email with none
+asks for is the model's reading.
 
-**Parse**: call doc-extract (section 6). `unreadable: true` on either document →
-`NEEDS_REVIEW / unreadable`, with the page image key attached for the reviewer.
+`escalate.ts` opens one review case per email run, writes the comparison row as
+`NEEDS_REVIEW` with the reason, and parks the email at `review` with `outcome = reason`. An email
+at `review` counts as finished for the run. In phase 5 a comparable pair ends `OK` with
+`detail.placeholder = true`; the rest of this section is phase 6.
 
 **Extract** (`prompts/extract/v1.md`), one call per document. Input: document role, full text
 (or OCR text with per-page confidence), the label synonym table as guidance, and the note that
@@ -383,9 +400,9 @@ decided_by    = llm            (the scorer's unscored cost diagnostic; this pipe
 
 | Reason | Trigger | Evidence attached |
 |---|---|---|
-| `unreadable` | doc-extract reports no text layer and OCR confidence below 0.5, or file fails to open, or 0 bytes | page PNGs, parser error |
-| `wrong_doc_type` | fingerprint of the BL-role file is not BL | first 20 lines |
-| `missing_attachment` | comparison requested and BL absent | body excerpt with the requesting sentence |
+| `unreadable` | doc-extract reports the file empty, unopenable, or without text even after OCR; or any page was read by OCR (`scanned: true`) | the files with the parser's warnings, page PNGs under `pages/` |
+| `wrong_doc_type` | the doc-type model says a file is an invoice, packing list, certificate of origin or other | the file, the role it claimed, the model's type, confidence and rationale |
+| `missing_attachment` | no SI or no BL among the attachments; or nothing attached and the triage model reads a comparison request | which roles are missing, what arrived |
 | `missing_value` | placeholder or null on a required field on either side after verification, including a value the extractor and its verifier could not locate | both raw values |
 
 These four are the organisers' `review_reason` enum and the only values the column ever holds,
@@ -409,13 +426,15 @@ Human values win: normalise and compare read `human_value ?? value`.
 
 ## 6. doc-extract service
 
-Python 3.12, FastAPI. Reads bytes from MinIO by key so large files never pass through Node.
+`services/doc-extract`, Python 3.12 on uv, FastAPI, tesseract in the image. Reads bytes from
+MinIO by key so large files never pass through Node. The worker reaches it through
+`DocExtractClient` (`src/doc-extract/`, zod-parsed, with a memory fake).
 
 | Route | Body | Returns |
 |---|---|---|
-| `GET /healthz` | | `{ ok, tesseract: version }` |
-| `POST /extract` | `{ key, contentType? }` | see below |
-| `POST /render` | `{ key, dpi: 110 }` | `{ pages: [{ key: "...pages/1.png", width, height }] }` |
+| `GET /healthz` | | `{ ok, tesseract: version, langs }` |
+| `POST /extract` | `{ key, filename, content_type? }` | see below |
+| `POST /render` | `{ key, filename, out_prefix, dpi? }` | `{ pages: [{ index, key: "<out_prefix>/1.png", width, height }] }`; `[]` for a non-PDF or a file that will not open |
 
 `/extract` response:
 
@@ -423,10 +442,11 @@ Python 3.12, FastAPI. Reads bytes from MinIO by key so large files never pass th
 {
   "format": "pdf",
   "text": "full text, pages joined with \f",
-  "pages": [{ "index": 1, "text": "...", "source": "text_layer" | "ocr", "ocr_confidence": 0.91 }],
-  "tables": [{ "page": 1, "rows": [["Shipper", "..."]] }],
+  "pages": [{ "index": 1, "text": "...", "source": "text_layer" | "ocr" | "none", "ocr_confidence": 91.2 }],
   "unreadable": false,
-  "warnings": ["page 2 had no text layer, OCR used"]
+  "scanned": true,
+  "warnings": ["page 1: no text layer, read by OCR"],
+  "bytes": 21090
 }
 ```
 
@@ -434,13 +454,20 @@ Per format:
 
 | Format | Library | Notes |
 |---|---|---|
-| `.txt` | stdlib, encoding sniff | |
-| `.pdf` | PyMuPDF text with `sort=True`; tables via `page.find_tables()`; if a page yields under 20 characters, render at 220 dpi and run tesseract (`--psm 6`, `eng+chi_sim`) | garbled or unopenable → `unreadable: true` |
-| `.docx` | python-docx paragraphs + tables flattened to `label: value` lines | bilingual labels kept as-is |
-| `.xlsx` | openpyxl, every non-empty cell as `A1-style row text`, adjacent label/value pairs joined | |
-| 0 bytes | | `unreadable: true` |
+| `.txt` | stdlib, utf-8 then cp1252 | line endings normalised |
+| `.pdf` | PyMuPDF words regrouped by baseline, so a label and the value drawn beside it share a line; a page with under 20 characters of text layer is rasterised at 220 dpi and read by tesseract (`--psm 6`, `eng+chi_sim`, falling back to `eng` with a warning) | garbled or unopenable → `unreadable: true` |
+| `.docx` | python-docx, paragraphs and tables in document order, each table row `label: value` with further cells after a bar | bilingual labels kept as-is |
+| `.xlsx` | openpyxl, each row `A: B` (`A` alone when only the first cell is set), one page per sheet, integral numbers without separators | |
+| 0 bytes, unknown extension | | `unreadable: true` |
 
-Extracted text is also written to MinIO under `.../text/{name}.txt` so re-runs skip parsing.
+Unreadable, decided by the service: empty, would not open, no pages, every page without text,
+under 40 characters in total after OCR, or OCR confidence under 40 on every page. A bad file is
+never a 5xx: it is HTTP 200 with `unreadable: true` and the reason in `warnings`. The only 5xx is
+the object store failing, answered 503 with `retryable: true`; the client turns that, and an
+unreachable service, into `DocExtractUnavailableError`, which pauses the queue like an LLM outage.
+
+The worker writes the extracted text to MinIO under `.../text/{name}.txt`; the service stays
+stateless.
 
 Vision path (*verify*): if the proxy accepts image content blocks, `compare.worker` sends the
 rendered page PNGs to the extraction model when `ocr_confidence < 0.7`. If the proxy drops
@@ -530,8 +557,9 @@ email_runs         (id bigserial pk, run_id fk, email_id fk, stage text, priorit
                     outcome text, started_at, finished_at, unique(run_id, email_id))
 attachments        (id bigserial pk, email_id fk, run_id fk, filename text, role text, origin text default 'source',
                     object_key text, content_type text, bytes int, sha256 text)
-documents          (id bigserial pk, attachment_id fk, email_run_id fk, doc_type text, format text,
-                    text_object_key text, unreadable bool, parse_warnings jsonb, pages int)
+documents          (id bigserial pk, email_run_id fk, attachment_id fk, role text, doc_type text,
+                    doc_type_confidence numeric, doc_type_rationale text, format text, text_object_key text,
+                    pages int, scanned bool, unreadable bool, warnings jsonb, unique(email_run_id, attachment_id))
 classifications    (id bigserial pk, email_run_id fk unique,
                     gen_category text, gen_confidence numeric, ver_category text, ver_confidence numeric,
                     final_category text, human_category text, decided_by text, rationale jsonb, prompt_version text)
@@ -543,8 +571,10 @@ comparisons        (id bigserial pk, email_run_id fk unique, status text, review
                     has_defect bool, decided_by text, created_at)
 field_diffs        (id bigserial pk, comparison_id fk, field text, si_value text, bl_value text,
                     si_normalised text, bl_normalised text, judge_used bool, judge_confidence numeric)
-review_cases       (id bigserial pk, email_run_id fk, reason text, detail jsonb, stage text,
-                    status text check (status in ('open','resolved')), opened_at, resolved_at, resolved_by text)
+review_cases       (id bigserial pk, email_run_id fk, kind text check (kind in ('review','failure')),
+                    reason text (the organisers' four; set exactly when kind = 'review'), stage text, detail jsonb,
+                    status text check (status in ('open','resolved')), opened_at, resolved_at, resolved_by text;
+                    one open case per email_run)
 review_actions     (id bigserial pk, review_case_id fk, kind text, field text, old_value text, new_value text,
                     note text, actor text, created_at)
 llm_calls          (id bigserial pk, email_run_id fk null, step text, model text, prompt_version text,
@@ -618,16 +648,16 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 
 | Method, path | Purpose |
 |---|---|
-| `GET /health` | `{ status: ok \| degraded, checks: { postgres, redis, minio, inbox } }`, 2 s per check. Degraded is still 200; only postgres down is 503, which is the signal auto-deploy rolls back on. The proxy is left out on purpose: a cold model would read as an outage. doc-extract joins in phase 5 |
+| `GET /health` | `{ status: ok \| degraded, checks: { postgres, redis, minio, inbox, docExtract } }`, 2 s per check. Degraded is still 200; only postgres down is 503, which is the signal auto-deploy rolls back on. The proxy is left out on purpose: a cold model would read as an outage |
 | `POST /runs` | start a run `{ source, ratePerSecond, limit?, emailIds?, subset?: dev \| holdout, promptSet?: { step: vN }, models?: { step: alias } }`. `subset` reads the id lists in `backend/eval/` (ids only). 400 for an unknown prompt version or a model that is not a proxy alias, before anything is queued |
-| `GET /runs`, `GET /runs/:id` | list, detail with stage counts, `finishedEmails`, `processingDone`, `elapsedMs` (start to the last email finishing, or to now), queue depth, `promptSet`, `llm` usage with `verifierShare`, score. The list also carries `concurrency: { classify, llm }` from the env. `queues` is `null` when Redis cannot be reached; the rest comes from Postgres and is still served |
+| `GET /runs`, `GET /runs/:id` | list, detail with stage counts, `finishedEmails` (done, failed and review), `processingDone`, `elapsedMs` (start to the last email finishing, or to now), queue depth, `promptSet`, `llm` usage with `verifierShare`, `review: { open, byReason }`, score. The list also carries `concurrency: { classify, llm }` from the env. `queues` is `null` when Redis cannot be reached; the rest comes from Postgres and is still served |
 | `POST /runs/:id/pause`, `/resume`, `/cancel` | control the replay |
 | `POST /runs/:id/submit?force=false` | build submission, post to averis, store scoreboard. 409 when the run holds fewer rows than `totalEmails` (still ingesting) or holds unfinished emails, both overridden by `?force=true`; 409 while another submission for the same run is being scored. The `core.submissions` row is written before the scorer is called and updated with the scoreboard after, so a scorer failure leaves an unscored row (null `scoreboard`, null `final_score`) pointing at the stored payload rather than an orphan payload. Only scored rows count as a run's last submission |
 | `GET /runs/:id/submission.json` | download the payload |
-| `GET /runs/:id/emails?stage=&category=&decidedBy=&q=` | paginated list with `category`, `decidedBy`, `confidence`, `verifierCategory`, `error` |
+| `GET /runs/:id/emails?stage=&category=&decidedBy=&outcome=&q=` | paginated list with `category`, `decidedBy`, `confidence`, `verifierCategory`, `outcome`, `error` |
 | `GET /runs/:id/calls?after=&limit=` | the run's newest `llm_calls` as summaries (no prompt or email text), newest first, for a live feed; `after` returns only newer ids |
 | `GET /runs/:id/live` | the run's model calls running now, each with the answer written so far (`LiveCallView`) |
-| `GET /runs/:id/emails/:emailId/trace` | one email: stage, error, how its category was settled (each reader's category, confidence, reasoning, counter-cases, verifier error), the call running now, and every finished call oldest first with system prompt, input, answer text, parsed answer, tokens, cost, latency |
+| `GET /runs/:id/emails/:emailId/trace` | one email: stage, error, how its category was settled (each reader's category, confidence, reasoning, counter-cases, verifier error), its documents (the role the filename claims, the model's type with confidence and rationale, format, pages, scanned, unreadable, warnings), its open review case, the call running now, and every finished call oldest first with system prompt, input, answer text, parsed answer, tokens, cost, latency |
 | `GET /prompts` | each prompt step's versions on disk, newest first, with the active one, the model the file names and any notes; the runs page offers exactly these |
 | `GET /emails/:runId/:emailId` | full trace: email, attachments, classification, extractions with fields, comparison, diffs, review case, llm_calls summary |
 | `GET /review?status=open` | review inbox |

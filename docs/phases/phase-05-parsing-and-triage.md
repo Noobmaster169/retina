@@ -32,7 +32,7 @@ Phase 4 merged. Python 3.12 locally. Docker for the doc-extract image.
 ## Scope
 
 In: `services/doc-extract` (all four formats, OCR, page rendering), `DocExtractClient`,
-triage, fingerprint, `documents` and `review_cases` tables, escalation module, compose wiring
+triage, doc-type (the model), `documents` and `review_cases` tables, escalation module, compose wiring
 (local and VPS), review counts on the run page. Out: LLM extraction, comparison, review UI.
 
 ## Facts about the data that drive this phase
@@ -48,7 +48,7 @@ From the generator (`render.py`, `edgecases.py`, `generate.py`):
 | image-only `.pdf` | text rasterised at ~150 dpi with slight rotation and a grey watermark; both SI and BL are images | OCR works; the document still counts as `unreadable` for escalation (see policy below) |
 | empty file | 0 bytes, `.pdf` extension | unreadable |
 | garbled `.pdf` | valid header, random bytes, no xref | fails to open; unreadable |
-| wrong doc | `.txt` whose first line is `COMMERCIAL INVOICE`, `PACKING LIST` or `CERTIFICATE OF ORIGIN` | fingerprint by title |
+| wrong doc | `.txt` whose first line is `COMMERCIAL INVOICE`, `PACKING LIST` or `CERTIFICATE OF ORIGIN` | the doc-type model reads it as one |
 
 Body phrasing (all `BL_COMPARISON`):
 
@@ -225,69 +225,59 @@ only, and answers `{ request: "send_draft" | "compare_documents", confidence, ra
 `callStructured`. `triage.ts` stays pure: it takes that answer as an input, and the processor
 makes the call only for the no-attachment row.
 
-Roles: filename role first; `UNKNOWN` files are resolved by fingerprint after parsing (work
-item 6 re-runs triage with resolved roles). More than one file per role: keep the first, list
+Roles: filename role first; `UNKNOWN` files take the model's word after parsing (work item 5,
+`resolveRoles`). More than one file per role: keep the first, list
 the rest in `extras`.
 
-### 5. Fingerprint: `src/pipeline/compare/fingerprint.ts` (pure)
+### 5. Document type: `src/agents/doc-type.ts` (the model, not a fingerprint)
 
-Input: first 25 non-empty lines of extracted text, uppercased. Output:
-`{ docType, confidence, evidence: string[] }`.
+Rewritten 2026-09-20 under the amendment above, as built.
 
-Order of checks:
+One `callStructured` call per readable document, `prompts/doc-type/v1.md` on `sonnet`. Input:
+the file name, the role the filename claims (as a claim to check), and the extracted text cut at
+`DOC_TYPE_TEXT_CHARS`. Output `{ rationale, doc_type: SI | BL | INVOICE | PACKING_LIST | COO |
+OTHER, confidence }`, stored on the `documents` row (`doc_type`, `doc_type_confidence`,
+`doc_type_rationale`). A document already typed is not asked about again, so a retry costs
+nothing. An unreadable document is never typed. There is no title match and no label set in
+code; `resolveRoles` in `compare/triage.ts` (pure) only combines the filename's claim with the
+model's word: the claim first, the model's SI or BL for a file that claims nothing, a crossed
+pair swapped.
 
-1. Title match in the first 3 lines: `COMMERCIAL INVOICE` → INVOICE; `PACKING LIST` →
-   PACKING_LIST; `CERTIFICATE OF ORIGIN` → COO; `SHIPPING INSTRUCTION`, `BILL OF LADING
-   INSTRUCTION`, `BL INSTRUCTION`, `B/L INSTRUCTION` → SI; `BILL OF LADING` (without
-   `INSTRUCTION`) → BL. Confidence 0.95.
-2. Label set (anywhere in the 25 lines): `INVOICE NO`, `INVOICE DATE`, `UNIT PRICE`, `TOTAL
-   AMOUNT`, `PAYMENT TERMS` → INVOICE; `CARTON`, `NET WT`, `DIMENSIONS` → PACKING_LIST;
-   `CERTIFICATE NO`, `ISSUING AUTHORITY`, `COUNTRY OF ORIGIN` → COO; `TO THE ORDER OF`,
-   `B/L NO`, `BILL OF LADING NO`, `B/L NUMBER` → BL (0.7); `BOOKING REF`, `BOOKING NO`,
-   `FREIGHT` plus any shipper label and any port label → SI_OR_BL (0.6).
-3. Otherwise UNKNOWN (0).
-
-The PDF SI and BL both contain `B/L NUMBER`, so for PDFs the title decides and the label set
-only confirms membership of the SI/BL family. The compare processor treats `SI_OR_BL` as
-compatible with either filename role.
+Classification reads the same text. `classify/v5.md` and `classify-verify/v2.md` carry
+`reads_attachments: true`; for a run that pins them the classify processor parses the
+attachments first (`parse-documents.ts`, idempotent, compare finds the rows) and adds an
+"attachment contents" section to the model's input, each file's name and text cut at
+`CLASSIFY_ATTACHMENT_CHARS`, an unreadable file named with the parser's reason. Both are
+seeded inactive by migration 005: `v3` stays the default until a holdout run shows `v5` helps.
 
 ### 6. Compare processor (phase 5 form)
 
-```
-atts   = attachments.listForEmail(runId, emailId)
-tri    = triage({ body, attachments: atts })
-if tri.kind == awaiting_draft:      comparisons.upsert(OK, detail {awaiting_draft, note}); done
-if tri.kind == missing_attachment:  escalate(missing_attachment, { missing, note, attachments: names }); return
-
-for each of si, bl (and extras):
-  ext = docExtract.extract({ key, filename, contentType })
-  objectStore.put(keys.text(...), ext.text)
-  fp  = ext.unreadable ? UNKNOWN : fingerprint(ext.text)
-  documents.upsert({ role, doc_type: fp.docType, format, text_object_key, pages, scanned, unreadable, warnings })
-
-if any doc unreadable:
-  if format is pdf: docExtract.render(...) -> page keys into detail.pages
-  escalate(unreadable, { files: [{ filename, warnings, scanned }], pages }); return
-if any doc scanned (OCR only):                       # policy: a scan is escalated, never silently trusted
-  escalate(unreadable, { scanned: true, files, pages, provisional: null }); return   # phase 6 fills provisional
-expectedRole check:
-  bl.doc_type in (INVOICE, PACKING_LIST, COO)  -> escalate(wrong_doc_type, { filename, detected: doc_type, evidence })
-  si.doc_type in (INVOICE, PACKING_LIST, COO)  -> same
-  bl.doc_type == SI and si.doc_type == BL      -> swap roles, warn
-placeholder: comparisons.upsert(OK, detail { placeholder: true }); done
-```
-
-`escalate.ts`:
+Rewritten 2026-09-20, as built. `checkStructure` in `pipeline/compare/structure.ts` is pure
+and holds the whole decision; the processor loads, calls and saves.
 
 ```
-escalate(emailRunId, reason, detail, stage):
-  review_cases.insert(open)                     # unique open case per email_run
-  comparisons.upsert({ status: NEEDS_REVIEW, review_reason: reason, has_defect: false, detail })
-  emailRuns.setStage(review, outcome = reason)
+files = attachments.listForEmail(runId, emailId)
+docs  = files ? typeDocuments(parseDocuments(files)) : []      # doc-extract once per file, doc-type once per readable file
+req   = files ? null : triage model (prompts/triage/v1.md)      # send_draft | compare_documents; answer reused on a retry
+outcome = checkStructure(docs, req):
+  any doc unreadable                       -> unreadable   { files: [{ filename, warnings, scanned }] }
+  any doc scanned (OCR)                    -> unreadable   { scanned: true, files, provisional: null }
+  any doc typed INVOICE/PACKING_LIST/COO/OTHER -> wrong_doc_type { files: [{ filename, claimed, detected, confidence, rationale }] }
+  triage(resolveRoles(docs), req):
+    SI and BL present                      -> compare      (placeholder OK: { placeholder: true, si, bl, extras })
+    nothing attached, send_draft           -> awaiting_draft (OK: { awaiting_draft: true, note })
+    nothing attached, compare_documents    -> missing_attachment { missing: [SI, BL], note, attachments: [] }
+    a role absent                          -> missing_attachment { missing, note, attachments }
+review outcomes: pages rendered for every PDF (unreadable only), then escalate(reason, detail)
 ```
 
-Escalation precedence when several apply: `unreadable` > `wrong_doc_type` >
-`missing_attachment`. Each escalation stops processing.
+`escalate.ts` (an orchestration module, it writes): one open `review_cases` row per email run,
+`comparisons` upserted as `NEEDS_REVIEW` with the reason, the email moved from `comparing` to
+`review` with `outcome = reason` and `finished_at` set. Precedence when several apply:
+`unreadable` > `wrong_doc_type` > `missing_attachment`. Each escalation stops processing.
+
+The compare worker is wrapped in `pausingOnOutage`: a proxy or doc-extract outage pauses the
+queue and puts the job back without spending an attempt.
 
 ### 7. Compose
 
@@ -326,15 +316,23 @@ Python (`pytest`):
 
 TypeScript:
 
-- `pipeline/compare/triage.test.ts`: every row of the decision table (the model's answer passed in as data), plus extras and
-  UNKNOWN roles.
-- `pipeline/compare/fingerprint.test.ts`: each title; label-set fallbacks; the PDF SI title
-  `BILL OF LADING INSTRUCTION` → SI; an `xlsx` SI (`BL INSTRUCTION`) → SI; docx BL → BL.
-- `queues/processors/compare.processor.test.ts`: with `MemoryDocExtractClient`: awaiting
-  draft → OK; SI-only → missing_attachment; wrong doc → wrong_doc_type with evidence;
-  unreadable → review case with page keys; scanned → unreadable with `scanned: true`;
-  comparable → placeholder OK.
-- `escalate.test.ts`: second escalation on the same email_run does not create a second open case.
+- `pipeline/compare-triage.test.ts`: every row of the decision table (the model's answer passed in
+  as data), extras, UNKNOWN roles, and `resolveRoles` (claim first, model's word, crossed pair).
+- `pipeline/compare-structure.test.ts`: each escalation with its detail, the precedence, a scan,
+  an untyped document, a crossed pair, the two no-attachment readings.
+- `pipeline/classify-attachments.test.ts`: the "attachment contents" section, cut, unreadable, OCR.
+- `queues/compare.processor.test.ts`, with `MemoryDocExtractClient` and a `FakeLlmClient` that
+  types by content: comparable pair → placeholder OK with both typed and the text in the store;
+  invoice as BL → wrong_doc_type with evidence; unopenable BL → unreadable, not typed, pages
+  rendered; scanned pair → unreadable with `scanned: true` and page keys; SI only →
+  missing_attachment; nothing attached → awaiting_draft or missing_attachment by the triage
+  answer; a second pass pays for nothing; a doc-extract outage leaves no row; a second escalation
+  leaves one open case; calls stream.
+- `queues/processors.test.ts`: a run pinned to classify v5 sees the attachments' text and leaves
+  the parsed rows for compare; the active v3 parses nothing.
+- `doc-extract/http.client.test.ts`: the wire field names, and each failure mapped to its error.
+- `repositories/review-cases.repo.test.ts`: one open case per email run, counts per reason, the
+  reason check constraint.
 
 ### 10. Manual verification
 
