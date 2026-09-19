@@ -1,13 +1,15 @@
 import { type Request, type Response, Router } from "express";
 import type { Pool } from "pg";
-import { z } from "zod";
 
-import { CreateRunBody, RunEmailsQuery, type RunList, type RunStatus, type RunSummary } from "../contracts";
+import { config } from "../config";
+import { CreateRunBody, type RunList, type RunStatus, type RunSummary } from "../contracts";
 import { RetryableError } from "../lib/errors";
 import { newRunId, resumeJobId } from "../lib/ids";
 import { childLogger } from "../lib/logger";
-import { emailRuns, emails, llmCalls, type Run, runs, submissions } from "../ontology/repositories";
+import { classifications, emailRuns, llmCalls, type Run, runs, submissions } from "../ontology/repositories";
 import type { RunQueues } from "../queues/run-queues";
+import { runIdParam } from "./params";
+import { planRun } from "./run-plan";
 import { type QueueSnapshot, toSummary } from "./run-summary";
 
 export interface RunsDeps {
@@ -16,14 +18,6 @@ export interface RunsDeps {
 }
 
 const log = childLogger({ module: "runs.routes" });
-
-/** The run id from the path, or null after answering 400. */
-function runIdParam(req: Request, res: Response): string | null {
-  const id = z.uuid().safeParse(req.params.id);
-  if (id.success) return id.data;
-  res.status(400).json({ error: "bad run id" });
-  return null;
-}
 
 export function runsRouter(deps: RunsDeps): Router {
   const router = Router();
@@ -43,17 +37,18 @@ export function runsRouter(deps: RunsDeps): Router {
   /** Every run's summary from one round of reads. The repositories answer for every id asked for. */
   async function summariesOf(all: Run[]): Promise<RunSummary[]> {
     const ids = all.map((run) => run.id);
-    const [stageCounts, queues, usage, latest] = await Promise.all([
+    const [stageCounts, queues, usage, verifierShare, latest] = await Promise.all([
       emailRuns.stageCountsForRuns(pool, ids),
       queueSnapshot(),
       llmCalls.usageForRuns(pool, ids),
+      classifications.verifierShareForRuns(pool, ids),
       submissions.latestForRuns(pool, ids),
     ]);
     return all.map((run) =>
       toSummary(run, {
         stageCounts: stageCounts(run.id),
         queues,
-        llm: usage(run.id),
+        llm: { ...usage(run.id), verifierShare: verifierShare(run.id) },
         lastSubmission: latest.get(run.id),
       }),
     );
@@ -87,12 +82,18 @@ export function runsRouter(deps: RunsDeps): Router {
       res.status(400).json({ error: "invalid body", issues: body.error.issues });
       return;
     }
+    const plan = await planRun(pool, body.data);
+    if (!plan.ok) {
+      res.status(400).json({ error: plan.error });
+      return;
+    }
     const run = await runs.create(pool, {
       id: newRunId(),
       source: body.data.source,
       ratePerSecond: body.data.ratePerSecond,
       emailLimit: body.data.limit,
-      emailIds: body.data.emailIds,
+      emailIds: plan.emailIds,
+      promptSet: plan.promptSet,
       createdBy: req.caller,
     });
     try {
@@ -106,7 +107,10 @@ export function runsRouter(deps: RunsDeps): Router {
   });
 
   router.get("/", async (_req, res) => {
-    const body: RunList = { runs: await summariesOf(await runs.list(pool)) };
+    const body: RunList = {
+      runs: await summariesOf(await runs.list(pool)),
+      concurrency: { classify: config.CLASSIFY_CONCURRENCY, llm: config.LLM_MAX_CONCURRENCY },
+    };
     res.json(body);
   });
 
@@ -158,19 +162,6 @@ export function runsRouter(deps: RunsDeps): Router {
       log.warn({ runId: run.id, err: error.message }, "could not remove the cancelled run's waiting jobs");
     }
     res.json(await summaryOf(run));
-  });
-
-  router.get("/:id/emails", async (req, res) => {
-    const id = runIdParam(req, res);
-    if (!id) return;
-    const query = RunEmailsQuery.safeParse(req.query);
-    if (!query.success) {
-      res.status(400).json({ error: "invalid query", issues: query.error.issues });
-      return;
-    }
-    const { stage, q, page, pageSize } = query.data;
-    const found = await emails.listForRun(pool, id, { stage, q }, { page, pageSize });
-    res.json({ ...found, page, pageSize });
   });
 
   return router;

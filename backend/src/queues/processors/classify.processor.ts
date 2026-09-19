@@ -1,15 +1,71 @@
-import { classifyEmail, type LlmClient } from "../../agents";
+import { classifyEmail, type LlmClient, promptFor, verifyClassification } from "../../agents";
 import { config } from "../../config";
+import type { Category } from "../../contracts";
 import type { Queryable } from "../../db";
 import { TerminalError } from "../../lib/errors";
-import { attachments, classifications, emailRuns, emails, runs } from "../../ontology/repositories";
-import { buildClassifyInput } from "../../pipeline/classify";
+import { childLogger } from "../../lib/logger";
+import { attachments, classifications, emailRuns, emails, type Run, runs } from "../../ontology/repositories";
+import { buildClassifyInput, decide, needsVerifier } from "../../pipeline/classify";
 import { type ClassifyJob, type CompareJob, JOB_NAMES, type JobAdder, jobOptions } from "../names";
+
+const log = childLogger({ module: "classify.processor" });
 
 export interface ClassifyDeps {
   pool: Queryable;
   llm: LlmClient;
   compare: JobAdder<CompareJob>;
+}
+
+/**
+ * Generator, then the verifier when the generator says it is unsure, then the
+ * decision. Null when the run was cancelled while the model was answering.
+ */
+async function classifyOnce(deps: ClassifyDeps, run: Run, emailId: string, emailRunId: string): Promise<Category | null> {
+  const email = await emails.get(deps.pool, emailId);
+  if (!email) throw new TerminalError(`email ${emailId} is not stored`);
+  const files = await attachments.listForEmail(deps.pool, run.id, emailId);
+  const input = buildClassifyInput(
+    email,
+    files.map((file) => file.filename),
+    config.CLASSIFY_BODY_CHARS,
+  );
+  const ids = { runId: run.id, emailRunId };
+
+  const gen = await classifyEmail(deps, promptFor("classify", run.promptSet), input, ids);
+  const ver = needsVerifier(gen.value)
+    ? await verifyClassification(deps, promptFor("classify-verify", run.promptSet), input, gen.value, ids)
+    : null;
+  if ((await runs.status(deps.pool, run.id)) === "cancelled") return null;
+
+  const { finalCategory, decidedBy } = decide(gen.value, ver?.value ?? null);
+  await classifications.upsert(deps.pool, {
+    emailRunId,
+    genCategory: gen.value.category,
+    genConfidence: gen.value.confidence,
+    verCategory: ver?.value.category ?? null,
+    verConfidence: ver?.value.confidence ?? null,
+    finalCategory,
+    decidedBy,
+    rationale: {
+      generator: gen.value.rationale,
+      ...(ver ? { verifier: ver.value.rationale, counterCases: ver.value.counter_cases } : {}),
+    },
+    model: gen.model,
+    promptVersion: gen.promptVersion,
+  });
+  log.info(
+    {
+      runId: run.id,
+      emailId,
+      stage: "classify",
+      category: finalCategory,
+      confidence: gen.value.confidence,
+      decidedBy,
+      overruled: ver ? ver.value.category !== gen.value.category : false,
+    },
+    "classified",
+  );
+  return finalCategory;
 }
 
 /**
@@ -27,35 +83,18 @@ export interface ClassifyDeps {
  */
 export async function processClassify(deps: ClassifyDeps, data: ClassifyJob, priority: number): Promise<void> {
   const { runId, emailId } = data;
-  if ((await runs.status(deps.pool, runId)) === "cancelled") return;
+  const run = await runs.get(deps.pool, runId);
+  if (!run) throw new TerminalError(`run ${runId} does not exist`);
+  if (run.status === "cancelled") return;
 
   const emailRunId = await emailRuns.idOf(deps.pool, runId, emailId);
-  const email = await emails.get(deps.pool, emailId);
-  if (!emailRunId || !email) throw new TerminalError(`email ${emailId} is not in run ${runId}`);
+  if (!emailRunId) throw new TerminalError(`email ${emailId} is not in run ${runId}`);
 
-  let category = (await classifications.get(deps.pool, emailRunId))?.finalCategory;
+  let category = (await classifications.get(deps.pool, emailRunId))?.finalCategory ?? null;
   if (!category) {
     await emailRuns.moveStage(deps.pool, runId, emailId, ["ingested", "classifying"], "classifying");
-    const files = await attachments.listForEmail(deps.pool, runId, emailId);
-    const input = buildClassifyInput(
-      email,
-      files.map((file) => file.filename),
-      config.CLASSIFY_BODY_CHARS,
-    );
-    const { value, model, promptVersion } = await classifyEmail(deps, input, { runId, emailRunId });
-    if ((await runs.status(deps.pool, runId)) === "cancelled") return;
-
-    await classifications.upsert(deps.pool, {
-      emailRunId,
-      genCategory: value.category,
-      genConfidence: value.confidence,
-      finalCategory: value.category,
-      decidedBy: "llm",
-      rationale: { generator: value.rationale },
-      model,
-      promptVersion,
-    });
-    category = value.category;
+    category = await classifyOnce(deps, run, emailId, emailRunId);
+    if (!category) return;
   }
   await emailRuns.moveStage(deps.pool, runId, emailId, ["ingested", "classifying"], "classified");
 

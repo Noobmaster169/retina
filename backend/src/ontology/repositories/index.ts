@@ -4,6 +4,7 @@ export * as comparisons from "./comparisons.repo";
 export * as emailRuns from "./email-runs.repo";
 export * as emails from "./emails.repo";
 export * as llmCalls from "./llm-calls.repo";
+export * as promptVersions from "./prompt-versions.repo";
 export * as runs from "./runs.repo";
 export * as submissions from "./submissions.repo";
 

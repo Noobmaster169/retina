@@ -4,6 +4,8 @@
  */
 import { z } from "zod";
 
+import { Category } from "./contracts.scoring";
+
 export const RunStatus = z.enum(["created", "running", "paused", "completed", "cancelled", "failed"]);
 export type RunStatus = z.infer<typeof RunStatus>;
 
@@ -13,18 +15,44 @@ export type Stage = z.infer<typeof Stage>;
 export const AttachmentRole = z.enum(["SI", "BL", "UNKNOWN"]);
 export type AttachmentRole = z.infer<typeof AttachmentRole>;
 
-export const CreateRunBody = z.object({
-  source: z.literal("averis").default("averis"),
-  /** 0 is a burst: everything is enqueued at once. */
-  ratePerSecond: z.number().min(0).max(50).default(2),
-  limit: z.number().int().positive().optional(),
-  /** Deduplicated: a repeated id would count twice in totalEmails and the run would never read as finished. */
-  emailIds: z
-    .array(z.string().regex(/^email_\d{1,6}$/))
-    .min(1)
-    .transform((ids) => [...new Set(ids)])
-    .optional(),
-});
+/** Ours, not an organiser enum: the LLM steps whose prompt a run pins. */
+export const PromptStep = z.enum(["classify", "classify-verify"]);
+export type PromptStep = z.infer<typeof PromptStep>;
+
+/** What one step of a run runs: a prompt file and a proxy alias. Fixed when the run is created. */
+export const PinnedPrompt = z.object({ version: z.string(), model: z.string() });
+export type PinnedPrompt = z.infer<typeof PinnedPrompt>;
+
+/** Empty for a run created before phase 4; the worker then reads the newest prompt on disk. */
+export const PromptSet = z.partialRecord(PromptStep, PinnedPrompt);
+export type PromptSet = z.infer<typeof PromptSet>;
+
+/**
+ * Named id lists from `eval/`: `dev` is a small stratified train sample for
+ * iterating, `holdout` the held-out ids that measure. Neither carries a label.
+ */
+export const RunSubset = z.enum(["dev", "holdout"]);
+export type RunSubset = z.infer<typeof RunSubset>;
+
+export const CreateRunBody = z
+  .object({
+    source: z.literal("averis").default("averis"),
+    /** 0 is a burst: everything is enqueued at once. */
+    ratePerSecond: z.number().min(0).max(50).default(2),
+    limit: z.number().int().positive().optional(),
+    /** Deduplicated: a repeated id would count twice in totalEmails and the run would never read as finished. */
+    emailIds: z
+      .array(z.string().regex(/^email_\d{1,6}$/))
+      .min(1)
+      .transform((ids) => [...new Set(ids)])
+      .optional(),
+    subset: RunSubset.optional(),
+    /** A prompt version per step, for comparing two runs prompt against prompt. Else the active one. */
+    promptSet: z.partialRecord(PromptStep, z.string().regex(/^v\d+$/)).optional(),
+    /** A proxy alias per step, for the model comparison. Else the prompt file's, which is sonnet. */
+    models: z.partialRecord(PromptStep, z.string().min(1).max(64)).optional(),
+  })
+  .refine((body) => !(body.subset && body.emailIds), { message: "name either emailIds or a subset, not both" });
 export type CreateRunBody = z.infer<typeof CreateRunBody>;
 
 export const QueueCounts = z.object({ waiting: z.number(), active: z.number(), failed: z.number() });
@@ -37,6 +65,8 @@ export const LlmUsage = z.object({
   outputTokens: z.number(),
   /** What the API would have charged. On the subscription rail nothing is billed. */
   costUsd: z.number(),
+  /** Of the run's classified emails, the share the verifier settled. 0 before any is classified. */
+  verifierShare: z.number(),
 });
 export type LlmUsage = z.infer<typeof LlmUsage>;
 
@@ -52,6 +82,7 @@ export const RunSummary = z.object({
   createdAt: z.string(),
   startedAt: z.string().nullable(),
   finishedAt: z.string().nullable(),
+  promptSet: PromptSet,
   llm: LlmUsage,
   /** The newest submission to the scorer, without its full scoreboard. */
   lastSubmission: z
@@ -76,8 +107,19 @@ export const RunSummary = z.object({
 });
 export type RunSummary = z.infer<typeof RunSummary>;
 
-export const RunList = z.object({ runs: z.array(RunSummary) });
+/**
+ * How parallel a run is, from the env: emails classified at once, and model
+ * calls in flight at once. The api reads the same env as the worker.
+ */
+export const Concurrency = z.object({ classify: z.number(), llm: z.number() });
+export type Concurrency = z.infer<typeof Concurrency>;
+
+export const RunList = z.object({ runs: z.array(RunSummary), concurrency: Concurrency });
 export type RunList = z.infer<typeof RunList>;
+
+/** Ours, not an organiser enum: which layer settled the category. */
+export const DecidedBy = z.enum(["llm", "verifier", "human"]);
+export type DecidedBy = z.infer<typeof DecidedBy>;
 
 export const EmailListItem = z.object({
   emailId: z.string(),
@@ -86,11 +128,21 @@ export const EmailListItem = z.object({
   stage: Stage,
   attachmentCount: z.number(),
   outcome: z.string().nullable(),
+  /** Null until the email is classified. */
+  category: Category.nullable(),
+  decidedBy: DecidedBy.nullable(),
+  /** The generator's own stated confidence, which is what decides whether the verifier runs. */
+  confidence: z.number().nullable(),
+  /** The verifier's category, when it ran. Differs from the generator's when it overruled it. */
+  verifierCategory: Category.nullable(),
+  error: z.string().nullable(),
 });
 export type EmailListItem = z.infer<typeof EmailListItem>;
 
 export const RunEmailsQuery = z.object({
   stage: Stage.optional(),
+  category: Category.optional(),
+  decidedBy: DecidedBy.optional(),
   q: z.string().max(200).optional(),
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(200).default(50),
@@ -104,6 +156,45 @@ export const RunEmailsPage = z.object({
   pageSize: z.number(),
 });
 export type RunEmailsPage = z.infer<typeof RunEmailsPage>;
+
+/**
+ * One attempt at one model call, exactly as it went out and came back. The
+ * ledger is append-only, so a retry is a second entry, not an edit.
+ */
+export const LlmCall = z.object({
+  id: z.string(),
+  emailId: z.string().nullable(),
+  step: z.string(),
+  model: z.string(),
+  promptVersion: z.string(),
+  attempt: z.number(),
+  ok: z.boolean(),
+  error: z.string().nullable(),
+  /** The system prompt as sent, schema included. */
+  system: z.string(),
+  /** The email as the model saw it. */
+  user: z.string(),
+  /** The model's text, before any parsing. Null when the call itself failed. */
+  responseText: z.string().nullable(),
+  /** What the schema accepted, when it did. */
+  parsed: z.unknown(),
+  inputTokens: z.number().nullable(),
+  outputTokens: z.number().nullable(),
+  costUsd: z.number().nullable(),
+  latencyMs: z.number(),
+  createdAt: z.string(),
+});
+export type LlmCall = z.infer<typeof LlmCall>;
+
+export const LlmCallList = z.object({ calls: z.array(LlmCall) });
+export type LlmCallList = z.infer<typeof LlmCallList>;
+
+/** `after` is the id of the newest call the caller already has, so a live view fetches only what is new. */
+export const RunCallsQuery = z.object({
+  after: z.coerce.number().int().nonnegative().optional(),
+  limit: z.coerce.number().int().positive().max(100).default(25),
+});
+export type RunCallsQuery = z.infer<typeof RunCallsQuery>;
 
 export const CheckStatus = z.enum(["up", "down"]);
 export type CheckStatus = z.infer<typeof CheckStatus>;

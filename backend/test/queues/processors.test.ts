@@ -2,7 +2,7 @@ import type { PoolClient } from "pg";
 import { describe, expect, it } from "vitest";
 
 import { FakeLlmClient } from "../../src/agents/__fakes__/fake.llm-client";
-import { RetryableError } from "../../src/lib/errors";
+import { RetryableError, TerminalError } from "../../src/lib/errors";
 import { classifications, emailRuns, llmCalls, runs } from "../../src/ontology/repositories";
 import { RecordingAdder } from "../../src/queues/__fakes__/recording.adder";
 import type { CompareJob } from "../../src/queues/names";
@@ -100,6 +100,81 @@ describe("classify processor", () => {
       await expect(
         processClassify({ pool: tx, llm, compare: new RecordingAdder<CompareJob>() }, { runId, emailId }, 600),
       ).rejects.toBeInstanceOf(RetryableError);
+      expect(await llmCalls.usageForRun(tx, runId)).toMatchObject({ calls: 1, failedCalls: 1 });
+    });
+  });
+
+  it("a confident generator settles the email alone: one call, no verifier", async () => {
+    await inRollback(async (tx) => {
+      const { runId, emailId, emailRunId } = await ingested(tx);
+      const llm = new FakeLlmClient(answer("SPAM", 0.97));
+
+      await processClassify({ pool: tx, llm, compare: new RecordingAdder<CompareJob>() }, { runId, emailId }, 600);
+
+      expect(llm.requests).toHaveLength(1);
+      expect(await classifications.get(tx, emailRunId)).toMatchObject({ finalCategory: "SPAM", decidedBy: "llm" });
+    });
+  });
+
+  it("an unsure generator is checked by the verifier, whose category wins", async () => {
+    await inRollback(async (tx) => {
+      const { runId, emailId, emailRunId } = await ingested(tx);
+      const verdict = JSON.stringify({
+        counter_cases: "SI_REQUEST: it mentions an SI.",
+        rationale: "A draft is to be checked.",
+        category: "BL_COMPARISON",
+        agrees: false,
+        confidence: 0.85,
+      });
+      const llm = new FakeLlmClient([answer("SI_REQUEST", 0.62), verdict]);
+      const compare = new RecordingAdder<CompareJob>();
+
+      await processClassify({ pool: tx, llm, compare }, { runId, emailId }, 600);
+
+      expect(llm.requests).toHaveLength(2);
+      const [, check] = llm.requests;
+      expect(check.system).toContain("second reader");
+      expect(check.user).toContain("## proposal\ncategory: SI_REQUEST\nconfidence: 0.62");
+      expect(await classifications.get(tx, emailRunId)).toMatchObject({ finalCategory: "BL_COMPARISON", decidedBy: "verifier" });
+      const { rows } = await tx.query("select gen_category, ver_category, rationale from core.classifications where email_run_id = $1", [
+        emailRunId,
+      ]);
+      expect(rows[0]).toMatchObject({ gen_category: "SI_REQUEST", ver_category: "BL_COMPARISON" });
+      expect(rows[0].rationale).toMatchObject({ verifier: "A draft is to be checked." });
+      expect(compare.added).toHaveLength(1);
+      expect(await llmCalls.listForEmail(tx, runId, emailId)).toMatchObject([
+        { step: "classify", ok: true },
+        { step: "classify-verify", ok: true, responseText: verdict },
+      ]);
+    });
+  });
+
+  it("runs the prompt versions and models the run pinned", async () => {
+    await inRollback(async (tx) => {
+      const run = await seedRun(tx, {
+        promptSet: { classify: { version: "v2", model: "haiku" }, "classify-verify": { version: "v1", model: "opus" } },
+      });
+      const emailId = await seedEmail(tx);
+      await emailRuns.insert(tx, { runId: run.id, emailId, stage: "ingested", priority: 600 });
+      const llm = new FakeLlmClient(answer("GENERAL", 0.97));
+
+      await processClassify({ pool: tx, llm, compare: new RecordingAdder<CompareJob>() }, { runId: run.id, emailId }, 600);
+
+      expect(llm.requests[0].model).toBe("haiku");
+      const [call] = await llmCalls.listForEmail(tx, run.id, emailId);
+      expect(call).toMatchObject({ promptVersion: "v2", model: "haiku" });
+    });
+  });
+
+  it("fails an unknown provider rather than requeueing it: a 500 the proxy marks permanent", async () => {
+    await inRollback(async (tx) => {
+      const { runId, emailId } = await ingested(tx);
+      const llm = new FakeLlmClient(new TerminalError("llm-proxy returned 500: unknown provider"));
+
+      const failure = processClassify({ pool: tx, llm, compare: new RecordingAdder<CompareJob>() }, { runId, emailId }, 600);
+
+      await expect(failure).rejects.toBeInstanceOf(TerminalError);
+      await expect(failure).rejects.not.toBeInstanceOf(RetryableError);
       expect(await llmCalls.usageForRun(tx, runId)).toMatchObject({ calls: 1, failedCalls: 1 });
     });
   });

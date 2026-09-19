@@ -23,6 +23,7 @@ export function toSummary(run: Run, parts: SummaryParts): RunSummary {
     createdAt: run.createdAt,
     startedAt: run.startedAt,
     finishedAt: run.finishedAt,
+    promptSet: run.promptSet,
     llm,
     lastSubmission: last
       ? {

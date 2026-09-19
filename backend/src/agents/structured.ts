@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { Queryable } from "../db";
 import { TerminalError } from "../lib/errors";
+import { childLogger } from "../lib/logger";
 import { llmCalls } from "../ontology/repositories";
 import type { LlmClient, LlmRequest } from "./llm-client";
 import type { Prompt } from "./prompts/registry";
@@ -28,6 +29,8 @@ export interface StructuredResult<T> {
 }
 
 const MAX_ATTEMPTS = 2;
+
+const log = childLogger({ module: "structured" });
 
 function renderInput(input: StructuredCall<unknown>["input"]): string {
   return Object.entries(input)
@@ -130,11 +133,19 @@ export async function callStructured<T>(deps: StructuredDeps, call: StructuredCa
       response = await deps.llm.complete(request);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      log.warn({ runId: call.runId, emailRunId: call.emailRunId, stage: prompt.step, attempt, err: message }, "model call failed");
       await llmCalls.insert(deps.pool, { ...row, ok: false, error: message, latencyMs: Date.now() - started });
       throw error;
     }
 
     const parsed = call.schema.safeParse(extractJson(response.text));
+    const where = { runId: call.runId, emailRunId: call.emailRunId, stage: prompt.step, model: prompt.model, attempt };
+    log.info(
+      { ...where, ok: parsed.success, latencyMs: response.latencyMs, tokens: response.usage, costUsd: response.costUsd },
+      "model call",
+    );
+    // The whole exchange, for a worker started with LOG_LEVEL=debug. The ledger keeps it either way.
+    log.debug({ ...where, system, user, response: response.text }, "model call input and output");
     await llmCalls.insert(deps.pool, {
       ...row,
       response: { text: response.text, model: response.model, stopReason: response.stopReason },

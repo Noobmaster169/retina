@@ -1,9 +1,8 @@
 import { z } from "zod";
 
-import { config } from "../config";
 import { Category } from "../contracts";
 import type { ClassifyInput } from "../pipeline/classify";
-import { resolvePrompt } from "./prompts/registry";
+import type { Prompt } from "./prompts/registry";
 import { callStructured, type StructuredDeps, type StructuredResult } from "./structured";
 
 /**
@@ -21,17 +20,22 @@ export type ClassifyOutput = z.infer<typeof ClassifyOutput>;
 
 export const WORKER_PROJECT = "worker";
 
+export interface CallIds {
+  runId: string;
+  emailRunId: string;
+}
+
+/** The labelled sections both readers see, in this order. */
+export function emailSections(input: ClassifyInput): Record<string, string | string[]> {
+  return { from: input.from, subject: input.subject, attachments: input.attachments, body: input.body };
+}
+
 /** The generator: one zero-shot call that names the email's category. */
 export async function classifyEmail(
   deps: StructuredDeps,
+  prompt: Prompt,
   input: ClassifyInput,
-  ids: { runId: string; emailRunId: string },
+  ids: CallIds,
 ): Promise<StructuredResult<ClassifyOutput>> {
-  return callStructured(deps, {
-    prompt: resolvePrompt("classify", config.LLM_MODEL_CLASSIFY),
-    input: { from: input.from, subject: input.subject, attachments: input.attachments, body: input.body },
-    schema: ClassifyOutput,
-    project: WORKER_PROJECT,
-    ...ids,
-  });
+  return callStructured(deps, { prompt, input: emailSections(input), schema: ClassifyOutput, project: WORKER_PROJECT, ...ids });
 }

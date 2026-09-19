@@ -11,6 +11,7 @@ import type { RunQueues } from "./queues/run-queues";
 import { aiRouter } from "./routes/ai.routes";
 import { emailsRouter } from "./routes/emails.routes";
 import { evalRouter } from "./routes/eval.routes";
+import { runTraceRouter } from "./routes/run-trace.routes";
 import { runsRouter } from "./routes/runs.routes";
 import { submissionsRouter } from "./routes/submissions.routes";
 
@@ -44,6 +45,7 @@ export function createApp(deps: AppDeps): express.Express {
   app.use("/ai", aiRouter());
   app.use("/emails", emailsRouter());
   app.use("/runs", runsRouter(deps));
+  app.use("/runs", runTraceRouter(deps));
   app.use("/runs", submissionsRouter(deps));
   app.use("/eval", evalRouter(deps));
 

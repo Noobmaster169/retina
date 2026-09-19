@@ -1,7 +1,8 @@
 import type { EvalReport } from "../contracts";
 import type { Queryable } from "../db";
 import { buildSubmission } from "../ontology/submission";
-import { loadGroundTruth, loadSplit } from "./ground-truth";
+import { loadGroundTruth } from "./ground-truth";
+import { loadSplit } from "./id-lists";
 import { scoreAll, type Submission, type Truth } from "./score";
 
 function sameFields(a: string[] = [], b: string[] = []): boolean {
