@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { DecidedBy, Stage } from "./contracts.enums";
+import { DocumentView, ReviewCaseView } from "./contracts.review";
 import { Category } from "./contracts.scoring";
 
 /**
@@ -93,6 +94,10 @@ export const EmailTrace = z.object({
   stage: Stage,
   error: z.string().nullable(),
   classification: ClassificationView.nullable(),
+  /** The email's attachments as the parser and the model saw them. Empty before compare reads them. */
+  documents: z.array(DocumentView),
+  /** Why the email is waiting for a person, when it is. */
+  review: ReviewCaseView.nullable(),
   /** The call running right now, if one is. */
   live: LiveCallView.nullable(),
   calls: z.array(LlmCall),

@@ -10,6 +10,7 @@ const repo = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const scoringPy = readFileSync(join(repo, "emails", "server", "scoring.py"), "utf8");
 const readme = readFileSync(join(repo, "emails", "data_v2", "README.md"), "utf8");
 const migration = readFileSync(join(repo, "backend", "db", "migrations", "003_classifications_comparisons.sql"), "utf8");
+const reviewMigration = readFileSync(join(repo, "backend", "db", "migrations", "005_documents_reviews.sql"), "utf8");
 
 /** `NAME = ["a", "b"]` in scoring.py, as the organisers wrote it. */
 function pythonList(name: string): string[] {
@@ -18,9 +19,9 @@ function pythonList(name: string): string[] {
   return [...match[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
 }
 
-/** The values of one `check (column in (...))` in the migration. */
-function sqlList(column: string): string[] {
-  const match = migration.match(new RegExp(`check \\(${column} in \\(([^)]*)\\)\\)`));
+/** The values of one `check (column in (...))` in a migration. */
+function sqlList(column: string, sql = migration): string[] {
+  const match = sql.match(new RegExp(`check \\(${column} in \\(([^)]*)\\)\\)`));
   if (!match) throw new Error(`no check on ${column}`);
   return [...match[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
 }
@@ -36,6 +37,8 @@ describe("the enums are the organisers', value for value", () => {
   it("review_reason is scoring.py's REVIEW_REASONS, in the contracts and in the database", () => {
     expect(ReviewReason.options).toEqual(pythonList("REVIEW_REASONS"));
     expect(sqlList("review_reason")).toEqual(pythonList("REVIEW_REASONS"));
+    // A review case carries the same four and nothing else: a failed job is not a reason.
+    expect(sqlList("reason", reviewMigration)).toEqual(pythonList("REVIEW_REASONS"));
   });
 
   it("status is the README's OK | MISMATCH | NEEDS_REVIEW", () => {
