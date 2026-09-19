@@ -1,5 +1,24 @@
 # Phase 6: Extraction and comparison
 
+## Amended 2026-09-19: the model judges whether two values match
+
+This governs wherever the work items below disagree with it.
+
+- **No normalisers, no label harvest, no suffix or unit tables.** Those were hand-written rules
+  read off this dataset (one of them by name: ports compared by name because this generator
+  leaves the old code behind). Extraction stays an LLM call with `source_quote` evidence. The
+  comparison is an LLM call too: the field judge (`prompts/field-judge/v1.md`, `sonnet`) answers
+  `{ same, missing, confidence, rationale }` for each of the seven fields; see `03-infra-deep.md` 5.3.
+- **Code assembles, it does not decide.** `compare/assemble.ts` (pure) turns the seven judgements
+  into `defect_fields` and the `missing_value` escalation and validates every field name against
+  the `ComparisonField` enum. The evidence check (the quote must exist in the document text) stays:
+  it verifies the model, it does not replace it.
+- `review_reason` is exactly the organisers' four. The judge always decides.
+- Every change is measured on the train split, and the holdout is read last. Exact set equality
+  means one wrongly flagged field costs the email, so measure before trusting the judge.
+- When this phase starts, rewrite work items on harvest, normalise, compare and their tests under
+  this section first.
+
 ## Goal
 
 The full document check: seven fields per document with evidence, a deterministic cross-check,

@@ -165,7 +165,8 @@ callStructured<T>(deps, { step, prompt, input, schema, runId, emailRunId? }): Pr
 
 ### 4. The prompt: `src/agents/prompts/classify/v1.md`
 
-Frontmatter: `step: classify`, `version: v1`, `model: haiku`, `max_tokens: 400`. `model` is a
+Frontmatter: `step: classify`, `version: v1`, `model: sonnet`, `max_tokens: 400`. Every LLM step
+in this project runs `sonnet`. `model` is a
 proxy alias from `proxy/proxy.yaml` and `LLM_MODEL_CLASSIFY` overrides it. `prompts/registry.ts`
 loads the file, validates the frontmatter with zod, and returns the highest version on disk
 (versioned activation is phase 4).
@@ -318,7 +319,7 @@ curl -s -X POST localhost:8091/runs/<id>/submit -H "authorization: Bearer $TEAM_
       code or phrase from the dataset.
 - [ ] Every enum value in the database, the contracts, the frontend mirror and the submission is
       one of the organisers'; the check constraints and `contracts.test.ts` hold it there.
-- [ ] Zero-shot stage 1 macro-F1 at or above 0.90 on the holdout, with the model recorded.
+- [ ] Zero-shot stage 1 macro-F1 at or above 0.90 on the holdout, on `sonnet`.
 - [ ] Submit from the UI shows `final_score`; `pnpm eval:score` gives the same number on the full set.
 - [ ] The submission includes all 520 ids; one `llm_calls` row per attempt with tokens, cost and latency.
 - [ ] Holdout numbers for phase 2 recorded in the `PROGRESS.md` scores table.

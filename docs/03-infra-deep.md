@@ -99,7 +99,7 @@ Backend (`deploy/.env`, mirrored in `backend/.env.example`):
 | `DOC_EXTRACT_URL` | `http://doc-extract:8000` | worker |
 | `EMAIL_SERVER_URL` | `http://inbox:8000` (already set in `deploy/compose.yaml`) | api, worker |
 | `LLM_PROXY_URL` | `http://172.17.0.1:4000` | api, worker |
-| `LLM_MODEL_CLASSIFY`, `LLM_MODEL_VERIFY`, `LLM_MODEL_EXTRACT`, `LLM_MODEL_CHAT` | a proxy alias from `proxy/proxy.yaml`: `haiku`, `sonnet`, `opus`, `qwen3:14b` | worker, api |
+| `LLM_MODEL_CLASSIFY`, `LLM_MODEL_VERIFY`, `LLM_MODEL_EXTRACT`, `LLM_MODEL_CHAT` | `sonnet` for every step. Must be a proxy alias from `proxy/proxy.yaml` | worker, api |
 | `LLM_MAX_CONCURRENCY` | `8` | worker (global semaphore) |
 | `CLASSIFY_CONCURRENCY`, `COMPARE_CONCURRENCY` | `4`, `4` | worker |
 | `API_SHARED_SECRET`, `TEAM_API_KEY` | hex | api |
@@ -273,17 +273,13 @@ is `llm`, `verifier` or `human`. The submission's `decided_by` is always `llm`.
   outcome `OK`, no escalation.
 - Comparison requested and BL missing (0 files, or SI only) → `NEEDS_REVIEW / missing_attachment`.
 
-**Fingerprint** (`compare/fingerprint.ts`): first 20 lines of extracted text.
+**Document type** (`prompts/doc-type/v1.md`). The model reads the extracted text of each file
+and answers `{ doc_type: "SI" | "BL" | "INVOICE" | "PACKING_LIST" | "COO" | "OTHER", confidence,
+rationale }`. There is no title table or label list in code: what a Commercial Invoice looks like
+is the model's knowledge, not a pattern read off this dataset. The filename suffix is passed in as
+a claim to check, never trusted.
 
-| Title or labels seen | Type |
-|---|---|
-| `SHIPPING INSTRUCTION`, `SI`, `Shipper`, `Consignee`, `Notify`, `Port of Loading` | SI |
-| `BILL OF LADING`, `B/L NO`, `To the Order of`, `Carrier` | BL |
-| `COMMERCIAL INVOICE`, `Invoice No.`, `Invoice Date` | INVOICE |
-| `PACKING LIST`, `NET WEIGHT`, `Carton` | PACKING_LIST |
-| `CERTIFICATE OF ORIGIN`, `Certificate No.`, `Issuing Authority`, `Country of Origin` | COO |
-
-Expected role BL but fingerprint INVOICE, PACKING_LIST or COO → `NEEDS_REVIEW / wrong_doc_type`.
+Expected role BL but the model says it is another document → `NEEDS_REVIEW / wrong_doc_type`.
 
 **Parse**: call doc-extract (section 6). `unreadable: true` on either document →
 `NEEDS_REVIEW / unreadable`, with the page image key attached for the reviewer.
@@ -313,21 +309,21 @@ appear in the document text after whitespace normalisation. Fails → field mark
 returns the same shape and replaces those fields. Still failing → treat the field as missing
 with `note = "verifier could not locate"`.
 
-**Normalise** (`compare/normalise.ts`), pure functions with unit tests:
+**Field judge** (`prompts/field-judge/v1.md`). For each of the seven fields the model receives
+the raw SI value and the raw BL value with their source quotes and answers
+`{ same: boolean, missing: boolean, confidence, rationale }`. `same` means the two values denote the
+same thing in a shipping document: `131,058 KG` and `131058`, a port with and without its
+UN/LOCODE, a company name with and without its address lines. `missing` means either side is
+blank or a placeholder, which is uncertainty and never a difference. The prompt states those
+principles from the organisers' text; it lists no normalisation rules and no values from the
+dataset.
 
-| Field | Normalisation | Compare |
-|---|---|---|
-| `gross_weight_kg` | strip everything but digits and dot; `MT`/`MTS` unit × 1000; round to integer | equal integers |
-| `container_count` | leading integer of the value; if absent, sum of `N x` groups | equal integers |
-| `port_of_loading`, `port_of_discharge` | strip any trailing `(CODE)` group; uppercase; collapse spaces and punctuation | names equal after normalisation. Codes are never used for equality: the generator mutates the port name in the BL but leaves the old code in place, so `JEBEL ALI, UAE (KEMBA)` vs `MOMBASA, KENYA (KEMBA)` must be a diff |
-| `shipper`, `consignee`, `notify_party` | uppercase; strip punctuation; collapse spaces; drop legal suffix tokens (`CO`, `LTD`, `PTE`, `SDN BHD`, `FZE`, `FZ LLC`, `INC`, `GMBH`, `AG`, `LLC`); keep only the first line (address lines dropped) | equal after normalisation; else party judge |
-| all | placeholder detection: `???`, `TBA`, `TBD`, `N/A`, runs of `_` or `-`, empty | placeholder on either side → `missing_value`, never a diff |
-
-**Party judge** (`prompts/party-judge/v1.md`), only when two party names differ after
-normalisation. Input: both raw strings. Output `{ same_entity: bool, confidence, rationale }`.
-`same_entity: true` → no diff. `same_entity: false` → diff. The judge always decides: the
-organisers' `review_reason` has no value for "unsure", so an unsure judgement is never an
-escalation. Its confidence is stored and shown to the reviewer.
+There are no normalisers in code: no unit tables, no suffix lists, no code stripping. Code does
+one thing (`compare/assemble.ts`, pure): collect the fields judged `same: false` into
+`defect_fields`, collect the fields judged `missing` into a `missing_value` escalation, and validate
+every name against the `ComparisonField` enum. That keeps the submitted set exact without the
+model ever writing the final list free-hand. The judge always decides; an unsure judgement is not
+an escalation, and its confidence is stored for the reviewer.
 
 **Decide** (`compare/decide.ts`):
 
@@ -430,7 +426,7 @@ images, OCR text is used and the reviewer sees the PNG.
   the BullMQ attempt.
 - Every call inserts `core.llm_calls` with step, model, prompt_version, request, response,
   input_tokens, output_tokens, cost_usd (from the proxy's usage block), latency_ms, email_run_id.
-- Models: proxy aliases only (`haiku`, `sonnet`, `opus`, `qwen3:14b`). Env vars allow swapping per role; Qwen aliases go in
+- Models: `sonnet` for every step (decided 2026-09-19). Values must be proxy aliases. Env vars allow swapping per role for experiments; Qwen aliases go in
   when the proxy is upgraded (see the Retina deploy README).
 
 ## 8. Postgres schema

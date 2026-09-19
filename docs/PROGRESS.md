@@ -72,14 +72,15 @@ Ten findings, all fixed on `phase-01-skeleton` before the merge. How each was ch
   decides. The README's status table is enforced by check constraints (verified against the dev
   database: the three valid rows accepted, six invalid ones rejected).
 
-## Open questions
-- Phase 5's document fingerprint (a title such as COMMERCIAL INVOICE decides the document type)
-  and phase 6's normalisers (weights to integers, a port's UN/LOCODE stripped, legal suffixes
-  dropped from party names) are still deterministic code. They read documents, not emails, and
-  the scorer needs exact field sets, which is why "models extract, code compares" was chosen. But
-  at least one of them is fitted to this generator: ports compare by name because the generator
-  leaves the old code in place when it changes a port. Decide before phase 5 whether these stay
-  code, move to the model, or stay code with every sample-fitted assumption removed.
+- 2026-09-19, **the document steps go to the model too.** Asked whether phase 5's title-matching
+  fingerprint and phase 6's normalisers should stay code, the answer was the model. Document type
+  is an LLM call; whether an SI value and a BL value mean the same thing is an LLM call per field
+  (the field judge). Code only assembles the fields judged different into `defect_fields` and
+  validates the names against the enum, which keeps the submitted set exact. Phases 5 and 6 carry
+  an "Amended" section that governs their older work items.
+- 2026-09-19, **`sonnet` for every LLM step.** Classify, verify, triage, document type, extraction,
+  field judge, chat. `LLM_MODEL_<STEP>` stays for experiments; the default does not move without
+  the user saying so.
 
 ## Deferred
 - Worker, Redis and MinIO on the VPS, phase 3. After this merges the box still runs only the api,

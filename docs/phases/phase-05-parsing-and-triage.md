@@ -1,5 +1,18 @@
 # Phase 5: Document parsing and triage
 
+## Amended 2026-09-19: the model decides what a document is
+
+This governs wherever the work items below disagree with it.
+
+- **No fingerprint table.** Work item 5 matched document titles and labels in code. That is a
+  rule fitted to this dataset's renderer. Document type is an LLM call (`prompts/doc-type/v1.md`,
+  `sonnet`) over the extracted text; see `03-infra-deep.md` 5.3. `fingerprint.ts` is not built.
+- **Triage** already reads the email through the model for the no-attachment case (work item 4).
+- The three escalations keep the organisers' reasons, value for value: `missing_attachment`,
+  `wrong_doc_type`, `unreadable`. `unreadable` stays a fact from doc-extract (no text layer, will
+  not open, zero bytes), which is not a judgement and needs no model.
+- When this phase starts, rewrite work items 5 and 6 and the tests under this section first.
+
 ## Goal
 
 Every attachment becomes text (or is declared unreadable), the SI and BL are identified by

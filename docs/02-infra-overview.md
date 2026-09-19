@@ -81,7 +81,7 @@ answer key. The api and worker reach it by service name on the compose network.
  12. doc-extract -> text, pages, unreadable flag
  13. LLM extraction per document -> 7 fields with source_quote + confidence
  14. evidence check (quote in text); if fails: LLM verifier re-reads
- 15. normalise + deterministic compare; LLM party judge only if names still differ
+ 15. LLM field judge: for each of the seven fields, do the SI and BL values mean the same thing
  16. decide: OK | MISMATCH(fields) | NEEDS_REVIEW(reason)
  17. INSERT documents, extractions, comparisons, field_diffs, review_cases as needed
  18. email_runs.stage=done
@@ -156,7 +156,7 @@ frontend: Vercel deploys every push to main
 2. **Ids in jobs, content in the database.** Jobs are tiny and safe to retry.
 3. **Idempotent by construction.** Job id = run + email. Re-running a stage overwrites that stage's rows for that run.
 4. **The model classifies; nothing is fitted to the sample.** No sender lists, subject keywords or body patterns. Prompts describe the task in the organisers' words, and the eval harness says whether a change helped.
-5. **Models extract, code compares.** The scorer needs exact field sets; an LLM never emits the final diff list.
+5. **The model reads and the model judges.** Document type, extraction, and whether two values mean the same thing are LLM calls, one judgement per field. Code only assembles the set of fields judged different and validates it against the enums, so the submission stays exact without hand-written normalisers.
 6. **Every value carries evidence.** Extracted fields quote their source line.
 7. **Uncertainty is a separate axis from difference.** Blank, unreadable, and wrong-document cases escalate; they are never mismatches.
 8. **Everything is versioned.** `run_id` on every row, `prompt_version` on every LLM call, lessons with version history.

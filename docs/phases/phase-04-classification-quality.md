@@ -93,9 +93,10 @@ email against them.
 
 ### 7. Model comparison
 
-One holdout run per alias under the same prompt version. Record stage 1 macro-F1, the confusion
-matrix, cost per email and latency per email in `PROGRESS.md`, and set the `model` in the prompt
-frontmatter to the one that wins on accuracy per unit cost.
+`sonnet` is the model for every step (decided 2026-09-19) and stays the default. This item only
+measures the alternatives: one holdout run per alias under the same prompt version, with stage 1
+macro-F1, the confusion matrix, cost per email and latency per email recorded in `PROGRESS.md`.
+Changing the default on the strength of those numbers is the user's call, not the phase's.
 
 ### 8. Classify processor, final form
 
@@ -140,7 +141,7 @@ psql ... -c "select step, model, count(*), sum(cost_usd), avg(latency_ms) from c
 - [ ] Stage 1 macro-F1 on the holdout at or above 0.95; the full-set confusion matrix in `PROGRESS.md`.
 - [ ] The verifier ran on under 25% of emails.
 - [ ] The few-shot experiment is recorded with both holdout numbers, whichever way it went.
-- [ ] The model comparison is recorded and the prompt frontmatter names the winner.
+- [ ] The model comparison is recorded; the default stays `sonnet` unless the user changes it.
 - [ ] Still no rule decides a category, and every enum is still exactly the organisers'.
 - [ ] Processor tests pass with `FakeLlmClient` and no network.
 - [ ] A run at `LLM_MAX_CONCURRENCY` completes with no proxy 429 in `llm_calls.error`.
