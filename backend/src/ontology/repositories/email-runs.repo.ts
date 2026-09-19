@@ -100,10 +100,15 @@ export async function incrementAttempt(db: Queryable, runId: string, emailId: st
   ]);
 }
 
-/** Every stage is present in every result, zero when no email is there. */
-export async function stageCountsForRuns(db: Queryable, runIds: string[]): Promise<Map<string, StageCounts>> {
+/**
+ * Counts for many runs at once, as a total lookup: every stage is present for
+ * every run, zero where no email is there. Returning a function rather than a
+ * Map keeps the "always present" guarantee inside the repository that makes it,
+ * so a caller has nothing to default and no absent case to invent.
+ */
+export async function stageCountsForRuns(db: Queryable, runIds: string[]): Promise<(runId: string) => StageCounts> {
   const counts = new Map(runIds.map((id) => [id, emptyCounts()]));
-  if (runIds.length === 0) return counts;
+  if (runIds.length === 0) return () => emptyCounts();
 
   const { rows } = await db.query<{ run_id: string; stage: Stage; n: string }>(
     `select run_id, stage, count(*) as n from core.email_runs
@@ -114,11 +119,11 @@ export async function stageCountsForRuns(db: Queryable, runIds: string[]): Promi
     const forRun = counts.get(row.run_id);
     if (forRun) forRun[row.stage] = Number(row.n);
   }
-  return counts;
+  return (runId) => counts.get(runId) ?? emptyCounts();
 }
 
 export async function stageCounts(db: Queryable, runId: string): Promise<StageCounts> {
-  return (await stageCountsForRuns(db, [runId])).get(runId) ?? emptyCounts();
+  return (await stageCountsForRuns(db, [runId]))(runId);
 }
 
 /** The row id that classifications, comparisons and the LLM ledger hang off. */

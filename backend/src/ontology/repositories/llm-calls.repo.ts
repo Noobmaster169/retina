@@ -55,10 +55,13 @@ export async function insert(db: Queryable, call: NewLlmCall): Promise<void> {
 
 const NO_USAGE: LlmUsage = { calls: 0, failedCalls: 0, inputTokens: 0, outputTokens: 0, costUsd: 0 };
 
-/** Usage per run, with a zero entry for a run that made no calls. */
-export async function usageForRuns(db: Queryable, runIds: string[]): Promise<Map<string, LlmUsage>> {
+/**
+ * Usage per run, as a total lookup: a run that made no calls reads as zero
+ * rather than as absent, so a caller has no missing case to handle.
+ */
+export async function usageForRuns(db: Queryable, runIds: string[]): Promise<(runId: string) => LlmUsage> {
   const usage = new Map(runIds.map((id) => [id, { ...NO_USAGE }]));
-  if (runIds.length === 0) return usage;
+  if (runIds.length === 0) return () => ({ ...NO_USAGE });
   const { rows } = await db.query<{ run_id: string; calls: string; failed: string; input: string; output: string; cost: string }>(
     `select run_id,
             count(*) as calls,
@@ -78,9 +81,9 @@ export async function usageForRuns(db: Queryable, runIds: string[]): Promise<Map
       costUsd: Number(row.cost),
     });
   }
-  return usage;
+  return (runId) => usage.get(runId) ?? { ...NO_USAGE };
 }
 
 export async function usageForRun(db: Queryable, runId: string): Promise<LlmUsage> {
-  return (await usageForRuns(db, [runId])).get(runId) ?? { ...NO_USAGE };
+  return (await usageForRuns(db, [runId]))(runId);
 }
