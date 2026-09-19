@@ -369,7 +369,12 @@ dev machine:
   `http://127.0.0.1:4001` from the host locally). The container carries the Claude Code CLI and
   logs in with `CLAUDE_CODE_OAUTH_TOKEN` from `.env` (`claude setup-token`), not a mounted
   host login. **Ollama and the Qwen aliases are dropped**: the proxy serves sonnet, opus, haiku
-  and the mock `test`. Same PR as phase 4 (#3), at the user's choice.
+  and the mock `test`. Same PR as phase 4 (#3), at the user's choice. Checked: `deploy/sim` 20
+  of 20 on this branch (two new: the proxy answers inside the stack, and the api reaches it as
+  `llm-proxy:4000`), 127 proxy tests on Linux, 256 backend tests, and the backend's own client
+  against the built container (aliases listed, the mock answers, no login is a `TerminalError`).
+  Not checked: a real Claude call through the container, which needs a token this machine does
+  not have.
 - 2026-09-19, **`VERIFY_BELOW = 0.9`**, chosen on train: under `v2`, 24 of 401 train emails
   (6.0%) fell below it, and every miss phase 2 recorded sat at 0.70 or lower.
 - 2026-09-19, **`classify v3` is the active row, not `v1`** as the spec's seed said: `v3` is what
