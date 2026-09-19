@@ -14,7 +14,7 @@ from phase 4 available. `PROGRESS.md` states whether the proxy forwards images.
 ## Scope
 
 In: label harvest, LLM extraction with evidence, evidence check, extraction verifier,
-normalisers, comparison, party judge, decision, `missing_value` and `low_confidence`
+normalisers, comparison, party judge, decision, `missing_value`
 escalations, provisional results for scans, tables, run page counts. Out: review actions,
 dashboard trace page.
 
@@ -183,7 +183,8 @@ the list of fields in doubt with the reason; instructed to re-read those fields 
 return the same `ExtractOutput` shape for all seven (unchanged fields copied). After the
 verifier: fields still failing evidence, or still disagreeing with a present harvest value,
 are resolved as follows: if harvest has a value → use harvest with `note = "harvest_fallback"`;
-else → field `value: null`, `note = "unresolved"` (this becomes a `low_confidence` escalation).
+else → field `value: null`, `note = "unresolved"` (a value that cannot be located is a
+`missing_value` escalation: the organisers' enum has no other reason that fits, and none is added).
 
 Method recorded on `extractions.method`: `llm`, `llm+verifier`, or `harvest_only` (LLM call
 failed with `TerminalError` twice and harvest covered all seven fields; otherwise the job fails
@@ -244,21 +245,22 @@ different entity. Output:
 z.object({ same_entity: z.boolean(), confidence: z.number(), rationale: z.string().max(300) })
 ```
 
-Resolution: `same_entity && confidence >= 0.8` → match; `!same_entity && confidence >= 0.8` →
-diff with `judge_used = true`; otherwise → `low_confidence` escalation for that field.
+Resolution: `same_entity` → match; `!same_entity` → diff with `judge_used = true`. The judge
+always decides. The organisers' `review_reason` has no value for "unsure", so an unsure
+judgement is never an escalation; its confidence is stored for the reviewer.
 
 ### 9. Decision: `src/pipeline/compare/decide.ts` (pure)
 
 ```
 input: CompareResult after judge, plus flags { scanned }
-if unresolved non-empty or judge-unsure non-empty -> NEEDS_REVIEW low_confidence  (detail lists fields)
-else if missing non-empty                           -> NEEDS_REVIEW missing_value    (detail lists fields and placeholders, plus any diffs found on other fields as provisional)
+if missing or unresolved non-empty                  -> NEEDS_REVIEW missing_value    (detail lists fields, placeholders and unresolved values, plus any diffs found on other fields as provisional)
 else if diffs empty                                 -> OK
 else                                                -> MISMATCH, defect_fields = diffs.map(field)
 ```
 
 Precedence across the whole pipeline (phase 5 plus this phase):
-`unreadable` > `wrong_doc_type` > `missing_attachment` > `missing_value` > `low_confidence`.
+`unreadable` > `wrong_doc_type` > `missing_attachment` > `missing_value`. These four are the
+organisers' enum and the only reasons there are.
 
 Scanned documents: the processor runs extraction and comparison on the OCR text (and images if
 forwarded), then escalates `unreadable` with `detail.provisional = { status, defect_fields,
@@ -292,8 +294,8 @@ replace rows through upserts.
 
 ### 11. Submission builder update
 
-`defect_fields` from `field_diffs` ordered by field name. `review_reason` passes through only
-the scorer's four reasons; `low_confidence` becomes `null`.
+`defect_fields` from `field_diffs` ordered by field name. `review_reason` is one of the
+organisers' four or null; no other value exists to pass through.
 
 ### 12. Run page
 
@@ -332,14 +334,14 @@ psql -c "select method, count(*) from core.extractions e join core.email_runs er
 psql -c "select field, count(*) from core.field_diffs fd join core.comparisons c on c.id=fd.comparison_id join core.email_runs er on er.id=c.email_run_id where er.run_id='<id>' group by 1 order by 2 desc"
 ```
 
-Expected on this seed: 46 `MISMATCH`, 5 `missing_value`, no `low_confidence` on `.txt`
+Expected on this seed: 46 `MISMATCH`, 5 `missing_value`, no unresolved values on `.txt`
 pairs, defect field histogram close to container_count 19, port_of_discharge 13,
 gross_weight_kg 12, notify_party 8, consignee 7, shipper 7, port_of_loading 6.
 
 ## Exit checklist
 
 - [ ] End-to-end on holdout at or above 0.80; full-set final score at or above 0.85; numbers in `PROGRESS.md`.
-- [ ] Zero self-inflicted `missing_value` or `low_confidence` escalations on `.txt`, `.docx`, `.xlsx`, `.pdf` pairs of the main 500.
+- [ ] Zero self-inflicted `missing_value` escalations on `.txt`, `.docx`, `.xlsx`, `.pdf` pairs of the main 500.
 - [ ] The 5 reference `missing_value` emails escalate as `missing_value`, none as `MISMATCH`.
 - [ ] Port mutations with stale codes are caught (spot-check two `port_of_discharge` defects in txt pairs).
 - [ ] Extraction verifier ran on under 20% of documents; party judge on under 5% of comparisons.

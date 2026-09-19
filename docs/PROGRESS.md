@@ -52,6 +52,35 @@ Ten findings, all fixed on `phase-01-skeleton` before the merge. How each was ch
       and lint only; not opened in a browser.)
 - [x] Shutdown and the client components no longer drop errors. (Type-check only.)
 
+## Design decisions
+- 2026-09-19, **no hand-written classification rules.** The original phase 2 was a rules engine
+  (spam sender list, subject keyword table, body patterns, body cleaning by pattern), all read off
+  these 520 emails. The inbox is one small seeded draw and the judges may score another, so a rule
+  fitted to it is an assumption. The LLM classifies every email; prompts describe the task in the
+  organisers' words and name nothing from the dataset; the eval harness measures. Phase 2 is now
+  "LLM classification, submission, first score" and pulls the minimal LLM layer forward; phase 4
+  is "Classification quality" (prompt versions, verifier, gated few-shot, model comparison). The
+  same reasoning moved phase 5's "was a comparison requested" from body-verb regexes to the model.
+  Cost of the decision: a full run is 520 LLM calls, and the `claudecli` provider serves 2 at a
+  time, so tens of minutes instead of seconds. Develop on the holdout ids.
+- 2026-09-19, **the organisers' enums, value for value.** `category`, `status`, `review_reason` and
+  the seven field names come from `emails/data_v2/README.md` and `scoring.py` and are never
+  extended. The design had two extra review reasons, `low_confidence` and `processing_error`; both
+  are gone from every doc and from migration 003. A job that fails for good is a failure
+  (`email_runs.stage = failed`; from phase 8 a review case of `kind = failure` with no reason), not
+  a review reason. A value the extractor cannot locate is a `missing_value`. The party judge always
+  decides. The README's status table is enforced by check constraints (verified against the dev
+  database: the three valid rows accepted, six invalid ones rejected).
+
+## Open questions
+- Phase 5's document fingerprint (a title such as COMMERCIAL INVOICE decides the document type)
+  and phase 6's normalisers (weights to integers, a port's UN/LOCODE stripped, legal suffixes
+  dropped from party names) are still deterministic code. They read documents, not emails, and
+  the scorer needs exact field sets, which is why "models extract, code compares" was chosen. But
+  at least one of them is fitted to this generator: ports compare by name because the generator
+  leaves the old code in place when it changes a port. Decide before phase 5 whether these stay
+  code, move to the model, or stay code with every sample-fitted assumption removed.
+
 ## Deferred
 - Worker, Redis and MinIO on the VPS, phase 3. After this merges the box still runs only the api,
   which boots without them and reports `redis` and `minio` as `down` in `/health` (HTTP 200).
@@ -69,7 +98,7 @@ Ten findings, all fixed on `phase-01-skeleton` before the merge. How each was ch
 - A worker that cannot record a final job failure (database down) leaves that email at
   `classifying` or `comparing`. The guard stops the crash, not the missed write. Phase 8's review
   queue should sweep for emails whose job sits in BullMQ's failed set.
-- `core.clients` exists and is empty. Phase 2 seeds the spam domains, phase 9 the tiers.
+- `core.clients` exists and is empty. Phase 9 seeds the tiers. There is no spam list.
 
 ## Verified on the box
 - proxy image passthrough: unknown

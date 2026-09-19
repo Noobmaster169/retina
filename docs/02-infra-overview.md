@@ -68,9 +68,9 @@ answer key. The api and worker reach it by service name on the compose network.
   4. add job to queue "classify" {runId, emailId}, priority from redis cache
 
 [classify worker]
-  5. rules  -> {category, confidence, reasons}
-  6. LLM generator (sees rule hint) -> {category, confidence, rationale}
-  7. if disagree or low confidence: LLM verifier -> {agree, category, rationale}
+  5. build the classify input: sender, subject, attachment names, body (length-capped only)
+  6. LLM generator -> {category, confidence, rationale}
+  7. if confidence is low: LLM verifier -> {agrees, category, rationale}        (phase 4)
   8. INSERT core.classifications, core.llm_calls; email_runs.stage=classified
   9. if BL_COMPARISON: add job to queue "compare" {runId, emailId}
      else: email_runs.stage=done, outcome OK
@@ -155,7 +155,7 @@ frontend: Vercel deploys every push to main
 1. **Database first, queue second.** An email exists in Postgres before any job references it.
 2. **Ids in jobs, content in the database.** Jobs are tiny and safe to retry.
 3. **Idempotent by construction.** Job id = run + email. Re-running a stage overwrites that stage's rows for that run.
-4. **Rules before models.** Deterministic code decides whatever it can, and records that it did.
+4. **The model classifies; nothing is fitted to the sample.** No sender lists, subject keywords or body patterns. Prompts describe the task in the organisers' words, and the eval harness says whether a change helped.
 5. **Models extract, code compares.** The scorer needs exact field sets; an LLM never emits the final diff list.
 6. **Every value carries evidence.** Extracted fields quote their source line.
 7. **Uncertainty is a separate axis from difference.** Blank, unreadable, and wrong-document cases escalate; they are never mismatches.
@@ -185,4 +185,5 @@ frontend: Vercel deploys every push to main
 | Proxy predates Qwen `reasoning_effort` passthrough | Sonnet for every role now; Qwen aliases when the proxy is upgraded |
 | Proxy image passthrough unverified | OCR is the guaranteed path for scans; vision is additive |
 | Answer key present on the box | Eval-only, never mounted into pipeline containers |
-| Judges may use a fresh seed | Rules must derive from content, never from email ids |
+| Judges may use a fresh seed | No hand-written classification rules; nothing keyed on email ids; holdout read last |
+| The organisers fix the enums | `category`, `status`, `review_reason` and the field names are used value for value, never extended |

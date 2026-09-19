@@ -81,7 +81,7 @@ of shipped lessons) so scores remain attributable.
 
 ```
 actions = review_actions since the last draft with kind in (correct_field, reclassify, note) and not yet referenced by a lesson
-group by step:  reclassify -> classify;  correct_field -> extract;  note -> whichever case reason maps to (missing_value/low_confidence -> extract; others -> classify)
+group by step:  reclassify -> classify;  correct_field -> extract;  note -> whichever case reason maps to (missing_value -> extract; others -> classify)
 for each group with >= 1 action:
   evidence = for each action: explain_decision(runId, emailId) + the action (old, new, note)
   draft = callStructured(lesson-draft, { step, current_prompt_summary, evidence }, LessonDraft)

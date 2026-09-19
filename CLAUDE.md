@@ -152,6 +152,21 @@ needed.
   neither.
 - Aliases in `proxy/proxy.yaml` are model names (`haiku`, `qwen3:14b`). Do not invent names.
 
+## Classification and enums
+
+- The LLM classifies. No hand-written rule decides a category: no sender or domain lists, no
+  subject or body keyword tables, no regexes over email content, no pattern-based stripping of
+  signatures or threads. The inbox is one small seeded sample and the judges may score another.
+- Prompts describe the task, not the dataset. Every statement in a prompt traces to the
+  organisers' written definitions (the brief, `emails/data_v2/README.md`), never to a frequency
+  seen in the inbox.
+- `category`, `status`, `review_reason` and the seven field names are the organisers' enums, value
+  for value. One zod definition each in `contracts.ts`, repeated as database check constraints,
+  mirrored in `api-client.ts`. Never add a value. A job that fails is a failure, not a
+  `review_reason`.
+- The eval harness, not intuition, says whether a change helped. Develop on the train split,
+  read the holdout last.
+
 ## LLM rules
 
 - Prompts are files under `agents/prompts/<step>/<version>.md`. Code never contains prompt text.
@@ -159,12 +174,13 @@ needed.
 - Models extract, code compares. The model never emits the final `defect_fields`.
 - Extracted values carry `source_quote`; the evidence check runs before any verifier.
 - Store every call in `llm_calls` with `prompt_version`, tokens, cost, latency.
-- Few-shot examples come from `eval/split.json` train ids only.
+- Few-shot examples come from `eval/split.json` train ids only, and ship only when a holdout
+  run shows they help.
 
 ## Testing
 
 - vitest in `backend/`, pytest in `services/doc-extract/` and `proxy/`.
-- Unit tests are mandatory for pure modules: `rules`, `fingerprint`, `normalise`, `compare`,
+- Unit tests are mandatory for pure modules: `classify/input`, `fingerprint`, `normalise`, `compare`,
   `decide`, `triage`, `evidence`, `eval/score`. Table-driven, fixtures from real dataset lines
   copied into `test/fixtures/`.
 - Repository tests run against the local Postgres in a transaction rolled back per test.
@@ -212,7 +228,9 @@ needed.
 - Do not add a queue, service, table, or abstraction the current phase does not need.
 - Do not put SQL, HTTP, or queue calls inside `pipeline/`.
 - Do not let an LLM output reach the database without passing a zod schema.
-- Do not write rules keyed on specific `email_id`s. Judges may use a fresh dataset seed.
+- Do not classify with hand-written rules, and do not key anything on specific `email_id`s.
+  Judges may use a fresh dataset seed.
+- Do not store or submit an enum value the organisers did not define.
 - Do not bind Redis, MinIO, Postgres, doc-extract, or the Averis server to a public interface.
 - Do not mount the answer key into `api` or `worker`.
 - Do not skip the evidence check to save an LLM call.

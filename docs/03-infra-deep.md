@@ -28,7 +28,7 @@ backend/
       averis.source.ts     AverisReplaySource
       replay.ts            run controller (start, pause, rate)
     pipeline/
-      classify/            rules.ts, generator.ts, verifier.ts, decide.ts
+      classify/            input.ts, decide.ts (no rules: the LLM classifies, see 5.2)
       compare/             triage.ts, fingerprint.ts, extract.ts, evidence.ts,
                            normalise.ts, compare.ts, decide.ts
       escalate.ts          review case creation
@@ -99,7 +99,7 @@ Backend (`deploy/.env`, mirrored in `backend/.env.example`):
 | `DOC_EXTRACT_URL` | `http://doc-extract:8000` | worker |
 | `EMAIL_SERVER_URL` | `http://inbox:8000` (already set in `deploy/compose.yaml`) | api, worker |
 | `LLM_PROXY_URL` | `http://172.17.0.1:4000` | api, worker |
-| `LLM_MODEL_CLASSIFY`, `LLM_MODEL_VERIFY`, `LLM_MODEL_EXTRACT`, `LLM_MODEL_CHAT` | `subscription-sonnet` | worker, api |
+| `LLM_MODEL_CLASSIFY`, `LLM_MODEL_VERIFY`, `LLM_MODEL_EXTRACT`, `LLM_MODEL_CHAT` | a proxy alias from `proxy/proxy.yaml`: `haiku`, `sonnet`, `opus`, `qwen3:14b` | worker, api |
 | `LLM_MAX_CONCURRENCY` | `8` | worker (global semaphore) |
 | `CLASSIFY_CONCURRENCY`, `COMPARE_CONCURRENCY` | `4`, `4` | worker |
 | `API_SHARED_SECRET`, `TEAM_API_KEY` | hex | api |
@@ -118,7 +118,6 @@ Frontend (Vercel): `BACKEND_URL`, `API_SHARED_SECRET`, `SITE_PASSWORD`, `SESSION
 | `client:priority` | hash `domain -> tier(1..5)` | enqueue-time priority lookup |
 | `run:{runId}:counters` | hash | cheap live counters for the dashboard (ingested, classified, compared, review) |
 | `worker:heartbeat` | string, 60 s TTL | worker liveness for `/health` |
-| `clients:spam` | set | spam sender domains for the rules engine |
 
 ### 4.2 Queue definitions
 
@@ -170,8 +169,9 @@ there is one worker replica.
 ### 4.5 Failure handling
 
 - Attempts 1 and 2 fail: BullMQ retries with backoff. Stage row records `attempt`.
-- Attempt 3 fails: `failed` event handler inserts `core.review_cases` with
-  `reason = processing_error`, `detail = error message + stack head`, `stage`. Dashboard
+- Attempt 3 fails: the `failed` event handler sets `core.email_runs.stage = failed` with the
+  error. From phase 8 it also opens a `core.review_cases` row of `kind = failure` with no
+  `reason`: a failure is not one of the organisers' review reasons. The dashboard's
   "Failures" tab reads these. "Retry" re-adds the job with `rerunFrom` and a fresh `jobId`
   suffix `__r{n}`.
 - Errors are classified: `RetryableError` (proxy 503, timeouts, doc-extract 5xx) vs
@@ -188,7 +188,7 @@ ingested -> classifying -> classified -> [done]
                                       -> comparing(triage) -> comparing(extract)
                                       -> comparing(compare) -> done
 any stage -> review (review_cases row open) -> done (after human action)
-any stage -> failed (processing_error review case)
+any stage -> failed (a failure case, which carries no review_reason)
 ```
 
 ## 5. Pipeline stages
@@ -229,45 +229,37 @@ Replay controller (`ingest/replay.ts`), driven by `core.runs`:
 
 ### 5.2 Classify
 
-**Rules** (`classify/rules.ts`) return `{ category | null, confidence 0..1, reasons[] }`:
+**No rules.** Nothing in the pipeline decides a category from a sender list, a subject keyword
+or a body pattern. The 520 emails are one seeded draw; a rule fitted to them is an assumption
+about the next draw. The model classifies, and the eval harness measures it.
 
-| Signal | Rule | Confidence |
-|---|---|---|
-| Sender domain in spam list (`webmail-verify.co`, `secure-mailbox.org`, `parcel-track.co`, `logistics-deals.biz`, `prize-claims.info`, `crypto-invest.net`) | `SPAM` | 0.99 |
-| Subject matches `TO CONFIRM DOCS`, `REQUEST BL DRAFT`, `Draft BL .* amend`, or `AIE - .* - .*\(` coded line | `BL_COMPARISON` | 0.90 |
-| Subject matches `REQUEST SI`, `SI NEEDED`, `^SI - `, `CUST SI` | `SI_REQUEST` | 0.90 |
-| Subject matches `INVOICE`, `BILLING`, `LOCAL CHARGES`, `D & D`, `Total Freight`, `MISSING GR` | `INVOICE_QUERY` | 0.85 |
-| Subject matches `UPDATE SUMMARY`, `_RPA_`, `Reminder`, `Berthing`, `Delivery planning` and sender is `aprilasia.com` | `GENERAL` | 0.80 |
-| Spam phrasing in subject or body (`weird trick`, `guaranteed .* returns`, `verify account immediately`, `claim your`) | `SPAM` | 0.85 |
-| none | `null` | 0 |
+**Input** (`classify/input.ts`, pure): the sender address, the subject, the attachment file names
+and the body, cut at `CLASSIFY_BODY_CHARS` with a marker when cut. The cap is a cost guard.
+Nothing is stripped, reordered or normalised.
 
-The spam domain list is seeded from the dataset but lives in `core.clients` with `kind = spam`
-so it can grow from reviewer actions. Judges with a fresh seed will reuse the same generator
-pools, and the phrasing rules cover new domains.
-
-**Generator** (`prompts/classify/v1.md`). Input: sender domain, subject, body trimmed to the
-first 1500 characters with quoted-thread lines and signature blocks removed, attachment
-filenames, and `rule_hint: { category, confidence }` or `none`. Few-shot: 3 examples per
-category from the training split, chosen to cover forwarded threads and misleading subjects.
-Output (JSON schema enforced):
+**Generator** (`prompts/classify/v1.md`). Defines the five categories in the organisers' words
+(the brief and `emails/data_v2/README.md`), says that a body may carry a forwarded thread, a
+signature and a warning banner and that the category follows what the sender is asking for now.
+It names no sender, domain, subject code or phrase from the dataset. Zero-shot in phase 2; phase
+4 adds few-shot examples from the train split only if a holdout run shows they help. Output (JSON
+schema enforced, category restricted to the enum):
 
 ```json
-{ "category": "BL_COMPARISON", "confidence": 0.93, "rationale": "Subject code TO CONFIRM DOCS; body asks to check draft BL against SI; two attachments named _SI and _BL." }
+{ "category": "BL_COMPARISON", "confidence": 0.93, "rationale": "The sender asks for the draft BL to be checked against the SI; two attachments are named as an SI and a BL." }
 ```
 
-**Verifier trigger**: any of `rule.category != null && rule.category != gen.category`,
-`gen.confidence < 0.75`, `rule.confidence < 0.6 && gen.confidence < 0.85`.
+**Verifier trigger** (phase 4): `gen.confidence < VERIFY_BELOW`, a constant chosen on the train
+split. The model's own confidence is the only input; there is no branch on email content.
 
-**Verifier** (`prompts/classify-verify/v1.md`) receives the same evidence plus both proposals
-and is instructed to argue for the strongest alternative before deciding. Output:
+**Verifier** (`prompts/classify-verify/v1.md`) receives the same input plus the generator's
+proposal and is told to argue for the strongest alternative before deciding. Output:
 
 ```json
-{ "category": "GENERAL", "agrees_with": "rule" | "generator" | "neither", "confidence": 0.88, "rationale": "..." }
+{ "category": "GENERAL", "agrees": false, "confidence": 0.88, "rationale": "..." }
 ```
 
-**Decision**: verifier category if it ran, else generator category. `decided_by` is `rule` when
-the rule confidence is at least 0.95 and the generator agreed (this is what the scorer's cost
-diagnostic counts), otherwise `llm` or `verifier`.
+**Decision**: the verifier's category if it ran, else the generator's. `classifications.decided_by`
+is `llm`, `verifier` or `human`. The submission's `decided_by` is always `llm`.
 
 ### 5.3 Compare
 
@@ -333,14 +325,15 @@ with `note = "verifier could not locate"`.
 
 **Party judge** (`prompts/party-judge/v1.md`), only when two party names differ after
 normalisation. Input: both raw strings. Output `{ same_entity: bool, confidence, rationale }`.
-`same_entity: false` with confidence ≥ 0.8 → diff. `same_entity: true` with confidence ≥ 0.8 →
-no diff. Otherwise → `NEEDS_REVIEW / low_confidence` with both values shown.
+`same_entity: true` → no diff. `same_entity: false` → diff. The judge always decides: the
+organisers' `review_reason` has no value for "unsure", so an unsure judgement is never an
+escalation. Its confidence is stored and shown to the reviewer.
 
 **Decide** (`compare/decide.ts`):
 
 ```
 if any escalation reason collected  -> NEEDS_REVIEW (first reason by precedence:
-                                        unreadable > wrong_doc_type > missing_attachment > missing_value > low_confidence)
+                                        unreadable > wrong_doc_type > missing_attachment > missing_value)
 else if diff set empty              -> OK
 else                                -> MISMATCH, defect_fields = diff set
 ```
@@ -353,7 +346,7 @@ status        = OK | MISMATCH | NEEDS_REVIEW
 review_reason = reason or null
 has_defect    = status == MISMATCH
 defect_fields = diff set or []
-decided_by    = rule | llm
+decided_by    = llm            (the scorer's unscored cost diagnostic; this pipeline has no rules)
 ```
 
 ### 5.4 Escalation policy
@@ -363,12 +356,13 @@ decided_by    = rule | llm
 | `unreadable` | doc-extract reports no text layer and OCR confidence below 0.5, or file fails to open, or 0 bytes | page PNGs, parser error |
 | `wrong_doc_type` | fingerprint of the BL-role file is not BL | first 20 lines |
 | `missing_attachment` | comparison requested and BL absent | body excerpt with the requesting sentence |
-| `missing_value` | placeholder or null on a required field on either side after verification | both raw values |
-| `low_confidence` | party judge unsure, or verifier disagrees with generator on classification and both below 0.8 | both proposals with rationales |
-| `processing_error` | job failed after retries | error, stage, attempt count |
+| `missing_value` | placeholder or null on a required field on either side after verification, including a value the extractor and its verifier could not locate | both raw values |
 
-`low_confidence` and `processing_error` are not in the scorer's reason list. In the submission
-they are emitted as `NEEDS_REVIEW` with `review_reason = null`; the reliability axis is unscored.
+These four are the organisers' `review_reason` enum and the only values the column ever holds,
+in `comparisons`, in `review_cases` and in the submission. The README's table is enforced by
+check constraints: a reason is set exactly when the status is `NEEDS_REVIEW`, and `has_defect`
+is true exactly when it is `MISMATCH`. A job that fails after its retries is not a review
+reason: the email is `failed`, and its case is `kind = failure` with a null reason.
 
 ### 5.5 Review actions
 
@@ -436,7 +430,7 @@ images, OCR text is used and the reviewer sees the PNG.
   the BullMQ attempt.
 - Every call inserts `core.llm_calls` with step, model, prompt_version, request, response,
   input_tokens, output_tokens, cost_usd (from the proxy's usage block), latency_ms, email_run_id.
-- Models: all `subscription-sonnet` today. Env vars allow swapping per role; Qwen aliases go in
+- Models: proxy aliases only (`haiku`, `sonnet`, `opus`, `qwen3:14b`). Env vars allow swapping per role; Qwen aliases go in
   when the proxy is upgraded (see the Retina deploy README).
 
 ## 8. Postgres schema
@@ -458,7 +452,7 @@ attachments        (id bigserial pk, email_id fk, run_id fk, filename text, role
                     object_key text, content_type text, bytes int, sha256 text)
 documents          (id bigserial pk, attachment_id fk, email_run_id fk, doc_type text, format text,
                     text_object_key text, unreadable bool, parse_warnings jsonb, pages int)
-classifications    (id bigserial pk, email_run_id fk unique, rule_category text, rule_confidence numeric,
+classifications    (id bigserial pk, email_run_id fk unique,
                     gen_category text, gen_confidence numeric, ver_category text, ver_confidence numeric,
                     final_category text, human_category text, decided_by text, rationale jsonb, prompt_version text)
 extractions        (id bigserial pk, document_id fk, email_run_id fk, prompt_version text, verified bool, created_at)
@@ -502,7 +496,7 @@ finishes):
 | `dim_client` | one row per domain | domain, name, tier, kind |
 | `dim_run` | one row per run | id, started_at, prompt_set, final_score |
 | `agg_client_run` | client × run | emails, comparisons, mismatches, reviews, top_defect_field |
-| `agg_run_stage` | run | counts per stage, throughput per minute, rule_share, cost |
+| `agg_run_stage` | run | counts per stage, throughput per minute, verifier_share, cost |
 
 ### 8.3 Roles
 
@@ -613,8 +607,8 @@ Pages (all behind `middleware.ts` password gate; cookie signed with `SESSION_SEC
 |---|---|---|
 | `/login` | password form | |
 | `/runs` | table of runs with score, start-run form (rate, limit) | 5 s |
-| `/runs/[id]` | stage funnel, queue depth, category mix, rule share, cost, live email feed, submit button, score card | 2 s |
-| `/emails/[runId]/[emailId]` | trace: email, attachments with viewer, classification panel (rule, generator, verifier), extraction table with quotes highlighted in the document text, comparison table, review panel | on demand |
+| `/runs/[id]` | stage funnel, queue depth, category mix, verifier share, cost, live email feed, submit button, score card | 2 s |
+| `/emails/[runId]/[emailId]` | trace: email, attachments with viewer, classification panel (generator, verifier), extraction table with quotes highlighted in the document text, comparison table, review panel | on demand |
 | `/review` | open cases grouped by reason, plus Failures tab; case detail with actions and upload | 3 s |
 | `/chat` | conversations, messages, SQL shown in a collapsible block, result tables | on send |
 | `/eval` | score history per run and prompt set; dev-only holdout view | 10 s |
@@ -667,7 +661,7 @@ it; client components never hold the secret. Polling uses SWR with `refreshInter
 
 | Failure | Effect | Handling |
 |---|---|---|
-| llm-proxy down | classify and compare jobs fail with 503 | retryable; after 3 attempts → `processing_error` case; dashboard shows proxy red in `/health` |
+| llm-proxy down | classify and compare jobs fail with 503 | retryable; after 3 attempts the email is `failed` and shows under Failures; dashboard shows proxy red in `/health` |
 | Claude login expired on the box | `subscription*` calls fail, `test` works | runbook: run `claude` interactively as student |
 | doc-extract OOM on a big PDF | job fails | retryable; memory limit 1 GB; file size cap |
 | Redis restart | in-flight jobs stall | AOF restores the queue; stalled jobs re-run; job ids prevent duplicates |

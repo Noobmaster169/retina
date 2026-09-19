@@ -13,8 +13,8 @@ Phase 7 merged: trace components exist and the review case shape is in the trace
 
 ## Scope
 
-In: `review_actions` table, action semantics and reruns, upload path, `processing_error`
-cases from the queue `failed` handler, retry, review routes, `/review` page. Out: priority
+In: `review_actions` table, action semantics and reruns, upload path, failure cases
+(`kind = failure`, no `review_reason`) from the queue `failed` handler, retry, review routes, `/review` page. Out: priority
 controls, lesson drafting (phase 11 reads `review_actions`).
 
 ## Work items
@@ -72,8 +72,9 @@ review views show a "human" marker on such fields.
 
 ```
 emailRuns.setStage(failed, error = message)
-review_cases.upsert open case { reason: processing_error, stage: job.name, detail: { message, stack: first 5 lines, attempts, jobId } }
-comparisons.upsert({ status: NEEDS_REVIEW, review_reason: processing_error })   # only when category is BL_COMPARISON or unknown
+review_cases.upsert open case { kind: failure, reason: null, stage: job.name, detail: { message, stack: first 5 lines, attempts, jobId } }
+# No comparisons row is written: a failure is not one of the organisers' review reasons, and the
+# email is listed as incomplete when the run is submitted.
 ```
 
 For classification failures the email has no category yet; the submission builder emits
@@ -100,7 +101,7 @@ decodable); mismatch → 400.
 Layout: left list, right detail.
 
 - List: grouped tabs by reason (`unreadable`, `wrong_doc_type`, `missing_attachment`,
-  `missing_value`, `low_confidence`) plus a `Failures` tab (`processing_error`); each row:
+  `missing_value`) plus a `Failures` tab (`kind = failure`); each row:
   email id, subject, run, age, reason chip. Filter by run. Polling 3 s.
 - Detail: the escalation banner and the trace sections from phase 7, then an action bar:
   - Confirm (with optional note)
@@ -110,7 +111,7 @@ Layout: left list, right detail.
   - Add note
   - Upload: drop zone, role selector; visible for `missing_attachment`, `unreadable`,
     `wrong_doc_type`
-  - Retry: visible for `processing_error`
+  - Retry: visible for failure cases
 - Actions history under the bar with actor and timestamp.
 - Reviewer name prompt on first visit, stored locally, editable in the nav.
 
@@ -119,7 +120,7 @@ Layout: left list, right detail.
 - `review/actions.test.ts`: each action's writes and enqueue calls with a fake queue; a
   `correct_field` rerun that resolves the case; a rerun that re-escalates updates the case in
   place; `reclassify` to non-comparison clears diffs.
-- `queues/workers.test.ts`: final failure creates a `processing_error` case; `TerminalError`
+- `queues/workers.test.ts`: final failure creates a failure case with no reason; `TerminalError`
   creates it after one attempt.
 - `routes/review.test.ts`: validation per kind; upload rejects wrong magic bytes and oversize;
   upload stores under the case key and enqueues.
@@ -134,7 +135,7 @@ Run the full inbox, then in `/review`:
 2. `missing_attachment` case with SI only (506, 508 or 510): upload the matching BL from the
    dataset for a comparable email → full comparison appears.
 3. `wrong_doc_type` case: confirm → resolved, status stays `NEEDS_REVIEW`.
-4. Stop `doc-extract`, start a small run (limit 20) → `processing_error` cases appear within
+4. Stop `doc-extract`, start a small run (limit 20) → failure cases appear within
    the retry window; start doc-extract; retry → cases resolve.
 5. Reclassify a `GENERAL` email to `BL_COMPARISON` (no attachments) → ends `awaiting_draft`.
 
@@ -142,7 +143,7 @@ Run the full inbox, then in `/review`:
 
 - [ ] Correcting a weight on a `missing_value` case re-runs the comparison and the case closes with the new status.
 - [ ] Uploading a BL to a `missing_attachment` case produces a full comparison.
-- [ ] Stopping doc-extract mid-run creates `processing_error` cases; retry after restart clears them.
+- [ ] Stopping doc-extract mid-run creates failure cases; retry after restart clears them.
 - [ ] Submission after review reflects human decisions (`decided_by` and values).
 - [ ] Every action is in `review_actions` with actor and old/new values.
 - [ ] A second escalation on the same email updates the open case; there is never more than one open case per email run.

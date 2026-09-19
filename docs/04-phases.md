@@ -13,9 +13,9 @@ The sections below are summaries. The detailed specs are:
 
 ```
 docs/phases/phase-01-skeleton.md
-docs/phases/phase-02-rules-and-score.md
+docs/phases/phase-02-classify-and-score.md
 docs/phases/phase-03-vps-deploy.md
-docs/phases/phase-04-llm-classification.md
+docs/phases/phase-04-classification-quality.md
 docs/phases/phase-05-parsing-and-triage.md
 docs/phases/phase-06-extraction-and-comparison.md
 docs/phases/phase-07-dashboard-and-trace.md
@@ -29,9 +29,9 @@ docs/phases/phase-12-hardening-and-demo.md
 | # | Phase | Visible result |
 |---|---|---|
 | 1 | Skeleton: ingest, queues, storage | Emails flow from Averis into Postgres and MinIO through a queue; counts on a page |
-| 2 | Rules classifier, submission, first score | A real score from the Averis scorer, plus the local eval harness |
+| 2 | LLM classification, submission, first score | Every email classified by the LLM, a real score from the Averis scorer, the local eval harness |
 | 3 | VPS deploy and Vercel | Same thing running on the box, reachable through the Vercel URL |
-| 4 | LLM classification | Generator, verifier on doubt, LLM ledger; stage 1 score rises |
+| 4 | Classification quality | Prompt versions, verifier on doubt, gated few-shot, model comparison; stage 1 score rises |
 | 5 | Document parsing and triage | doc-extract service, attachment triage, fingerprints, first escalations |
 | 6 | Extraction and comparison | Seven fields with evidence, deterministic diff, full submission; end-to-end score rises |
 | 7 | Dashboard and email trace | Run view with live counters, per-email trace page |
@@ -72,30 +72,37 @@ phase fills in.
 - [ ] `/runs` page shows counts moving while a run is in progress.
 - [ ] `pnpm test` and `pnpm type-check` pass.
 
-## Phase 2: Rules classifier, submission, first score
+## Phase 2: LLM classification, submission, first score
 
-**Goal.** A real number from the organisers' scorer, produced by deterministic code, plus a
-local harness that computes the same number on the holdout. Everything after this phase is
-measured against this baseline.
+**Goal.** A real number from the organisers' scorer with every email classified by the LLM, plus
+a local harness that computes the same number on the holdout. Everything after this phase is
+measured against it. No hand-written classification rules, here or later: the inbox is one small
+seeded sample, and the judges may score another.
 
 **Build.**
 
-- `pipeline/classify/rules.ts` per section 5.2, with table-driven tests from fixture subjects.
-- Classify processor: run rules, persist `classifications` (rule columns and `final_category`;
-  null rule result falls back to `GENERAL` for now, `decided_by = rule`).
+- The LLM seam (`agents/llm-client.ts` with a fake), `agents/structured.ts` (schema in the
+  prompt, zod parse, one retry), one zero-shot prompt `prompts/classify/v1.md` that defines the
+  categories in the organisers' words, and the `llm_calls` ledger.
+- `pipeline/classify/input.ts`: sender, subject, attachment names, body capped in length only.
+- Classify processor: generator call, persist `classifications` (`decided_by = llm`), send only
+  `BL_COMPARISON` on to compare.
 - Compare processor: persist `comparisons` with `status = OK`, no diffs (placeholder outcome).
-- `ontology/submission.ts`: build the scorer JSON for a run from `classifications` and
-  `comparisons`. Every email present.
-- `POST /runs/:id/submit` → averis `/submit` → store `submissions`. `GET /runs/:id/submission.json`.
+- The organisers' enums in `contracts.ts`, value for value, and as check constraints.
+- `ontology/submission.ts`: build the scorer JSON for a run. Every email present, every row
+  validated against the enums.
+- `POST /runs/:id/submit` → inbox `/submit` → store `submissions`. `GET /runs/:id/submission.json`.
 - `eval/split.ts` (stratified 80/20, committed `eval/split.json`), `eval/score.ts` (port of
-  `scoring.py`, tested against the organisers' CLI on the same submission), `eval/run-eval.ts`.
-- Migrations: `classifications`, `comparisons`, `submissions`.
+  `scoring.py`, proven against the organisers' CLI by `pnpm eval:parity`), `eval/run-eval.ts`.
+- Migration: `classifications`, `comparisons`, `llm_calls`, `submissions`.
 - Frontend: score card and submit button on `/runs`.
 
 **Exit checklist.**
 
-- [ ] `eval/score.ts` and `score_cli.py` agree to four decimals on the same submission.
-- [ ] Rules alone give stage 1 macro-F1 at or above 0.85 on the holdout (spam 40/40).
+- [ ] `eval/score.ts` and `score_cli.py` agree to four decimals on the same submissions.
+- [ ] No rule decides a category, and the prompt names nothing from the dataset.
+- [ ] Every enum is exactly the organisers'.
+- [ ] Zero-shot stage 1 macro-F1 at or above 0.90 on the holdout, model recorded.
 - [ ] A submitted run shows `final_score` on the page.
 - [ ] Score and holdout numbers recorded in `PROGRESS.md`.
 
@@ -123,28 +130,30 @@ a demo and infra surprises surface early.
 - [ ] A push to `main` shows up on the box within 5 minutes without manual steps.
 - [ ] `docker compose ps` shows no published ports other than `127.0.0.1:8091` and `127.0.0.1:8080`.
 
-## Phase 4: LLM classification
+## Phase 4: Classification quality
 
-**Goal.** Rules propose, the generator decides with reasoning, the verifier checks on doubt.
-Every call is on the ledger. Stage 1 score rises above rules alone.
+**Goal.** The zero-shot classifier from phase 2 gets better, and every improvement is measured:
+comparable prompt versions, a verifier when the generator is unsure, few-shot only if the holdout
+says so, and a model comparison. Still no hand-written rules.
 
 **Build.**
 
-- `agents/structured.ts`: schema-in-prompt, zod parse, one retry with the validation error.
-- `agents/prompts/registry.ts`, `prompts/classify/v1.md`, `prompts/classify-verify/v1.md`,
-  `eval/examples.ts` generating `examples.json` from the train split.
-- `llm.ts`: `LlmClient` interface, real client, `FakeLlmClient` and `RecordingLlmClient`.
-- Classify processor: rules → generator → verifier trigger → decision; persist all columns and
-  `llm_calls`. In-process semaphore for `LLM_MAX_CONCURRENCY`.
-- Migrations: `llm_calls`, `prompt_versions`.
-- Body cleaning helper: strip quoted threads, signatures, external-sender banners (tested).
-- Frontend: `/runs/[id]` shows rule share and LLM cost.
+- `prompt_versions` migration, `registry.resolve(step, promptSet)`, `promptSet` on `POST /runs`.
+- `prompts/classify-verify/v1.md`; `pipeline/classify/decide.ts`: the verifier runs when the
+  generator's own confidence is below a constant chosen on the train split.
+- `eval/examples.ts`: few-shot examples from the train split for a new prompt version, shipped
+  only if its holdout run beats the zero-shot one. Both numbers recorded either way.
+- Model comparison: one holdout run per proxy alias; accuracy, cost and latency recorded.
+- `llm-client`: retries with jitter, `withLlmSlot` semaphore for `LLM_MAX_CONCURRENCY`,
+  `RecordingLlmClient`.
+- Frontend: `/runs/[id]` shows verifier share and LLM cost.
 
 **Exit checklist.**
 
 - [ ] Stage 1 macro-F1 on holdout at or above 0.95, recorded in `PROGRESS.md`.
 - [ ] Verifier ran on under 25% of emails.
-- [ ] `llm_calls` has one row per call with tokens and cost; `/admin/usage` on the proxy shows `retina-worker`.
+- [ ] The few-shot experiment and the model comparison are recorded.
+- [ ] `llm_calls` has one row per call with tokens and cost.
 - [ ] Worker with `FakeLlmClient` passes the classify processor tests without network.
 
 ## Phase 5: Document parsing and triage
@@ -187,7 +196,7 @@ end-to-end component.
   tested with the cases in `SDOC_BRIEF.md` section 7.6 and 7.5.
 - Compare processor completes: extract → evidence → verifier on failure → normalise →
   compare → judge → decide → persist `extractions`, `extraction_fields`, `field_diffs`,
-  update `comparisons`; `missing_value` and `low_confidence` escalations.
+  update `comparisons`; `missing_value` escalations.
 - Migrations: `extractions`, `extraction_fields`, `field_diffs`.
 - Vision check: try one scanned page through the proxy; record the result in `PROGRESS.md`
   and wire vision only if it works.
@@ -207,9 +216,9 @@ end-to-end component.
 **Build.**
 
 - `GET /emails/:runId/:emailId` full trace contract; `GET /queues`; `run:{id}:counters` in Redis.
-- `/runs/[id]`: stage funnel, queue depth, category mix, rule share, cost, live feed, score card.
+- `/runs/[id]`: stage funnel, queue depth, category mix, verifier share, cost, live feed, score card.
 - `/emails/[runId]/[emailId]`: email, attachment viewer (text and page images via `/files`),
-  classification panel with rule, generator and verifier rationales, extraction table with
+  classification panel with generator and verifier rationales, extraction table with
   source quotes highlighted in the document text, comparison table, escalation reason.
 - `/files/*key` streaming route.
 - Polling with SWR at the intervals in section 13.
@@ -232,7 +241,7 @@ report updates.
   `GET /review`.
 - Actions per section 5.5, including reruns with `rerunFrom` and human values winning in
   normalise/compare.
-- `processing_error` cases from the BullMQ `failed` handler; Failures tab; retry action.
+- Failure cases (`kind = failure`, no `review_reason`) from the BullMQ `failed` handler; Failures tab; retry action.
 - `/review` page: grouped by reason, case detail reusing the trace components, action bar,
   upload form.
 - Each action stores a labelled example row (the raw material for phase 11).
@@ -241,7 +250,7 @@ report updates.
 
 - [ ] Correcting a weight on a `missing_value` case re-runs compare and the case closes with the new status.
 - [ ] Uploading a BL to a `missing_attachment` case produces a full comparison.
-- [ ] Stopping doc-extract mid-run creates `processing_error` cases; retry after restart clears them.
+- [ ] Stopping doc-extract mid-run creates failure cases; retry after restart clears them.
 - [ ] Submission after review reflects human decisions.
 
 ## Phase 9: Priority, concurrency, ops
@@ -282,7 +291,7 @@ decision from the audit trail.
 **Exit checklist.**
 
 - [ ] "Which client had the most mismatches in run X and on which field?" returns a correct table with the SQL shown.
-- [ ] "Explain email_407" narrates rule, generator, verifier, evidence, diffs and any human action.
+- [ ] "Explain email_407" narrates generator, verifier, evidence, diffs and any human action.
 - [ ] `run_sql` refuses `delete`, multi-statement input, and queries over 5 s.
 - [ ] Views refresh within 5 minutes of a run finishing.
 
