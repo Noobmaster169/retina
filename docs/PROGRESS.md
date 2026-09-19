@@ -516,6 +516,9 @@ first four.
   schema's `ComparisonStatus` and shows an empty placeholder as such; the processor tests are two
   files, the pair path and the structural escalations, with a shared harness; and the infra doc's
   extract paragraph, decide pseudocode, timeouts line and write order now describe the code.
+- Checked live after the fixes on run `7a6e83bd` (`email_004`, `513`, `516`, 18 calls, 0 failed):
+  MISMATCH on consignee and notify_party, `unreadable` with a provisional `OK`, `missing_value` on
+  the weight, the `N/A` still read as a placeholder without the token in the prompt.
 - **Not changed, noted:** an absent field the extractor is unsure of still goes to the verifier
   (`fieldsInDoubt` on low confidence); on this run the model gave absent fields high confidence
   and 1 of 48 documents was verified, so the "under 20%" line holds. Watch it on the full run.
