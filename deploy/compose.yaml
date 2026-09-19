@@ -121,16 +121,25 @@ services:
       inbox:
         condition: service_started
     healthcheck:
-      # 200 whatever the report says: this asks whether the process serves, and
-      # auto-deploy.sh is what judges the dependencies.
+      # /health is 200 when Postgres is reachable, whatever else is degraded,
+      # and 503 when it is not. start_period covers the migrations, which run
+      # before the process listens: without it a slow migration is read as a
+      # dead container.
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8091/health || exit 1"]
-      interval: 30s
+      interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 6
+      start_period: 45s
 
   # Queue consumers. The image has no build step, so it runs TypeScript through
-  # tsx exactly as `pnpm start:worker` does. It waits for the api because the
-  # api runs the migrations: two containers migrating at once is a race.
+  # tsx exactly as `pnpm start:worker` does.
+  #
+  # service_started, not service_healthy. Only the api migrates (its CMD does;
+  # this command replaces it), so there is no race to order around, and the
+  # worker touches Postgres when a job arrives rather than at boot. Waiting on
+  # the api's health instead couples the two: a deploy whose api is unhealthy
+  # aborts the whole `up` and leaves the worker down, which is what the
+  # simulator caught.
   worker:
     image: ghcr.io/noobmaster169/retina-api:main
     restart: unless-stopped
@@ -141,7 +150,7 @@ services:
       <<: *backend-env
     depends_on:
       api:
-        condition: service_healthy
+        condition: service_started
 
 volumes:
   pgdata:

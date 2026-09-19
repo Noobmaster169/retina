@@ -313,11 +313,13 @@ stage "The stack"
 say "postgres, redis, minio, inbox, api, worker. Only the api publishes a port,"
 say "on loopback; ngrok is the single door in."
 
-if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
-  say "building the api image from the clone. First time takes a few minutes."
-  docker build -t "$IMAGE" "$REPO/backend" || fail "the api image would not build"
-fi
-ok "api image present"
+# Always, never "only when absent": the tag on this box may be an image from
+# well before the clone's HEAD, and starting that under a new compose file is
+# how you get a stack that looks up and serves last month's code. Layer caching
+# makes a repeat run quick.
+say "building the api image from the clone. The first build takes a few minutes."
+docker build -t "$IMAGE" "$REPO/backend" || fail "the api image would not build"
+ok "api image built from $(git -C "$REPO" rev-parse --short HEAD)"
 
 cd "$STACK"
 docker compose up -d || fail "docker compose up failed; docker compose logs will say why"

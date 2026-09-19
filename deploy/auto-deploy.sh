@@ -84,9 +84,18 @@ fi
 
 LOCAL="$(git rev-parse HEAD)"
 REMOTE="$(git rev-parse origin/main)"
-[[ "$LOCAL" == "$REMOTE" ]] && exit 0   # nothing new; the quiet common case
 
-log "new commit ${REMOTE:0:7} (was ${LOCAL:0:7}) — deploying"
+# A hand-over from the previous version of this script (see below) is the
+# middle of a deploy, not a new tick: the pull already happened, so HEAD is
+# origin/main and the quiet path would end the deploy here. It carries the
+# commit it started from, so the diffs further down still see what changed.
+if [[ -n "${AUTO_DEPLOY_FROM:-}" ]]; then
+  LOCAL="$AUTO_DEPLOY_FROM"
+  log "continuing the deploy of ${REMOTE:0:7} under the updated script"
+else
+  [[ "$LOCAL" == "$REMOTE" ]] && exit 0   # nothing new; the quiet common case
+  log "new commit ${REMOTE:0:7} (was ${LOCAL:0:7}) — deploying"
+fi
 
 if ! git merge-base --is-ancestor "$LOCAL" "$REMOTE"; then
   log "ABORT: local history is not an ancestor of origin/main (diverged)"
@@ -101,10 +110,13 @@ git pull --ff-only --quiet origin main 2>>"$LOG" || { log "ABORT: pull failed"; 
 # offset. A rename gives the new content a new inode and leaves this process
 # reading the old one. Then hand over, so a commit that changes both the script
 # and compose.yaml is deployed by the logic that was written for it.
-if ! cmp -s "$REPO/deploy/auto-deploy.sh" "$STACK/auto-deploy.sh"; then
+# The AUTO_DEPLOY_FROM guard makes the hand-over provably happen at most once
+# per deploy, whatever the two files look like.
+if [[ -z "${AUTO_DEPLOY_FROM:-}" ]] && ! cmp -s "$REPO/deploy/auto-deploy.sh" "$STACK/auto-deploy.sh"; then
   if install -m 755 "$REPO/deploy/auto-deploy.sh" "$STACK/auto-deploy.sh.new" &&
      mv -f "$STACK/auto-deploy.sh.new" "$STACK/auto-deploy.sh"; then
     log "auto-deploy.sh updated from the clone; handing over to it"
+    export AUTO_DEPLOY_FROM="$LOCAL"
     exec "$STACK/auto-deploy.sh"
   fi
   log "  WARNING: could not update auto-deploy.sh; continuing with the old one"

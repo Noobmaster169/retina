@@ -6,6 +6,7 @@
 # wrong script there costs a manual recovery; here it costs a re-run.
 #
 #   ./sim.sh up          build the simulator and seed its origin
+#   ./sim.sh reset       forget the simulated box (keeps the image cache)
 #   ./sim.sh test        the whole suite: bootstrap, deploy, rollback, refusals
 #   ./sim.sh shell       a shell inside, laid out like the box
 #   ./sim.sh down        stop it (keeps the image cache; `purge` drops that too)
@@ -117,6 +118,15 @@ cmd_deploy() {
   local code=$?
   say "auto-deploy.sh exited $code"
   return $code
+}
+
+# A box that has never run retina: no containers, no volumes, no ~/retina. The
+# image cache stays, so this costs seconds rather than another round of pulls.
+cmd_reset() {
+  running || die "not up"
+  sx 'cd /home/student/retina 2>/dev/null && docker compose down -v --remove-orphans' >/dev/null 2>&1
+  sx 'rm -rf /home/student/retina && mkdir -p /home/student/retina'
+  say "the simulated box is fresh again"
 }
 
 cmd_logs() { sx 'tail -n 40 /home/student/retina/auto-deploy.log 2>/dev/null || echo "(no log yet)"'; }
@@ -239,6 +249,7 @@ case "${1:-}" in
   health) cmd_health; echo ;;
   ps) cmd_ps ;;
   shell) cmd_shell ;;
+  reset) cmd_reset ;;
   down) cmd_down ;;
   purge) cmd_purge ;;
   *) sed -n '3,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;

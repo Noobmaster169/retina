@@ -4,7 +4,7 @@
 
 The phase 2 system runs on the Monash box and is reachable through the Vercel URL. Every
 later phase then ships with `git push`. Doing this while the system is small surfaces
-infrastructure problems (tunnel, image size, memory, Averis mount) before they can block a
+infrastructure problems (tunnel, image size, memory, the inbox mount) before they can block a
 feature phase.
 
 ## Prerequisites
@@ -12,195 +12,148 @@ feature phase.
 - Phase 2 merged to `main`.
 - Retina's box setup already done per `deploy/README.md`: deploy key, `~/retina/.env`, ngrok
   account and static domain, cron lines, GHCR image publishing in GitHub Actions.
-- SSH access to `student@118.139.133.14` from the dev machine.
+- Access to the box as `student@118.139.133.14`. Nobody on the dev machine needs it for the
+  code: the deploy is pulled by cron, and `deploy/sim/` exercises the scripts locally. It is
+  needed once, to run the bootstrap wizard.
 
 ## Scope
 
-In: compose for production, auto-deploy changes, Averis kit on the box, Vercel env, runbook.
-Out: pipeline changes of any kind.
+In: compose for production, auto-deploy changes, the inbox on the box, Vercel env, CI gates,
+runbook. Out: pipeline changes of any kind.
+
+## What was already wrong
+
+The box served a pre-phase-1 image: `GET /runs` answered 404 through the tunnel and `/health`
+returned the old `{"status":"ok","database":"up"}` shape. `auto-deploy.sh` gated a deploy on
+`"status":"ok"`, and phase 1's `/health` answers `degraded` whenever Redis or MinIO is down,
+which on that box was always. So every phase 1 deploy came up, was read as a failure, and
+rolled itself back. Fixing the gate comes before adding services, or the same thing eats this
+phase's deploy.
 
 ## Work items
 
 ### 1. `deploy/compose.yaml`
 
-Extend the existing file. Final service list:
+Services: `postgres`, `redis`, `minio`, `minio-init`, `inbox`, `api`, `worker`. Only `api`
+publishes a port, `127.0.0.1:8091`. `api` and `worker` share one YAML anchor for their
+environment so the two cannot drift. `worker` runs `node --import tsx src/worker.ts` (the image
+has no build step) and waits for `api` healthy, so only one container ever migrates.
 
-```yaml
-services:
-  postgres:
-    image: postgres:17
-    environment: { POSTGRES_USER: retina, POSTGRES_PASSWORD: ${PG_PASSWORD}, POSTGRES_DB: retina_prod }
-    volumes: [pgdata:/var/lib/postgresql/data]
-    healthcheck: { test: ["CMD-SHELL", "pg_isready -U retina"], interval: 10s, retries: 10 }
-    restart: unless-stopped
-
-  redis:
-    image: redis:7
-    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction", "--maxmemory", "1gb"]
-    volumes: [redisdata:/data]
-    healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: 10s, retries: 10 }
-    restart: unless-stopped
-
-  minio:
-    image: minio/minio
-    command: ["server", "/data", "--console-address", ":9001"]
-    environment: { MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}, MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY} }
-    volumes: [miniodata:/data]
-    healthcheck: { test: ["CMD", "mc", "ready", "local"], interval: 10s, retries: 10 }
-    restart: unless-stopped
-
-  minio-init:
-    image: minio/mc
-    depends_on: { minio: { condition: service_healthy } }
-    entrypoint: >
-      /bin/sh -c "mc alias set local http://minio:9000 ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY} &&
-                  mc mb --ignore-existing local/retina && exit 0"
-
-  averis:
-    build: ./averis/server
-    ports: ["127.0.0.1:8080:8000"]
-    volumes:
-      - ./averis/data_v2:/data:ro
-      - ./secrets/ground_truth.json:/secrets/ground_truth.json:ro
-    environment: { DATA_DIR: /data, GROUND_TRUTH: /secrets/ground_truth.json }
-    restart: unless-stopped
-
-  api:
-    image: ghcr.io/noobmaster169/retina-api:main
-    env_file: .env
-    ports: ["127.0.0.1:8091:8091"]
-    extra_hosts: ["host.docker.internal:host-gateway"]
-    depends_on:
-      postgres: { condition: service_healthy }
-      redis: { condition: service_healthy }
-      minio: { condition: service_healthy }
-    healthcheck: { test: ["CMD", "wget", "-qO-", "http://localhost:8091/health"], interval: 15s, retries: 5, start_period: 30s }
-    restart: unless-stopped
-
-  worker:
-    image: ghcr.io/noobmaster169/retina-api:main
-    command: ["node", "dist/worker.js"]
-    env_file: .env
-    extra_hosts: ["host.docker.internal:host-gateway"]
-    depends_on:
-      api: { condition: service_healthy }
-    restart: unless-stopped
-
-volumes: { pgdata: {}, redisdata: {}, miniodata: {} }
-```
-
-Notes:
-
-- `~/retina/` on the box holds `compose.yaml`, `.env`, `auto-deploy.sh`, `run-ngrok.sh`,
-  `secrets/ground_truth.json`, and a checkout of the repo at `~/projects/retina` from which
-  `averis/` is copied (or bind-mounted: `./averis` → `~/projects/retina/emails`). Simplest:
-  `auto-deploy.sh` rsyncs `emails/` to `~/retina/averis/` after each pull.
-- `LLM_PROXY_URL=http://172.17.0.1:4000` as in Retina today; `extra_hosts` is there in case the
-  bridge IP differs.
-- The worker waits for `api` healthy because the api runs migrations on boot. Never run
-  migrations from two containers.
+The answer key is not placed on the box by hand. `emails/data_v2/ground_truth.json` is
+committed as part of the organiser kit, and compose mounts it read-only into `inbox` and
+nothing else.
 
 ### 2. Backend Dockerfile
 
-Confirm the existing Dockerfile produces `dist/worker.js` (multi-stage: install, `pnpm build`,
-copy `dist` and production `node_modules`). Add `wget` to the runtime image for the healthcheck
-if it uses a distroless or alpine base without it. Image size target under 300 MB.
+Unchanged. It runs TypeScript through tsx rather than building to `dist/`, so the worker's
+command is `node --import tsx src/worker.ts`. `wget` is present in the alpine base for the
+healthcheck.
 
 ### 3. `deploy/.env.example`
 
-Add every variable from phase 1's `config.ts` with production values:
-`DATABASE_URL=postgres://retina:${PG_PASSWORD}@postgres:5432/retina_prod` (compose does not
-expand nested variables in `env_file`; write the literal password twice or construct the URL
-in `config.ts` from `PG_*` parts. Decision: `config.ts` accepts either `DATABASE_URL` or
-`PG_HOST/PG_PORT/PG_USER/PG_PASSWORD/PG_DATABASE` and builds the URL.)
-`REDIS_URL=redis://redis:6379`, `MINIO_ENDPOINT=minio:9000`, `EMAIL_SERVER_URL=http://averis:8000`,
-`LLM_PROXY_URL=http://172.17.0.1:4000`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY` (32 hex each),
-plus the two bearer keys already there.
+`MINIO_ACCESS_KEY` and `MINIO_SECRET_KEY` join the two bearer keys and `PG_PASSWORD`.
+Everything else the backend reads either has a default in `config.ts` or names a compose
+service and is set in `compose.yaml`. There is no `DATABASE_URL`: `config.ts` takes discrete
+`PG_*` variables, which is the house convention.
+
+`EVAL_GROUND_TRUTH_PATH` stays out on purpose, so copying the file cannot hand the api the
+answer key.
 
 ### 4. `deploy/auto-deploy.sh`
 
-Changes to the existing script:
+1. The health gate is `checks.postgres == "up"` and `checks.redis == "up"`, for two minutes.
+   A `minio` or `inbox` outage is logged as a warning and the deploy stands.
+2. It copies `~/retina/compose.yaml` and `~/retina/auto-deploy.sh` from the clone on every
+   run, by rename rather than in place (bash reads a script as it executes it). After
+   replacing itself it hands over with `exec`, carrying the commit it started from in
+   `AUTO_DEPLOY_FROM`, so the new logic deploys the commit that brought it and still sees
+   what changed.
+3. A compose change converges every service (`docker compose up -d`); otherwise it recreates
+   `api` and `worker` with `--no-deps`. `--no-deps` would skip creating a service that the
+   commit just added.
+4. Rollback restores the previous image and the previous `compose.yaml`.
+5. Unchanged: flock, the dirty-clone refusal, fast-forward only, the proxy reinstall, the
+   inbox rebuild when `emails/server` changed, `USE_REGISTRY` (0 on this box: it builds from
+   the clone).
 
-1. After the fast-forward: `rsync -a --delete --exclude ground_truth.json
-   ~/projects/retina/emails/ ~/retina/averis/`.
-2. `docker compose build averis` only when `emails/server` changed (compare git hash of
-   that path stored in `~/retina/.averis-hash`).
-3. Pull or build the api image as today; tag the previous image `retina-api:previous`.
-4. `docker compose up -d --no-deps api worker` (and `averis` when rebuilt).
-5. Health poll: 90 s for `GET /health` returning HTTP 200 with `checks.postgres == "up"` and
-   `checks.redis == "up"`. Degraded MinIO or Averis logs a warning but does not roll back.
-6. Rollback: retag `previous` as `main`, `up -d --no-deps api worker`, log, exit 1.
-7. Log to `~/retina/auto-deploy.log` with timestamps; keep the existing dirty-clone refusal.
+It never writes `~/retina/.env`. A new secret is a wizard run.
 
-### 5. Box steps (once)
+### 5. `deploy/bootstrap-wizard.sh`
+
+The one manual step, and the last one: `~/retina/compose.yaml` and `~/retina/auto-deploy.sh`
+are copies, and the copy on the box cannot update itself until it is the version that knows
+how to. Run on the box, safe to re-run:
 
 ```bash
-# on the box, as student
 cd ~/projects/retina && git pull
-mkdir -p ~/retina/secrets ~/retina/backups
-cp deploy/{compose.yaml,auto-deploy.sh} ~/retina/
-cp deploy/.env.example ~/retina/.env && vi ~/retina/.env       # fill secrets
-# from the dev machine: scp the answer key
-scp .../data_v2/ground_truth.json student@118.139.133.14:~/retina/secrets/
-# back on the box
-cd ~/retina && docker compose build averis && docker compose up -d
-curl -s 127.0.0.1:8091/health | jq .
-curl -s 127.0.0.1:8080/health | jq .                            # {"emails":520,"scoring_available":true}
-curl -s https://<domain>.ngrok-free.dev/health | jq .status
+bash deploy/bootstrap-wizard.sh
 ```
 
-Add one cron line for backups: `0 3 * * * cd /home/student/retina && docker compose exec -T
-postgres pg_dump -U retina retina_prod | gzip > backups/retina_$(date +\%F).sql.gz`.
+Six stages: prerequisites, the two stack files, secrets (generated only when missing; it
+refuses to invent a `PG_PASSWORD` when the Postgres volume already exists, which would lock
+the data away), the stack up and `/health` polled, the four cron lines including the nightly
+`pg_dump`, and the day-one checks phase 4 needs, printed ready for `PROGRESS.md`.
 
-### 6. Vercel
+### 6. `deploy/sim/`
 
-Project already exists with Root Directory `frontend`. Set or confirm env vars:
-`BACKEND_URL=https://<domain>.ngrok-free.dev`, `API_SHARED_SECRET`, `SITE_PASSWORD`,
-`SESSION_SECRET`. `api-client.ts` sends `ngrok-skip-browser-warning: 1` on every request so the
-free-tier interstitial never appears for server-to-server calls.
+A Docker-in-Docker replica of the box layout: `/srv/origin.git` stands in for GitHub,
+`~/projects/retina` is the clone, `~/retina` is the stack, so the relative paths in
+`compose.yaml` resolve exactly as they do on the box. `./sim.sh test` runs the real scripts
+through bootstrap, a quiet tick, a new commit, a commit that changes `compose.yaml` and
+`auto-deploy.sh` together, a commit whose `/health` reports Postgres down, and a dirty clone.
 
-### 7. GitHub Actions
+Not in the original plan. It is here because the dev machine cannot SSH into the box, so a
+wrong script costs a manual recovery, and because the bug in "What was already wrong" is
+exactly the kind a test like this catches.
 
-Existing workflow type-checks both packages and publishes the image. Add `pnpm test` for the
-backend with a Postgres and Redis service container (`services:` block) so repository tests
-run in CI. Frontend: `pnpm build` to catch type errors in server components.
+### 7. Vercel
 
-### 8. Runbook: `deploy/README.md` additions
+Project already exists with Root Directory `frontend`. Env: `BACKEND_URL`,
+`API_SHARED_SECRET`, `SITE_PASSWORD`. There is no `SESSION_SECRET`: the gate derives its
+cookie as an HMAC of `SITE_PASSWORD`. `api-client.ts` sends `ngrok-skip-browser-warning: 1`
+so the free-tier interstitial can never answer instead of the API.
 
-- New services and their logs: `docker compose logs -f worker`, `... averis`.
-- "Worker stuck": `docker compose restart worker`; stalled jobs recover automatically.
-- "Redis full" (noeviction errors): `redis-cli info memory`; raise `--maxmemory` or clear
-  completed jobs with `queue.clean`.
-- "Averis 503 on submit": ground truth not mounted; check `~/retina/secrets`.
-- MinIO console: `ssh -L 9001:localhost:9001 student@...` then `docker compose port minio 9001`
-  (or add a temporary `127.0.0.1:9001:9001` mapping; remove after).
+### 8. GitHub Actions
+
+The gates (`quality`, `test`, `proxy`) also run on a pull request, which is the only way to
+see the workflow go green before it decides whether `main` publishes. `test` runs the backend
+suite against a Postgres service container on 5433, the port `vitest.config.ts` names;
+everything else the suite touches has a fake. `quality` adds `pnpm build` for the frontend.
+`build-api` publishes on pushes only.
+
+### 9. Runbook: `deploy/README.md`
+
+New services and their logs, the wizard as the setup path, the health gate, a stuck worker,
+Redis under `noeviction`, a MinIO outage, and the MinIO console through an SSH tunnel.
 
 ## Tests
 
-No new code tests. CI must be green before merge.
+No new unit tests: nothing in `backend/src` changed. `deploy/sim/sim.sh test` is this phase's
+test, and CI must be green on the pull request before merge.
 
 ## Manual verification
 
-- Start a run from the Vercel page at 2 emails/s; watch counts on the page; confirm on the
+- Start a run of 20 emails from the Vercel page; watch counts on the page; confirm on the
   box with `docker compose logs -f worker`.
-- Submit from the page; score matches `pnpm eval:score` on the same run locally within
-  rounding (same code, same data).
-- Push a trivial commit (a log line); within 5 minutes `auto-deploy.log` shows pull, up,
-  health ok.
-- Break `/health` on purpose in a branch build (return 500), deploy, confirm rollback, revert.
+- Submit that run from the page and read the score.
+- Push a trivial commit; within 5 minutes `auto-deploy.log` shows pull, up, health ok.
+- Rollback is exercised in the simulator, not on the box.
 
 ## Exit checklist
 
 - [ ] `https://<domain>/health` reports every check up.
-- [ ] A run started from the Vercel page completes on the box and scores through the box's Averis.
-- [ ] A push to `main` deploys within 5 minutes without manual steps; rollback tested once.
-- [ ] `docker compose ps` on the box shows only `127.0.0.1:8091` and `127.0.0.1:8080` published.
-- [ ] `ground_truth.json` exists only under `~/retina/secrets/` and inside the `averis` container.
+- [ ] A run started from the Vercel page completes on the box and scores through the box's inbox.
+- [ ] A push to `main` deploys within 5 minutes without manual steps.
+- [ ] `./sim.sh test` is green, rollback included.
+- [ ] `docker compose ps` on the box publishes only `127.0.0.1:8091`.
+- [ ] `ground_truth.json` reaches the `inbox` container and nothing else.
 - [ ] Nightly backup cron line present; one manual `pg_dump` succeeded.
+- [ ] CI green on the pull request.
 - [ ] `deploy/README.md` updated; `PROGRESS.md` updated.
 
 ## Hand-off notes for phase 4
 
-- Before writing phase 4 code, run the day-one checks on the box and record results in
-  `PROGRESS.md`: `curl 172.17.0.1:4000/v1/models` for alias names; a request with an image
-  content block to see whether the proxy forwards it; 8 parallel requests to check for 429s.
+The wizard's last stage runs the day-one checks and prints them for `PROGRESS.md`: the proxy's
+alias list, whether a request with a JSON schema really comes back constrained (which needs
+`claude` 2.1.274 or newer on the box), and how 8 parallel requests fare. Whether the proxy
+forwards an image content block is still open, and phase 5 is when it matters.
