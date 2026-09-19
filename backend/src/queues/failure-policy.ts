@@ -1,6 +1,6 @@
 import { type Job, UnrecoverableError, Worker } from "bullmq";
 
-import { LlmUnavailableError } from "../lib/errors";
+import { DependencyUnavailableError } from "../lib/errors";
 import { childLogger } from "../lib/logger";
 
 const log = childLogger({ module: "failure-policy" });
@@ -16,16 +16,16 @@ export const LLM_OUTAGE_PAUSE_MS = 30_000;
 const STALLED_OUT = "job stalled more than allowable limit";
 
 /**
- * With the model unreachable or rate limited, every job would burn its three
+ * With the model or doc-extract unreachable, every job would burn its three
  * attempts within seconds and the run's emails would fail for good. Instead the
  * queue pauses and the job goes back to wait with its attempts untouched.
  */
-export async function pausingOnLlmOutage<T>(queue: QueuePauser, work: () => Promise<T>): Promise<T> {
+export async function pausingOnOutage<T>(queue: QueuePauser, work: () => Promise<T>): Promise<T> {
   try {
     return await work();
   } catch (error) {
-    if (!(error instanceof LlmUnavailableError)) throw error;
-    log.warn({ err: error.message, pauseMs: LLM_OUTAGE_PAUSE_MS }, "model unavailable, pausing the classify queue");
+    if (!(error instanceof DependencyUnavailableError)) throw error;
+    log.warn({ err: error.message, pauseMs: LLM_OUTAGE_PAUSE_MS }, "dependency unavailable, pausing the queue");
     await queue.rateLimit(LLM_OUTAGE_PAUSE_MS);
     throw Worker.RateLimitError();
   }

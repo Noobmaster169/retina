@@ -7,14 +7,30 @@ export class RetryableError extends Error {
 }
 
 /**
- * The model could not be reached or is rate limited. Nothing is wrong with the
- * email, so the worker pauses the queue and puts the job back without spending
- * one of its attempts: an outage must not fail a run's emails for good.
+ * A dependency the whole queue needs could not be reached. Nothing is wrong
+ * with the email, so the worker pauses the queue and puts the job back without
+ * spending one of its attempts: an outage must not fail a run's emails for good.
  */
-export class LlmUnavailableError extends RetryableError {
+export class DependencyUnavailableError extends RetryableError {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "DependencyUnavailableError";
+  }
+}
+
+/** The model could not be reached or is rate limited. */
+export class LlmUnavailableError extends DependencyUnavailableError {
   constructor(message: string, options?: { cause?: unknown }) {
     super(message, options);
     this.name = "LlmUnavailableError";
+  }
+}
+
+/** The doc-extract service could not be reached, or its object store could not. */
+export class DocExtractUnavailableError extends DependencyUnavailableError {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "DocExtractUnavailableError";
   }
 }
 
