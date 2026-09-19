@@ -147,7 +147,17 @@ check() {
 }
 log_has() { sx "grep -q -- '$1' /home/student/retina/auto-deploy.log"; }
 log_lines() { sx "wc -l < /home/student/retina/auto-deploy.log" | tr -cd '0-9'; }
-health_has() { sx "curl -fsS --max-time 5 http://127.0.0.1:8091/health | grep -q -- '$1'"; }
+# Patient on purpose. Every caller asserts something that should become true,
+# and a rollback recreates the api container, so there are seconds of no answer
+# while it migrates and starts listening. Impatience here reads that as a fault.
+health_has() {
+  local pattern="$1"
+  for _ in $(seq 1 30); do
+    sx "curl -fsS --max-time 5 http://127.0.0.1:8091/health | grep -q -- '$pattern'" && return 0
+    sleep 2
+  done
+  return 1
+}
 mark() { sx "echo '--- $1 ---' >> /home/student/retina/auto-deploy.log"; }
 env_of() { sx "cd /home/student/retina && docker compose exec -T $1 printenv $2" | tr -d '\r\n'; }
 

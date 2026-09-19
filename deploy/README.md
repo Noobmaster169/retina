@@ -87,9 +87,13 @@ bash deploy/bootstrap-wizard.sh
 It installs `~/retina/compose.yaml` and `~/retina/auto-deploy.sh`, generates only
 the secrets `~/retina/.env` is missing (it keeps every value already there, and
 refuses to invent a `PG_PASSWORD` when the Postgres volume already exists,
-which would lock the data away), builds the api image if the box has none,
-brings the stack up, adds the cron lines that are absent, and prints the day-one
-checks for `docs/PROGRESS.md`.
+which would lock the data away), rebuilds the api image from the clone, brings
+the stack up, adds the cron lines that are absent, and prints the day-one checks
+for `docs/PROGRESS.md`.
+
+It rebuilds every time rather than trusting the `:main` tag, because the tag on
+this box can be an image from long before the clone's HEAD, and starting that
+under a new compose file gives you a stack that looks up and serves old code.
 
 ```bash
 curl -s 127.0.0.1:8091/health    # {"status":"ok","checks":{"postgres":"up","redis":"up","minio":"up","inbox":"up"}}
@@ -97,10 +101,11 @@ curl -s -H "authorization: Bearer $TEAM_API_KEY" 127.0.0.1:8091/ai/models
 curl -s -H "authorization: Bearer $TEAM_API_KEY" '127.0.0.1:8091/emails?limit=1'
 ```
 
-Migrations run inside the API container before it listens, and the worker waits
-for the api to be healthy so only one container ever migrates. The compose file
-reaches the clone by relative path (`../projects/retina`), so `~/retina` and
-`~/projects/retina` must stay siblings.
+Migrations run inside the API container before it listens. Only the api runs
+them: the worker replaces the image's command, so there is no second migrator
+to order around. The compose file reaches the clone by relative path
+(`../projects/retina`), so `~/retina` and `~/projects/retina` must stay
+siblings.
 
 After this, `~/retina/compose.yaml` and `~/retina/auto-deploy.sh` are kept in
 step with the clone by `auto-deploy.sh` itself. `~/retina/.env` is the one file
@@ -143,6 +148,10 @@ The health gate is `postgres` and `redis` up, not `"status":"ok"`. The report
 is `degraded` whenever any dependency is down, so gating on `ok` rolls back
 working code because MinIO is restarting; a `minio` or `inbox` outage is logged
 as a warning and the deploy stands.
+
+A rollback recreates the api container, so the tunnel answers nothing for the
+few seconds it takes to migrate and start listening. That is the cost of the
+rollback, not a second fault.
 
 A commit that adds a service is deployed by converging the whole stack
 (`docker compose up -d`) rather than the usual `--no-deps api worker`, because
