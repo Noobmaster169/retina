@@ -1,3 +1,4 @@
+import { proxyLlmClient } from "./agents";
 import { config } from "./config";
 import { closePool, getPool } from "./db";
 import { AverisSource } from "./ingest";
@@ -18,6 +19,7 @@ const workers = startWorkers(
     pool: getPool(),
     source: new AverisSource(config.EMAIL_SERVER_URL),
     store,
+    llm: proxyLlmClient(),
     classify: queues.classify,
     compare: queues.compare,
   },

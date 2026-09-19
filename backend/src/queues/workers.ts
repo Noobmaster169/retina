@@ -2,6 +2,7 @@ import { DelayedError, type Job, UnrecoverableError, Worker } from "bullmq";
 import type { Redis } from "ioredis";
 import type { z } from "zod";
 
+import type { LlmClient } from "../agents";
 import { config } from "../config";
 import { type IngestDeps, replayRun } from "../ingest";
 import { TerminalError } from "../lib/errors";
@@ -14,6 +15,7 @@ import { processCompare } from "./processors/compare.processor";
 const log = childLogger({ module: "workers" });
 
 export interface WorkerDeps extends IngestDeps {
+  llm: LlmClient;
   compare: JobAdder<CompareJob>;
 }
 

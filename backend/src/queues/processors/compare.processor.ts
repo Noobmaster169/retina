@@ -1,15 +1,25 @@
 import type { Queryable } from "../../db";
-import { emailRuns, runs } from "../../ontology/repositories";
+import { TerminalError } from "../../lib/errors";
+import { comparisons, emailRuns, runs } from "../../ontology/repositories";
 import type { CompareJob } from "../names";
 
 export interface CompareDeps {
   pool: Queryable;
 }
 
-/** Phase 1: nothing is compared yet, so every email finishes OK. A cancelled run's email stays where it stopped. */
+/**
+ * A placeholder until phases 5 and 6 read the documents: every comparison
+ * request finishes OK, and the row says it was not really compared. A
+ * cancelled run's email stays where it stopped.
+ */
 export async function processCompare(deps: CompareDeps, data: CompareJob): Promise<void> {
   const { runId, emailId } = data;
   if ((await runs.status(deps.pool, runId)) === "cancelled") return;
+
+  const emailRunId = await emailRuns.idOf(deps.pool, runId, emailId);
+  if (!emailRunId) throw new TerminalError(`email ${emailId} is not in run ${runId}`);
+
   await emailRuns.setStage(deps.pool, runId, emailId, "comparing");
+  await comparisons.upsert(deps.pool, { emailRunId, status: "OK", reviewReason: null, detail: { placeholder: true } });
   await emailRuns.setStage(deps.pool, runId, emailId, "done", { outcome: "OK", finished: true });
 }

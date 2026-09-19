@@ -40,6 +40,12 @@ const Env = z.object({
   // the VPS: there the key exists only inside the inbox container.
   EVAL_GROUND_TRUTH_PATH: optionalString,
 
+  // Every LLM step runs the model its prompt file names, which is sonnet. This
+  // replaces it for an experiment; it must be an alias from proxy/proxy.yaml.
+  LLM_MODEL_CLASSIFY: optionalString,
+  // How much of a body the classifier reads. A cost guard, not a judgement.
+  CLASSIFY_BODY_CHARS: z.coerce.number().int().positive().default(4000),
+
   CLASSIFY_CONCURRENCY: z.coerce.number().int().positive().default(4),
   COMPARE_CONCURRENCY: z.coerce.number().int().positive().default(4),
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"]).default("info"),

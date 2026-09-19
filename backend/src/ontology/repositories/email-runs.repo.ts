@@ -95,3 +95,12 @@ export async function stageCountsForRuns(db: Queryable, runIds: string[]): Promi
 export async function stageCounts(db: Queryable, runId: string): Promise<StageCounts> {
   return (await stageCountsForRuns(db, [runId])).get(runId) ?? emptyCounts();
 }
+
+/** The row id that classifications, comparisons and the LLM ledger hang off. */
+export async function idOf(db: Queryable, runId: string, emailId: string): Promise<string | null> {
+  const { rows } = await db.query<{ id: string }>(
+    "select id from core.email_runs where run_id = $1 and email_id = $2",
+    [runId, emailId],
+  );
+  return rows[0]?.id ?? null;
+}
