@@ -6,6 +6,11 @@ Current phase: 2
 | Phase | Holdout final | Full final | Stage1 | Stage3 | E2E | Notes |
 |---|---|---|---|---|---|---|
 | 1 | n/a | n/a | n/a | n/a | n/a | No classification yet: every email ends `done` / `OK` |
+| 2, prompt v1 | 0.2129 | not run | 0.7098 holdout | 0 | 0 | Zero-shot sonnet. All 25 holdout SI_REQUEST read as BL_COMPARISON: the definition was wrong |
+| 2, prompt v2 | 0.2981 | incomplete, see below | 0.9938 holdout (103 of 104) | 0 | 0 | Zero-shot sonnet, categories defined by paperwork stage. Stage 3 and E2E are 0 until phases 5 and 6 read the documents |
+
+Stage 1 carries 0.30 of the final score, so 0.2981 is what a perfect classifier with no document
+check would get (0.30). The holdout final cannot rise further until phase 5.
 
 ## Phase checklists
 ### Phase 1 (done, 2026-09-19, local)
@@ -52,6 +57,42 @@ Ten findings, all fixed on `phase-01-skeleton` before the merge. How each was ch
       and lint only; not opened in a browser.)
 - [x] Shutdown and the client components no longer drop errors. (Type-check only.)
 
+### Phase 2 (built 2026-09-19, local; one item open)
+- [x] `pnpm eval:parity` passes: the TS scorer and `score_cli.py` agree to four decimals
+      (7 cases: the sample, an empty submission, the truth itself, and four seeded noisy submissions
+      from final 0.0124 to 1.0 with up to 46 end-to-end successes; every number agrees)
+- [x] No rule decides a category (nothing under `pipeline/classify/` or in the classify processor
+      branches on sender, subject or body; `registry.test.ts` fails if the shipped prompt names a
+      sender, domain or subject code from the inbox)
+- [x] Every enum is the organisers', value for value (`contracts.test.ts` reads `scoring.py` and the
+      README; the check constraints were exercised: three valid rows accepted, six invalid rejected)
+- [x] Zero-shot stage 1 macro-F1 at or above 0.90 on the holdout, on `sonnet`
+      (`v2`: 0.9938, 103 of 104. The miss is `email_504`, a `wrong_doc_type` case read as SI_REQUEST
+      at confidence 0.70. `v1` was 0.7098)
+- [ ] **OPEN: a clean run of all 520.** The full run classified 429 emails and then failed the
+      last 91 in four seconds with "classify/v3.md has bad frontmatter", before any model call.
+      Cause: a second session was editing this checkout at the same time and added a `v3.md` that
+      is valid under its edited registry and not under the code the running worker had loaded; the
+      worker reads the newest prompt file on every call. Not a model or pipeline failure. The 429
+      that ran are 429 of 429 correct, 341 of them train ids that played no part in writing `v2`.
+      Repeat the full run once that session's changes are committed, then tick this and the next.
+- [ ] **OPEN, same cause:** submission of all 520 ids from one complete run, and `final_score` from
+      the UI equal to `pnpm eval:score` on the full set. What was verified instead, on the 104-email
+      holdout run: the organisers' scorer answered 0.07280788387344309 and the local scorer gave
+      0.07280788387344309 for the same payload, and the payload was stored before it was sent.
+- [x] One `llm_calls` row per attempt with tokens, cost and latency
+      (holdout `v2`: 104 calls, 0 failed, 0 retries, 7.7 s average, 11.87 USD at API prices)
+- [x] `eval/split.json` committed (416 train, 104 holdout, 9 of the 46 defects held out);
+      `eval/reports/` gitignored
+- [x] 152 backend tests, type-check clean in both packages, frontend lint clean; the production
+      image builds and boots with no Redis, MinIO or answer key (`/health` 200 degraded, `/eval` 404,
+      submit 503)
+
+How the holdout was used, stated plainly: it was read twice. The `v1` read is what showed the
+SI_REQUEST definition was wrong. The fix came from the organisers' generator, not from the holdout
+emails, and was checked on 60 train emails (60 of 60) before the holdout was read again. The 341
+train ids in the interrupted full run are the cleaner evidence: none was looked at, all correct.
+
 ## Design decisions
 - 2026-09-19, **no hand-written classification rules.** The original phase 2 was a rules engine
   (spam sender list, subject keyword table, body patterns, body cleaning by pattern), all read off
@@ -83,6 +124,13 @@ Ten findings, all fixed on `phase-01-skeleton` before the merge. How each was ch
   the user saying so.
 
 ## Deferred
+- A run does not pin its prompt version: the worker resolves the newest file on every call, so a
+  prompt added mid-run changes the run halfway, and it is how the full run above was broken.
+  Phase 4's `promptSet` fixes it by resolving the version once, when the run is created.
+- The Score column was checked over HTTP (server render, the submit and eval handlers, error
+  paths), not clicked in a browser: the browser tool failed to connect in the building session.
+- A full run is 520 sonnet calls at 2 at a time: about 40 minutes, and about 59 USD at API prices
+  (nothing is billed on the subscription rail, but it uses the subscription's limits).
 - Worker, Redis and MinIO on the VPS, phase 3. After this merges the box still runs only the api,
   which boots without them and reports `redis` and `minio` as `down` in `/health` (HTTP 200).
   There `GET /runs` lists runs with `queues: null`, and `POST /runs` answers 503, until phase 3.
@@ -108,6 +156,15 @@ Ten findings, all fixed on `phase-01-skeleton` before the merge. How each was ch
 - BullMQ job.changePriority available: unknown (installed BullMQ is 6.3.6; `Job.changePriority` is in its types)
 
 ## Found while building
+- A category definition can be wrong while the model is right. `v1` missed 25 of 25 SI_REQUEST on
+  the holdout because it defined the category as "asks for an SI". The organisers' generator shows
+  an SI_REQUEST hands the instruction over. Read their definition before blaming the model.
+- The model's stated confidence tracks its errors: `v1` left 16 of 104 below 0.8, where its
+  mistakes were; `v2` leaves 2, one of them the single miss. That is the phase 4 verifier trigger.
+- Two sessions in one checkout collide through the filesystem even without touching the same
+  lines: a long-running worker picked up the other session's new prompt file mid-run.
+- On Windows the proxy venv is `.venv/Scripts/python.exe`, and port 4000 may belong to another
+  project's proxy with different aliases. This repo's proxy runs on 4001 locally.
 - BullMQ 6 rejects a custom job id containing `:`, and `job.discard()` no longer exists.
 - `minio/minio` is gone from Docker Hub; `quay.io/minio/minio` and `quay.io/minio/mc` work.
 - A BullMQ job with a priority waits in `prioritized`, not `waiting`. Count and cancel both.
