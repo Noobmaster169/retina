@@ -1,6 +1,6 @@
 # Progress
 
-Current phase: 2
+Current phase: 2 (complete, merging); 3 next
 
 ## Scores
 | Phase | Holdout final | Full final | Stage1 | Stage3 | E2E | Notes |
@@ -8,7 +8,7 @@ Current phase: 2
 | 1 | n/a | n/a | n/a | n/a | n/a | No classification yet: every email ends `done` / `OK` |
 | 2, prompt v1 | 0.2129 | not run | 0.7098 holdout | 0 | 0 | Zero-shot sonnet. All 25 holdout SI_REQUEST read as BL_COMPARISON: the definition was wrong |
 | 2, prompt v2 | 0.2981 | incomplete, see below | 0.9938 holdout (103 of 104) | 0 | 0 | Zero-shot sonnet, categories defined by paperwork stage. Stage 3 and E2E are 0 until phases 5 and 6 read the documents |
-| 2, prompt v3 | 0.3000 | incomplete, see below | 1.0000 holdout (104 of 104) | 0 | 0 | `v2` with the schema as a provider constraint: no "reason briefly" ending, `rationale` first in the schema, no `max_tokens`. Run `0a8ed5a5`, 104 calls, 0 failed. Fixes `v2`'s only miss, `email_504` |
+| 2, prompt v3 | 0.3000 | 0.2992 | 1.0000 holdout (104 of 104) | 0 | 0 | `v2` with the schema as a provider constraint: no "reason briefly" ending, `rationale` first in the schema, no `max_tokens`. Holdout run `0a8ed5a5`, 104 calls. Full run `044367f9`, 520 calls, 0 failed, stage 1 macro-F1 0.9975 (518 of 520). Fixes `v2`'s only miss, `email_504` |
 
 Stage 1 carries 0.30 of the final score, so 0.3000 is exactly what a perfect classifier with no
 document check gets, and `v3` is there. The holdout final cannot rise further until phase 5.
@@ -58,7 +58,7 @@ Ten findings, all fixed on `phase-01-skeleton` before the merge. How each was ch
       and lint only; not opened in a browser.)
 - [x] Shutdown and the client components no longer drop errors. (Type-check only.)
 
-### Phase 2 (built 2026-09-19, local; one item open)
+### Phase 2 (done 2026-09-19, local)
 - [x] `pnpm eval:parity` passes: the TS scorer and `score_cli.py` agree to four decimals
       (7 cases: the sample, an empty submission, the truth itself, and four seeded noisy submissions
       from final 0.0124 to 1.0 with up to 46 end-to-end successes; every number agrees)
@@ -70,20 +70,23 @@ Ten findings, all fixed on `phase-01-skeleton` before the merge. How each was ch
 - [x] Zero-shot stage 1 macro-F1 at or above 0.90 on the holdout, on `sonnet`
       (`v2`: 0.9938, 103 of 104. The miss is `email_504`, a `wrong_doc_type` case read as SI_REQUEST
       at confidence 0.70. `v1` was 0.7098)
-- [ ] **OPEN: a clean run of all 520.** Two attempts. The first, under `v2`, classified 429 and
-      then failed the last 91 in four seconds with "classify/v3.md has bad frontmatter": a second
-      session was editing this checkout and added a `v3.md` valid only under its edited registry,
-      and the worker reads the newest prompt file on every call. Not a model or pipeline failure;
-      those 429 are 429 of 429 correct. The second, under `v3` (run `044367f9`), reached 150 of 520
-      with 0 failures and was stopped on purpose: every call was spending this machine's Claude
-      subscription, and the remaining 370 are to run through the Monash box's proxy over an SSH
-      tunnel instead. The 370 jobs are waiting in Redis; starting the worker with the tunnel up
-      finishes the run, and the classify processor skips the 150 already classified.
+- [x] A clean run of all 520, run `044367f9`: 520 `done`, 0 `failed`, 520 model calls and no
+      retries, 5.1 s average, 30.29 USD at API prices. Stage 1 macro-F1 0.9975 on the full set,
+      518 of 520; the two misses are `email_502` and `email_505`, both read as SI_REQUEST at 0.62
+      and 0.55 confidence, which is again the confidence signal phase 4's verifier triggers on.
+      The run is not homogeneous: its first 150 emails went through the local proxy with the schema
+      as a provider constraint, the remaining 370 through the box's `/ai/chat`, where the schema
+      reaches the model through the prompt only. Both misses fall in the unconstrained half, which
+      370 of 520 calls does not make evidence; what is evidence is that no gateway answer failed to
+      parse. An earlier attempt under `v2` failed its last 91 emails with "classify/v3.md has bad
+      frontmatter" because a second session added a prompt file mid-run; that is what the Deferred
+      note on pinning a run's prompt version is about.
 - [x] Submit from the UI shows `final_score` and `pnpm eval:score` gives the same number on the
       full set, verified on the 104-email holdout run `0a8ed5a5` submitted through the frontend's
       own route: the organisers' scorer answered 0.09475409836065575 and the local scorer gave
       0.09475409836065575 over all 520. The payload was stored before it was sent.
-- [ ] **OPEN:** that submission over all 520 ids from one complete run. Needs the run above.
+- [x] That submission over all 520 ids, from run `044367f9`: the organisers' scorer answered
+      0.29924983692106977 and `pnpm eval:score` gave 0.29924983692106977 over the same 520.
 - [x] One `llm_calls` row per attempt with tokens, cost and latency
       (holdout `v2`: 104 calls, 0 failed, 0 retries, 7.7 s average, 11.87 USD at API prices)
 - [x] `eval/split.json` committed (416 train, 104 holdout, 9 of the 46 defects held out);

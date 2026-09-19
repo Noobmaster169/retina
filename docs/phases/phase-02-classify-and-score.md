@@ -373,11 +373,10 @@ curl -s -X POST localhost:8091/runs/<id>/submit -H "authorization: Bearer $TEAM_
 - [x] Submit from the UI shows `final_score`; `pnpm eval:score` gives the same number on the full set.
       (the holdout run submitted through the frontend's own route: the organisers' scorer and
       `eval/reports/0a8ed5a5-....json` both give 0.09475409836065575 over all 520)
-- [ ] **OPEN: the submission includes all 520 ids.** One `llm_calls` row per attempt with tokens,
-      cost and latency is verified (270 rows, 0 failed, 7.2 s average). The full run stopped at 150
-      of 520 classified so the remaining calls could be moved off this machine's Claude
-      subscription and onto the Monash box's, through an SSH tunnel to its proxy. Resume the
-      worker with the tunnel up: the 370 queued jobs drain and the run finishes.
+- [x] The submission includes all 520 ids; one `llm_calls` row per attempt with tokens, cost and
+      latency. (Run `044367f9`: 520 `done`, 0 `failed`, 520 calls and no retries, 5.1 s average,
+      30.29 USD at API prices. Submitted through the frontend's own route: 0.29924983692106977 from
+      the organisers' scorer, the same from `pnpm eval:score`. Full-set stage 1 macro-F1 0.9975)
 - [x] Holdout numbers for phase 2 recorded in the `PROGRESS.md` scores table.
 - [x] `eval/split.json` committed; `eval/reports/` gitignored.
 
