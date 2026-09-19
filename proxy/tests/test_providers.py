@@ -634,3 +634,67 @@ async def test_a_failed_stream_never_sends_the_error_as_text_and_names_the_login
     error = next(e for e in events if e.type == "error")
     assert error.code == "provider_not_logged_in"
     assert error.retryable is False
+
+
+
+# The event sequence the pinned CLI (2.1.278) really sends for a schema-bound
+# call: thinking, then a StructuredOutput tool call whose input streams as JSON.
+SCHEMA_STREAM_STUB = textwrap.dedent("""\
+    #!/usr/bin/env python3
+    import json, sys
+    args = sys.argv[1:]
+    assert "--json-schema" in args and "--include-partial-messages" in args, args
+    sys.stdin.read()
+    def event(e):
+        print(json.dumps({"type": "stream_event", "event": e}))
+    event({"type": "content_block_start", "index": 0, "content_block": {"type": "thinking", "thinking": ""}})
+    event({"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "thinking": ""}})
+    event({"type": "content_block_start", "index": 1,
+           "content_block": {"type": "tool_use", "name": "StructuredOutput", "input": {}}})
+    for piece in ['{"rationale": "A draft', ' to check", "category"', ': "BL_COMPARISON", "confidence": 0.9}']:
+        event({"type": "content_block_delta", "index": 1,
+               "delta": {"type": "input_json_delta", "partial_json": piece}})
+    print(json.dumps({"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "StructuredOutput"}],
+                      "usage": {"input_tokens": 50, "output_tokens": 30}}}))
+    print(json.dumps({"type": "result", "subtype": "success", "result": "done",
+                      "structured_output": {"rationale": "A draft to check", "category": "BL_COMPARISON",
+                                            "confidence": 0.9},
+                      "usage": {"input_tokens": 60, "output_tokens": 42}, "total_cost_usd": 0.004}))
+""")
+
+
+async def test_a_schema_bound_call_streams_its_json_and_ends_with_the_validated_answer(fake_claude):
+    fake_claude(SCHEMA_STREAM_STUB)
+    provider = ClaudeCliProvider("claudecli", ProviderConfig(type="claudecli"))
+    req = canon_req("claudecli", "haiku", response_format=JSON_FORMAT)
+    events = [e async for e in provider.stream(req)]
+    preview = "".join(e.text for e in events if e.type == "text_delta")
+    assert preview == '{"rationale": "A draft to check", "category": "BL_COMPARISON", "confidence": 0.9}'
+    final = next(e for e in events if e.type == "message_delta")
+    assert final.structured == {"rationale": "A draft to check", "category": "BL_COMPARISON", "confidence": 0.9}
+    assert final.usage.reported_cost_usd == 0.004
+    assert final.usage.output_tokens == 42, "the session totals, not the first snapshot"
+
+
+def test_partial_text_forwards_json_deltas_only_for_a_schema_call():
+    event = {"type": "content_block_delta", "delta": {"type": "input_json_delta", "partial_json": '{"a"'}}
+    assert partial_text(event, structured=True) == '{"a"'
+    assert partial_text(event) == ""
+    thinking = {"type": "content_block_delta", "delta": {"type": "thinking_delta", "thinking": "hmm"}}
+    assert partial_text(thinking, structured=True) == ""
+
+
+def test_the_final_stream_event_carries_the_cost_and_the_structured_answer():
+    from llm_proxy.canon.response import CanonUsage, StopReason
+    from llm_proxy.canon.stream import MessageDelta
+    from llm_proxy.wire.anthropic_out import event_frames
+
+    ev = MessageDelta(
+        stop_reason=StopReason.END_TURN,
+        usage=CanonUsage(input_tokens=5, output_tokens=7, reported_cost_usd=0.01),
+        structured={"category": "SPAM"},
+    )
+    [(name, payload)] = event_frames(ev, "msg_1", "haiku")
+    assert name == "message_delta"
+    assert payload["usage"] == {"input_tokens": 5, "output_tokens": 7, "cost_usd": 0.01}
+    assert payload["structured_output"] == {"category": "SPAM"}

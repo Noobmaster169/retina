@@ -18,7 +18,9 @@ rejects requests it cannot honour rather than silently degrading them.
 
 Structured output is the exception: `output_config.format` maps onto the CLI's own
 `--json-schema`, which validates the answer against the schema and returns it in the
-envelope's `structured_output`. `max_tokens` has no CLI equivalent and is ignored.
+envelope's `structured_output`. Streamed, the JSON arrives as a preview while the model
+writes it, and the validated object rides on the final message_delta.
+`max_tokens` has no CLI equivalent and is ignored.
 """
 
 from __future__ import annotations
@@ -133,12 +135,21 @@ def not_logged_in_message(provider: str, detail: str) -> str:
     )
 
 
-def partial_text(event: dict[str, Any]) -> str:
-    """The text a partial stream event adds, or "" for any other event."""
+def partial_text(event: dict[str, Any], structured: bool = False) -> str:
+    """The text a partial stream event adds, or "" for any other event.
+
+    With a schema the CLI answers through a StructuredOutput tool call, so the
+    answer arrives as `input_json_delta` pieces of its input: the JSON being
+    written. Thinking deltas are never forwarded.
+    """
     if event.get("type") != "content_block_delta":
         return ""
     delta = event.get("delta") or {}
-    return str(delta.get("text") or "") if delta.get("type") == "text_delta" else ""
+    if delta.get("type") == "text_delta":
+        return str(delta.get("text") or "")
+    if structured and delta.get("type") == "input_json_delta":
+        return str(delta.get("partial_json") or "")
+    return ""
 
 
 def tool_args(tools: list[str]) -> list[str]:
@@ -286,12 +297,16 @@ class ClaudeCliProvider(BlockingOnly):
         return self._envelope_to_response(envelope, req)
 
     async def stream(self, req: CanonRequest) -> AsyncIterator[CanonEvent]:
-        # A schema-bound answer arrives whole in the final envelope, so there is
-        # nothing to stream natively: the text deltas would be unvalidated prose.
-        if self.cfg.stream_mode != "native" or output_schema(req) is not None:
+        if self.cfg.stream_mode != "native":
             async for event in super().stream(req):
                 yield event
             return
+
+        # A schema-bound call streams too: its deltas are the JSON as the model
+        # writes it, a live preview. The answer is the CLI's validated
+        # structured_output, sent on the final message_delta, never the deltas.
+        schema = output_schema(req)
+        structured: Any = None
 
         exe = self._binary()
         prompt = flatten(req)
@@ -302,6 +317,8 @@ class ClaudeCliProvider(BlockingOnly):
             "--include-partial-messages", "--model", req.model_id,
             *tool_args(self.cfg.tools),
         ]
+        if schema is not None:
+            args += ["--json-schema", orjson.dumps(schema).decode()]
 
         yield MessageStart(
             id=req.request_id, provider=self.name, model_id=req.model_id, alias=req.alias
@@ -339,7 +356,7 @@ class ClaudeCliProvider(BlockingOnly):
                     kind = event.get("type")
                     if kind == "stream_event":
                         # A raw Anthropic stream event, from --include-partial-messages.
-                        text = partial_text(event.get("event") or {})
+                        text = partial_text(event.get("event") or {}, structured=schema is not None)
                         if text:
                             emitted = streamed = True
                             yield TextDelta(index=0, text=text)
@@ -372,10 +389,24 @@ class ClaudeCliProvider(BlockingOnly):
                     elif kind == "result":
                         if event.get("total_cost_usd") is not None:
                             usage.reported_cost_usd = event["total_cost_usd"]
+                        # The session's totals. An assistant message's usage is a
+                        # snapshot taken as it starts when partials are on.
+                        totals = event.get("usage") or {}
+                        if totals.get("output_tokens"):
+                            usage.input_tokens = totals.get("input_tokens") or usage.input_tokens
+                            usage.output_tokens = totals["output_tokens"]
+                            usage.cache_read_input_tokens = (
+                                totals.get("cache_read_input_tokens") or usage.cache_read_input_tokens
+                            )
+                            usage.cache_creation_input_tokens = (
+                                totals.get("cache_creation_input_tokens") or usage.cache_creation_input_tokens
+                            )
                         # A failed session reports why in `result` ("Not logged in").
                         # That is an error message, never text for the caller.
                         if event.get("is_error"):
                             failure = str(event.get("result") or "")
+                        elif schema is not None:
+                            structured = event.get("structured_output")
                         elif not emitted and event.get("result"):
                             yield TextDelta(index=0, text=event["result"])
                             emitted = True
@@ -409,6 +440,12 @@ class ClaudeCliProvider(BlockingOnly):
             yield StreamError(code="provider_error", message=f"{self.name}: {e}")
             return
 
+        if schema is not None and structured is None:
+            yield StreamError(
+                code="provider_error",
+                message=f"{self.name}: a JSON schema was sent but the CLI returned no structured_output",
+            )
+            return
         yield BlockStop(index=0)
-        yield MessageDelta(stop_reason=StopReason.END_TURN, usage=usage)
+        yield MessageDelta(stop_reason=StopReason.END_TURN, usage=usage, structured=structured)
         yield MessageStop()
