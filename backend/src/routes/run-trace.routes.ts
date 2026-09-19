@@ -5,7 +5,7 @@ import { z } from "zod";
 import { type EmailTrace, type LiveCallView, type LlmCallSummaryList, RunCallsQuery, RunEmailsQuery, type RunLive } from "../contracts";
 import { childLogger } from "../lib/logger";
 import type { LiveCall, LiveCalls } from "../live";
-import { classifications, emailRuns, emails, llmCalls } from "../ontology/repositories";
+import { classifications, documents, emailRuns, emails, llmCalls, reviewCases } from "../ontology/repositories";
 import { runIdParam } from "./params";
 
 const EmailIdParam = z.string().regex(/^email_\w{1,32}$/);
@@ -84,12 +84,23 @@ export function runTraceRouter(deps: RunTraceDeps): Router {
       res.status(404).json({ error: "no such email in this run" });
       return;
     }
-    const [classification, calls, live] = await Promise.all([
+    const [classification, docs, review, calls, live] = await Promise.all([
       classifications.view(pool, state.id),
+      documents.listForEmailRun(pool, state.id),
+      reviewCases.latestFor(pool, state.id),
       llmCalls.listForEmail(pool, id, emailId.data),
       liveOf([{ id: state.id, emailId: emailId.data }]),
     ]);
-    const body: EmailTrace = { emailId: emailId.data, stage: state.stage, error: state.error, classification, live: live[0] ?? null, calls };
+    const body: EmailTrace = {
+      emailId: emailId.data,
+      stage: state.stage,
+      error: state.error,
+      classification,
+      documents: docs.map(documents.toView),
+      review,
+      live: live[0] ?? null,
+      calls,
+    };
     res.json(body);
   });
 

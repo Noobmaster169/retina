@@ -1,6 +1,6 @@
 import { pinPromptSet } from "../agents";
-import { config } from "../config";
-import type { CreateRunBody, PromptSet } from "../contracts";
+import { envModel } from "../agents/prompts/prompt-set";
+import { type CreateRunBody, type PromptSet, PromptStep } from "../contracts";
 import type { Queryable } from "../db";
 import { subsetIds } from "../eval/id-lists";
 import { TerminalError } from "../lib/errors";
@@ -24,7 +24,7 @@ async function unknownModels(models: string[]): Promise<string[]> {
 /** What a new run will process and with which prompts, or why it cannot start. */
 export async function planRun(db: Queryable, body: CreateRunBody): Promise<RunPlan> {
   // The env overrides get the same check: a typo there would fail every run, not just one.
-  const named = [...Object.values(body.models ?? {}), config.LLM_MODEL_CLASSIFY, config.LLM_MODEL_VERIFY];
+  const named = [...Object.values(body.models ?? {}), ...PromptStep.options.map(envModel)];
   const unknown = await unknownModels(named.filter((model): model is string => model !== undefined));
   if (unknown.length > 0) return { ok: false, error: `not a proxy alias: ${unknown.join(", ")}` };
 

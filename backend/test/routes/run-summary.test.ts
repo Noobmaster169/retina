@@ -22,27 +22,29 @@ function run(status: RunStatus, totalEmails: number | null, startedAt: string | 
   };
 }
 
-const counts = (done: number, failed: number, classifying = 0) => ({
+const counts = (done: number, failed: number, classifying = 0, inReview = 0) => ({
   ingested: 0,
   classifying,
   classified: 0,
   comparing: 0,
-  review: 0,
+  review: inReview,
   done,
   failed,
 });
 const usage = { calls: 0, failedCalls: 0, inputTokens: 0, outputTokens: 0, costUsd: 0, verifierShare: 0 };
+const review = { open: 0, byReason: { wrong_doc_type: 0, missing_attachment: 0, unreadable: 0, missing_value: 0 } };
 
 describe("toSummary: when a run is finished", () => {
   it.each([
     ["every email done", "completed", 3, counts(3, 0), 3, true],
     ["done and failed together make up the run", "completed", 3, counts(2, 1), 3, true],
+    ["an email waiting for a person is finished as far as the run goes", "completed", 3, counts(1, 1, 0, 1), 3, true],
     ["one email still classifying", "completed", 3, counts(2, 0, 1), 2, false],
     ["still ingesting: the size is not known yet", "running", null, counts(2, 0), 2, false],
     ["cancelled with emails left where they stopped", "cancelled", 3, counts(1, 0, 1), 1, true],
     ["failed before ingesting everything", "failed", null, counts(0, 0), 0, true],
   ] as const)("%s", (_name, status, total, stageCounts, finishedEmails, processingDone) => {
-    const summary = toSummary(run(status, total), { stageCounts, queues: null, llm: usage, lastSubmission: undefined, lastFinishedAt: null, now: 0 });
+    const summary = toSummary(run(status, total), { stageCounts, queues: null, llm: usage, review, lastSubmission: undefined, lastFinishedAt: null, now: 0 });
     expect(summary).toMatchObject({ finishedEmails, processingDone });
   });
 });
@@ -52,6 +54,7 @@ describe("toSummary: how long the run took", () => {
     stageCounts: counts(3, 0),
     queues: null,
     llm: usage,
+    review,
     lastSubmission: undefined,
     lastFinishedAt,
     now,

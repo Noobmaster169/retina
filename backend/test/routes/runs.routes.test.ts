@@ -15,7 +15,7 @@ import { TEST_ENV } from "../../vitest.config";
 import { uniqueEmailId } from "../db";
 
 const TEAM = { authorization: `Bearer ${TEST_ENV.TEAM_API_KEY}` };
-const ALL_UP: HealthReport = { status: "ok", checks: { postgres: "up", redis: "up", minio: "up", inbox: "up" } };
+const ALL_UP: HealthReport = { status: "ok", checks: { postgres: "up", redis: "up", minio: "up", inbox: "up", docExtract: "up" } };
 
 let runQueues: MemoryRunQueues;
 let health: HealthReport;
