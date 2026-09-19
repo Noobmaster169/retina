@@ -1,4 +1,6 @@
-import type { Category, DecidedBy } from "../../contracts";
+import { z } from "zod";
+
+import type { Category, ClassificationView, DecidedBy } from "../../contracts";
 import type { Queryable } from "../../db";
 
 export interface NewClassification {
@@ -96,4 +98,51 @@ export async function verifierShareForRuns(db: Queryable, runIds: string[]): Pro
   );
   const shares = new Map(rows.map((row) => [row.run_id, Number(row.share)]));
   return (runId) => shares.get(runId) ?? 0;
+}
+
+/** What the rationale column holds: each reader's reasoning, and a verifier failure if one happened. */
+const Rationale = z.object({
+  generator: z.string().default(""),
+  verifier: z.string().optional(),
+  counterCases: z.string().optional(),
+  verifierError: z.string().optional(),
+});
+
+/** How the email's category was settled, for the run page. Null before it is classified. */
+export async function view(db: Queryable, emailRunId: string): Promise<ClassificationView | null> {
+  const { rows } = await db.query<{
+    final_category: Category;
+    decided_by: DecidedBy;
+    gen_category: Category;
+    gen_confidence: string;
+    ver_category: Category | null;
+    ver_confidence: string | null;
+    rationale: unknown;
+    model: string | null;
+    prompt_version: string | null;
+  }>(
+    `select final_category, decided_by, gen_category, gen_confidence, ver_category, ver_confidence,
+            rationale, model, prompt_version
+       from core.classifications where email_run_id = $1`,
+    [emailRunId],
+  );
+  const row = rows[0];
+  if (!row) return null;
+  const why = Rationale.parse(row.rationale ?? {});
+  return {
+    finalCategory: row.final_category,
+    decidedBy: row.decided_by,
+    generator: { category: row.gen_category, confidence: Number(row.gen_confidence), rationale: why.generator },
+    verifier: row.ver_category
+      ? {
+          category: row.ver_category,
+          confidence: Number(row.ver_confidence),
+          rationale: why.verifier ?? "",
+          counterCases: why.counterCases ?? null,
+        }
+      : null,
+    verifierError: why.verifierError ?? null,
+    model: row.model,
+    promptVersion: row.prompt_version,
+  };
 }

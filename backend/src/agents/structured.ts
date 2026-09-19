@@ -4,12 +4,16 @@ import type { Queryable } from "../db";
 import { TerminalError } from "../lib/errors";
 import { childLogger } from "../lib/logger";
 import { llmCalls } from "../ontology/repositories";
+import type { LiveCalls } from "../live";
+import { livePreview } from "./live-preview";
 import type { LlmClient, LlmRequest } from "./llm-client";
 import type { Prompt } from "./prompts/registry";
 
 export interface StructuredDeps {
   llm: LlmClient;
   pool: Queryable;
+  /** Where a call's answer so far is kept while it streams. Absent, calls do not stream. */
+  live?: LiveCalls;
 }
 
 export interface StructuredCall<T> {
@@ -127,6 +131,20 @@ export async function callStructured<T>(deps: StructuredDeps, call: StructuredCa
       attempt,
     };
 
+    // Streamed only where someone can watch it: an email's call, with a live store.
+    const preview =
+      deps.live && call.emailRunId
+        ? livePreview(deps.live, {
+            emailRunId: call.emailRunId,
+            runId: call.runId,
+            step: prompt.step,
+            model: prompt.model,
+            promptVersion: prompt.version,
+            attempt,
+          })
+        : null;
+    if (preview) request.onText = (soFar) => preview.onText(soFar);
+
     let response;
     const started = Date.now();
     try {
@@ -136,6 +154,8 @@ export async function callStructured<T>(deps: StructuredDeps, call: StructuredCa
       log.warn({ runId: call.runId, emailRunId: call.emailRunId, stage: prompt.step, attempt, err: message }, "model call failed");
       await llmCalls.insert(deps.pool, { ...row, ok: false, error: message, latencyMs: Date.now() - started });
       throw error;
+    } finally {
+      await preview?.end();
     }
 
     const parsed = call.schema.safeParse(extractJson(response.text));

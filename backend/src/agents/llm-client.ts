@@ -1,6 +1,6 @@
 import { isTransient, LlmUnavailableError, TerminalError, UpstreamError } from "../lib/errors";
 import { childLogger } from "../lib/logger";
-import { chat } from "../llm";
+import { chat, chatStream } from "../llm";
 import { type LlmSlot, llmSlots } from "./llm-slot";
 
 const log = childLogger({ module: "llm-client" });
@@ -16,6 +16,12 @@ export interface LlmRequest {
   outputSchema?: Record<string, unknown>;
   /** Who the proxy bills the call to: retina-worker, retina-chat. */
   project: string;
+  /**
+   * Set to stream the call: receives the answer written so far after every
+   * piece, and is awaited. With a schema that is the JSON being written, a
+   * preview; the response is still the validated answer.
+   */
+  onText?: (soFar: string) => Promise<void> | void;
 }
 
 export interface LlmResponse {
@@ -68,13 +74,16 @@ export function proxyLlmClient(options: ProxyClientOptions = {}): LlmClient {
 
   async function once(request: LlmRequest): Promise<LlmResponse> {
     const started = Date.now();
-    const result = await chat(request.project, {
+    const chatRequest = {
       model: request.model,
       system: request.system,
-      messages: [{ role: "user", content: request.user }],
+      messages: [{ role: "user" as const, content: request.user }],
       maxTokens: request.maxTokens,
       outputSchema: request.outputSchema,
-    });
+    };
+    const result = request.onText
+      ? await chatStream(request.project, chatRequest, request.onText)
+      : await chat(request.project, chatRequest);
     return {
       text: result.text,
       model: result.model,

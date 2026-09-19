@@ -8,6 +8,7 @@ import type { HealthReport } from "../../src/contracts";
 import { closePool, getPool } from "../../src/db";
 import { subsetIds } from "../../src/eval/id-lists";
 import { classifications, emailRuns, emails, llmCalls, runs } from "../../src/ontology/repositories";
+import { MemoryLiveCalls } from "../../src/live/__fakes__/memory.live-calls";
 import { MemoryRunQueues } from "../../src/queues/__fakes__/memory.run-queues";
 import { FakeScorer } from "../../src/scorer/__fakes__/fake.scorer";
 import { MemoryStore } from "../../src/storage/__fakes__/memory.store";
@@ -26,13 +27,14 @@ vi.mock("../../src/llm", () => ({
 const TEAM = { authorization: `Bearer ${TEST_ENV.TEAM_API_KEY}` };
 const UP: HealthReport = { status: "ok", checks: { postgres: "up", redis: "up", minio: "up", inbox: "up" } };
 
-function app() {
+function app(live?: MemoryLiveCalls) {
   return createApp({
     pool: getPool(),
     runQueues: new MemoryRunQueues(),
     store: new MemoryStore(),
     scorer: new FakeScorer(),
     health: async () => UP,
+    live,
   });
 }
 
@@ -121,7 +123,9 @@ async function classifiedRun() {
       verConfidence: decidedBy === "verifier" ? 0.9 : null,
       finalCategory: category,
       decidedBy,
-      rationale: {},
+      rationale: decidedBy === "verifier"
+        ? { generator: "Looks general.", verifier: "It is a request.", counterCases: "SPAM: none." }
+        : { generator: "Looks general." },
       model: "sonnet",
       promptVersion: "v3",
     });
@@ -175,12 +179,29 @@ describe("a run's emails and calls", () => {
     expect(summary.body).toMatchObject({ finishedEmails: 2, processingDone: false });
   });
 
-  it("shows one email's calls exactly as they went out and came back", async () => {
-    const { runId, spam } = await classifiedRun();
+  it("shows one email's calls exactly as they went out and came back, and how its category was settled", async () => {
+    const { runId, spam, si } = await classifiedRun();
 
-    const trace = await request(app()).get(`/runs/${runId}/emails/${spam}/calls`).set(TEAM);
+    const trace = await request(app()).get(`/runs/${runId}/emails/${spam}/trace`).set(TEAM);
 
     expect(trace.status).toBe(200);
+    expect(trace.body).toMatchObject({
+      emailId: spam,
+      stage: "done",
+      live: null,
+      classification: {
+        finalCategory: "SPAM",
+        decidedBy: "llm",
+        generator: { category: "GENERAL", confidence: 0.97, rationale: "Looks general." },
+        verifier: null,
+      },
+    });
+    const checked = await request(app()).get(`/runs/${runId}/emails/${si}/trace`).set(TEAM);
+    expect(checked.body.classification).toMatchObject({
+      finalCategory: "SI_REQUEST",
+      decidedBy: "verifier",
+      verifier: { category: "SI_REQUEST", confidence: 0.9, rationale: "It is a request.", counterCases: "SPAM: none." },
+    });
     expect(trace.body.calls).toEqual([
       expect.objectContaining({
         emailId: spam,
@@ -193,7 +214,27 @@ describe("a run's emails and calls", () => {
         ok: true,
       }),
     ]);
-    expect((await request(app()).get(`/runs/${runId}/emails/nope/calls`).set(TEAM)).status).toBe(400);
+    expect((await request(app()).get(`/runs/${runId}/emails/nope/trace`).set(TEAM)).status).toBe(400);
+    expect((await request(app()).get(`/runs/${runId}/emails/email_999999/trace`).set(TEAM)).status).toBe(404);
+  });
+
+  it("shows what a running call has written so far, and nothing for an email that is not running", async () => {
+    const { runId, spam, si } = await classifiedRun();
+    await emailRuns.setStage(getPool(), runId, si, "classifying");
+    const siRun = (await emailRuns.idOf(getPool(), runId, si)) as string;
+    const spamRun = (await emailRuns.idOf(getPool(), runId, spam)) as string;
+    const live = new MemoryLiveCalls();
+    const writing = { step: "classify", model: "sonnet", promptVersion: "v3", attempt: 1, startedAt: "t0", updatedAt: "t1" };
+    await live.put({ ...writing, emailRunId: siRun, text: '{"rationale": "The sender' });
+    // A leftover for an email that is done must not show: only running emails are asked about.
+    await live.put({ ...writing, emailRunId: spamRun, text: "stale" });
+
+    const feed = await request(app(live)).get(`/runs/${runId}/live`).set(TEAM);
+    expect(feed.body.calls).toEqual([{ ...writing, emailId: si, text: '{"rationale": "The sender' }]);
+
+    const trace = await request(app(live)).get(`/runs/${runId}/emails/${si}/trace`).set(TEAM);
+    expect(trace.body).toMatchObject({ stage: "classifying", live: { emailId: si, text: '{"rationale": "The sender' } });
+    expect((await request(app()).get(`/runs/${runId}/live`).set(TEAM)).body).toEqual({ calls: [] });
   });
 
   it("feeds a live view newest first, and only what is new after a given id", async () => {

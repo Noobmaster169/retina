@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import { describe, expect, it, vi } from "vitest";
 
 import { FakeLlmClient } from "../../src/agents/__fakes__/fake.llm-client";
+import { MemoryLiveCalls } from "../../src/live/__fakes__/memory.live-calls";
 import { proxyLlmClient } from "../../src/agents/llm-client";
 import { RetryableError, TerminalError, UpstreamError } from "../../src/lib/errors";
 import { classifications, emailRuns, llmCalls, runs } from "../../src/ontology/repositories";
@@ -234,6 +235,30 @@ describe("classify processor", () => {
       const [call] = await llmCalls.listForEmail(tx, runId, emailId);
       // Migration 004 makes v3 active; v4, the unvalidated few-shot experiment, is newer on disk.
       expect(call.promptVersion).toBe("v3");
+    });
+  });
+
+  it("streams each call where the run page can watch it, and clears it when the call ends", async () => {
+    await inRollback(async (tx) => {
+      const { runId, emailId, emailRunId } = await ingested(tx);
+      const live = new MemoryLiveCalls();
+      const llm = new FakeLlmClient(answer("SPAM", 0.97));
+
+      await processClassify({ pool: tx, llm, live, compare: new RecordingAdder<CompareJob>() }, { runId, emailId }, 600);
+
+      expect(llm.requests[0].onText).toBeTypeOf("function");
+      expect(live.writes.length).toBeGreaterThan(0);
+      expect(live.writes[0]).toMatchObject({ emailRunId, step: "classify", model: "sonnet", attempt: 1 });
+      expect(await live.get([emailRunId])).toEqual([]);
+    });
+  });
+
+  it("does not stream when there is nowhere to show it", async () => {
+    await inRollback(async (tx) => {
+      const { runId, emailId } = await ingested(tx);
+      const llm = new FakeLlmClient(answer("SPAM", 0.97));
+      await processClassify({ pool: tx, llm, compare: new RecordingAdder<CompareJob>() }, { runId, emailId }, 600);
+      expect(llm.requests[0].onText).toBeUndefined();
     });
   });
 

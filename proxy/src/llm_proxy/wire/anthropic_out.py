@@ -293,9 +293,14 @@ def event_frames(ev: CanonEvent, resp_id: str, model_id: str) -> list[tuple[str,
         return [("message_stop", {"type": "message_stop"})]
 
     if kind == "error":
+        # The same `code` and `retryable` a non-streamed error carries: a client
+        # decides from `retryable` whether to wait out an outage or fail now, and
+        # without it a missing login read as an outage and was retried forever.
         return [(
             "error",
-            {"type": "error", "error": {"type": "api_error", "message": ev.message}},
+            {"type": "error", "error": {
+                "type": "api_error", "message": ev.message, "code": ev.code, "retryable": ev.retryable,
+            }},
         )]
 
     return []

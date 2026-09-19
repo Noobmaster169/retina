@@ -4,6 +4,7 @@ import type { Category, PromptSet } from "../../contracts";
 import type { Queryable } from "../../db";
 import { TerminalError } from "../../lib/errors";
 import { childLogger } from "../../lib/logger";
+import type { LiveCalls } from "../../live";
 import {
   attachments,
   classifications,
@@ -23,6 +24,8 @@ export interface ClassifyDeps {
   pool: Queryable;
   llm: LlmClient;
   compare: JobAdder<CompareJob>;
+  /** Where each call's answer so far is kept while it streams, for the run page. */
+  live?: LiveCalls;
 }
 
 interface Ids {

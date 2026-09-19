@@ -4,13 +4,11 @@
  */
 import { z } from "zod";
 
+import { DecidedBy, Stage } from "./contracts.enums";
 import { Category } from "./contracts.scoring";
 
 export const RunStatus = z.enum(["created", "running", "paused", "completed", "cancelled", "failed"]);
 export type RunStatus = z.infer<typeof RunStatus>;
-
-export const Stage = z.enum(["ingested", "classifying", "classified", "comparing", "review", "done", "failed"]);
-export type Stage = z.infer<typeof Stage>;
 
 export const AttachmentRole = z.enum(["SI", "BL", "UNKNOWN"]);
 export type AttachmentRole = z.infer<typeof AttachmentRole>;
@@ -126,10 +124,6 @@ export type Concurrency = z.infer<typeof Concurrency>;
 export const RunList = z.object({ runs: z.array(RunSummary), concurrency: Concurrency });
 export type RunList = z.infer<typeof RunList>;
 
-/** Ours, not an organiser enum: which layer settled the category. */
-export const DecidedBy = z.enum(["llm", "verifier", "human"]);
-export type DecidedBy = z.infer<typeof DecidedBy>;
-
 export const EmailListItem = z.object({
   emailId: z.string(),
   from: z.string(),
@@ -175,5 +169,7 @@ export const HealthReport = z.object({
 });
 export type HealthReport = z.infer<typeof HealthReport>;
 
+export * from "./contracts.enums";
+export * from "./contracts.prompts";
 export * from "./contracts.scoring";
 export * from "./contracts.trace";

@@ -72,8 +72,8 @@ function versionNumber(version: string): number {
   return Number(version.slice(1));
 }
 
-/** The highest version of a step's prompt on disk. */
-export function latestVersion(step: string, dir = PROMPTS_DIR): string {
+/** Every version of a step's prompt on disk, newest first. */
+export function listVersions(step: string, dir = PROMPTS_DIR): string[] {
   let files: string[];
   try {
     files = readdirSync(join(dir, step)).filter((name) => /^v\d+\.md$/.test(name));
@@ -81,8 +81,12 @@ export function latestVersion(step: string, dir = PROMPTS_DIR): string {
     throw new TerminalError(`no prompts for step "${step}"`, { cause: error });
   }
   if (files.length === 0) throw new TerminalError(`no prompts for step "${step}"`);
-  const versions = files.map((name) => name.slice(0, -3));
-  return versions.sort((a, b) => versionNumber(b) - versionNumber(a))[0];
+  return files.map((name) => name.slice(0, -3)).sort((a, b) => versionNumber(b) - versionNumber(a));
+}
+
+/** The highest version of a step's prompt on disk. */
+export function latestVersion(step: string, dir = PROMPTS_DIR): string {
+  return listVersions(step, dir)[0];
 }
 
 /** One exact version of a step's prompt. `model` replaces the one the file names. */

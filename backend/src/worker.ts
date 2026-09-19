@@ -3,6 +3,7 @@ import { config } from "./config";
 import { closePool, getPool } from "./db";
 import { AverisSource } from "./ingest";
 import { childLogger } from "./lib/logger";
+import { redisLiveCalls } from "./live";
 import { closeRedis, getRedis } from "./queues/connection";
 import { closeQueues, getQueues } from "./queues/queues";
 import { startWorkers } from "./queues/workers";
@@ -14,12 +15,14 @@ const store = createMinioStore();
 await store.ensureBucket();
 
 const queues = getQueues();
+const live = redisLiveCalls();
 const workers = startWorkers(
   {
     pool: getPool(),
     source: new AverisSource(config.EMAIL_SERVER_URL),
     store,
     llm: proxyLlmClient({ maxConcurrency: config.LLM_MAX_CONCURRENCY }),
+    live,
     classify: queues.classify,
     compare: queues.compare,
   },
@@ -38,6 +41,7 @@ async function shutdown(signal: string): Promise<void> {
   log.info({ signal }, "worker stopping");
   try {
     await workers.stop();
+    await live.close();
     await closeQueues();
     await closeRedis();
     await closePool();

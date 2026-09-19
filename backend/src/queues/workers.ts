@@ -7,6 +7,7 @@ import { config } from "../config";
 import { type IngestDeps, replayRun } from "../ingest";
 import { TerminalError } from "../lib/errors";
 import { childLogger } from "../lib/logger";
+import type { LiveCalls } from "../live";
 import { emailRuns, runs } from "../ontology/repositories";
 import { isFinalFailure, pausingOnLlmOutage, type QueuePauser } from "./failure-policy";
 import { ClassifyJob, CompareJob, DEFAULT_PRIORITY, IngestJob, type JobAdder, QUEUES } from "./names";
@@ -17,6 +18,7 @@ const log = childLogger({ module: "workers" });
 
 export interface WorkerDeps extends IngestDeps {
   llm: LlmClient;
+  live?: LiveCalls;
   classify: JobAdder<ClassifyJob> & QueuePauser;
   compare: JobAdder<CompareJob>;
 }

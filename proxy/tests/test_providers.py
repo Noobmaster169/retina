@@ -698,3 +698,15 @@ def test_the_final_stream_event_carries_the_cost_and_the_structured_answer():
     assert name == "message_delta"
     assert payload["usage"] == {"input_tokens": 5, "output_tokens": 7, "cost_usd": 0.01}
     assert payload["structured_output"] == {"category": "SPAM"}
+
+
+def test_a_stream_error_frame_carries_the_verdict():
+    from llm_proxy.canon.stream import StreamError
+    from llm_proxy.wire.anthropic_out import event_frames
+
+    [(name, payload)] = event_frames(
+        StreamError(code="provider_not_logged_in", message="not logged in", retryable=False), "msg_1", "haiku"
+    )
+    assert name == "error"
+    assert payload["error"]["code"] == "provider_not_logged_in"
+    assert payload["error"]["retryable"] is False

@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+import { DecidedBy, Stage } from "./contracts.enums";
+import { Category } from "./contracts.scoring";
+
 /**
  * What a run's model calls look like from outside: the live feed's summaries
  * and one email's full trace. Mirrored in frontend/lib/api/trace-schemas.ts.
@@ -51,3 +54,47 @@ export const RunCallsQuery = z.object({
   limit: z.coerce.number().int().positive().max(100).default(25),
 });
 export type RunCallsQuery = z.infer<typeof RunCallsQuery>;
+
+/** A model call still running: what it has written so far. With a schema, the JSON being written. */
+export const LiveCallView = z.object({
+  emailId: z.string(),
+  step: z.string(),
+  model: z.string(),
+  promptVersion: z.string(),
+  attempt: z.number(),
+  text: z.string(),
+  startedAt: z.string(),
+  updatedAt: z.string(),
+});
+export type LiveCallView = z.infer<typeof LiveCallView>;
+
+export const RunLive = z.object({ calls: z.array(LiveCallView) });
+export type RunLive = z.infer<typeof RunLive>;
+
+const Opinion = z.object({ category: Category, confidence: z.number(), rationale: z.string() });
+
+/** How an email's category was settled: each reader's answer, and the one that stood. */
+export const ClassificationView = z.object({
+  finalCategory: Category,
+  decidedBy: DecidedBy,
+  generator: Opinion,
+  /** Null when the generator was sure enough that the verifier did not run. */
+  verifier: Opinion.extend({ counterCases: z.string().nullable() }).nullable(),
+  /** Set when the verifier ran and failed for good, so the generator's category stood. */
+  verifierError: z.string().nullable(),
+  model: z.string().nullable(),
+  promptVersion: z.string().nullable(),
+});
+export type ClassificationView = z.infer<typeof ClassificationView>;
+
+/** Everything about one email of a run: where it is, what was decided, and every call made for it. */
+export const EmailTrace = z.object({
+  emailId: z.string(),
+  stage: Stage,
+  error: z.string().nullable(),
+  classification: ClassificationView.nullable(),
+  /** The call running right now, if one is. */
+  live: LiveCallView.nullable(),
+  calls: z.array(LlmCall),
+});
+export type EmailTrace = z.infer<typeof EmailTrace>;
