@@ -1,5 +1,6 @@
 import { fetchAttachment } from "@/lib/api-client";
 
+// Mirrors ATTACHMENT_NAME_REGEX in backend/src/emails.ts; change both or neither.
 const NAME = /^[\w.-]{1,128}$/;
 
 /** Streams one attachment from the backend so the shared secret stays server-side. */

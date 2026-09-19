@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import type { Email } from "@/lib/api-client";
 
-import { Paperclip } from "./mail-list";
+import { Paperclip } from "./paperclip-icon";
 
 /** "attachments/email_004_SI.txt" → "email_004_SI.txt". */
 export function attachmentName(path: string): string {

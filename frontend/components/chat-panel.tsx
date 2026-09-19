@@ -40,7 +40,7 @@ export function ChatPanel({ models }: { models: ModelInfo[] }) {
         >
           {models.map((m) => (
             <option key={m.id} value={m.id}>
-              {m.id} — {m.provider}/{m.model}
+              {m.id} · {m.provider}/{m.model}
             </option>
           ))}
         </select>
