@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { LlmProxyError } from "../src/lib/errors";
+import { UpstreamError } from "../src/lib/errors";
 import { chatViaGateway, isGatewayUrl, listModelsViaGateway } from "../src/llm-gateway";
 
 const URL = "https://box.example/ai/chat";
@@ -65,7 +65,7 @@ describe("chatViaGateway", () => {
   ])("%s", async (_name, answered, relayed) => {
     answering({ error: "no" }, answered);
     await expect(chatViaGateway(URL, { model: "sonnet", messages: [] }, LIMITS)).rejects.toMatchObject({
-      name: "LlmProxyError",
+      name: "UpstreamError",
       status: relayed,
     });
   });
@@ -78,8 +78,8 @@ describe("chatViaGateway", () => {
   it("refuses an answer outside the chat contract rather than passing it on", async () => {
     answering({ text: "hi" });
     const failure = await chatViaGateway(URL, { model: "sonnet", messages: [] }, LIMITS).catch((error: unknown) => error);
-    expect(failure).toBeInstanceOf(LlmProxyError);
-    expect((failure as LlmProxyError).status).toBe(502);
+    expect(failure).toBeInstanceOf(UpstreamError);
+    expect((failure as UpstreamError).status).toBe(502);
   });
 });
 

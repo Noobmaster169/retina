@@ -9,7 +9,7 @@ import { closePool, getPool } from "../../src/db";
 import { classifications, emailRuns, emails, runs } from "../../src/ontology/repositories";
 import { MemoryRunQueues } from "../../src/queues/__fakes__/memory.run-queues";
 import { FakeScorer } from "../../src/scorer/__fakes__/fake.scorer";
-import { ScorerRefused } from "../../src/scorer/scorer";
+import { UpstreamError } from "../../src/lib/errors";
 import { MemoryStore } from "../../src/storage/__fakes__/memory.store";
 import { TEST_ENV } from "../../vitest.config";
 import { uniqueEmailId } from "../db";
@@ -122,7 +122,7 @@ describe("POST /runs/:id/submit", () => {
 
   it("relays the scorer's refusal as a 502, keeps the attempt on record unscored, and does not call it the run's score", async () => {
     const { runId } = await runWith(["SPAM"]);
-    scorer.failWith = new ScorerRefused("the scorer answered 503: ground truth not mounted");
+    scorer.failWith = new UpstreamError(502, "the scorer answered 503: ground truth not mounted", { retryable: false });
 
     const response = await request(app()).post(`/runs/${runId}/submit`).set(TEAM);
 

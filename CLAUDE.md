@@ -148,8 +148,10 @@ needed.
 ## Proxy rules
 
 - The proxy's HTTP contract is fixed: `POST /v1/messages` (Anthropic wire), `GET /v1/models`,
-  `GET /healthz`, `X-LLM-Proxy-*` headers. The backend depends on it. Change both sides or
-  neither.
+  `GET /healthz`, `X-LLM-Proxy-*` headers, and an error envelope carrying `code` and
+  `retryable`. The backend depends on it. Change both sides or neither.
+- Retryability is the proxy's to state, never the caller's to guess from a status. An unknown
+  provider and a dead upstream are both 500; only one is worth another attempt.
 - Aliases in `proxy/proxy.yaml` are model names (`haiku`, `qwen3:14b`). Do not invent names.
 
 ## Classification and enums

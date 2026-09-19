@@ -8,16 +8,20 @@
  * in frontend/lib/api-client.ts. Keep them in step.
  */
 
-import { config } from "./config";
+import { z } from "zod";
 
-/** One record exactly as the email server stores it. */
-export interface Email {
-  email_id: string;
-  from: string;
-  subject: string;
-  body: string;
-  attachments: string[];
-}
+import { config } from "./config";
+import { EmailRecord } from "./ingest";
+import { relayStatus, UpstreamError } from "./lib/errors";
+
+/**
+ * One record exactly as the email server stores it. The same schema the ingest
+ * seam validates against: the webmail view and the pipeline read one inbox, so
+ * they agree on its shape by construction rather than by two hand-written copies.
+ */
+export type Email = EmailRecord;
+
+const Inbox = z.array(EmailRecord);
 
 /** What the list view needs, and nothing more. */
 export interface EmailSummary {
@@ -43,18 +47,10 @@ export interface EmailPage {
   counts: { all: number; attachments: number };
 }
 
-export class EmailServerError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-  ) {
-    super(message);
-    this.name = "EmailServerError";
-  }
-}
-
 const CACHE_TTL_MS = 5 * 60_000;
 const SNIPPET_CHARS = 140;
+// Mirrored in frontend/app/mail/[id]/page.tsx and app/attachments/[name]/route.ts,
+// which reject a bad id before the round trip. Change all three or none.
 export const EMAIL_ID_REGEX = /^email_\d{1,6}$/;
 export const ATTACHMENT_NAME_REGEX = /^[\w.-]{1,128}$/;
 
@@ -62,15 +58,21 @@ function baseUrl(): string {
   return config.EMAIL_SERVER_URL.replace(/\/+$/, "");
 }
 
+/**
+ * The webmail view speaks HTTP statuses to its own caller, so it reads the inbox
+ * itself rather than through the `Source` seam, which speaks the pipeline's
+ * retryable/terminal language instead. The record shape is shared; only the
+ * error model differs.
+ */
 async function fetchFromServer(path: string): Promise<Response> {
   let response: Response;
   try {
     response = await fetch(`${baseUrl()}${path}`, { signal: AbortSignal.timeout(15_000) });
   } catch (error) {
-    throw new EmailServerError(`email server unreachable: ${String(error)}`, 503);
+    throw new UpstreamError(503, `email server unreachable: ${String(error)}`, { cause: error, retryable: true });
   }
   if (!response.ok) {
-    throw new EmailServerError(`email server returned ${response.status} for ${path}`, response.status === 404 ? 404 : 502);
+    throw new UpstreamError(relayStatus(response.status), `email server returned ${response.status} for ${path}`);
   }
   return response;
 }
@@ -85,9 +87,10 @@ async function loadInbox(): Promise<Email[]> {
   inflight = (async () => {
     try {
       const response = await fetchFromServer("/emails");
-      const emails = (await response.json()) as Email[];
-      cache = { loadedAt: Date.now(), emails };
-      return emails;
+      const parsed = Inbox.safeParse(await response.json().catch(() => null));
+      if (!parsed.success) throw new UpstreamError(502, "the email server's inbox is not a list of emails");
+      cache = { loadedAt: Date.now(), emails: parsed.data };
+      return parsed.data;
     } finally {
       inflight = null;
     }
@@ -137,7 +140,7 @@ export async function listEmails(query: ListQuery): Promise<EmailPage> {
 
 export async function getEmail(id: string): Promise<Email> {
   const email = (await loadInbox()).find((e) => e.email_id === id);
-  if (!email) throw new EmailServerError(`no such email: ${id}`, 404);
+  if (!email) throw new UpstreamError(404, `no such email: ${id}`);
   return email;
 }
 

@@ -446,7 +446,14 @@ images, OCR text is used and the reviewer sees the PNG.
   selects it, the bearer is `TEAM_API_KEY`, and the reply is validated with zod like any other
   boundary. `chat()` hides the choice, so nothing above `llm.ts` knows which ran. That route has no
   structured output, so on it the schema reaches the model through the prompt only and the zod parse
-  in `structured.ts` is the whole guarantee.
+  in `structured.ts` is the whole guarantee. `config.ts` refuses to boot a gateway URL with no
+  `TEAM_API_KEY`, because an empty bearer is a 401 and a 401 fails every email in the run for good.
+- Error envelope: the proxy answers `{ type: "error", error: { type, message, code, retryable } }`.
+  `code` is its stable machine name and `retryable` its own verdict on whether another attempt could
+  work. The backend reads `retryable` and falls back to the status only when it is absent: status
+  alone cannot separate `unknown_provider` (a permanent 500) from a dead upstream (a transient 502),
+  and treating the first as the second requeues a misconfiguration forever without spending an
+  attempt. `app.ts` relays the flag on its own error body so it survives the gateway hop.
 - Structured output: the schema is a provider constraint, not a request. `agents/structured.ts`
   derives JSON Schema from the zod schema and sends it as `LlmRequest.outputSchema`, which
   `llm.ts` puts on the wire as `output_config: { format: { type: "json_schema", schema } }`. The

@@ -26,19 +26,42 @@ export class TerminalError extends Error {
   }
 }
 
-/** Unknown errors are retried: a wasted attempt costs less than a dropped email. */
-export function isRetryable(error: unknown): boolean {
-  return !(error instanceof TerminalError);
+/**
+ * A dependency answered and the answer was a failure: the proxy, the inbox, the
+ * scorer. `status` is what the api relays to its own caller.
+ *
+ * `retryable` carries the dependency's own verdict. Status alone cannot separate
+ * a permanent misconfiguration from an outage — the proxy answers 500 both for a
+ * provider name that does not exist and for an upstream that fell over — and
+ * guessing wrong in that direction retries a typo forever.
+ */
+export class UpstreamError extends Error {
+  readonly status: number;
+  /** Null where the dependency does not say, leaving `status` as the only signal. */
+  readonly retryable: boolean | null;
+
+  constructor(status: number, message: string, options?: { cause?: unknown; retryable?: boolean | null }) {
+    super(message, { cause: options?.cause });
+    this.name = "UpstreamError";
+    this.status = status;
+    this.retryable = options?.retryable ?? null;
+  }
 }
 
-/** A proxy or gateway failure carrying the HTTP status the API should relay. */
-export class LlmProxyError extends Error {
-  constructor(
-    public readonly status: number,
-    message: string,
-    options?: { cause?: unknown },
-  ) {
-    super(message, options);
-    this.name = "LlmProxyError";
-  }
+/**
+ * Whether another attempt could plausibly succeed. The dependency's own verdict
+ * wins; without one, 429 and 5xx are transient and everything else is a request
+ * this side has to fix.
+ */
+export function isTransient(error: UpstreamError): boolean {
+  return error.retryable ?? (error.status === 429 || error.status >= 500);
+}
+
+/**
+ * What the api answers when a dependency failed. A 4xx is this request's fault
+ * and says so; anything else is the dependency's and becomes a plain 502, so a
+ * caller never sees an upstream's 500 as if the api itself had broken.
+ */
+export function relayStatus(status: number): number {
+  return status >= 400 && status < 500 ? status : 502;
 }

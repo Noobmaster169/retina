@@ -162,6 +162,22 @@ async def test_unknown_model_envelope(client):
     assert body["error"]["detail"]["available"][0] == "test"
 
 
+async def test_error_envelope_states_code_and_retryability(client):
+    """A caller cannot tell these apart from the status: both would be 5xx-ish guesswork.
+
+    The 404 below is permanent and the 429 is not, so a client that retries on
+    status alone either gives up on an outage or retries a typo forever. The
+    proxy already classifies its own errors, so it says so on the wire.
+    """
+    permanent = (await client.post("/v1/messages", json=message(model="nope"))).json()
+    assert permanent["error"]["code"] == "unknown_model"
+    assert permanent["error"]["retryable"] is False
+
+    transient = (await client.post("/v1/messages", json=message(model="test-429"))).json()
+    assert transient["error"]["code"] == "rate_limited"
+    assert transient["error"]["retryable"] is True
+
+
 async def test_invalid_json_is_400(client):
     r = await client.post("/v1/messages", content=b"{nope", headers={"content-type": "application/json"})
     assert r.status_code == 400
