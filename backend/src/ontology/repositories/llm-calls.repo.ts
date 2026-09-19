@@ -53,22 +53,34 @@ export async function insert(db: Queryable, call: NewLlmCall): Promise<void> {
   );
 }
 
-export async function usageForRun(db: Queryable, runId: string): Promise<LlmUsage> {
-  const { rows } = await db.query<{ calls: string; failed: string; input: string; output: string; cost: string }>(
-    `select count(*) as calls,
+const NO_USAGE: LlmUsage = { calls: 0, failedCalls: 0, inputTokens: 0, outputTokens: 0, costUsd: 0 };
+
+/** Usage per run, with a zero entry for a run that made no calls. */
+export async function usageForRuns(db: Queryable, runIds: string[]): Promise<Map<string, LlmUsage>> {
+  const usage = new Map(runIds.map((id) => [id, { ...NO_USAGE }]));
+  if (runIds.length === 0) return usage;
+  const { rows } = await db.query<{ run_id: string; calls: string; failed: string; input: string; output: string; cost: string }>(
+    `select run_id,
+            count(*) as calls,
             count(*) filter (where not ok) as failed,
             coalesce(sum(input_tokens), 0) as input,
             coalesce(sum(output_tokens), 0) as output,
             coalesce(sum(cost_usd), 0) as cost
-       from core.llm_calls where run_id = $1`,
-    [runId],
+       from core.llm_calls where run_id = any($1::uuid[]) group by run_id`,
+    [runIds],
   );
-  const row = rows[0];
-  return {
-    calls: Number(row.calls),
-    failedCalls: Number(row.failed),
-    inputTokens: Number(row.input),
-    outputTokens: Number(row.output),
-    costUsd: Number(row.cost),
-  };
+  for (const row of rows) {
+    usage.set(row.run_id, {
+      calls: Number(row.calls),
+      failedCalls: Number(row.failed),
+      inputTokens: Number(row.input),
+      outputTokens: Number(row.output),
+      costUsd: Number(row.cost),
+    });
+  }
+  return usage;
+}
+
+export async function usageForRun(db: Queryable, runId: string): Promise<LlmUsage> {
+  return (await usageForRuns(db, [runId])).get(runId) ?? { ...NO_USAGE };
 }

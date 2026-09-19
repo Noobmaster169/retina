@@ -7,10 +7,15 @@ import { EmailServerError } from "./emails";
 import { RetryableError } from "./lib/errors";
 import { childLogger } from "./lib/logger";
 import { LlmProxyError } from "./llm";
+import type { Scorer } from "./scorer/scorer";
+import { ScorerRefused } from "./scorer/scorer";
+import type { ObjectStore } from "./storage";
 import type { RunQueues } from "./queues/run-queues";
 import { aiRouter } from "./routes/ai.routes";
 import { emailsRouter } from "./routes/emails.routes";
+import { evalRouter } from "./routes/eval.routes";
 import { runsRouter } from "./routes/runs.routes";
+import { submissionsRouter } from "./routes/submissions.routes";
 
 const log = childLogger({ module: "api" });
 
@@ -18,6 +23,9 @@ const log = childLogger({ module: "api" });
 export interface AppDeps {
   pool: Pool;
   runQueues: RunQueues;
+  /** Null where object storage is not configured; submitting a run then answers 503. */
+  store: ObjectStore | null;
+  scorer: Scorer;
   health: () => Promise<HealthReport>;
 }
 
@@ -39,6 +47,8 @@ export function createApp(deps: AppDeps): express.Express {
   app.use("/ai", aiRouter());
   app.use("/emails", emailsRouter());
   app.use("/runs", runsRouter(deps));
+  app.use("/runs", submissionsRouter(deps));
+  app.use("/eval", evalRouter(deps));
 
   app.use(
     // Four parameters are what make Express treat this as an error handler.
@@ -46,6 +56,10 @@ export function createApp(deps: AppDeps): express.Express {
     (error: unknown, _req: Request, res: Response, _next: NextFunction) => {
       if (error instanceof LlmProxyError || error instanceof EmailServerError) {
         res.status(error.status).json({ error: error.message });
+        return;
+      }
+      if (error instanceof ScorerRefused) {
+        res.status(502).json({ error: error.message });
         return;
       }
       if (error instanceof RetryableError) {
