@@ -25,9 +25,16 @@ export interface CallIds {
   emailRunId: string;
 }
 
-/** The labelled sections both readers see, in this order. */
+/** The labelled sections every reader of an email sees, in this order. The attachments' text comes last, after the request. */
 export function emailSections(input: ClassifyInput): Record<string, string | string[]> {
-  return { from: input.from, subject: input.subject, attachments: input.attachments, body: input.body };
+  const sections: Record<string, string | string[]> = {
+    from: input.from,
+    subject: input.subject,
+    attachments: input.attachments,
+    body: input.body,
+  };
+  if (input.attachmentContents !== undefined) sections["attachment contents"] = input.attachmentContents;
+  return sections;
 }
 
 /** The generator: one zero-shot call that names the email's category. */

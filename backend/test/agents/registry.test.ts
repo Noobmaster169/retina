@@ -27,6 +27,7 @@ file("demo", "v2.md", prompt("demo", "v2", "Second.\n{{schema}}"));
 file("demo", "v10.md", prompt("demo", "v10", "Tenth."));
 file("demo", "notes.md", "not a prompt");
 file("uncapped", "v1.md", "---\nstep: uncapped\nversion: v1\nmodel: sonnet\n---\nNo cap.");
+file("reader", "v1.md", "---\nstep: reader\nversion: v1\nmodel: sonnet\nreads_attachments: true\n---\nReads files.");
 file("mislabelled", "v1.md", prompt("other", "v1", "Wrong step."));
 file("misversioned", "v2.md", prompt("misversioned", "v1", "Wrong version."));
 file("broken", "v1.md", "no frontmatter here");
@@ -40,6 +41,8 @@ file("classify", "v1.md", prompt("classify", "v1", "Classify one."));
 file("classify", "v2.md", prompt("classify", "v2", "Classify two."));
 file("classify", "v3.md", prompt("classify", "v3", "Classify three."));
 file("classify-verify", "v1.md", prompt("classify-verify", "v1", "Verify one."));
+file("triage", "v1.md", prompt("triage", "v1", "Triage one."));
+file("doc-type", "v1.md", prompt("doc-type", "v1", "Type one."));
 
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -60,12 +63,18 @@ describe("loadPrompt", () => {
       version: "v1",
       model: "sonnet",
       maxTokens: 300,
+      readsAttachments: false,
       text: "First.",
     });
   });
 
   it("leaves the token cap to the client when the file names none", () => {
     expect(loadPrompt("uncapped", "v1", undefined, dir).maxTokens).toBeUndefined();
+  });
+
+  it("reads attachments only when the file says so", () => {
+    expect(loadPrompt("uncapped", "v1", undefined, dir).readsAttachments).toBe(false);
+    expect(loadPrompt("reader", "v1", undefined, dir).readsAttachments).toBe(true);
   });
 
   it("lets a run or an experiment replace the model", () => {
@@ -107,6 +116,8 @@ describe("pinPromptSet", () => {
     expect(pinPromptSet({}, {}, dir)).toEqual({
       classify: { version: "v3", model: "sonnet" },
       "classify-verify": { version: "v1", model: "opus" },
+      triage: { version: "v1", model: "sonnet" },
+      "doc-type": { version: "v1", model: "sonnet" },
     });
   });
 
@@ -133,6 +144,8 @@ describe("completePromptSet", () => {
     expect(completePromptSet({}, { classify: "v2", "classify-verify": "v1" }, dir)).toEqual({
       classify: { version: "v2", model: "sonnet" },
       "classify-verify": { version: "v1", model: "opus" },
+      triage: { version: "v1", model: "sonnet" },
+      "doc-type": { version: "v1", model: "sonnet" },
     });
   });
 
@@ -142,14 +155,21 @@ describe("completePromptSet", () => {
   });
 
   it("leaves a fully pinned set alone", () => {
-    const full = { classify: { version: "v1", model: "haiku" }, "classify-verify": { version: "v1", model: "haiku" } };
+    const pin = { version: "v1", model: "haiku" };
+    const full = { classify: pin, "classify-verify": pin, triage: pin, "doc-type": pin };
     expect(completePromptSet(full, {}, dir)).toBe(full);
   });
 });
 
 describe("the prompts that ship", () => {
-  // The versions migration 004 makes active. v4's examples are inbox emails on purpose, so its own words are checked apart.
-  const shipped = [loadPrompt("classify", "v3"), loadPrompt("classify-verify", "v1")];
+  // The classify versions migrations 004 and 005 make active or offer, and the phase 5 steps. v4's examples are inbox emails on purpose, so its own words are checked apart.
+  const classifiers = [
+    loadPrompt("classify", "v3"),
+    loadPrompt("classify-verify", "v1"),
+    loadPrompt("classify", "v5"),
+    loadPrompt("classify-verify", "v2"),
+  ];
+  const shipped = [...classifiers, loadPrompt("triage", "v1"), loadPrompt("doc-type", "v1")];
   const v4Instructions = { ...loadPrompt("classify", "v4"), text: loadPrompt("classify", "v4").text.split("<example")[0] };
 
   it.each(shipped)("$step $version has a place for the schema and no cap of its own", (prompt) => {
@@ -157,10 +177,26 @@ describe("the prompts that ship", () => {
     expect(prompt.maxTokens).toBeUndefined();
   });
 
-  it.each(shipped)("$step $version defines all five of the organisers' categories", (prompt) => {
+  it.each(classifiers)("$step $version defines all five of the organisers' categories", (prompt) => {
     for (const category of ["BL_COMPARISON", "SI_REQUEST", "INVOICE_QUERY", "GENERAL", "SPAM"]) {
       expect(prompt.text).toContain(`- ${category}:`);
     }
+  });
+
+  it("only the phase 5 classify prompts read the attachments' text, and they say how", () => {
+    expect(shipped.filter((p) => p.readsAttachments).map((p) => `${p.step} ${p.version}`)).toEqual(["classify v5", "classify-verify v2"]);
+    for (const prompt of shipped.filter((p) => p.readsAttachments)) expect(prompt.text).toContain('under "attachment contents"');
+  });
+
+  it("the triage prompt states the organisers' two readings of an empty comparison request", () => {
+    const text = loadPrompt("triage", "v1").text;
+    expect(text).toContain("- send_draft:");
+    expect(text).toContain("- compare_documents:");
+  });
+
+  it("the doc-type prompt defines every kind the schema allows, and no title table decides", () => {
+    const text = loadPrompt("doc-type", "v1").text;
+    for (const kind of ["SI", "BL", "INVOICE", "PACKING_LIST", "COO", "OTHER"]) expect(text).toContain(`- ${kind}:`);
   });
 
   it("v4 reads ten examples, two of each category", () => {
@@ -170,8 +206,8 @@ describe("the prompts that ship", () => {
     }
   });
 
-  it("the classifier runs sonnet", () => {
-    expect(shipped[0].model).toBe("sonnet");
+  it.each(shipped)("$step $version runs sonnet", (prompt) => {
+    expect(prompt.model).toBe("sonnet");
   });
 
   it.each([...shipped, v4Instructions])("$step $version describes the task, not the dataset: no sender, domain or subject code from the inbox", (prompt) => {

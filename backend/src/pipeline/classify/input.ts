@@ -9,6 +9,8 @@ export interface ClassifyInput {
   subject: string;
   attachments: string[];
   body: string;
+  /** The attachments' extracted text, from `describeAttachments`. Only for a prompt that reads attachments. */
+  attachmentContents?: string;
 }
 
 const CUT_MARKER = "\n[the body was cut here for length]";
