@@ -11,6 +11,10 @@ export type RunStatus = z.infer<typeof RunStatus>;
 export const Stage = z.enum(["ingested", "classifying", "classified", "comparing", "review", "done", "failed"]);
 export type Stage = z.infer<typeof Stage>;
 
+/** The organisers' review reasons, value for value. */
+export const ReviewReason = z.enum(["wrong_doc_type", "missing_attachment", "unreadable", "missing_value"]);
+export type ReviewReason = z.infer<typeof ReviewReason>;
+
 export type RunAction = "pause" | "resume" | "cancel";
 
 export const QueueCounts = z.object({ waiting: z.number(), active: z.number(), failed: z.number() });
@@ -27,6 +31,10 @@ export const LlmUsage = z.object({
   verifierShare: z.number(),
 });
 export type LlmUsage = z.infer<typeof LlmUsage>;
+
+/** The run's emails waiting for a person, in total and per reason. */
+export const RunReview = z.object({ open: z.number(), byReason: z.record(ReviewReason, z.number()) });
+export type RunReview = z.infer<typeof RunReview>;
 
 export const HeadlineScores = z.object({
   stage1MacroF1: z.number(),
@@ -47,21 +55,26 @@ export const LastSubmission = z.object({
 });
 export type LastSubmission = z.infer<typeof LastSubmission>;
 
-export const PromptStep = z.enum(["classify", "classify-verify"]);
+export const PromptStep = z.enum(["classify", "classify-verify", "triage", "doc-type"]);
 export type PromptStep = z.infer<typeof PromptStep>;
 
 /** What each LLM step of a run runs, fixed when the run was created. Empty for a run from before phase 4. */
 const PinnedPrompt = z.object({ version: z.string(), model: z.string() });
-export const PromptSet = z.object({ classify: PinnedPrompt.optional(), "classify-verify": PinnedPrompt.optional() });
+export const PromptSet = z.object({
+  classify: PinnedPrompt.optional(),
+  "classify-verify": PinnedPrompt.optional(),
+  triage: PinnedPrompt.optional(),
+  "doc-type": PinnedPrompt.optional(),
+});
 export type PromptSet = z.infer<typeof PromptSet>;
 
 export const RunSummary = z.object({
   id: z.string(),
-  /** `completed` means ingestion finished. Processing is finished when done + failed = totalEmails. */
+  /** `completed` means ingestion finished. Processing is finished when done + failed + review = totalEmails. */
   status: RunStatus,
   ratePerSecond: z.number(),
   totalEmails: z.number().nullable(),
-  /** Emails that will not move again: done or failed. */
+  /** Emails that will not move again on their own: done, failed, or waiting for a person. */
   finishedEmails: z.number(),
   /** Nothing more will happen in this run, so a page watching it can stop polling. */
   processingDone: z.boolean(),
@@ -75,6 +88,7 @@ export const RunSummary = z.object({
   finishedAt: z.string().nullable(),
   promptSet: PromptSet,
   llm: LlmUsage,
+  review: RunReview,
   /** The newest submission to the scorer. */
   lastSubmission: LastSubmission.nullable(),
 });

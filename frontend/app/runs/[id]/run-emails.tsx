@@ -3,6 +3,7 @@
 import { useState } from "react";
 import useSWR from "swr";
 
+import { ReviewReason } from "@/lib/api/runs-schemas";
 import { Category, DecidedBy, RunEmailsPage } from "@/lib/api/trace-schemas";
 import { parsedFetcher } from "@/lib/poll";
 
@@ -12,6 +13,8 @@ const POLL_MS = 3000;
 const PAGE_SIZE = 50;
 const fetchPage = parsedFetcher(RunEmailsPage);
 const SELECT = "rounded-md border border-line bg-paper px-2 py-1.5 text-sm";
+/** How an email can end: not sent to compare, compared, or parked for a person with the organisers' reason. */
+const OUTCOMES = ["not_comparable", "OK", ...ReviewReason.options];
 
 interface Props {
   runId: string;
@@ -25,11 +28,13 @@ interface Props {
 export function RunEmails({ runId, live, selected, onSelect }: Props) {
   const [category, setCategory] = useState("");
   const [decidedBy, setDecidedBy] = useState("");
+  const [outcome, setOutcome] = useState("");
   const [page, setPage] = useState(1);
 
   const query = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
   if (category) query.set("category", category);
   if (decidedBy) query.set("decidedBy", decidedBy);
+  if (outcome) query.set("outcome", outcome);
   const { data, error } = useSWR(`/api/runs/${runId}/emails?${query.toString()}`, fetchPage, {
     refreshInterval: live ? POLL_MS : 0,
     // A filter or page change keeps the old rows until the new ones arrive, instead of blanking the table.
@@ -57,6 +62,14 @@ export function RunEmails({ runId, live, selected, onSelect }: Props) {
             </option>
           ))}
         </select>
+        <select aria-label="Outcome" value={outcome} onChange={(e) => { setOutcome(e.target.value); setPage(1); }} className={SELECT}>
+          <option value="">Every outcome</option>
+          {OUTCOMES.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </select>
         {data && <span className="text-sm tabular-nums text-muted">{data.total} emails</span>}
       </div>
 
@@ -73,6 +86,7 @@ export function RunEmails({ runId, live, selected, onSelect }: Props) {
               <th className="py-2 pr-3 font-medium">Email</th>
               <th className="py-2 pr-3 font-medium">Category</th>
               <th className="py-2 pr-3 font-medium">Confidence</th>
+              <th className="py-2 pr-3 font-medium">Outcome</th>
               <th className="py-2 font-medium">Stage</th>
             </tr>
           </thead>
@@ -93,6 +107,7 @@ export function RunEmails({ runId, live, selected, onSelect }: Props) {
                   <CategoryBadge email={email} />
                 </td>
                 <td className="py-2 pr-3 tabular-nums">{email.confidence === null ? "" : email.confidence.toFixed(2)}</td>
+                <td className={`py-2 pr-3 text-xs ${email.stage === "review" ? "text-amber-700" : "text-muted"}`}>{email.outcome ?? ""}</td>
                 <td className={`py-2 text-xs ${email.stage === "failed" ? "text-red-700" : "text-muted"}`} title={email.error ?? undefined}>
                   {email.stage}
                 </td>

@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import type { PromptStep } from "@/lib/api/runs-schemas";
+
 import { type Choice, LabelledSelect } from "./labelled-select";
 import { DEFAULT, useRunOptions } from "./use-run-options";
 
@@ -28,13 +30,20 @@ const PACES: Choice[] = [
   { value: "5", label: "Five per second" },
 ];
 
+/** One dropdown per model step, in the order the pipeline runs them. */
+const STEPS: { step: PromptStep; label: string }[] = [
+  { step: "classify", label: "Classify prompt" },
+  { step: "classify-verify", label: "Verifier prompt" },
+  { step: "triage", label: "Triage prompt" },
+  { step: "doc-type", label: "Document type prompt" },
+];
+
 export function NewRunForm({ onCreated }: Props) {
   const options = useRunOptions();
   const [scope, setScope] = useState<Scope>("dev");
   const [count, setCount] = useState("20");
   const [pace, setPace] = useState("0");
-  const [classifyPrompt, setClassifyPrompt] = useState(DEFAULT);
-  const [verifyPrompt, setVerifyPrompt] = useState(DEFAULT);
+  const [prompts, setPrompts] = useState<Partial<Record<PromptStep, string>>>({});
   const [model, setModel] = useState(DEFAULT);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,18 +53,17 @@ export function NewRunForm({ onCreated }: Props) {
     if (scope === "dev" || scope === "holdout") out.subset = scope;
     if (scope === "first") out.limit = Number(count);
     // Only a version other than the active one is pinned; the active one is what a run gets anyway.
-    const promptSet = {
-      ...(classifyPrompt && classifyPrompt !== options.active("classify") ? { classify: classifyPrompt } : {}),
-      ...(verifyPrompt && verifyPrompt !== options.active("classify-verify") ? { "classify-verify": verifyPrompt } : {}),
-    };
+    const promptSet = Object.fromEntries(
+      STEPS.map(({ step }) => [step, prompts[step]]).filter(([step, version]) => version && version !== options.active(step as PromptStep)),
+    );
     if (Object.keys(promptSet).length) out.promptSet = promptSet;
-    if (model) out.models = { classify: model, "classify-verify": model };
+    if (model) out.models = Object.fromEntries(STEPS.map(({ step }) => [step, model]));
     return out;
   }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (scope === "all" && !window.confirm("Run all 520 emails? That is about 520 to 600 model calls.")) return;
+    if (scope === "all" && !window.confirm("Run all 520 emails? That is about 800 to 900 model calls.")) return;
     setPending(true);
     setError(null);
     try {
@@ -84,8 +92,16 @@ export function NewRunForm({ onCreated }: Props) {
       <LabelledSelect name="scope" label="Emails" choices={SCOPES} value={scope} onChange={(v) => setScope(v as Scope)} />
       {scope === "first" && <LabelledSelect name="count" label="How many" choices={COUNTS} value={count} onChange={setCount} />}
       <LabelledSelect name="pace" label="Pace" choices={PACES} value={pace} onChange={setPace} />
-      <LabelledSelect name="classify" label="Classify prompt" choices={options.prompts("classify")} value={classifyPrompt || options.active("classify")} onChange={setClassifyPrompt} />
-      <LabelledSelect name="verify" label="Verifier prompt" choices={options.prompts("classify-verify")} value={verifyPrompt || options.active("classify-verify")} onChange={setVerifyPrompt} />
+      {STEPS.map(({ step, label }) => (
+        <LabelledSelect
+          key={step}
+          name={step}
+          label={label}
+          choices={options.prompts(step)}
+          value={prompts[step] || options.active(step)}
+          onChange={(version) => setPrompts((current) => ({ ...current, [step]: version }))}
+        />
+      ))}
       <LabelledSelect name="model" label="Model" choices={options.models} value={model} onChange={setModel} />
       <button
         type="submit"
@@ -97,6 +113,7 @@ export function NewRunForm({ onCreated }: Props) {
       <p className="basis-full text-xs text-muted">
         All at once queues every email immediately, and the backend works through them as many at a time as its
         concurrency allows. Prompt and model are for experiments: the defaults are the active prompts on sonnet.
+        Classify v5 reads the attachments&apos; text as well as the email; pin it to try that.
       </p>
       {(error ?? options.error) && (
         <p role="alert" className="basis-full text-sm text-red-700">

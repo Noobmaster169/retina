@@ -8,6 +8,7 @@ const Query = z.object({
   stage: Stage.optional(),
   category: Category.optional(),
   decidedBy: DecidedBy.optional(),
+  outcome: z.string().max(40).optional(),
   q: z.string().max(200).optional(),
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(200).default(50),
