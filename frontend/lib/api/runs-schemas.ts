@@ -88,3 +88,14 @@ export type RunList = z.infer<typeof RunList>;
 /** Named id lists: `dev` is 30 train emails to iterate on, `holdout` the 104 that measure. */
 export type RunSubset = "dev" | "holdout";
 
+
+/** Each step's prompt versions on disk, for the new-run form. Mirrors backend/src/contracts.prompts.ts. */
+export const PromptCatalog = z.object({
+  steps: z.array(
+    z.object({
+      step: z.string(),
+      versions: z.array(z.object({ version: z.string(), model: z.string(), active: z.boolean(), notes: z.string().nullable() })),
+    }),
+  ),
+});
+export type PromptCatalog = z.infer<typeof PromptCatalog>;

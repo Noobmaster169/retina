@@ -1,6 +1,6 @@
 import type { LlmCall } from "@/lib/api/trace-schemas";
 
-const STEP_LABEL: Record<string, string> = { classify: "Generator", "classify-verify": "Verifier" };
+import { stepLabel } from "./step-label";
 
 function Block({ title, text, open = false }: { title: string; text: string; open?: boolean }) {
   return (
@@ -8,20 +8,21 @@ function Block({ title, text, open = false }: { title: string; text: string; ope
       <summary className="cursor-pointer select-none px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-muted">
         {title}
       </summary>
-      <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words border-t border-line bg-paper px-3 py-2 font-mono text-xs leading-relaxed">
+      <pre className="max-h-96 overflow-auto whitespace-pre-wrap wrap-break-word border-t border-line bg-paper px-3 py-2 font-mono text-xs leading-relaxed">
         {text}
       </pre>
     </details>
   );
 }
 
-/** One attempt at one model call: what went in, what came out, and what it cost. */
+/** One attempt at one model call: what went in, what came out, the structured answer, and what it cost. */
 export function CallCard({ call }: { call: LlmCall }) {
   const tokens = call.inputTokens === null ? "" : `${call.inputTokens} in, ${call.outputTokens ?? 0} out`;
+  const structured = call.parsed === null || call.parsed === undefined ? null : JSON.stringify(call.parsed, null, 2);
   return (
     <article className="rounded-lg border border-line p-3">
       <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
-        <span className="font-semibold">{STEP_LABEL[call.step] ?? call.step}</span>
+        <span className="font-semibold">{stepLabel(call.step)}</span>
         <span className="text-muted">
           {call.step} {call.promptVersion} on {call.model}
           {call.attempt > 1 ? `, attempt ${call.attempt}` : ""}
@@ -33,8 +34,13 @@ export function CallCard({ call }: { call: LlmCall }) {
         </span>
       </header>
       {call.error && <p className="mt-2 text-sm text-red-700">{call.error}</p>}
-      <Block title="Input: the email as the model saw it" text={call.user} open />
-      <Block title="Output: the model's answer, as returned" text={call.responseText ?? "(no answer: the call failed)"} open />
+      <Block title="Input: the email as the model saw it" text={call.user} />
+      {structured && <Block title="Final JSON: the structured answer the schema accepted" text={structured} open />}
+      <Block
+        title="Output: the model's answer, as returned"
+        text={call.responseText ?? "(no answer: the call failed)"}
+        open={!structured}
+      />
       <Block title="System prompt" text={call.system} />
     </article>
   );

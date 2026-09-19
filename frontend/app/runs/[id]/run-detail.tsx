@@ -10,6 +10,7 @@ import { EmailTrace } from "./email-trace";
 import { LiveFeed } from "./live-feed";
 import { RunEmails } from "./run-emails";
 import { RunOverview } from "./run-overview";
+import { WorkingNow } from "./working-now";
 
 const POLL_MS = 3000;
 const fetchRun = parsedFetcher(RunSummary);
@@ -35,6 +36,7 @@ export function RunDetail({ initialRun }: Props) {
   return (
     <>
       <RunOverview run={run} error={error instanceof Error ? error.message : null} />
+      <WorkingNow runId={run.id} live={live} onSelect={setSelected} />
       <LiveFeed runId={run.id} live={live} onSelect={setSelected} />
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
         <RunEmails runId={run.id} live={live} selected={selected} onSelect={setSelected} />

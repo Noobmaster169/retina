@@ -18,6 +18,7 @@ export {
   getRun,
   type HeadlineScores,
   type LastSubmission,
+  listPrompts,
   listRuns,
   type LlmUsage,
   pauseRun,
@@ -36,7 +37,8 @@ export {
 export {
   Category,
   DecidedBy,
-  listEmailCalls,
+  getEmailTrace,
+  getRunLive,
   listRunCalls,
   listRunEmails,
   type LlmCall,

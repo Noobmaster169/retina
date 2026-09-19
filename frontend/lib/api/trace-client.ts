@@ -1,4 +1,4 @@
-import { LlmCallList, type LlmCall, type LlmCallSummary, LlmCallSummaryList, RunEmailsPage, type RunEmailsQuery } from "./trace-schemas";
+import { EmailTrace, type LlmCallSummary, LlmCallSummaryList, RunEmailsPage, type RunEmailsQuery, RunLive } from "./trace-schemas";
 import { get } from "./transport";
 
 export * from "./trace-schemas";
@@ -12,10 +12,14 @@ export async function listRunEmails(runId: string, query: RunEmailsQuery = {}): 
   return get(RunEmailsPage, `/runs/${encodeURIComponent(runId)}/emails${queryString({ ...query })}`);
 }
 
-/** Every model call made for one email of the run, oldest first. */
-export async function listEmailCalls(runId: string, emailId: string): Promise<LlmCall[]> {
-  const path = `/runs/${encodeURIComponent(runId)}/emails/${encodeURIComponent(emailId)}/calls`;
-  return (await get(LlmCallList, path)).calls;
+/** One email of the run: its stage, how it was classified, the call running now, and every call made. */
+export async function getEmailTrace(runId: string, emailId: string): Promise<EmailTrace> {
+  return get(EmailTrace, `/runs/${encodeURIComponent(runId)}/emails/${encodeURIComponent(emailId)}/trace`);
+}
+
+/** The run's model calls running right now, with what each has written so far. */
+export async function getRunLive(runId: string): Promise<RunLive> {
+  return get(RunLive, `/runs/${encodeURIComponent(runId)}/live`);
 }
 
 /** The run's newest calls without their text, newest first; with `after`, only those newer than that call id. */

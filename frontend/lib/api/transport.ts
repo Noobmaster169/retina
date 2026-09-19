@@ -47,10 +47,21 @@ export async function parseAs<T>(schema: z.ZodType<T>, response: Response, what:
   return parsed.data;
 }
 
+/** The backend answered, and not with success. `status` says whose fault it was. */
+export class BackendError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "BackendError";
+  }
+}
+
 /** A read that either parses or throws, for the GETs whose failure is a page-level error. */
 export async function get<T>(schema: z.ZodType<T>, path: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
   const response = await request(path, init);
-  if (!response.ok) throw new Error(`Backend GET ${path} → ${response.status}`);
+  if (!response.ok) throw new BackendError(`Backend GET ${path} → ${response.status}`, response.status);
   return parseAs(schema, response, `GET ${path}`);
 }
 

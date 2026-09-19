@@ -1,4 +1,5 @@
 import {
+  PromptCatalog,
   type PromptStep,
   RunList,
   type RunAction,
@@ -67,4 +68,9 @@ export async function resumeRun(id: string): Promise<RunOutcome> {
 
 export async function cancelRun(id: string): Promise<RunOutcome> {
   return controlRun(id, "cancel");
+}
+
+/** The prompt versions a run may pin, per step. */
+export async function listPrompts(): Promise<PromptCatalog> {
+  return get(PromptCatalog, "/prompts");
 }

@@ -31,7 +31,7 @@ export function LiveFeed({ runId, live, onSelect }: Props) {
 
   return (
     <section className="mt-6">
-      <h2 className="text-base font-semibold">Latest model calls</h2>
+      <h2 className="text-base font-semibold">Finished model calls</h2>
       {error instanceof Error && (
         <p role="alert" className="mt-2 text-sm text-red-700">
           {error.message}
