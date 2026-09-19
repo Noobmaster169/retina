@@ -429,6 +429,9 @@ else
 fi
 
 record "disk free on $HOME: $(df -Ph "$HOME" 2>/dev/null | awk 'NR==2 {print $4}' || echo '?')"
+# This box also carries another project's stack, and phase 3 adds Redis, MinIO
+# and a second node process to it.
+record "memory available: $(free -h 2>/dev/null | awk 'NR==2 {print $7 " of " $2}' || echo '?')"
 
 printf '\n  %spaste this into docs/PROGRESS.md:%s\n\n' "$BOLD" "$RESET"
 for line in "${REPORT[@]}"; do printf '  - %s\n' "$line"; done
