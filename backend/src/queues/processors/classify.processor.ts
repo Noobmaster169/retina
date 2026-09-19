@@ -1,28 +1,25 @@
-import { ClassifyOutput, classifyEmail, completePromptSet, type LlmClient, promptFor, verifyClassification } from "../../agents";
+import { ClassifyOutput, classifyEmail, type LlmClient, promptFor, verifyClassification } from "../../agents";
 import { config } from "../../config";
 import type { Category, PromptSet } from "../../contracts";
 import type { Queryable } from "../../db";
+import type { DocExtractClient } from "../../doc-extract";
 import { TerminalError } from "../../lib/errors";
 import { childLogger } from "../../lib/logger";
 import type { LiveCalls } from "../../live";
-import {
-  attachments,
-  classifications,
-  emailRuns,
-  emails,
-  llmCalls,
-  promptVersions,
-  type Run,
-  runs,
-} from "../../ontology/repositories";
-import { buildClassifyInput, type ClassifyInput, decide, needsVerifier } from "../../pipeline/classify";
+import { attachments, classifications, emailRuns, emails, llmCalls, type Run, runs, type StoredAttachment } from "../../ontology/repositories";
+import { buildClassifyInput, type ClassifyInput, decide, describeAttachments, needsVerifier } from "../../pipeline/classify";
+import type { ObjectStore } from "../../storage";
 import { type ClassifyJob, type CompareJob, JOB_NAMES, type JobAdder, jobOptions } from "../names";
+import { parseDocuments } from "./parse-documents";
+import { promptSetOf } from "./prompt-set-of";
 
 const log = childLogger({ module: "classify.processor" });
 
 export interface ClassifyDeps {
   pool: Queryable;
   llm: LlmClient;
+  docExtract: DocExtractClient;
+  store: ObjectStore;
   compare: JobAdder<CompareJob>;
   /** Where each call's answer so far is kept while it streams, for the run page. */
   live?: LiveCalls;
@@ -34,10 +31,16 @@ interface Ids {
   emailRunId: string;
 }
 
-/** A run created before prompts were pinned gets the active versions, looked up only for such a run. */
-async function promptSetOf(pool: Queryable, run: Run): Promise<PromptSet> {
-  if (run.promptSet.classify && run.promptSet["classify-verify"]) return run.promptSet;
-  return completePromptSet(run.promptSet, await promptVersions.activeVersions(pool));
+/**
+ * The attachments' text, for a prompt that reads it: the files are parsed
+ * here and compare finds the rows. A prompt that does not read attachments
+ * leaves parsing to compare, so its input is exactly what it was before.
+ */
+async function attachmentContents(deps: ClassifyDeps, set: PromptSet, files: StoredAttachment[], ids: Ids): Promise<string | undefined> {
+  const reads = promptFor("classify", set).readsAttachments || promptFor("classify-verify", set).readsAttachments;
+  if (!reads) return undefined;
+  const docs = await parseDocuments(deps, ids, files);
+  return describeAttachments(docs, config.CLASSIFY_ATTACHMENT_CHARS);
 }
 
 /**
@@ -73,12 +76,15 @@ async function classifyOnce(deps: ClassifyDeps, run: Run, ids: Ids): Promise<Cat
   const email = await emails.get(deps.pool, ids.emailId);
   if (!email) throw new TerminalError(`email ${ids.emailId} is not stored`);
   const files = await attachments.listForEmail(deps.pool, run.id, ids.emailId);
-  const input = buildClassifyInput(
-    email,
-    files.map((file) => file.filename),
-    config.CLASSIFY_BODY_CHARS,
-  );
   const set = await promptSetOf(deps.pool, run);
+  const input: ClassifyInput = {
+    ...buildClassifyInput(
+      email,
+      files.map((file) => file.filename),
+      config.CLASSIFY_BODY_CHARS,
+    ),
+    attachmentContents: await attachmentContents(deps, set, files, ids),
+  };
   const classify = promptFor("classify", set);
 
   const gen = await generate(deps, set, input, ids);

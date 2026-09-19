@@ -4,12 +4,13 @@ import type { z } from "zod";
 
 import type { LlmClient } from "../agents";
 import { config } from "../config";
+import type { DocExtractClient } from "../doc-extract";
 import { type IngestDeps, replayRun } from "../ingest";
 import { TerminalError } from "../lib/errors";
 import { childLogger } from "../lib/logger";
 import type { LiveCalls } from "../live";
 import { emailRuns, runs } from "../ontology/repositories";
-import { isFinalFailure, pausingOnLlmOutage, type QueuePauser } from "./failure-policy";
+import { isFinalFailure, pausingOnOutage, type QueuePauser } from "./failure-policy";
 import { ClassifyJob, CompareJob, DEFAULT_PRIORITY, IngestJob, type JobAdder, QUEUES } from "./names";
 import { processClassify } from "./processors/classify.processor";
 import { processCompare } from "./processors/compare.processor";
@@ -18,9 +19,10 @@ const log = childLogger({ module: "workers" });
 
 export interface WorkerDeps extends IngestDeps {
   llm: LlmClient;
+  docExtract: DocExtractClient;
   live?: LiveCalls;
   classify: JobAdder<ClassifyJob> & QueuePauser;
-  compare: JobAdder<CompareJob>;
+  compare: JobAdder<CompareJob> & QueuePauser;
 }
 
 // LLM calls are slow, so an email job may hold its lock for a while. A job
@@ -123,7 +125,7 @@ export function startWorkers(deps: WorkerDeps, connection: Redis): RunningWorker
     QUEUES.classify,
     (job) =>
       noRetryOnTerminal(() =>
-        pausingOnLlmOutage(deps.classify, () =>
+        pausingOnOutage(deps.classify, () =>
           processClassify(deps, parse(ClassifyJob, job), job.opts.priority ?? DEFAULT_PRIORITY),
         ),
       ),
@@ -132,8 +134,8 @@ export function startWorkers(deps: WorkerDeps, connection: Redis): RunningWorker
 
   const compare = new Worker(
     QUEUES.compare,
-    (job) => noRetryOnTerminal(() => processCompare(deps, parse(CompareJob, job))),
-    { connection, concurrency: config.COMPARE_CONCURRENCY, ...EMAIL_LOCK },
+    (job) => noRetryOnTerminal(() => pausingOnOutage(deps.compare, () => processCompare(deps, parse(CompareJob, job)))),
+    { connection, concurrency: config.COMPARE_CONCURRENCY, limiter: NEVER_REACHED_LIMITER, ...EMAIL_LOCK },
   );
 
   ingest.on("failed", guarded(QUEUES.ingest, onIngestJobFailed(deps)));

@@ -2,14 +2,17 @@ import type { PoolClient } from "pg";
 import { describe, expect, it, vi } from "vitest";
 
 import { FakeLlmClient } from "../../src/agents/__fakes__/fake.llm-client";
+import { MemoryDocExtractClient, readable } from "../../src/doc-extract/__fakes__/memory.client";
 import { MemoryLiveCalls } from "../../src/live/__fakes__/memory.live-calls";
 import { proxyLlmClient } from "../../src/agents/llm-client";
 import { RetryableError, TerminalError, UpstreamError } from "../../src/lib/errors";
-import { classifications, emailRuns, llmCalls, runs } from "../../src/ontology/repositories";
+import { attachments, classifications, documents, emailRuns, llmCalls, runs } from "../../src/ontology/repositories";
 import { RecordingAdder } from "../../src/queues/__fakes__/recording.adder";
 import type { CompareJob } from "../../src/queues/names";
 import { processClassify } from "../../src/queues/processors/classify.processor";
 import { processCompare } from "../../src/queues/processors/compare.processor";
+import { keys } from "../../src/storage";
+import { MemoryStore } from "../../src/storage/__fakes__/memory.store";
 import { inRollback, seedEmail, seedRun } from "../db";
 
 // Only the unknown-provider case uses the real client; everything else hands in a FakeLlmClient.
@@ -18,6 +21,9 @@ vi.mock("../../src/llm", () => ({ chat, listModels: vi.fn() }));
 
 const verdict = (category: string, confidence = 0.85) =>
   JSON.stringify({ counter_cases: "Weak cases only.", rationale: "It decides.", category, agrees: false, confidence });
+
+/** No attachment rows are seeded here, so nothing is parsed; the fakes only have to exist. */
+const parsers = () => ({ docExtract: new MemoryDocExtractClient(), store: new MemoryStore() });
 
 const answer = (category: string, confidence = 0.9) =>
   `The sender asks for something.\n\`\`\`json\n${JSON.stringify({ category, confidence, rationale: "because of the request" })}\n\`\`\``;
@@ -36,7 +42,7 @@ describe("classify processor", () => {
       const llm = new FakeLlmClient(answer("BL_COMPARISON", 0.93));
       const compare = new RecordingAdder<CompareJob>();
 
-      await processClassify({ pool: tx, llm, compare }, { runId, emailId }, 450);
+      await processClassify({ ...parsers(), pool: tx, llm, compare }, { runId, emailId }, 450);
 
       expect(await classifications.get(tx, emailRunId)).toMatchObject({
         finalCategory: "BL_COMPARISON",
@@ -61,7 +67,7 @@ describe("classify processor", () => {
       const { runId, emailId } = await ingested(tx);
       const llm = new FakeLlmClient(answer("SPAM"));
 
-      await processClassify({ pool: tx, llm, compare: new RecordingAdder<CompareJob>() }, { runId, emailId }, 600);
+      await processClassify({ ...parsers(), pool: tx, llm, compare: new RecordingAdder<CompareJob>() }, { runId, emailId }, 600);
 
       const [request] = llm.requests;
       expect(request.model).toBe("sonnet");
@@ -73,12 +79,58 @@ describe("classify processor", () => {
     });
   });
 
+  it("a classify prompt that reads attachments gets their text, parsed once and left for compare", async () => {
+    await inRollback(async (tx) => {
+      const run = await seedRun(tx, {
+        promptSet: {
+          classify: { version: "v5", model: "sonnet" },
+          "classify-verify": { version: "v2", model: "sonnet" },
+          triage: { version: "v1", model: "sonnet" },
+          "doc-type": { version: "v1", model: "sonnet" },
+        },
+      });
+      const emailId = await seedEmail(tx);
+      await emailRuns.insert(tx, { runId: run.id, emailId, stage: "ingested", priority: 600 });
+      const key = keys.attachment(run.id, emailId, `${emailId}_SI.txt`);
+      await attachments.insert(tx, {
+        runId: run.id,
+        emailId,
+        filename: `${emailId}_SI.txt`,
+        sourcePath: `attachments/${emailId}_SI.txt`,
+        role: "SI",
+        objectKey: key,
+        contentType: "text/plain",
+        bytes: 30,
+        sha256: "0".repeat(64),
+      });
+      const docExtract = new MemoryDocExtractClient().on(key, readable("SHIPPING INSTRUCTION\nShipper: ACME"));
+      const llm = new FakeLlmClient(answer("BL_COMPARISON", 0.95));
+
+      await processClassify({ pool: tx, llm, docExtract, store: new MemoryStore(), compare: new RecordingAdder<CompareJob>() }, { runId: run.id, emailId }, 600);
+
+      expect(llm.requests[0].user).toContain(`## attachment contents\n### ${emailId}_SI.txt\nSHIPPING INSTRUCTION\nShipper: ACME`);
+      expect(llm.requests[0].system).toContain('under "attachment contents"');
+      expect(docExtract.extractCalls).toHaveLength(1);
+      const emailRunId = (await emailRuns.idOf(tx, run.id, emailId)) as string;
+      expect(await documents.listForEmailRun(tx, emailRunId)).toMatchObject([{ filename: `${emailId}_SI.txt`, format: "txt", docType: null }]);
+    });
+  });
+
+  it("the active classify prompt does not read attachments: nothing is parsed before the model answers", async () => {
+    await inRollback(async (tx) => {
+      const { runId, emailId } = await ingested(tx);
+      const llm = new FakeLlmClient(answer("SPAM"));
+      await processClassify({ ...parsers(), pool: tx, llm, compare: new RecordingAdder<CompareJob>() }, { runId, emailId }, 600);
+      expect(llm.requests[0].user).not.toContain("## attachment contents");
+    });
+  });
+
   it.each(["SI_REQUEST", "INVOICE_QUERY", "GENERAL", "SPAM"])("finishes a %s email without comparing it", async (category) => {
     await inRollback(async (tx) => {
       const { runId, emailId } = await ingested(tx);
       const compare = new RecordingAdder<CompareJob>();
 
-      await processClassify({ pool: tx, llm: new FakeLlmClient(answer(category)), compare }, { runId, emailId }, 600);
+      await processClassify({ ...parsers(), pool: tx, llm: new FakeLlmClient(answer(category)), compare }, { runId, emailId }, 600);
 
       const { rows } = await tx.query("select stage, outcome from core.email_runs where run_id = $1", [runId]);
       expect(rows[0]).toEqual({ stage: "done", outcome: "not_comparable" });
@@ -92,7 +144,7 @@ describe("classify processor", () => {
       const llm = new FakeLlmClient(answer("PHISHING"));
 
       await expect(
-        processClassify({ pool: tx, llm, compare: new RecordingAdder<CompareJob>() }, { runId, emailId }, 600),
+        processClassify({ ...parsers(), pool: tx, llm, compare: new RecordingAdder<CompareJob>() }, { runId, emailId }, 600),
       ).rejects.toThrow(/structured output invalid/);
 
       expect(llm.requests).toHaveLength(2);
@@ -107,7 +159,7 @@ describe("classify processor", () => {
       const llm = new FakeLlmClient(new RetryableError("llm-proxy returned 503"));
 
       await expect(
-        processClassify({ pool: tx, llm, compare: new RecordingAdder<CompareJob>() }, { runId, emailId }, 600),
+        processClassify({ ...parsers(), pool: tx, llm, compare: new RecordingAdder<CompareJob>() }, { runId, emailId }, 600),
       ).rejects.toBeInstanceOf(RetryableError);
       expect(await llmCalls.usageForRun(tx, runId)).toMatchObject({ calls: 1, failedCalls: 1 });
     });
@@ -118,7 +170,7 @@ describe("classify processor", () => {
       const { runId, emailId, emailRunId } = await ingested(tx);
       const llm = new FakeLlmClient(answer("SPAM", 0.97));
 
-      await processClassify({ pool: tx, llm, compare: new RecordingAdder<CompareJob>() }, { runId, emailId }, 600);
+      await processClassify({ ...parsers(), pool: tx, llm, compare: new RecordingAdder<CompareJob>() }, { runId, emailId }, 600);
 
       expect(llm.requests).toHaveLength(1);
       expect(await classifications.get(tx, emailRunId)).toMatchObject({ finalCategory: "SPAM", decidedBy: "llm" });
@@ -138,7 +190,7 @@ describe("classify processor", () => {
       const llm = new FakeLlmClient([answer("SI_REQUEST", 0.62), said]);
       const compare = new RecordingAdder<CompareJob>();
 
-      await processClassify({ pool: tx, llm, compare }, { runId, emailId }, 600);
+      await processClassify({ ...parsers(), pool: tx, llm, compare }, { runId, emailId }, 600);
 
       expect(llm.requests).toHaveLength(2);
       const [, check] = llm.requests;
@@ -167,7 +219,7 @@ describe("classify processor", () => {
       await emailRuns.insert(tx, { runId: run.id, emailId, stage: "ingested", priority: 600 });
       const llm = new FakeLlmClient(answer("GENERAL", 0.97));
 
-      await processClassify({ pool: tx, llm, compare: new RecordingAdder<CompareJob>() }, { runId: run.id, emailId }, 600);
+      await processClassify({ ...parsers(), pool: tx, llm, compare: new RecordingAdder<CompareJob>() }, { runId: run.id, emailId }, 600);
 
       expect(llm.requests[0].model).toBe("haiku");
       const [call] = await llmCalls.listForEmail(tx, run.id, emailId);
@@ -185,7 +237,7 @@ describe("classify processor", () => {
       // The real client, so the proxy's verdict is what turns the 500 into a failure.
       const llm = proxyLlmClient({ sleep: async () => undefined });
 
-      const failure = processClassify({ pool: tx, llm, compare: new RecordingAdder<CompareJob>() }, { runId, emailId }, 600);
+      const failure = processClassify({ ...parsers(), pool: tx, llm, compare: new RecordingAdder<CompareJob>() }, { runId, emailId }, 600);
 
       await expect(failure).rejects.toBeInstanceOf(TerminalError);
       await expect(failure).rejects.not.toBeInstanceOf(RetryableError);
@@ -199,7 +251,7 @@ describe("classify processor", () => {
       const { runId, emailId, emailRunId } = await ingested(tx);
       const llm = new FakeLlmClient([answer("GENERAL", 0.6), "not an answer", "still not an answer"]);
 
-      await processClassify({ pool: tx, llm, compare: new RecordingAdder<CompareJob>() }, { runId, emailId }, 600);
+      await processClassify({ ...parsers(), pool: tx, llm, compare: new RecordingAdder<CompareJob>() }, { runId, emailId }, 600);
 
       expect(await classifications.get(tx, emailRunId)).toMatchObject({ finalCategory: "GENERAL", decidedBy: "llm" });
       const { rows } = await tx.query("select ver_category, rationale from core.classifications where email_run_id = $1", [emailRunId]);
@@ -214,10 +266,10 @@ describe("classify processor", () => {
       const { runId, emailId, emailRunId } = await ingested(tx);
       const compare = new RecordingAdder<CompareJob>();
       const first = new FakeLlmClient([answer("SI_REQUEST", 0.6), new RetryableError("llm-proxy returned 503")]);
-      await expect(processClassify({ pool: tx, llm: first, compare }, { runId, emailId }, 600)).rejects.toBeInstanceOf(RetryableError);
+      await expect(processClassify({ ...parsers(), pool: tx, llm: first, compare }, { runId, emailId }, 600)).rejects.toBeInstanceOf(RetryableError);
 
       const retry = new FakeLlmClient(verdict("BL_COMPARISON"));
-      await processClassify({ pool: tx, llm: retry, compare }, { runId, emailId }, 600);
+      await processClassify({ ...parsers(), pool: tx, llm: retry, compare }, { runId, emailId }, 600);
 
       expect(retry.requests).toHaveLength(1);
       expect(retry.requests[0].system).toContain("second reader");
@@ -230,7 +282,7 @@ describe("classify processor", () => {
       const { runId, emailId } = await ingested(tx);
       const llm = new FakeLlmClient(answer("SPAM", 0.97));
 
-      await processClassify({ pool: tx, llm, compare: new RecordingAdder<CompareJob>() }, { runId, emailId }, 600);
+      await processClassify({ ...parsers(), pool: tx, llm, compare: new RecordingAdder<CompareJob>() }, { runId, emailId }, 600);
 
       const [call] = await llmCalls.listForEmail(tx, runId, emailId);
       // Migration 004 makes v3 active; v4, the unvalidated few-shot experiment, is newer on disk.
@@ -244,7 +296,7 @@ describe("classify processor", () => {
       const live = new MemoryLiveCalls();
       const llm = new FakeLlmClient(answer("SPAM", 0.97));
 
-      await processClassify({ pool: tx, llm, live, compare: new RecordingAdder<CompareJob>() }, { runId, emailId }, 600);
+      await processClassify({ ...parsers(), pool: tx, llm, live, compare: new RecordingAdder<CompareJob>() }, { runId, emailId }, 600);
 
       expect(llm.requests[0].onText).toBeTypeOf("function");
       expect(live.writes.length).toBeGreaterThan(0);
@@ -257,7 +309,7 @@ describe("classify processor", () => {
     await inRollback(async (tx) => {
       const { runId, emailId } = await ingested(tx);
       const llm = new FakeLlmClient(answer("SPAM", 0.97));
-      await processClassify({ pool: tx, llm, compare: new RecordingAdder<CompareJob>() }, { runId, emailId }, 600);
+      await processClassify({ ...parsers(), pool: tx, llm, compare: new RecordingAdder<CompareJob>() }, { runId, emailId }, 600);
       expect(llm.requests[0].onText).toBeUndefined();
     });
   });
@@ -265,7 +317,7 @@ describe("classify processor", () => {
   it("running twice, as a retry does, leaves one classification and one compare job", async () => {
     await inRollback(async (tx) => {
       const { runId, emailId } = await ingested(tx);
-      const deps = { pool: tx, llm: new FakeLlmClient(answer("BL_COMPARISON")), compare: new RecordingAdder<CompareJob>() };
+      const deps = { ...parsers(), pool: tx, llm: new FakeLlmClient(answer("BL_COMPARISON")), compare: new RecordingAdder<CompareJob>() };
 
       await processClassify(deps, { runId, emailId }, 600);
       await processClassify(deps, { runId, emailId }, 600);
@@ -290,34 +342,12 @@ describe("a cancelled run", () => {
       const llm = new FakeLlmClient(answer("BL_COMPARISON"));
       const compare = new RecordingAdder<CompareJob>();
 
-      await processClassify({ pool: tx, llm, compare }, { runId, emailId }, 600);
-      await processCompare({ pool: tx }, { runId, emailId });
+      await processClassify({ ...parsers(), pool: tx, llm, compare }, { runId, emailId }, 600);
+      await processCompare({ ...parsers(), pool: tx, llm }, { runId, emailId });
 
       expect(llm.requests).toEqual([]);
       expect(await emailRuns.stageCounts(tx, runId)).toMatchObject({ ingested: 1, classified: 0, done: 0 });
       expect(compare.added).toEqual([]);
-    });
-  });
-});
-
-describe("compare processor (placeholder until phases 5 and 6)", () => {
-  it("finishes the email OK and says it was not really compared", async () => {
-    await inRollback(async (tx) => {
-      const { runId, emailId, emailRunId } = await ingested(tx);
-      await emailRuns.setStage(tx, runId, emailId, "classified");
-
-      await processCompare({ pool: tx }, { runId, emailId });
-      await processCompare({ pool: tx }, { runId, emailId });
-
-      const email = await tx.query("select stage, outcome, finished_at from core.email_runs where id = $1", [emailRunId]);
-      expect(email.rows[0]).toMatchObject({ stage: "done", outcome: "OK" });
-      expect(email.rows[0].finished_at).not.toBeNull();
-
-      const stored = await tx.query(
-        "select status, review_reason, has_defect, detail from core.comparisons where email_run_id = $1",
-        [emailRunId],
-      );
-      expect(stored.rows).toEqual([{ status: "OK", review_reason: null, has_defect: false, detail: { placeholder: true } }]);
     });
   });
 });
