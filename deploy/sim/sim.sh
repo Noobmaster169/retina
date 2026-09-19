@@ -36,6 +36,11 @@ REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 say() { echo "[sim] $*"; }
 die() { echo "[sim] FATAL: $*" >&2; exit 1; }
 
+# Docker on Windows wants C:/... for a bind mount or a build context, and the
+# conversion that would normally do this is off (see MSYS_NO_PATHCONV above):
+# it would also rewrite the container-side paths, which must stay literal.
+hostpath() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
+
 # Everything inside runs as the box's layout: root, but rooted at /home/student.
 sx() { docker exec -e HOME=/home/student -w /home/student "$SIM" bash -lc "$1"; }
 sx_i() { docker exec -it -e HOME=/home/student -w /home/student "$SIM" bash -l; }
@@ -45,7 +50,7 @@ running() { [[ "$(docker inspect -f '{{.State.Running}}' "$SIM" 2>/dev/null)" ==
 cmd_up() {
   if running; then say "already up"; return 0; fi
   say "building the simulator image"
-  docker build -t "$SIM_IMAGE" "$HERE" || die "image build failed"
+  docker build -t "$SIM_IMAGE" "$(hostpath "$HERE")" || die "image build failed"
 
   docker rm -f "$SIM" >/dev/null 2>&1
   say "starting $SIM (privileged: it runs a Docker daemon of its own)"
@@ -54,7 +59,7 @@ cmd_up() {
   docker run -d --privileged --name "$SIM" \
     -e DOCKER_TLS_CERTDIR= \
     -v "$SIM_VOLUME:/var/lib/docker" \
-    -v "$REPO_ROOT:/host-repo:ro" \
+    -v "$(hostpath "$REPO_ROOT"):/host-repo:ro" \
     "$SIM_IMAGE" >/dev/null || die "could not start the simulator"
 
   say "waiting for its docker daemon"
@@ -131,9 +136,17 @@ check() {
   else echo "  FAIL  $what"; FAIL=$((FAIL + 1)); fi
 }
 log_has() { sx "grep -q -- '$1' /home/student/retina/auto-deploy.log"; }
-log_lacks() { ! log_has "$1"; }
+log_lines() { sx "wc -l < /home/student/retina/auto-deploy.log" | tr -cd '0-9'; }
 health_has() { sx "curl -fsS --max-time 5 http://127.0.0.1:8091/health | grep -q -- '$1'"; }
 mark() { sx "echo '--- $1 ---' >> /home/student/retina/auto-deploy.log"; }
+env_of() { sx "cd /home/student/retina && docker compose exec -T $1 printenv $2" | tr -d '\r\n'; }
+
+# Nothing may reach the box from outside except the api, on loopback. Any other
+# host-side mapping is a finding, so this asks about mappings, not about names.
+only_api_published() {
+  ! sx "cd /home/student/retina && docker compose ps --format '{{.Ports}}' \
+        | tr ', ' '\n' | grep -- '->' | grep -qv '^127.0.0.1:8091->'"
+}
 
 # A commit the box has never seen. `kind` decides what it breaks.
 simulate_commit() {
@@ -146,8 +159,8 @@ simulate_commit() {
         trivial)
           printf '\n# deployed by the simulator\n' >> deploy/README.md ;;
         compose-and-script)
-          sed -i 's|^  LOG_LEVEL:.*||' deploy/compose.yaml
-          sed -i '/^x-backend-env: &backend-env\$/a\\  LOG_LEVEL: info' deploy/compose.yaml
+          sed -i 's|^  EMAIL_SERVER_URL: http://inbox:8000|  EMAIL_SERVER_URL: http://inbox:8000\n  LOG_LEVEL: debug|' deploy/compose.yaml
+          grep -q 'LOG_LEVEL: debug' deploy/compose.yaml
           printf '\n# touched by the simulator\n' >> deploy/auto-deploy.sh ;;
         broken-health)
           sed -i 's|check(\"postgres\", () => deps.pool.query(\"select 1\"))|check(\"postgres\", () => Promise.reject(new Error(\"simulated outage\")))|' backend/src/health.ts
@@ -165,13 +178,16 @@ cmd_test() {
   say "A. bootstrap: a box that has never seen this compose file"
   cmd_bootstrap "${1:-phase-03-vps-deploy}" || die "bootstrap failed; ./sim.sh shell to look"
   check "every dependency reports up" health_has '"status":"ok"'
-  check "the worker is running" sx "cd /home/student/retina && docker compose ps worker | grep -q 'Up\|running'"
-  check "only 8091 is published" bash -c "! sx \"cd /home/student/retina && docker compose ps --format '{{.Ports}}' | grep -v '8091' | grep -q '0.0.0.0'\""
+  check "the worker is running" sx "cd /home/student/retina && docker compose ps worker --status running | grep -q worker"
+  check "nothing but the api is published, on loopback" only_api_published
 
   say "B. a tick with nothing new"
   mark "B no-op"
+  local before after
+  before="$(log_lines)"
   cmd_deploy
-  check "exits 0 and logs nothing" log_lacks "new commit.*$(date +%Y)-.*B no-op"
+  after="$(log_lines)"
+  check "wrote nothing to the log" test "$before" = "$after"
 
   say "C. a new commit on main"
   mark "C new commit"
@@ -188,6 +204,9 @@ cmd_test() {
   check "compose.yaml came from the clone" log_has "compose.yaml updated from the clone"
   check "the stack converged" log_has "converging every service"
   check "the box runs the new script" sx "cmp -s /home/student/retina/auto-deploy.sh /home/student/projects/retina/deploy/auto-deploy.sh"
+  # The point of the sync: a value that only exists in the committed compose
+  # file is live in the running container.
+  check "the new compose value reached the api" test "$(env_of api LOG_LEVEL)" = "debug"
 
   say "E. a commit whose /health says Postgres is down"
   mark "E rollback"

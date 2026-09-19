@@ -2,13 +2,18 @@ name: Build & Publish
 
 # The frontend is on Vercel, which builds and deploys frontend/ itself from
 # this repo's main branch (Git integration, root directory "frontend"). This
-# workflow covers the backend: publish its image to GHCR, gated on the
-# frontend and backend type-checking and the proxy's tests, so a broken commit
-# is visible here too.
+# workflow covers the backend: publish its image to GHCR, gated on both
+# packages type-checking, the backend suite passing against a real Postgres,
+# the frontend building, and the proxy's tests.
+#
+# The gates also run on a pull request, which is the only way to see this
+# workflow go green before it decides whether main is publishable.
 #
 # The Monash box deploys the backend on its own: auto-deploy.sh pulls (or
-# builds) the image on a cron — GitHub runners cannot reach the university
-# network. See deploy/README.md.
+# builds) the image on a cron, because GitHub runners cannot reach the
+# university network. The deploy scripts themselves are exercised by
+# deploy/sim, not here: they need a Docker daemon laid out like the box.
+# See deploy/README.md.
 
 on:
   push:
@@ -16,11 +21,14 @@ on:
     paths-ignore:
       - 'docs/**'
       - '**/*.md'
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
-  group: publish-${{ github.ref }}
-  cancel-in-progress: false
+  group: publish-${{ github.workflow }}-${{ github.ref }}
+  # A superseded pull request check is wasted work; a superseded publish is not.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   REGISTRY: ghcr.io
@@ -69,6 +77,55 @@ jobs:
         run: pnpm lint
         working-directory: frontend
 
+      # Vercel builds the frontend on its own, after this workflow has already
+      # decided the backend is publishable. Building here is what stops a
+      # server component that only breaks at build time from reaching main.
+      - name: Build (frontend)
+        run: pnpm build
+        working-directory: frontend
+        env:
+          # No page fetches at build time (every route is force-dynamic), but
+          # api-client.ts throws on import without these.
+          BACKEND_URL: http://127.0.0.1:8091
+          API_SHARED_SECRET: build-only-not-a-secret
+
+  # The repository and route tests need a real Postgres. Everything else the
+  # backend talks to (Redis, MinIO, the inbox, the llm-proxy) has a fake, so
+  # this is the only service the suite needs.
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: localdev
+        # 5433, and the postgres superuser: the values in backend/vitest.config.ts,
+        # which point at compose.local.yaml on a dev machine.
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.20.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: backend/pnpm-lock.yaml
+      - name: Install (backend)
+        run: pnpm install --frozen-lockfile
+        working-directory: backend
+      - name: Test (backend)
+        # Global setup creates retina_test in that instance and migrates it.
+        run: pnpm test
+        working-directory: backend
 
   proxy:
     runs-on: ubuntu-latest
@@ -88,9 +145,11 @@ jobs:
         working-directory: proxy
 
   # Publishes ghcr.io/<owner>/retina-api. The moving :main tag is what the
-  # Monash compose file pulls; the immutable tag is for pinning a rollback.
+  # Monash compose file names; the immutable tag is for pinning a rollback.
+  # Pull requests stop at the gates above: nothing they run may publish.
   build-api:
-    needs: [quality, proxy]
+    needs: [quality, test, proxy]
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
