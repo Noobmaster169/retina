@@ -2,25 +2,9 @@ import Form from "next/form";
 import Link from "next/link";
 
 import type { EmailPage } from "@/lib/api-client";
+import { type InboxParams, inboxQuery } from "@/lib/inbox";
 
 import { MailList } from "./mail-list";
-
-export interface InboxParams {
-  q?: string;
-  filter?: "attachments";
-  page: number;
-}
-
-/** The query string that keeps the list where it is while a message is open. */
-export function inboxQuery(params: InboxParams, overrides: Partial<InboxParams> = {}): string {
-  const merged = { ...params, ...overrides };
-  const search = new URLSearchParams();
-  if (merged.q) search.set("q", merged.q);
-  if (merged.filter) search.set("filter", merged.filter);
-  if (merged.page > 1) search.set("page", String(merged.page));
-  const qs = search.toString();
-  return qs ? `?${qs}` : "";
-}
 
 interface Props {
   page: EmailPage | null;

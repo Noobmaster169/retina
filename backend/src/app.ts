@@ -3,12 +3,9 @@ import type { Pool } from "pg";
 
 import { requireCaller } from "./auth";
 import type { HealthReport } from "./contracts";
-import { EmailServerError } from "./emails";
-import { RetryableError } from "./lib/errors";
+import { RetryableError, UpstreamError } from "./lib/errors";
 import { childLogger } from "./lib/logger";
-import { LlmProxyError } from "./lib/errors";
 import type { Scorer } from "./scorer/scorer";
-import { ScorerRefused } from "./scorer/scorer";
 import type { ObjectStore } from "./storage";
 import type { RunQueues } from "./queues/run-queues";
 import { aiRouter } from "./routes/ai.routes";
@@ -54,12 +51,10 @@ export function createApp(deps: AppDeps): express.Express {
     // Four parameters are what make Express treat this as an error handler.
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     (error: unknown, _req: Request, res: Response, _next: NextFunction) => {
-      if (error instanceof LlmProxyError || error instanceof EmailServerError) {
-        res.status(error.status).json({ error: error.message });
-        return;
-      }
-      if (error instanceof ScorerRefused) {
-        res.status(502).json({ error: error.message });
+      if (error instanceof UpstreamError) {
+        // `retryable` travels with the body so a Retina api fronting another one
+        // relays the far dependency's verdict instead of flattening it to a status.
+        res.status(error.status).json({ error: error.message, retryable: error.retryable });
         return;
       }
       if (error instanceof RetryableError) {

@@ -1,10 +1,26 @@
 # Progress
 
-Current phase: 3. The code is merged to `main`; the box is not deployed yet. Everything that
-could be built and tested without SSH access to the Monash box is done and green in
-`deploy/sim`. The one manual step left, and everything to check after it, is
+Current phase: 3, closed. The code is merged to `main`; the box is not deployed yet. Everything
+that could be built and tested without SSH access to the Monash box is done and green in
+`deploy/sim` (18 checks). The one manual step left, and everything to check after it, is
 `docs/phases/phase-03-handover.md`, written for whoever has that access. Phase 2 merged to
 `main` on 2026-09-19 with its exit checklist green.
+
+A full-codebase review closed phase 3, merged on 2026-09-19. Its findings and how each was
+checked are under "Phase 3 code review" below.
+
+**Starting phase 4: read `docs/phases/phase-04-handover.md` before the phase 4 spec.** The review
+changed three things phase 4 builds directly on, and `phase-04-classification-quality.md` has been
+corrected where it described the old behaviour:
+
+- Retry is decided by the proxy's own `retryable` verdict, never by a status code. The spec's
+  original "retries 429, 502, 503, 504" rule is what caused the bug the review found; written that
+  way again it requeues a wrong `LLM_MODEL_*` alias forever without spending an attempt.
+- `LlmProxyError`, `EmailServerError` and `ScorerRefused` are one `UpstreamError`. `isRetryable`
+  is gone.
+- The frontend parses every response with zod under `lib/api/`. A new contract field is a schema
+  there, not an interface, and `getRun` / `listRunEmails` / the four organisers' enums were
+  deleted as unused: the run page brings them back from `git show d68ed1b^`.
 
 ## Scores
 | Phase | Holdout final | Full final | Stage1 | Stage3 | E2E | Notes |
@@ -183,6 +199,71 @@ have. `docs/phases/phase-03-handover.md` is the runbook, including what to write
 - [ ] `ground_truth.json` reaches the `inbox` container and nothing else, confirmed on the box.
 - [ ] Nightly backup cron line present; one manual `pg_dump` succeeded.
 
+### Phase 3 code review (2026-09-19)
+
+A full-codebase review, fixed on `review-fixes-phase-03`. How each was checked is in brackets.
+
+- [x] The proxy answered 500 for both an unknown provider and a dead upstream, and the backend read
+      `status >= 500` as transient, so `pausingOnLlmOutage` requeued the job with its attempts
+      untouched: a typo in `LLM_MODEL_CLASSIFY` looped every 30 s forever, no email ever failed, and
+      the only signal was a warn line saying the model was unavailable when it was fine. The proxy
+      already computed `retryable` per error class and dropped it in `render_error`; it is on the
+      wire now with the stable `code`, `llm-client.ts` reads it, and `app.ts` relays it so the
+      verdict survives the gateway hop. (New `llm-client` table test over six status/verdict
+      combinations; new proxy e2e test that a 404 is permanent and a 429 is not.)
+- [x] `LlmProxyError`, `EmailServerError` and `ScorerRefused` were three copies of one shape, one of
+      them without a status, and `app.ts` had grown a branch per service. One `UpstreamError` now,
+      carrying status and verdict; the middleware is one branch. Deletes `isRetryable`, which had no
+      callers and encoded a fourth, contradictory policy beside the error classes. (Type-check and
+      the existing route tests.)
+- [x] `TEAM_API_KEY` was optional while a `/ai/chat` `LLM_PROXY_URL` needs it: an unset key sent an
+      empty bearer and the 401 failed every email in the run terminally, with the api booting clean.
+      `config.ts` refuses to boot that pair. (By reading; the refine is on the Env schema.)
+- [x] Two unvalidated HTTP boundaries, against a rule the ingest path already kept: `emails.ts`
+      cast the inbox with `as Email[]` and `/v1/models` was cast likewise. Both parse now, the
+      inbox against the same `EmailRecord` schema the `Source` seam uses. (Type-check, 188 tests.)
+- [x] The whole frontend was the same disease: every response narrowed with `as Type` against
+      hand-mirrored interfaces, so a renamed field type-checked on both sides and surfaced as
+      `undefined.toFixed()`. zod is a frontend dependency now and every response is parsed.
+      (Type-check, lint, build.)
+- [x] `api-client.ts` was 374 lines, 187% of the repo limit, holding a transport layer, three
+      resource clients and their types. Split into `lib/api/` behind a barrel, so no import site
+      moved; `eslint` enforces `max-lines` now and the largest frontend file is 141. (Lint.)
+- [x] `GET /runs` hand-merged four maps in the route behind an `if (!stageCounts || !llm) return []`
+      that could never fire, since both repositories seed from the ids they are handed. The repos
+      return a total lookup instead, so the guarantee is a type fact, and the route is three lines.
+      (188 tests, including the existing list-route tests.)
+- [x] `claude -p` runs two at a time and nothing watched for client disconnect, so a backend whose
+      600 s timeout fired left the call running to the provider's own 1200 s ceiling, holding a slot
+      while the requeued job waited behind it. The providers already killed their child on
+      cancellation; nothing ever cancelled them. (New proxy test that an abandoned call is killed.)
+- [x] `emails/docker-compose.yml` published the inbox on `0.0.0.0:8080`, serving the dataset and
+      `POST /submit` to a shared hackathon network, while `backend/compose.local.yaml` scoped the
+      same service to loopback and `CLAUDE.md` pointed at the unsafe one. Both bind loopback and the
+      docs name one way in. (Read back from both files; sim case A still asserts only the api is
+      published.)
+- [x] `pnpm eval:parity` is the only proof that `score.ts` still matches the organisers'
+      `scoring.py`, and it ran when someone remembered. It gates the publish now, as does `ruff` on
+      the proxy, whose `# noqa: BLE001` markers had been suppressing a rule with no config behind
+      it. (Parity: 7 cases agree to four decimals. Ruff: clean after one unused import.)
+- [x] The health-gate substring, the `REPO`/`STACK`/`IMAGE`/`HEALTH_URL` defaults and the atomic
+      install were written out by hand in both deploy scripts. `deploy/lib/stack.sh` holds all
+      three. It is sourced before the pull, so the self-update hand-over fires on a library-only
+      change too. (`deploy/sim`: 18 passed, 0 failed against this branch, including a new case E
+      for exactly that.)
+- [x] Surface nothing consumes yet, per the phase rule: `CompareJob.rerunFrom` (parsed, validated,
+      never read), `keys.text/page/upload`, and the frontend's `getRun`, `listRunEmails` and the
+      four organisers' enums. Phases 5 to 8 add them back with their consumers.
+- [x] Doc drift, per rule 5: section 13 of `03-infra-deep.md` claimed a `middleware.ts` gate and a
+      `SESSION_SECRET`, both contradicting section 3 of the same document and the actual `proxy.ts`;
+      the worker's `depends_on` had become `service_started` without the doc following; `minio-init`
+      was missing from the services table; `LLM_PROXY_URL` still showed `172.17.0.1:4000`. The two
+      em dashes in user-visible copy are gone.
+- [x] `deploy/sim`'s own `cmd_reset` ran `docker compose down -v` from a directory it then deleted,
+      so a reset after a half-finished bootstrap left the containers up and their volumes in use,
+      and every later run hit the wizard's refusal to generate a `PG_PASSWORD` over an existing
+      database. Found by running it. It removes by compose project label first now.
+
 ### What the simulator found (2026-09-19)
 `deploy/sim` runs the real deploy scripts against a Docker-in-Docker replica of the box layout.
 Three bugs that would each have cost a manual recovery on a box nobody can SSH into from the
@@ -228,6 +309,17 @@ dev machine:
   the user saying so.
 
 ## Deferred
+- The backend's LLM request timeout (600 s) is still shorter than the proxy's worst case for
+  `claudecli` (a 1200 s per-attempt ceiling plus a 1320 s backoff ladder). The zombie this used to
+  cost is gone, since the proxy now cancels an abandoned call, but the two budgets are still set
+  independently in two files and neither names the other. Pick one owner for the number.
+- `proxy.yaml`'s `request_timeout_s: 1800` is read by nothing: `config.py` defines the field and no
+  code reads it, so it implies a ceiling that does not exist. Delete it or enforce it.
+- Ruff runs with `E,F,W,B,BLE`. Import sorting and pyupgrade are off: on the inherited proxy they
+  are a wide diff of churn that catches no defects. Turn them on if that code is ever rewritten.
+- `deploy/sim` still is not in CI: it needs privileged Docker-in-Docker, which GitHub-hosted runners
+  do not give. It runs locally (`./sim.sh test <branch>`) and is the only gate on the deploy
+  scripts, so anything touching `deploy/` still needs someone to run it by hand.
 - A run does not pin its prompt version: the worker resolves the newest file on every call, so a
   prompt added mid-run changes the run halfway, and it is how the full run above was broken.
   Phase 4's `promptSet` fixes it by resolving the version once, when the run is created.

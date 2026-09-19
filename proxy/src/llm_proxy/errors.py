@@ -99,11 +99,36 @@ class ProviderTimeout(ProviderError):
     code = "provider_timeout"
 
 
+class ClientGone(ProxyError):
+    """The caller hung up before the answer was ready, so the work was abandoned.
+
+    Nobody reads this body. It exists so the event is logged as itself rather
+    than as a mystery, and marked retryable because nothing about the request
+    was wrong.
+    """
+
+    status = 499
+    code = "client_gone"
+    retryable = True
+
+
 def render_error(err: ProxyError) -> tuple[int, dict[str, Any]]:
-    """Render a ProxyError into the Anthropic error envelope."""
+    """Render a ProxyError into the Anthropic error envelope.
+
+    `code` and `retryable` are additive fields alongside Anthropic's own closed
+    set, because the status cannot carry the difference a caller most needs: an
+    unknown provider and a dead upstream are both 500, but only one of them is
+    worth trying again. A caller that retries on status alone retries a
+    misconfiguration until someone notices.
+    """
     body: dict[str, Any] = {
         "type": "error",
-        "error": {"type": err.anthropic_type, "message": err.message},
+        "error": {
+            "type": err.anthropic_type,
+            "message": err.message,
+            "code": err.code,
+            "retryable": err.retryable,
+        },
     }
     if err.detail:
         body["error"]["detail"] = err.detail

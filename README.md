@@ -12,7 +12,7 @@ browser → frontend (Next.js) → backend api (Express + Postgres) → proxy (P
 | --- | --- | --- |
 | `frontend/` | Next.js app. Calls the backend with a shared secret. | 3000 |
 | `backend/` | Express API, plus a worker process that runs the pipeline off Redis queues. | 8091 |
-| `proxy/` | Small LLM gateway. Runs `claude -p` (your Claude Code login) or Ollama. | 4000 |
+| `proxy/` | Small LLM gateway. Runs `claude -p` (your Claude Code login) or Ollama. | 4000, 4001 in practice |
 | `emails/` | The inbox: a FastAPI server over the synthetic shipping-documents dataset. The backend reads it. | 8080 |
 | `deploy/` | Scripts and runbook for the Monash server. | — |
 

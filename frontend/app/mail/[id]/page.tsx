@@ -2,19 +2,21 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { EmailView, attachmentName } from "@/components/email-view";
-import { MailShell, inboxQuery } from "@/components/mail-shell";
+import { MailShell } from "@/components/mail-shell";
+import { inboxQuery } from "@/lib/inbox";
 import { fetchAttachment, getEmail } from "@/lib/api-client";
 import { loadInbox, readInboxParams } from "@/lib/inbox";
 
 export const dynamic = "force-dynamic";
 
+// Mirrors EMAIL_ID_REGEX in backend/src/emails.ts; change both or neither.
 const EMAIL_ID = /^email_\d{1,6}$/;
 
 export async function generateMetadata({ params }: PageProps<"/mail/[id]">): Promise<Metadata> {
   const { id } = await params;
   if (!EMAIL_ID.test(id)) return {};
   const email = await getEmail(id).catch(() => null);
-  return email ? { title: `${email.subject} — Retina Mail` } : {};
+  return email ? { title: `${email.subject} · Retina Mail` } : {};
 }
 
 /** Plain-text attachments are shown inline; anything else is a download. */

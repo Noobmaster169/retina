@@ -1,5 +1,4 @@
-import { LlmUnavailableError, TerminalError } from "../lib/errors";
-import { LlmProxyError } from "../lib/errors";
+import { isTransient, LlmUnavailableError, TerminalError, UpstreamError } from "../lib/errors";
 import { chat } from "../llm";
 
 export interface LlmRequest {
@@ -53,10 +52,11 @@ export function proxyLlmClient(): LlmClient {
           latencyMs: Date.now() - started,
         };
       } catch (error) {
-        if (!(error instanceof LlmProxyError)) throw error;
-        // A 429 or anything from 500 up passes; a 4xx is our request and will fail the same way again.
-        const transient = error.status === 429 || error.status >= 500;
-        if (transient) throw new LlmUnavailableError(error.message, { cause: error });
+        if (!(error instanceof UpstreamError)) throw error;
+        // The proxy's own verdict decides where it gives one. Falling back to the
+        // status would read `unknown_provider` (a 500 that will never succeed) as
+        // an outage and requeue it forever without spending an attempt.
+        if (isTransient(error)) throw new LlmUnavailableError(error.message, { cause: error });
         throw new TerminalError(error.message, { cause: error });
       }
     },

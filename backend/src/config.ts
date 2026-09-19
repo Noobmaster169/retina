@@ -51,6 +51,18 @@ const Env = z.object({
   CLASSIFY_CONCURRENCY: z.coerce.number().int().positive().default(2),
   COMPARE_CONCURRENCY: z.coerce.number().int().positive().default(4),
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"]).default("info"),
+}).superRefine((env, ctx) => {
+  // A `/ai/chat` URL is the gateway transport, and that door takes the team
+  // bearer. Without the key every call is a 401, which reads as a request this
+  // side got wrong and fails each email terminally: one unset variable quietly
+  // burns a whole run. Refuse to boot instead.
+  if (env.LLM_PROXY_URL.endsWith("/ai/chat") && !env.TEAM_API_KEY) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["TEAM_API_KEY"],
+      message: "required when LLM_PROXY_URL names an /ai/chat gateway",
+    });
+  }
 });
 
 export type Config = z.infer<typeof Env>;

@@ -1,5 +1,5 @@
 import { Scoreboard, type SubmissionRow } from "../contracts";
-import { RetryableError, TerminalError } from "../lib/errors";
+import { RetryableError, TerminalError, UpstreamError } from "../lib/errors";
 
 /** The organisers' scorer: a submission in, a scoreboard out. It holds the answer key; this side never does. */
 export interface Scorer {
@@ -25,21 +25,15 @@ export function inboxScorer(baseUrl: string): Scorer {
         throw new RetryableError("the scorer is unreachable", { cause: error });
       }
       if (!response.ok) {
-        // 503 is the scorer without its ground truth mounted: not something a retry fixes from here.
+        // The scorer answered, and the answer was no. 503 is the scorer without
+        // its ground truth mounted: not something a retry fixes from here, which
+        // is why this is never marked retryable.
         const detail = (await response.text()).slice(0, 300);
-        throw new ScorerRefused(`the scorer answered ${response.status}: ${detail}`);
+        throw new UpstreamError(502, `the scorer answered ${response.status}: ${detail}`, { retryable: false });
       }
       const parsed = Scoreboard.safeParse(await response.json());
       if (!parsed.success) throw new TerminalError("the scorer's answer is not a scoreboard", { cause: parsed.error });
       return parsed.data;
     },
   };
-}
-
-/** The scorer answered, and the answer was no. The api relays it as a 502. */
-export class ScorerRefused extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ScorerRefused";
-  }
 }

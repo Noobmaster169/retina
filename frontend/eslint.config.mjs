@@ -13,6 +13,14 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
   ]),
+  {
+    files: ["**/*.ts", "**/*.tsx"],
+    rules: {
+      // CLAUDE.md's 200-line rule, checked rather than audited. api-client.ts
+      // reached 374 lines because nothing was watching it.
+      "max-lines": ["error", { max: 200, skipBlankLines: false, skipComments: false }],
+    },
+  },
 ]);
 
 export default eslintConfig;

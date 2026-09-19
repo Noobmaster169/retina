@@ -223,10 +223,13 @@ fi
 # The copy deletes itself, since the process that made it no longer exists.
 trap 'rm -f "$WIZARD_DETACHED"' EXIT
 
-STACK="${STACK:-$HOME/retina}"
-IMAGE="${IMAGE:-ghcr.io/noobmaster169/retina-api:main}"
+# shellcheck source=lib/stack.sh
+. "$REPO/deploy/lib/stack.sh" 2>/dev/null || {
+  echo "wizard: cannot read $REPO/deploy/lib/stack.sh; is REPO right?" >&2
+  exit 1
+}
+retina_stack_defaults
 PROXY_URL="${PROXY_URL:-http://172.17.0.1:4001}"
-HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8091/health}"
 ENV_FILE="$STACK/.env"
 
 fail() { printf '\n  %s✗ %s%s\n\n' "$RED" "$1" "$RESET"; exit 1; }
@@ -300,12 +303,13 @@ say "anyone has to do it by hand."
 
 install_stack_file() {
   local src="$1" dst="$2" mode="$3" name; name="$(basename "$dst")"
-  [[ -f "$src" ]] || { warn "missing from the clone: $src"; return 1; }
-  if cmp -s "$src" "$dst" 2>/dev/null; then note "$name is already current"; return 0; fi
-  [[ -f "$dst" ]] && cp -f "$dst" "$dst.previous"
-  # By rename, not in place: cron may be executing the old copy right now.
-  install -m "$mode" "$src" "$dst.new" && mv -f "$dst.new" "$dst"
-  ok "installed $name"
+  retina_install_if_changed "$src" "$dst" "$mode"
+  case $? in
+    0) ok "installed $name" ;;
+    1) note "$name is already current" ;;
+    2) warn "missing from the clone: $src"; return 1 ;;
+    *) warn "could not install $name"; return 1 ;;
+  esac
 }
 
 install_stack_file "$REPO/deploy/compose.yaml"   "$STACK/compose.yaml"   644 || fail "could not install compose.yaml"
@@ -371,7 +375,7 @@ say "waiting for the api to migrate and answer /health"
 HEALTH_BODY=""
 for _ in $(seq 1 60); do
   HEALTH_BODY="$(curl -fsS --max-time 5 "$HEALTH_URL" 2>/dev/null || true)"
-  [[ "$HEALTH_BODY" == *'"postgres":"up"'* && "$HEALTH_BODY" == *'"redis":"up"'* ]] && break
+  retina_health_ready "$HEALTH_BODY" && break
   sleep 2
 done
 
@@ -431,53 +435,17 @@ pause "Press Enter for the day-one checks."
 stage "Day one checks"
 say "What phase 4 needs to know about this box, in a block to paste into"
 say "docs/PROGRESS.md under 'Verified on the box'."
+say "This is deploy/smoke-test.sh, which you can re-run on its own any time"
+say "(after a claude upgrade, say) without going through the wizard again."
 
-REPORT=()
-record() { REPORT+=("$1"); note "$1"; }
+SMOKE_ARGS=("$PROXY_URL")
+confirm "Send one small call with a JSON schema? It proves structured output really works here." &&
+  SMOKE_ARGS+=(--schema)
+confirm "Fire 8 parallel calls to see whether the proxy queues or refuses them?" &&
+  SMOKE_ARGS+=(--parallel)
 
-if curl -fsS --max-time 5 "$PROXY_URL/healthz" >/dev/null 2>&1; then
-  record "proxy at $PROXY_URL: up"
-  ALIASES="$(curl -fsS --max-time 10 "$PROXY_URL/v1/models" 2>/dev/null | tr ',' '\n' | grep -o '"id":"[^"]*"' | cut -d'"' -f4 | tr '\n' ' ' || true)"
-  record "aliases: ${ALIASES:-<none returned>}"
-
-  if confirm "Send one small call with a JSON schema? It proves structured output really works here."; then
-    SCHEMA_ANSWER="$(curl -fsS --max-time 120 "$PROXY_URL/v1/messages" \
-      -H 'content-type: application/json' -H 'x-api-key: retina-bootstrap' \
-      -d '{"model":"haiku","max_tokens":64,"messages":[{"role":"user","content":"Name one colour."}],"output_config":{"format":{"type":"json_schema","schema":{"type":"object","properties":{"colour":{"type":"string"}},"required":["colour"],"additionalProperties":false}}}}' \
-      2>/dev/null || true)"
-    if [[ "$SCHEMA_ANSWER" == *'"colour"'* ]]; then
-      record "structured output: the provider constrained the answer"
-    else
-      record "structured output: FAILED. ${SCHEMA_ANSWER:0:200}"
-      SKIPPED+=("structured output does not work: check claude --version (needs 2.1.274+) and ~/retina/llm-proxy.log")
-    fi
-  fi
-
-  if confirm "Fire 8 parallel calls to see whether the proxy queues or refuses them?"; then
-    for i in $(seq 1 8); do
-      ( curl -fsS --max-time 120 "$PROXY_URL/v1/messages" -H 'content-type: application/json' \
-        -H 'x-api-key: retina-bootstrap' \
-        -d '{"model":"qwen3:4b","max_tokens":8,"messages":[{"role":"user","content":"hi"}]}' \
-        >/dev/null 2>&1 && echo ok ) >> /tmp/retina-parallel.$$ &
-    done
-    wait
-    PARALLEL_OK="$(grep -c ok /tmp/retina-parallel.$$ 2>/dev/null || echo 0)"
-    rm -f /tmp/retina-parallel.$$
-    record "8 parallel calls: $PARALLEL_OK succeeded"
-  fi
-else
-  warn "no proxy at $PROXY_URL"
-  record "proxy at $PROXY_URL: DOWN"
-  SKIPPED+=("start the proxy: setsid nohup $STACK/run-proxy.sh >/dev/null 2>&1 </dev/null &")
+if ! bash "$REPO/deploy/smoke-test.sh" "${SMOKE_ARGS[@]}"; then
+  SKIPPED+=("deploy/smoke-test.sh reported a problem; re-run it after fixing and check ~/retina/llm-proxy.log")
 fi
-
-record "disk free on $HOME: $(df -Ph "$HOME" 2>/dev/null | awk 'NR==2 {print $4}' || echo '?')"
-# This box also carries another project's stack, and phase 3 adds Redis, MinIO
-# and a second node process to it.
-record "memory available: $(free -h 2>/dev/null | awk 'NR==2 {print $7 " of " $2}' || echo '?')"
-
-printf '\n  %spaste this into docs/PROGRESS.md:%s\n\n' "$BOLD" "$RESET"
-for line in "${REPORT[@]}"; do printf '  - %s\n' "$line"; done
-printf '\n'
 
 finish

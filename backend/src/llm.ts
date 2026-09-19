@@ -1,8 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { z } from "zod";
 
 import { config } from "./config";
-import { LlmProxyError } from "./lib/errors";
+import { relayStatus, UpstreamError } from "./lib/errors";
+import type { ChatRequest, ChatResult, ModelInfo } from "./llm-contract";
 import { chatViaGateway, isGatewayUrl, listModelsViaGateway } from "./llm-gateway";
+
+export type { ChatMessage, ChatRequest, ChatResult, ModelInfo } from "./llm-contract";
 
 /**
  * The llm-proxy client. The proxy speaks the Anthropic wire, owns every
@@ -16,46 +20,6 @@ import { chatViaGateway, isGatewayUrl, listModelsViaGateway } from "./llm-gatewa
  * this module sees one `chat()` either way.
  */
 
-export interface ChatMessage {
-  role: "user" | "assistant";
-  content: string;
-}
-
-export interface ChatRequest {
-  /** A proxy alias such as "qwen" or "claude", never a provider model id. */
-  model: string;
-  messages: ChatMessage[];
-  system?: string;
-  maxTokens?: number;
-  /**
-   * A JSON Schema the answer must match. Sent as `output_config.format`, which
-   * the proxy turns into the provider's own structured output (`--json-schema`
-   * for `claude -p`, `response_format` for Ollama), so the text that comes back
-   * is that JSON object and nothing else.
-   */
-  outputSchema?: Record<string, unknown>;
-}
-
-export interface ChatResult {
-  text: string;
-  /** The provider/model the proxy resolved the alias to, when it says. */
-  model: string | null;
-  stopReason: string | null;
-  usage: { inputTokens: number; outputTokens: number };
-  /** From the proxy's X-LLM-Proxy-Cost-USD header; null when absent. */
-  costUsd: number | null;
-}
-
-export interface ModelInfo {
-  /** The alias to send as `model`. */
-  id: string;
-  provider: string;
-  /** The provider's model id behind the alias. */
-  model: string;
-}
-
-/** Loopback on the Monash box; loopback on the dev machine. */
-const DEFAULT_PROXY_URL = "http://127.0.0.1:4000";
 /** Cold 27B load plus a long generation can take minutes. */
 const REQUEST_TIMEOUT_MS = 600_000;
 /**
@@ -68,6 +32,35 @@ const DEFAULT_MAX_TOKENS = 8000;
 function baseUrl(): string {
   return config.LLM_PROXY_URL.replace(/\/+$/, "");
 }
+
+/**
+ * The proxy's error envelope. It states `retryable` per error class, which is
+ * the only thing that separates an unknown provider from a dead upstream: both
+ * are 500. A proxy too old to send it leaves the field absent and the caller
+ * falls back to reading the status.
+ */
+const ProxyErrorBody = z.object({
+  error: z.object({ retryable: z.boolean().optional() }).optional(),
+});
+
+function upstreamVerdict(body: unknown): boolean | null {
+  const parsed = ProxyErrorBody.safeParse(body);
+  return parsed.success ? (parsed.data.error?.retryable ?? null) : null;
+}
+
+/** `GET /v1/models`. The alias is `id`; the rest is what the proxy resolved it to. */
+const ModelListBody = z.object({
+  data: z
+    .array(
+      z.object({
+        id: z.string(),
+        provider: z.string().nullish(),
+        owned_by: z.string().nullish(),
+        model_id: z.string().nullish(),
+      }),
+    )
+    .default([]),
+});
 
 /** The `/ai/chat` of another Retina API, or null when the URL is a proxy we speak the Anthropic wire to. */
 function gatewayUrl(): string | null {
@@ -121,12 +114,14 @@ export async function chat(project: string, req: ChatRequest): Promise<ChatResul
     ({ data, response } = await anthropic.messages.create(params).withResponse());
   } catch (error) {
     if (error instanceof Anthropic.APIConnectionError) {
-      throw new LlmProxyError(503, `llm-proxy unreachable at ${url}`, { cause: error });
+      throw new UpstreamError(503, `llm-proxy unreachable at ${url}`, { cause: error, retryable: true });
     }
     if (error instanceof Anthropic.APIError) {
       const status = error.status ?? 502;
-      const relay = status >= 400 && status < 500 ? status : 502;
-      throw new LlmProxyError(relay, `llm-proxy returned ${status}: ${error.message}`, { cause: error });
+      throw new UpstreamError(relayStatus(status), `llm-proxy returned ${status}: ${error.message}`, {
+        cause: error,
+        retryable: upstreamVerdict(error.error),
+      });
     }
     throw error;
   }
@@ -156,14 +151,19 @@ export async function listModels(): Promise<ModelInfo[]> {
   try {
     response = await fetch(`${url}/v1/models`, { signal: AbortSignal.timeout(5000) });
   } catch (error) {
-    throw new LlmProxyError(503, `llm-proxy unreachable at ${url}`, { cause: error });
+    throw new UpstreamError(503, `llm-proxy unreachable at ${url}`, { cause: error, retryable: true });
   }
-  if (!response.ok) throw new LlmProxyError(502, `llm-proxy /v1/models returned ${response.status}`);
+  if (!response.ok) {
+    throw new UpstreamError(502, `llm-proxy /v1/models returned ${response.status}`, {
+      retryable: upstreamVerdict(await response.json().catch(() => null)),
+    });
+  }
 
-  const payload = (await response.json()) as { data?: Record<string, unknown>[] };
-  return (payload.data ?? []).map((m) => ({
-    id: String(m.id),
-    provider: String(m.provider ?? m.owned_by ?? ""),
-    model: String(m.model_id ?? ""),
+  const parsed = ModelListBody.safeParse(await response.json().catch(() => null));
+  if (!parsed.success) throw new UpstreamError(502, "llm-proxy /v1/models answered outside the contract");
+  return parsed.data.data.map((m) => ({
+    id: m.id,
+    provider: m.provider ?? m.owned_by ?? "",
+    model: m.model_id ?? "",
   }));
 }

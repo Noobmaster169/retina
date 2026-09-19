@@ -2,7 +2,7 @@ import { type Request, type Response, Router } from "express";
 import type { Pool } from "pg";
 import { z } from "zod";
 
-import { CreateRunBody, RunEmailsQuery, type RunStatus, type RunSummary } from "../contracts";
+import { CreateRunBody, RunEmailsQuery, type RunList, type RunStatus, type RunSummary } from "../contracts";
 import { RetryableError } from "../lib/errors";
 import { newRunId, resumeJobId } from "../lib/ids";
 import { childLogger } from "../lib/logger";
@@ -40,14 +40,27 @@ export function runsRouter(deps: RunsDeps): Router {
     }
   }
 
-  async function summaryOf(run: Run): Promise<RunSummary> {
-    const [stageCounts, queues, llm, latest] = await Promise.all([
-      emailRuns.stageCounts(pool, run.id),
+  /** Every run's summary from one round of reads. The repositories answer for every id asked for. */
+  async function summariesOf(all: Run[]): Promise<RunSummary[]> {
+    const ids = all.map((run) => run.id);
+    const [stageCounts, queues, usage, latest] = await Promise.all([
+      emailRuns.stageCountsForRuns(pool, ids),
       queueSnapshot(),
-      llmCalls.usageForRun(pool, run.id),
-      submissions.latestForRuns(pool, [run.id]),
+      llmCalls.usageForRuns(pool, ids),
+      submissions.latestForRuns(pool, ids),
     ]);
-    return toSummary(run, { stageCounts, queues, llm, lastSubmission: latest.get(run.id) });
+    return all.map((run) =>
+      toSummary(run, {
+        stageCounts: stageCounts(run.id),
+        queues,
+        llm: usage(run.id),
+        lastSubmission: latest.get(run.id),
+      }),
+    );
+  }
+
+  async function summaryOf(run: Run): Promise<RunSummary> {
+    return (await summariesOf([run]))[0];
   }
 
   /** Answers 404 or 409 for a move the run could not make. */
@@ -93,22 +106,8 @@ export function runsRouter(deps: RunsDeps): Router {
   });
 
   router.get("/", async (_req, res) => {
-    const all = await runs.list(pool);
-    const ids = all.map((run) => run.id);
-    const [counts, queues, usage, latest] = await Promise.all([
-      emailRuns.stageCountsForRuns(pool, ids),
-      queueSnapshot(),
-      llmCalls.usageForRuns(pool, ids),
-      submissions.latestForRuns(pool, ids),
-    ]);
-    res.json({
-      runs: all.flatMap((run) => {
-        const stageCounts = counts.get(run.id);
-        const llm = usage.get(run.id);
-        if (!stageCounts || !llm) return [];
-        return [toSummary(run, { stageCounts, queues, llm, lastSubmission: latest.get(run.id) })];
-      }),
-    });
+    const body: RunList = { runs: await summariesOf(await runs.list(pool)) };
+    res.json(body);
   });
 
   router.get("/:id", async (req, res) => {

@@ -57,7 +57,7 @@ docs/
 frontend/
   app/(gated)/runs, emails/[id], review, chat, eval
   lib/api-client.ts        extended contract
-  middleware.ts            password gate
+  proxy.ts                 password gate
 ```
 
 ## 2. Compose services (VPS)
@@ -69,8 +69,9 @@ frontend/
 | postgres | postgres:17 | none | pgdata | healthcheck `pg_isready` |
 | redis | redis:7 | none | redisdata | `command: redis-server --appendonly yes --maxmemory-policy noeviction --maxmemory 512mb` |
 | minio | quay.io/minio/minio (`minio/minio` is gone from Docker Hub) | none (console reachable via `docker compose exec` or an SSH tunnel) | miniodata | `server /data --console-address :9001`; init job creates bucket `retina` |
+| minio-init | same minio image | none | none | one-shot: creates bucket `retina`, then exits 0 |
 | api | ghcr.io/noobmaster169/retina-api:main | `127.0.0.1:8091:8091` | none | runs migrations then listens; depends on postgres, redis, minio healthy |
-| worker | same image | none | none | `command: node --import tsx src/worker.ts` (no build step; the image runs TypeScript through tsx); depends on api healthy (migrations done) |
+| worker | same image | none | none | `command: node --import tsx src/worker.ts` (no build step; the image runs TypeScript through tsx); `depends_on: api: service_started`, not `service_healthy`: an unhealthy api must not also take the worker down, and waiting on it aborted a deploy |
 | doc-extract | built from `services/doc-extract` | none | none | `:8000` inside network; healthcheck `/healthz`; 1 GB memory limit |
 | inbox | built from `emails/server` in the clone | none (private to the network) | `emails/data_v2:/data:ro`, `emails/data_v2/ground_truth.json:/secrets/ground_truth.json:ro` | organiser image, unchanged code |
 
@@ -99,12 +100,12 @@ Backend (`deploy/.env`, mirrored in `backend/.env.example`):
 | `MINIO_PUBLIC_ENDPOINT` | `https://<ngrok>/files` | api (presigned URLs are proxied, see 10) |
 | `DOC_EXTRACT_URL` | `http://doc-extract:8000` | worker |
 | `EMAIL_SERVER_URL` | `http://inbox:8000` (already set in `deploy/compose.yaml`) | api, worker |
-| `LLM_PROXY_URL` | `http://172.17.0.1:4000` | api, worker |
+| `LLM_PROXY_URL` | `http://host.docker.internal:4001` | api, worker |
 | `LLM_MODEL_CLASSIFY`, `LLM_MODEL_VERIFY`, `LLM_MODEL_EXTRACT`, `LLM_MODEL_CHAT` | `sonnet` for every step. Must be a proxy alias from `proxy/proxy.yaml` | worker, api |
 | `LLM_MAX_CONCURRENCY` | `8` | worker (global semaphore) |
 | `CLASSIFY_CONCURRENCY`, `COMPARE_CONCURRENCY` | `2`, `4`. Classify is 2 because the `claudecli` provider serves two calls at a time; more workers only queue inside the proxy with their request timeout already running | worker |
 | `API_SHARED_SECRET`, `TEAM_API_KEY` | hex | api |
-| `SITE_PASSWORD` | string | frontend middleware (Vercel env) |
+| `SITE_PASSWORD` | string | frontend gate in `proxy.ts` (Vercel env) |
 | `EVAL_GROUND_TRUTH_PATH` | local path only, unset on the VPS containers | eval CLI |
 
 Frontend (Vercel): `BACKEND_URL`, `API_SHARED_SECRET`, `SITE_PASSWORD`. There is no separate
@@ -127,7 +128,7 @@ the password signs everyone out.
 | Queue | Job name | Payload | Producer | Consumer |
 |---|---|---|---|---|
 | `classify` | `classify-email` | `{ runId, emailId }` | replay controller, review "reclassify" | classify.worker |
-| `compare` | `compare-email` | `{ runId, emailId, rerunFrom?: "triage" \| "extract" \| "compare" }` | classify.worker, review actions | compare.worker |
+| `compare` | `compare-email` | `{ runId, emailId }` today; phase 8 adds `rerunFrom?: "triage" \| "extract" \| "compare"` when something reads it | classify.worker, review actions | compare.worker |
 
 Job options, both queues:
 
@@ -446,7 +447,14 @@ images, OCR text is used and the reviewer sees the PNG.
   selects it, the bearer is `TEAM_API_KEY`, and the reply is validated with zod like any other
   boundary. `chat()` hides the choice, so nothing above `llm.ts` knows which ran. That route has no
   structured output, so on it the schema reaches the model through the prompt only and the zod parse
-  in `structured.ts` is the whole guarantee.
+  in `structured.ts` is the whole guarantee. `config.ts` refuses to boot a gateway URL with no
+  `TEAM_API_KEY`, because an empty bearer is a 401 and a 401 fails every email in the run for good.
+- Error envelope: the proxy answers `{ type: "error", error: { type, message, code, retryable } }`.
+  `code` is its stable machine name and `retryable` its own verdict on whether another attempt could
+  work. The backend reads `retryable` and falls back to the status only when it is absent: status
+  alone cannot separate `unknown_provider` (a permanent 500) from a dead upstream (a transient 502),
+  and treating the first as the second requeues a misconfiguration forever without spending an
+  attempt. `app.ts` relays the flag on its own error body so it survives the gateway hop.
 - Structured output: the schema is a provider constraint, not a request. `agents/structured.ts`
   derives JSON Schema from the zod schema and sends it as `LlmRequest.outputSchema`, which
   `llm.ts` puts on the wire as `output_config: { format: { type: "json_schema", schema } }`. The
@@ -642,7 +650,7 @@ through `POST /submit`.
 
 ## 13. Frontend
 
-Pages (all behind `middleware.ts` password gate; cookie signed with `SESSION_SECRET`):
+Pages (all behind the `proxy.ts` password gate; the cookie is an HMAC of `SITE_PASSWORD`, see section 3):
 
 | Route | Content | Polling |
 |---|---|---|
@@ -696,7 +704,7 @@ it; client components never hold the secret. Polling uses SWR with `refreshInter
   for the live view.
 - `/health` returns per-dependency status and the worker heartbeat (worker writes
   `worker:heartbeat` to Redis every 10 s; api reports stale after 60 s).
-- Proxy spend by project at `172.17.0.1:4000/admin/usage`; set `X-Project: retina-worker`
+- Proxy spend by project at `172.17.0.1:4001/admin/usage`; set `X-Project: retina-worker`
   and `retina-chat` headers so it is split.
 
 ## 17. Failure modes

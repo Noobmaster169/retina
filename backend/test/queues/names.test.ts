@@ -40,7 +40,7 @@ describe("jobOptions", () => {
 describe("job payloads", () => {
   it("carry ids only", () => {
     expect(ClassifyJob.parse({ runId: RUN, emailId: "email_004" })).toEqual({ runId: RUN, emailId: "email_004" });
-    expect(CompareJob.parse({ runId: RUN, emailId: "email_004", rerunFrom: "extract" }).rerunFrom).toBe("extract");
+    expect(CompareJob.parse({ runId: RUN, emailId: "email_004" })).toEqual({ runId: RUN, emailId: "email_004" });
   });
 
   it("an ingest job added before epochs existed reads as epoch 0", () => {
@@ -51,6 +51,6 @@ describe("job payloads", () => {
 
   it("reject a run id that is not a uuid", () => {
     expect(ClassifyJob.safeParse({ runId: "nope", emailId: "email_004" }).success).toBe(false);
-    expect(CompareJob.safeParse({ runId: RUN, emailId: "email_004", rerunFrom: "later" }).success).toBe(false);
+    expect(CompareJob.safeParse({ runId: RUN, emailId: "email_004" }).success).toBe(true);
   });
 });

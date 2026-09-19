@@ -125,6 +125,15 @@ cmd_deploy() {
 cmd_reset() {
   running || die "not up"
   sx 'cd /home/student/retina 2>/dev/null && docker compose down -v --remove-orphans' >/dev/null 2>&1
+  # By compose project, not only through the file. This deletes the stack
+  # directory, so once compose.yaml is gone `compose down -v` can no longer name
+  # anything and a reset after a half-finished bootstrap left the containers up
+  # and their volumes behind for good. An orphaned retina_pgdata then wedges
+  # every later run: the wizard refuses to generate a PG_PASSWORD that would
+  # lock an existing database away, which is the right call and unrecoverable
+  # from here.
+  sx 'docker rm -f $(docker ps -aq --filter label=com.docker.compose.project=retina) 2>/dev/null' >/dev/null 2>&1
+  sx 'docker volume rm -f retina_pgdata retina_redisdata retina_miniodata' >/dev/null 2>&1
   sx 'rm -rf /home/student/retina && mkdir -p /home/student/retina'
   say "the simulated box is fresh again"
 }
@@ -182,6 +191,10 @@ simulate_commit() {
           sed -i 's|^  EMAIL_SERVER_URL: http://inbox:8000|  EMAIL_SERVER_URL: http://inbox:8000\n  LOG_LEVEL: debug|' deploy/compose.yaml
           grep -q 'LOG_LEVEL: debug' deploy/compose.yaml
           printf '\n# touched by the simulator\n' >> deploy/auto-deploy.sh ;;
+        library-only)
+          printf '
+# touched by the simulator
+' >> deploy/lib/stack.sh ;;
         broken-health)
           sed -i 's|check(\"postgres\", () => deps.pool.query(\"select 1\"))|check(\"postgres\", () => Promise.reject(new Error(\"simulated outage\")))|' backend/src/health.ts
           grep -q 'simulated outage' backend/src/health.ts ;;
@@ -228,16 +241,28 @@ cmd_test() {
   # file is live in the running container.
   check "the new compose value reached the api" test "$(env_of api LOG_LEVEL)" = "debug"
 
-  say "E. a commit whose /health says Postgres is down"
-  mark "E rollback"
+  # auto-deploy.sh sources lib/stack.sh before it pulls, so a commit that
+  # changes only the library leaves the running shell holding the old one.
+  # The hand-over has to fire on that too, or the deploy silently runs with
+  # half the new code.
+  say "E. a commit that changes only deploy/lib"
+  mark "E library only"
+  simulate_commit library-only "chore: the simulator changes the shared library" || die "could not make the commit"
+  cmd_deploy
+  check "handed over for a library-only change" log_has "handing over to it"
+  check "deployed and healthy" log_has "DEPLOYED"
+  check "the box runs the new library" sx "cmp -s /home/student/projects/retina/deploy/lib/stack.sh /srv/work/deploy/lib/stack.sh"
+
+  say "F. a commit whose /health says Postgres is down"
+  mark "F rollback"
   simulate_commit broken-health "fix: a break the simulator introduced" || die "could not make the commit"
   cmd_deploy && { echo "  FAIL  a broken deploy must exit non-zero"; FAIL=$((FAIL + 1)); }
   check "the health gate refused it" log_has "HEALTH CHECK FAILED"
   check "rolled back to the previous image" log_has "rolling back to"
   check "the API still serves the old code" health_has '"postgres":"up"'
 
-  say "F. a dirty clone"
-  mark "F dirty"
+  say "G. a dirty clone"
+  mark "G dirty"
   sx 'echo scratch >> /home/student/projects/retina/deploy/README.md'
   cmd_deploy
   check "refused to touch it" log_has "working tree at .* is dirty"

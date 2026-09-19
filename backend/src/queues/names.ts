@@ -18,7 +18,8 @@ export type IngestJob = z.infer<typeof IngestJob>;
 export const ClassifyJob = z.object({ runId: z.uuid(), emailId: z.string().min(1) });
 export type ClassifyJob = z.infer<typeof ClassifyJob>;
 
-export const CompareJob = ClassifyJob.extend({ rerunFrom: z.enum(["triage", "extract", "compare"]).optional() });
+/** The same ids as a classify job. Phase 8's partial rerun is the reason this has its own name. */
+export const CompareJob = ClassifyJob;
 export type CompareJob = z.infer<typeof CompareJob>;
 
 /** Every email until phase 9 replaces the constant with client tier and tonnage. */

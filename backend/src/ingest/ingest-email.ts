@@ -28,25 +28,27 @@ async function storeAttachments(
   emailId: string,
   paths: string[],
 ): Promise<attachments.NewAttachment[]> {
-  const stored: attachments.NewAttachment[] = [];
-  for (const path of paths) {
-    const { bytes, contentType } = await deps.source.readAttachment(path);
-    const filename = basename(path);
-    const objectKey = keys.attachment(runId, emailId, filename);
-    await deps.store.put(objectKey, bytes, contentType);
-    stored.push({
-      runId,
-      emailId,
-      filename,
-      sourcePath: path,
-      role: roleFromName(filename),
-      objectKey,
-      contentType,
-      bytes: bytes.length,
-      sha256: createHash("sha256").update(bytes).digest("hex"),
-    });
-  }
-  return stored;
+  // One attachment's download and upload has nothing to do with the next one's,
+  // and Promise.all keeps the rows in the order the paths came in.
+  return Promise.all(
+    paths.map(async (path) => {
+      const { bytes, contentType } = await deps.source.readAttachment(path);
+      const filename = basename(path);
+      const objectKey = keys.attachment(runId, emailId, filename);
+      await deps.store.put(objectKey, bytes, contentType);
+      return {
+        runId,
+        emailId,
+        filename,
+        sourcePath: path,
+        role: roleFromName(filename),
+        objectKey,
+        contentType,
+        bytes: bytes.length,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+      };
+    }),
+  );
 }
 
 /** Downloads, uploads, then writes the rows in one short transaction. */

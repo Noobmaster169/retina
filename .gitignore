@@ -37,3 +37,4 @@ backend/eval/reports/
 # setuptools writes these on every `pip install -e proxy`. Tracked, they made
 # the clone dirty on the box, and auto-deploy.sh refuses to touch a dirty tree.
 *.egg-info/
+proxy/uv.lock

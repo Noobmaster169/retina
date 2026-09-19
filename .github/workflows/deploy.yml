@@ -140,15 +140,54 @@ jobs:
       - name: Install
         run: pip install -e ".[dev]"
         working-directory: proxy
+      - name: Lint
+        run: ruff check .
+        working-directory: proxy
       - name: Test
         run: pytest -q
         working-directory: proxy
+
+  # score.ts is a hand port of the organisers' scoring.py, which this repo does
+  # not control. parity.ts is the only thing that proves they still agree, and
+  # until now it only ran when someone remembered to run it.
+  parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.20.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: backend/pnpm-lock.yaml
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install (backend)
+        run: pnpm install --frozen-lockfile
+        working-directory: backend
+      - name: Scorer parity
+        run: pnpm eval:parity
+        working-directory: backend
+        env:
+          # The answer key is already in the checkout: it ships with the
+          # organiser kit. Nothing here reaches Postgres, but config.ts
+          # validates the whole environment before any script runs.
+          EVAL_GROUND_TRUTH_PATH: ../emails/data_v2/ground_truth.json
+          PG_HOST: unused
+          PG_DATABASE: unused
+          PG_USER: unused
+          PG_PASSWORD: unused
+          EMAIL_SERVER_URL: http://127.0.0.1:8080
 
   # Publishes ghcr.io/<owner>/retina-api. The moving :main tag is what the
   # Monash compose file names; the immutable tag is for pinning a rollback.
   # Pull requests stop at the gates above: nothing they run may publish.
   build-api:
-    needs: [quality, test, proxy]
+    needs: [quality, test, proxy, parity]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
