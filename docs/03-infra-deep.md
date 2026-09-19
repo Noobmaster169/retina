@@ -477,7 +477,9 @@ images, OCR text is used and the reviewer sees the PNG.
   `runs.prompt_set` (`agents/prompts/prompt-set.ts`): the run's `promptSet`/`models`, else the
   `core.prompt_versions` active row and `LLM_MODEL_<STEP>`, else the newest file and its
   frontmatter model. The worker loads exactly what the run pinned, so a file added mid-run cannot
-  change it. A run from before pinning (`prompt_set = {}`) gets the newest file. Every call stores
+  change it. A run from before pinning (`prompt_set = {}`) gets the active versions, never simply
+  the newest file, which may be an unvalidated experiment. `PromptSet` drops a step it does not
+  know, so code rolled back under a later phase's runs still reads them. Every call stores
   `prompt_version`.
 - Few-shot examples live in `agents/prompts/<step>/examples.<version>.json`, filled into the
   prompt's `{{examples}}`. `pnpm eval:examples` writes them from the train split, never from the
@@ -487,7 +489,11 @@ images, OCR text is used and the reviewer sees the PNG.
   makes the ledger understate calls and cost. `proxyLlmClient` retries a transient failure twice,
   at about 1 s and 3 s with jitter, while `isTransient(error)` holds (the proxy's verdict, never a
   status list), then throws `LlmUnavailableError` and the queue pauses (4.5). A permanent failure
-  is a `TerminalError` at once.
+  is a `TerminalError` at once. A timeout (600 s) is `LlmTimeoutError`: not retried in the client,
+  not an outage, so the queue spends an attempt and a call that always hangs ends as a failure.
+- A verifier that fails for good leaves the generator's category in place with `verifierError`
+  in the rationale. A retry after a verifier outage reuses the generator's answer from the ledger
+  (`llmCalls.latestAccepted`) instead of paying for it again.
 - Every call logs one line (`structured` module, info) with step, model, attempt, latency and
   tokens; `LOG_LEVEL=debug` logs the full system prompt, input and answer.
 - Every call inserts `core.llm_calls` with step, model, prompt_version, request, response,
@@ -602,12 +608,12 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 |---|---|
 | `GET /health` | `{ status: ok \| degraded, checks: { postgres, redis, minio, inbox } }`, 2 s per check. Degraded is still 200; only postgres down is 503, which is the signal auto-deploy rolls back on. The proxy is left out on purpose: a cold model would read as an outage. doc-extract joins in phase 5 |
 | `POST /runs` | start a run `{ source, ratePerSecond, limit?, emailIds?, subset?: dev \| holdout, promptSet?: { step: vN }, models?: { step: alias } }`. `subset` reads the id lists in `backend/eval/` (ids only). 400 for an unknown prompt version or a model that is not a proxy alias, before anything is queued |
-| `GET /runs`, `GET /runs/:id` | list, detail with stage counts, queue depth, `promptSet`, `llm` usage with `verifierShare`, score. The list also carries `concurrency: { classify, llm }` from the env. `queues` is `null` when Redis cannot be reached; the rest comes from Postgres and is still served |
+| `GET /runs`, `GET /runs/:id` | list, detail with stage counts, `finishedEmails`, `processingDone`, queue depth, `promptSet`, `llm` usage with `verifierShare`, score. The list also carries `concurrency: { classify, llm }` from the env. `queues` is `null` when Redis cannot be reached; the rest comes from Postgres and is still served |
 | `POST /runs/:id/pause`, `/resume`, `/cancel` | control the replay |
 | `POST /runs/:id/submit?force=false` | build submission, post to averis, store scoreboard. 409 when the run holds fewer rows than `totalEmails` (still ingesting) or holds unfinished emails, both overridden by `?force=true`; 409 while another submission for the same run is being scored. The `core.submissions` row is written before the scorer is called and updated with the scoreboard after, so a scorer failure leaves an unscored row (null `scoreboard`, null `final_score`) pointing at the stored payload rather than an orphan payload. Only scored rows count as a run's last submission |
 | `GET /runs/:id/submission.json` | download the payload |
 | `GET /runs/:id/emails?stage=&category=&decidedBy=&q=` | paginated list with `category`, `decidedBy`, `confidence`, `verifierCategory`, `error` |
-| `GET /runs/:id/calls?after=&limit=` | the run's newest `llm_calls`, newest first, for a live feed; `after` returns only newer ids |
+| `GET /runs/:id/calls?after=&limit=` | the run's newest `llm_calls` as summaries (no prompt or email text), newest first, for a live feed; `after` returns only newer ids |
 | `GET /runs/:id/emails/:emailId/calls` | one email's calls oldest first: system prompt, input, answer text, parsed answer, tokens, cost, latency |
 | `GET /emails/:runId/:emailId` | full trace: email, attachments, classification, extractions with fields, comparison, diffs, review case, llm_calls summary |
 | `GET /review?status=open` | review inbox |

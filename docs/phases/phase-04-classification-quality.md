@@ -130,7 +130,8 @@ The rest is unchanged: `BL_COMPARISON` goes to the compare queue, anything else 
 aggregate over `llm_calls` and `classifications`. The email list gains `category` and `decidedBy`
 columns and a category filter.
 
-The frontend mirror is a zod schema in `frontend/lib/api/runs-client.ts`, not an interface: every
+The frontend mirror is a zod schema in `frontend/lib/api/runs-schemas.ts` (and `trace-schemas.ts`
+for the email list and calls), not an interface: every
 response is parsed there now. `getRun` and `listRunEmails` were deleted as unused in the phase 3
 review and come back with this page; restore them from `git show d68ed1b^:frontend/lib/api-client.ts`
 as schemas. See `phase-04-handover.md` sections 3 and 4.

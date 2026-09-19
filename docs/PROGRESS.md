@@ -32,8 +32,8 @@ corrected where it described the old behaviour:
 | 1 | n/a | n/a | n/a | n/a | n/a | No classification yet: every email ends `done` / `OK` |
 | 2, prompt v1 | 0.2129 | not run | 0.7098 holdout | 0 | 0 | Zero-shot sonnet. All 25 holdout SI_REQUEST read as BL_COMPARISON: the definition was wrong |
 | 2, prompt v2 | 0.2981 | incomplete, see below | 0.9938 holdout (103 of 104) | 0 | 0 | Zero-shot sonnet, categories defined by paperwork stage. Stage 3 and E2E are 0 until phases 5 and 6 read the documents |
-| 4, v3 + verifier, dev sample | not run | not run | 1.0000 dev (30 of 30) | 0 | 0 | Run `0d09d887`, 30 train emails, 37 calls, 0 failed, verifier on 7 (23.3%), agreed every time. Not a holdout number |
 | 2, prompt v3 | 0.3000 | 0.2992 | 1.0000 holdout (104 of 104) | 0 | 0 | `v2` with the schema as a provider constraint: no "reason briefly" ending, `rationale` first in the schema, no `max_tokens`. Holdout run `0a8ed5a5`, 104 calls. Full run `044367f9`, 520 calls, 0 failed, stage 1 macro-F1 0.9975 (518 of 520). Fixes `v2`'s only miss, `email_504` |
+| 4, v3 + verifier, dev sample | not run | not run | 1.0000 dev (30 of 30) | 0 | 0 | Run `0d09d887`, 30 train emails, 37 calls, 0 failed, verifier on 7 (23.3%), agreed every time. Not a holdout number |
 
 Stage 1 carries 0.30 of the final score, so 0.3000 is exactly what a perfect classifier with no
 document check gets, and `v3` is there. The holdout final cannot rise further until phase 5.
@@ -290,8 +290,10 @@ are open, not failed.
       were below 0.9. The holdout run above settles it.
 - [ ] The few-shot experiment, with both holdout numbers. `v4` = `v3` + ten train examples, two
       per category, none from the holdout or the dev sample. **To run**: Emails = Holdout,
-      Classify prompt = v4. It must beat the `v3` holdout run to ship (activate it with
-      `update core.prompt_versions set active = (version = 'v4') where step = 'classify'`).
+      Classify prompt = v4. It must beat the `v3` holdout run to ship. Migration 004 seeds no
+      `v4` row, so activating it takes a row and two updates in one transaction (the partial
+      unique index allows one active version per step at any moment):
+      `begin; insert into core.prompt_versions (step, version, notes) values ('classify', 'v4', 'few-shot'); update core.prompt_versions set active = false where step = 'classify' and version = 'v3'; update core.prompt_versions set active = true where step = 'classify' and version = 'v4'; commit;`
       Since `v3` already scored 1.0000 there, it can at best tie; if it does not beat `v3`,
       delete `v4.md` and `examples.v4.json` and record both numbers here.
 - [ ] The model comparison: one holdout run per alias under `v3`, Model = haiku, opus,
@@ -303,7 +305,10 @@ are open, not failed.
       prompt and `v4`'s instructions for inbox phrases too.
 - [x] Processor tests with `FakeLlmClient` and no network: confident (no verifier), unsure (the
       verifier's category wins), a pinned prompt set, a 503 (retryable, on the ledger), an unknown
-      provider (a `TerminalError`, not requeued). 247 backend tests.
+      provider (a `TerminalError`, not requeued, through the real client), a verifier that fails
+      for good (the generator's category stands), a verifier outage (the retry reuses the
+      generator's answer), and a run from before pinning (it gets the active `v3`, not `v4`).
+      268 backend tests.
 - [x] A run at `LLM_MAX_CONCURRENCY` completed with no 429: the dev run, 2 at a time, 37 calls,
       none failed.
 - [ ] Image passthrough on the box: needs SSH access, which this machine does not have.
@@ -378,10 +383,12 @@ dev machine:
 - The verifier agreed on all 7 dev-sample emails it saw. If the holdout shows the same, it is
   costing about one call in five on those categories for nothing; the threshold could come down.
   Decide on the holdout numbers, not on this sample.
-- The backend's LLM request timeout (600 s) is still shorter than the proxy's worst case for
-  `claudecli` (a 1200 s per-attempt ceiling plus a 1320 s backoff ladder). The zombie this used to
-  cost is gone, since the proxy now cancels an abandoned call, but the two budgets are still set
-  independently in two files and neither names the other. Pick one owner for the number.
+- The backend's LLM request timeout (600 s, `REQUEST_TIMEOUT_MS` in `llm.ts`) is still shorter
+  than the proxy's worst case for `claudecli` (a 1200 s per-attempt ceiling plus a 1320 s backoff
+  ladder), and the two are still set in two files. Phase 4 made the backend's number the one that
+  bounds an email: a timeout is `LlmTimeoutError`, never retried inside the client and never
+  treated as an outage, so an email that always hangs costs at most three attempts of 600 s and
+  then fails. Moving the proxy's ceiling under it would make the proxy the single owner.
 - `proxy.yaml`'s `request_timeout_s: 1800` is read by nothing: `config.py` defines the field and no
   code reads it, so it implies a ceiling that does not exist. Delete it or enforce it.
 - Ruff runs with `E,F,W,B,BLE`. Import sorting and pyupgrade are off: on the inherited proxy they
@@ -432,6 +439,30 @@ dev machine:
 - proxy concurrency 8: unknown
 - `subscription` alias maps to: unknown
 - BullMQ job.changePriority available: unknown (installed BullMQ is 6.3.6; `Job.changePriority` is in its types)
+
+### Phase 4 code review (2026-09-19)
+Two fresh reviewers read the branch with only the diff, CLAUDE.md, the spec and the handover. No
+finding gave wrong results on the runs made; each is fixed on the branch. How each was checked is
+in brackets.
+- [x] A `prompt_set` with a step this code does not know (a later phase's run, read after a
+      rollback) failed `GET /runs` and every job of that run. `PromptSet` drops unknown steps.
+      (`runs.repo.test.ts`, a run whose set names `extract`.)
+- [x] A run created before pinning fell back to the newest prompt file, which is now the
+      unvalidated `v4`. It gets the active versions (`completePromptSet`). (Processor test.)
+- [x] A timeout was retried twice in the client and then treated as an outage, so one hung call
+      held a slot for about 30 minutes and requeued forever. `LlmTimeoutError`: one try, and the
+      queue spends an attempt. (Client and gateway tests.)
+- [x] A verifier that failed for good failed the email though the generator had answered, and a
+      verifier outage paid for the generator again on the retry. The generator's category stands
+      with `verifierError` recorded, and a retry reuses the ledger's answer. (Processor tests.)
+- [x] The live feed re-downloaded full prompts every 2 s forever. Summaries only, and the run
+      page stops polling when `processingDone`. (Route test: no `system` or `user` in the feed.)
+- [x] The documented `v4` activation SQL assumed a row migration 004 does not seed. Corrected above.
+- [x] Smaller: bad queries in the frontend's pass-through routes read as an outage; `/runs/[id]`
+      had no inline error for a down backend; the table blanked on filter change; progress was
+      derived in the frontend (now `finishedEmails`, `processingDone`); `LLM_MODEL_*` skipped the
+      alias check; a malformed examples file was a 500; `contracts.ts` was over 200 lines;
+      `RecordingLlmClient` was missing; the unknown-provider processor test bypassed the client.
 
 ## Found while building
 - vitest 5 treats a function returned from `beforeEach` as a cleanup hook and calls it. So
