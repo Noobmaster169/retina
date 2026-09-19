@@ -114,13 +114,17 @@ a demo and infra surprises surface early.
 
 **Build.**
 
-- `deploy/compose.yaml`: postgres, redis, minio, api, worker, averis. Averis kit copied to
-  `emails/` with the answer key gitignored and placed by hand on the box.
-- `auto-deploy.sh`: recreate `api` and `worker`; health poll; rollback both.
-- Second ngrok account and domain per the Retina deploy README; cron lines.
-- Vercel project on this repo: `BACKEND_URL`, `API_SHARED_SECRET`, `SITE_PASSWORD`,
-  `SESSION_SECRET`.
-- `X-Project` header on proxy calls (prepare for phase 4).
+- `deploy/compose.yaml`: postgres, redis, minio, minio-init, inbox, api, worker. The organiser
+  kit is committed in `emails/`, answer key included, and mounted into `inbox` only.
+- `auto-deploy.sh`: a health gate that does not roll back a degraded MinIO, `api` and `worker`
+  recreated together, and the stack's own copies of `compose.yaml` and the script kept in step
+  with the clone.
+- `deploy/bootstrap-wizard.sh`: the one box step, and the last one.
+- `deploy/sim/`: the deploy scripts exercised against a replica of the box, rollback included.
+- Vercel project on this repo: `BACKEND_URL`, `API_SHARED_SECRET`, `SITE_PASSWORD`. There is no
+  `SESSION_SECRET`: the gate's cookie is an HMAC of `SITE_PASSWORD`.
+- Spend attribution on proxy calls is already there: `llm.ts` sends `retina-<project>` as the
+  SDK's `apiKey`, which is what the proxy reads as the project name.
 - Runbook additions in `deploy/README.md`: new services, logs, what to restart.
 
 **Exit checklist.**

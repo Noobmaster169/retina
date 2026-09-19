@@ -1,6 +1,7 @@
 # Progress
 
-Current phase: 3. Phase 2 merged to `main` on 2026-09-19 with its exit checklist green.
+Current phase: 3, in progress on `phase-03-vps-deploy`. Phase 2 merged to `main` on
+2026-09-19 with its exit checklist green.
 
 ## Scores
 | Phase | Holdout final | Full final | Stage1 | Stage3 | E2E | Notes |
@@ -145,6 +146,42 @@ SI_REQUEST definition was wrong. The fix came from the organisers' generator, no
 emails, and was checked on 60 train emails (60 of 60) before the holdout was read again. The 341
 train ids in the interrupted full run are the cleaner evidence: none was looked at, all correct.
 
+### Phase 3 (in progress, 2026-09-19)
+Deploy only. Nothing under `backend/src` changed except one header in the frontend's api-client.
+- [x] The reason the box was stuck: it served a pre-phase-1 image. Through the tunnel `GET /runs`
+      was 404 with a valid bearer, and `/health` answered the old `{"status":"ok","database":"up"}`.
+      `auto-deploy.sh` gated on `"status":"ok"`, and phase 1's `/health` answers `degraded`
+      whenever Redis or MinIO is down, which there was always, so every phase 1 deploy was read as
+      a failure and rolled back. The gate is now `postgres` and `redis` up.
+- [x] `deploy/compose.yaml` has redis, minio, minio-init, worker beside postgres, inbox and api.
+      One env anchor shared by api and worker. Only `127.0.0.1:8091` published.
+- [x] `auto-deploy.sh` keeps `~/retina/compose.yaml` and `~/retina/auto-deploy.sh` in step with
+      the clone, so after one bootstrap no phase needs a box login again.
+- [x] `deploy/sim/sim.sh test`: 15 of 15 on a fresh simulated box. It found three real bugs, all
+      fixed (see below).
+- [x] CI gates run on pull requests, `pnpm test` runs against a Postgres service container, and
+      the frontend is built.
+- [ ] `bootstrap-wizard.sh` run on the box; `https://<domain>/health` reports every check up.
+- [ ] A 20-email run started from the Vercel page completes on the box and scores through the
+      box's inbox.
+- [ ] A push to `main` deploys within 5 minutes without manual steps.
+- [ ] `ground_truth.json` reaches the `inbox` container and nothing else, confirmed on the box.
+- [ ] Nightly backup cron line present; one manual `pg_dump` succeeded.
+
+### What the simulator found (2026-09-19)
+`deploy/sim` runs the real deploy scripts against a Docker-in-Docker replica of the box layout.
+Three bugs that would each have cost a manual recovery on a box nobody can SSH into from the
+dev machine:
+- [x] The self-update re-exec started a fresh tick. By then the pull had happened, so
+      `HEAD == origin/main` and the second pass exited at the quiet path. A commit that changed
+      `auto-deploy.sh` and `compose.yaml` together had its compose change deferred to whatever
+      tick came next. The hand-over now carries `AUTO_DEPLOY_FROM`.
+- [x] `docker compose up -d --no-deps api worker` still enforces the worker's
+      `depends_on: api service_healthy`. A deploy whose api was unhealthy blocked for the
+      healthcheck's whole allowance and then aborted, leaving the worker down. Only the api
+      migrates, so there was no race to order around: `service_started`.
+- [x] The api healthcheck had no `start_period`, so migrations ran against a 30 s clock.
+
 ## Design decisions
 - 2026-09-19, **no hand-written classification rules.** The original phase 2 was a rules engine
   (spam sender list, subject keyword table, body patterns, body cleaning by pattern), all read off
@@ -190,13 +227,15 @@ train ids in the interrupted full run are the cleaner evidence: none was looked 
   rebuild: the box runs it from the clone, not a container.
 - The Score cell was exercised through the frontend's own `/api/runs/:id/submit` route, not clicked
   in a browser: no browser tool in the session that did it, as in the phase 2 build.
-- Worker, Redis and MinIO on the VPS, phase 3. After this merges the box still runs only the api,
-  which boots without them and reports `redis` and `minio` as `down` in `/health` (HTTP 200).
-  There `GET /runs` lists runs with `queues: null`, and `POST /runs` answers 503, until phase 3.
-- `pnpm test` in CI, phase 3. The suite needs Postgres; the workflow only type-checks today.
+- ~~Worker, Redis and MinIO on the VPS, phase 3.~~ In `deploy/compose.yaml` as of phase 3 and
+  proven in the simulator. Live on the box once `deploy/bootstrap-wizard.sh` has been run there.
+- ~~`pnpm test` in CI, phase 3.~~ Done: a Postgres service container on 5433, and the gates now
+  also run on a pull request. The frontend gets `pnpm build` too.
 - Graceful shutdown of the ingest job (SIGTERM, `moveToDelayed`) is covered by the replay unit
   test only. Windows cannot deliver SIGTERM to the node process, so it was not exercised live.
-  Exercise it on the box in phase 3. The hard-kill path was exercised live and works.
+  `deploy/sim` can now do it without the box (`docker compose stop worker` against a run that is
+  still ingesting), which is a better home for it than a one-off on the box. Not done yet. The
+  hard-kill path was exercised live and works.
 - Attachments are copied per run (250 objects each). Dedupe by sha256 later if disk matters.
 - Structured output is not exercised on the gateway transport. `/ai/chat` has no `output_config`,
   so where `LLM_PROXY_URL` names one, the answer schema reaches the model through the prompt only
@@ -220,6 +259,16 @@ train ids in the interrupted full run are the cleaner evidence: none was looked 
 - BullMQ job.changePriority available: unknown (installed BullMQ is 6.3.6; `Job.changePriority` is in its types)
 
 ## Found while building
+- A deploy that is rolled back looks exactly like a deploy that never happened, from outside. The
+  box had been serving pre-phase-1 code for two phases; the tell was `GET /runs` answering 404
+  with a valid bearer, not anything in a log.
+- `~/retina/compose.yaml` and `~/retina/auto-deploy.sh` are copies. A commit alone never reached
+  the box: whatever runs on a server has to be able to update itself, or someone has to log in.
+- A script that replaces itself must hand over its state, not only its code. Re-exec and the new
+  process starts from the top, where the work it was in the middle of no longer looks like work
+  to do.
+- On Windows `core.autocrlf=true` gives the working tree CRLF, and a CRLF heredoc terminator is
+  a syntax error while a CRLF shebang breaks on Linux. `.gitattributes` pins `*.sh` to LF.
 - A category definition can be wrong while the model is right. `v1` missed 25 of 25 SI_REQUEST on
   the holdout because it defined the category as "asks for an SI". The organisers' generator shows
   an SI_REQUEST hands the instruction over. Read their definition before blaming the model.
