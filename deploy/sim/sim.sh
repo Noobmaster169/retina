@@ -17,9 +17,10 @@
 # deploy is ever triggered.
 #
 # What it proves: the script's own logic, and that deploy/compose.yaml comes up
-# on a machine that has never seen it. What it cannot prove: the host llm-proxy
-# on 172.17.0.1:4001, the claude CLI, ngrok, cron, the box's real .env, and its
-# disk and memory headroom. Those still need the box.
+# on a machine that has never seen it, the llm-proxy container included. What it
+# cannot prove: a logged-in claude (the simulator has no CLAUDE_CODE_OAUTH_TOKEN,
+# so model calls fail as not logged in), ngrok, cron, the box's real .env, and
+# its disk and memory headroom. Those still need the box.
 
 set -uo pipefail
 
@@ -213,6 +214,8 @@ cmd_test() {
   check "every dependency reports up" health_has '"status":"ok"'
   check "the worker is running" sx "cd /home/student/retina && docker compose ps worker --status running | grep -q worker"
   check "nothing but the api is published, on loopback" only_api_published
+  check "the llm-proxy answers inside the stack" sx "cd /home/student/retina && docker compose exec -T llm-proxy curl -fsS http://127.0.0.1:4000/healthz | grep -q claudecli"
+  check "the api reaches the llm-proxy by its service name" sx "cd /home/student/retina && docker compose exec -T api wget -qO- http://llm-proxy:4000/v1/models | grep -q sonnet"
 
   say "B. a tick with nothing new"
   mark "B no-op"

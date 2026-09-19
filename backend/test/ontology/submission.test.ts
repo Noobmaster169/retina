@@ -16,6 +16,8 @@ async function email(tx: PoolClient, runId: string, category: Category | null, s
       emailRunId,
       genCategory: category,
       genConfidence: 0.9,
+      verCategory: null,
+      verConfidence: null,
       finalCategory: category,
       decidedBy: "llm",
       rationale: {},

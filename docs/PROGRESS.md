@@ -1,6 +1,14 @@
 # Progress
 
-Current phase: 3, closed. The code is merged to `main`; the box is not deployed yet. Everything
+Current phase: 4, in progress on `phase-04-classification-quality`. Everything is built and
+tested; what is left is measurement on the holdout, which the user runs (see "Phase 4" below for
+the exact runs and commands). Development runs stay at the 30-email dev sample.
+
+**Starting phase 5: read `docs/phases/phase-05-handover.md` before the phase 5 spec.** It lists
+what phase 4 changed under it: migration numbering, wiring new prompt steps into the pinning,
+the compare worker's outage policy, `review` in the run summary, and the proxy as it is now.
+
+Phase 3: closed. The code is merged to `main`; the box is not deployed yet. Everything
 that could be built and tested without SSH access to the Monash box is done and green in
 `deploy/sim` (18 checks). The one manual step left, and everything to check after it, is
 `docs/phases/phase-03-handover.md`, written for whoever has that access. Phase 2 merged to
@@ -29,6 +37,8 @@ corrected where it described the old behaviour:
 | 2, prompt v1 | 0.2129 | not run | 0.7098 holdout | 0 | 0 | Zero-shot sonnet. All 25 holdout SI_REQUEST read as BL_COMPARISON: the definition was wrong |
 | 2, prompt v2 | 0.2981 | incomplete, see below | 0.9938 holdout (103 of 104) | 0 | 0 | Zero-shot sonnet, categories defined by paperwork stage. Stage 3 and E2E are 0 until phases 5 and 6 read the documents |
 | 2, prompt v3 | 0.3000 | 0.2992 | 1.0000 holdout (104 of 104) | 0 | 0 | `v2` with the schema as a provider constraint: no "reason briefly" ending, `rationale` first in the schema, no `max_tokens`. Holdout run `0a8ed5a5`, 104 calls. Full run `044367f9`, 520 calls, 0 failed, stage 1 macro-F1 0.9975 (518 of 520). Fixes `v2`'s only miss, `email_504` |
+| 4, v3 + verifier, full inbox | 0.2996 | 0.2996 (scorer) | 0.9938 holdout, 0.9987 full | 0 | 0 | Run `69ee1e42`, started by the user, 520 emails at 8 in parallel in 7 min 46 s. 595 calls, 0 failed, verifier on 14.4%. One wrong category: `email_504`, SI_REQUEST for BL_COMPARISON |
+| 4, v3 + verifier, dev sample | not run | not run | 1.0000 dev (30 of 30) | 0 | 0 | Run `0d09d887`, 30 train emails, 37 calls, 0 failed, verifier on 7 (23.3%), agreed every time. Not a holdout number |
 
 Stage 1 carries 0.30 of the final score, so 0.3000 is exactly what a perfect classifier with no
 document check gets, and `v3` is there. The holdout final cannot rise further until phase 5.
@@ -264,6 +274,56 @@ A full-codebase review, fixed on `review-fixes-phase-03`. How each was checked i
       and every later run hit the wizard's refusal to generate a `PG_PASSWORD` over an existing
       database. Found by running it. It removes by compose project label first now.
 
+### Phase 4 (in progress, 2026-09-19)
+Built: the verifier (`classify-verify/v1`), `decide.ts`, `core.prompt_versions` (migration 004),
+prompts pinned per run in `runs.prompt_set`, client retries on the proxy's verdict, the
+`LLM_MAX_CONCURRENCY` cap, the dev sample and holdout presets, few-shot `v4` (not active), and
+`/runs/[id]` with a live call feed and every call's exact input and output.
+
+The user asked (2026-09-19) that development runs stay at 20 to 30 emails and that anything
+larger be theirs to start: from the runs page, or with the commands below. So the holdout items
+are open, not failed.
+
+- [x] Stage 1 macro-F1 on the holdout at or above 0.95, with the verifier: 0.9938 (run `69ee1e42`,
+      the user's full run; the one miss, `email_504`, is in the holdout). Phase 2's `v3` was
+      1.0000 without it. **To run**: runs page, Emails = Holdout, New run; then
+      `cd backend && pnpm eval:score --run <id> --holdout`.
+- [x] The full-set confusion matrix: run `69ee1e42`, stage 1 macro-F1 0.9987, 519 of 520, on
+      `/runs/69ee1e42-f2cb-46b3-8fd0-fb623e4e2d71/results`. 7 min 46 s at 8 in parallel.
+- [x] The verifier ran on under 25% of emails: 14.4% of the full inbox (run `69ee1e42`). Dev sample: 7 of 30 (23.3%), but the sample is six
+      of each category and over-weights the categories the generator is least sure of (all 7
+      were GENERAL or INVOICE_QUERY, at 0.62 to 0.88). On 401 train emails under `v2`, 24 (6.0%)
+      were below 0.9. The holdout run above settles it.
+- [ ] The few-shot experiment, with both holdout numbers. `v4` = `v3` + ten train examples, two
+      per category, none from the holdout or the dev sample. **To run**: Emails = Holdout,
+      Classify prompt = v4. It must beat the `v3` holdout run to ship. Migration 004 seeds no
+      `v4` row, so activating it takes a row and two updates in one transaction (the partial
+      unique index allows one active version per step at any moment):
+      `begin; insert into core.prompt_versions (step, version, notes) values ('classify', 'v4', 'few-shot'); update core.prompt_versions set active = false where step = 'classify' and version = 'v3'; update core.prompt_versions set active = true where step = 'classify' and version = 'v4'; commit;`
+      Since `v3` already scored 1.0000 there, it can at best tie; if it does not beat `v3`,
+      delete `v4.md` and `examples.v4.json` and record both numbers here.
+- [ ] The model comparison: one holdout run per alias under `v3`, Model = haiku, opus (the
+      Qwen aliases went with Ollama, see Design decisions). Record macro-F1, the confusion matrix, cost per email and latency per email:
+      `select step, model, count(*), sum(cost_usd), avg(latency_ms) from core.llm_calls where run_id = '<id>' group by 1, 2`.
+      The default stays sonnet unless the user changes it.
+- [x] Still no rule decides a category; every enum is the organisers'. `needsVerifier` reads the
+      generator's confidence and nothing else, and `registry.test.ts` checks the verifier
+      prompt and `v4`'s instructions for inbox phrases too.
+- [x] Processor tests with `FakeLlmClient` and no network: confident (no verifier), unsure (the
+      verifier's category wins), a pinned prompt set, a 503 (retryable, on the ledger), an unknown
+      provider (a `TerminalError`, not requeued, through the real client), a verifier that fails
+      for good (the generator's category stands), a verifier outage (the retry reuses the
+      generator's answer), and a run from before pinning (it gets the active `v3`, not `v4`).
+      268 backend tests.
+- [x] A run at `LLM_MAX_CONCURRENCY` completed with no 429: the dev run, 2 at a time, 37 calls,
+      none failed.
+- [ ] Image passthrough on the box: needs SSH access, which this machine does not have.
+
+Parallelism, as the user asked: every run, dev, holdout or all 520, runs `CLASSIFY_CONCURRENCY`
+emails at once, and `LLM_MAX_CONCURRENCY` (which follows it when unset) caps the model calls in
+flight. Both are read from `backend/.env`, and the runs page shows the values in force. Raise
+them together with the proxy's `max_concurrency`, or the extra calls only queue in the proxy.
+
 ### What the simulator found (2026-09-19)
 `deploy/sim` runs the real deploy scripts against a Docker-in-Docker replica of the box layout.
 Three bugs that would each have cost a manual recovery on a box nobody can SSH into from the
@@ -308,11 +368,45 @@ dev machine:
   field judge, chat. `LLM_MODEL_<STEP>` stays for experiments; the default does not move without
   the user saying so.
 
+## Design decisions (phase 4)
+- 2026-09-19, **the llm-proxy is a service of our own compose stack**, decided with the user.
+  No more remote proxy: the gateway transport to another Retina API's `/ai/chat` is deleted, and
+  `LLM_PROXY_URL` names the `llm-proxy` service (`http://llm-proxy:4000` on the box,
+  `http://127.0.0.1:4001` from the host locally). The container carries the Claude Code CLI and
+  logs in with `CLAUDE_CODE_OAUTH_TOKEN` from `.env` (`claude setup-token`), not a mounted
+  host login. **Ollama and the Qwen aliases are dropped**: the proxy serves sonnet, opus, haiku
+  and the mock `test`. Same PR as phase 4 (#3), at the user's choice. Checked: `deploy/sim` 20
+  of 20 on this branch (two new: the proxy answers inside the stack, and the api reaches it as
+  `llm-proxy:4000`), 127 proxy tests on Linux, 256 backend tests, and the backend's own client
+  against the built container (aliases listed, the mock answers, no login is a `TerminalError`).
+  Not checked: a real Claude call through the container, which needs a token this machine does
+  not have.
+- 2026-09-19, **`VERIFY_BELOW = 0.9`**, chosen on train: under `v2`, 24 of 401 train emails
+  (6.0%) fell below it, and every miss phase 2 recorded sat at 0.70 or lower.
+- 2026-09-19, **`classify v3` is the active row, not `v1`** as the spec's seed said: `v3` is what
+  scored 1.0000, and rule 5 says the repo wins for what is built.
+- 2026-09-19, **a run pins its prompts when it is created**, in `runs.prompt_set`, which closes
+  the Deferred item about a prompt file added mid-run. A run can also name a model per step; it
+  must be a proxy alias, checked against `/v1/models` before anything is queued.
+- 2026-09-19, **few-shot examples are `examples.<version>.json`**, not `examples.json`, so a
+  version and its examples are deleted together if the experiment fails.
+- 2026-09-19, **the api may read `backend/eval/split.json` and `dev-sample.json`**, which hold
+  ids only, to start a dev or holdout run. It still never reads `ground_truth.json`:
+  `eval/id-lists.ts` is split from `eval/ground-truth.ts` so the api does not even import it.
+
 ## Deferred
-- The backend's LLM request timeout (600 s) is still shorter than the proxy's worst case for
-  `claudecli` (a 1200 s per-attempt ceiling plus a 1320 s backoff ladder). The zombie this used to
-  cost is gone, since the proxy now cancels an abandoned call, but the two budgets are still set
-  independently in two files and neither names the other. Pick one owner for the number.
+- `deploy/compose.yaml` does not pass `CLASSIFY_CONCURRENCY` or `LLM_MAX_CONCURRENCY`, so the box
+  runs the defaults (2 and 2). Add them to the env anchor when the box's proxy serves more, and
+  run `deploy/sim` then, since it is the only gate on `deploy/`.
+- The verifier agreed on all 7 dev-sample emails it saw. If the holdout shows the same, it is
+  costing about one call in five on those categories for nothing; the threshold could come down.
+  Decide on the holdout numbers, not on this sample.
+- The backend's LLM request timeout (600 s, `REQUEST_TIMEOUT_MS` in `llm.ts`) is still shorter
+  than the proxy's worst case for `claudecli` (a 1200 s per-attempt ceiling plus a 1320 s backoff
+  ladder), and the two are still set in two files. Phase 4 made the backend's number the one that
+  bounds an email: a timeout is `LlmTimeoutError`, never retried inside the client and never
+  treated as an outage, so an email that always hangs costs at most three attempts of 600 s and
+  then fails. Moving the proxy's ceiling under it would make the proxy the single owner.
 - `proxy.yaml`'s `request_timeout_s: 1800` is read by nothing: `config.py` defines the field and no
   code reads it, so it implies a ceiling that does not exist. Delete it or enforce it.
 - Ruff runs with `E,F,W,B,BLE`. Import sorting and pyupgrade are off: on the inherited proxy they
@@ -320,18 +414,16 @@ dev machine:
 - `deploy/sim` still is not in CI: it needs privileged Docker-in-Docker, which GitHub-hosted runners
   do not give. It runs locally (`./sim.sh test <branch>`) and is the only gate on the deploy
   scripts, so anything touching `deploy/` still needs someone to run it by hand.
-- A run does not pin its prompt version: the worker resolves the newest file on every call, so a
-  prompt added mid-run changes the run halfway, and it is how the full run above was broken.
-  Phase 4's `promptSet` fixes it by resolving the version once, when the run is created.
+- ~~A run does not pin its prompt version.~~ Fixed in phase 4: `POST /runs` pins every step's
+  version and model in `runs.prompt_set`, and the worker loads exactly that.
 - The Score column was checked over HTTP (server render, the submit and eval handlers, error
   paths), not clicked in a browser: the browser tool failed to connect in the building session.
 - A full run is 520 sonnet calls at 2 at a time: about 40 minutes, and about 59 USD at API prices
   (nothing is billed on the subscription rail, but it uses the subscription's limits).
-- The box's proxy still runs the code on `main`, which parses `output_config` but never passes it
-  to `claude -p`. `auto-deploy.sh` reinstalls and restarts it on any push touching `proxy/`, so the
-  merge of this branch is what makes structured output real there. Its `claude` must be 2.1.274 or
-  newer; check with `claude --version` before the phase 3 smoke test. There is no proxy image to
-  rebuild: the box runs it from the clone, not a container.
+- ~~The box's proxy runs from the clone on the host.~~ It is the `llm-proxy` container now, built
+  from the clone with the CLI pinned in `proxy/Dockerfile`. The box still needs, once, by someone
+  with SSH: a `CLAUDE_CODE_OAUTH_TOKEN` in `~/retina/.env` (the wizard asks), and the old host
+  proxy on `172.17.0.1:4001` stopped with its `@reboot` cron line removed (see `deploy/README.md`).
 - The Score cell was exercised through the frontend's own `/api/runs/:id/submit` route, not clicked
   in a browser: no browser tool in the session that did it, as in the phase 2 build.
 - ~~Worker, Redis and MinIO on the VPS, phase 3.~~ In `deploy/compose.yaml` as of phase 3 and
@@ -344,11 +436,12 @@ dev machine:
   still ingesting), which is a better home for it than a one-off on the box. Not done yet. The
   hard-kill path was exercised live and works.
 - Attachments are copied per run (250 objects each). Dedupe by sha256 later if disk matters.
-- Structured output is not exercised on the gateway transport. `/ai/chat` has no `output_config`,
-  so where `LLM_PROXY_URL` names one, the answer schema reaches the model through the prompt only
-  and `structured.ts`'s zod parse is the whole guarantee. The provider constraint is exercised only
-  against a proxy we speak the Anthropic wire to. If the box ever exposes `/v1/messages`, delete the
-  gateway transport rather than keep two.
+- ~~Structured output is not exercised on the gateway transport.~~ The gateway transport is
+  deleted: every call now goes to our own proxy over the Anthropic wire, schema as a provider
+  constraint.
+- A token from `claude setup-token` expires (about a year). When it does, every model call fails
+  as `provider_not_logged_in` and emails fail fast; nothing warns ahead of time. A `/health`
+  check of the proxy's login would, but a real call per probe costs subscription usage.
 - A cancelled run's emails stay at the stage they reached; there is no `cancelled` stage. Add one
   if a later dashboard needs to tell them from emails still in flight.
 - One `emailIds` entry that is not in the inbox fails the whole run with a terminal error naming
@@ -365,7 +458,52 @@ dev machine:
 - `subscription` alias maps to: unknown
 - BullMQ job.changePriority available: unknown (installed BullMQ is 6.3.6; `Job.changePriority` is in its types)
 
+### Phase 4 code review (2026-09-19)
+Two fresh reviewers read the branch with only the diff, CLAUDE.md, the spec and the handover. No
+finding gave wrong results on the runs made; each is fixed on the branch. How each was checked is
+in brackets.
+- [x] A `prompt_set` with a step this code does not know (a later phase's run, read after a
+      rollback) failed `GET /runs` and every job of that run. `PromptSet` drops unknown steps.
+      (`runs.repo.test.ts`, a run whose set names `extract`.)
+- [x] A run created before pinning fell back to the newest prompt file, which is now the
+      unvalidated `v4`. It gets the active versions (`completePromptSet`). (Processor test.)
+- [x] A timeout was retried twice in the client and then treated as an outage, so one hung call
+      held a slot for about 30 minutes and requeued forever. `LlmTimeoutError`: one try, and the
+      queue spends an attempt. (Client and gateway tests.)
+- [x] A verifier that failed for good failed the email though the generator had answered, and a
+      verifier outage paid for the generator again on the retry. The generator's category stands
+      with `verifierError` recorded, and a retry reuses the ledger's answer. (Processor tests.)
+- [x] The live feed re-downloaded full prompts every 2 s forever. Summaries only, and the run
+      page stops polling when `processingDone`. (Route test: no `system` or `user` in the feed.)
+- [x] The documented `v4` activation SQL assumed a row migration 004 does not seed. Corrected above.
+- [x] Smaller: bad queries in the frontend's pass-through routes read as an outage; `/runs/[id]`
+      had no inline error for a down backend; the table blanked on filter change; progress was
+      derived in the frontend (now `finishedEmails`, `processingDone`); `LLM_MODEL_*` skipped the
+      alias check; a malformed examples file was a 500; `contracts.ts` was over 200 lines;
+      `RecordingLlmClient` was missing; the unknown-provider processor test bypassed the client.
+
 ## Found while building
+- The CLI streams a schema-bound answer after all: a StructuredOutput tool call whose input
+  arrives as `input_json_delta` pieces. That is what makes the live preview possible. Two
+  things seen in it: the model does not keep the schema's property order (it wrote `category`
+  before `rationale` though the schema lists `rationale` first, so "rationale first" in the
+  schema is a request, not a guarantee), and sonnet sometimes writes a malformed first attempt
+  (`{"$PARAMETER_NAME": ...}`) that the CLI rejects before a valid one.
+- A stream's `error` frame carried no `retryable`, so a streamed missing login read as an
+  outage. Every error the proxy sends carries its verdict now, streamed or not.
+- The frontend's catch-all turned a backend 401 into "Could not reach the backend", which hid a
+  mismatched `API_SHARED_SECRET` between `frontend/.env.local` and `backend/.env`.
+- A `claude -p` with no login exits 1 with `Not logged in` inside its JSON envelope, after a block
+  of usage counters, and the proxy called it a generic provider error with `retryable: true`.
+  Behind the backend's retry-on-verdict that is the phase 3 loop again: a missing secret read as
+  an outage and every email requeued forever. Found by calling the container with no token
+  before wiring it in; `ProviderNotLoggedIn` is permanent now.
+- On this Windows checkout `proxy/start.sh` is CRLF in the working tree despite `.gitattributes`,
+  so an image built locally from it gets a broken shebang. The Dockerfile runs uvicorn directly.
+- vitest 5 treats a function returned from `beforeEach` as a cleanup hook and calls it. So
+  `beforeEach(() => mock.mockReset())` calls the mock after every test, because `mockReset`
+  returns it. The old client test only passed because its one-shot rejection was already spent.
+  Use a braced body.
 - A deploy that is rolled back looks exactly like a deploy that never happened, from outside. The
   box had been serving pre-phase-1 code for two phases; the tell was `GET /runs` answering 404
   with a valid bearer, not anything in a log.

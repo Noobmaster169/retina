@@ -12,12 +12,15 @@ Two things about this adapter are non-obvious and both are load-bearing:
 
 Capability-wise this is a poor cousin of the HTTP API: `claude -p` spawns a whole
 agent session per call, so there is no tool-use API, no separate system prompt, and
-seconds of startup latency. The `claudecli/*` entry in capabilities.py says so, and
+seconds of startup latency. The session's built-in tools are the provider's `tools`
+list, none by default (see `tool_args`). The `claudecli/*` entry in capabilities.py says so, and
 rejects requests it cannot honour rather than silently degrading them.
 
 Structured output is the exception: `output_config.format` maps onto the CLI's own
 `--json-schema`, which validates the answer against the schema and returns it in the
-envelope's `structured_output`. `max_tokens` has no CLI equivalent and is ignored.
+envelope's `structured_output`. Streamed, the JSON arrives as a preview while the model
+writes it, and the validated object rides on the final message_delta.
+`max_tokens` has no CLI equivalent and is ignored.
 """
 
 from __future__ import annotations
@@ -42,9 +45,15 @@ from ..canon.stream import (
     TextDelta,
 )
 from ..config import ProviderConfig
-from ..errors import InvalidRequest, ProviderError, ProviderTimeout, RateLimited
+from ..errors import (
+    InvalidRequest,
+    ProviderError,
+    ProviderNotLoggedIn,
+    ProviderTimeout,
+    RateLimited,
+)
 from .base import BlockingOnly
-from .retry import ConcurrencyGate, is_retryable
+from .retry import ConcurrencyGate, is_login_failure, is_retryable
 
 
 def child_env(cfg: ProviderConfig) -> dict[str, str]:
@@ -96,8 +105,75 @@ def output_schema(req: CanonRequest) -> dict[str, Any] | None:
     return schema
 
 
-def cli_args(exe: str, req: CanonRequest, output_format: str) -> list[str]:
+def failure_detail(out: str, err: str) -> str:
+    """What a failed `claude -p` said, for the error and for classifying it.
+
+    With `--output-format json` the CLI reports a failure inside its envelope, whose
+    `result` is the message (`Not logged in`, a rate limit) and comes after a block
+    of usage counters. Reading `result` keeps the classifiers on the message rather
+    than on whichever counters fit in the first few hundred characters.
+    """
+    parts: list[str] = []
+    try:
+        envelope = orjson.loads(out) if out else None
+    except orjson.JSONDecodeError:
+        envelope = None
+    if isinstance(envelope, dict) and envelope.get("result"):
+        parts.append(str(envelope["result"]))
+    if err.strip():
+        parts.append(err.strip())
+    if not parts and out.strip():
+        parts.append(out.strip())
+    return " | ".join(parts)[:400]
+
+
+def not_logged_in_message(provider: str, detail: str) -> str:
+    return (
+        f"{provider}: `claude` is not logged in ({detail}). In the compose stack set "
+        "CLAUDE_CODE_OAUTH_TOKEN in .env (make one with `claude setup-token`) and "
+        "recreate the llm-proxy container; on a laptop, run `claude` once and log in."
+    )
+
+
+def partial_text(event: dict[str, Any], structured: bool = False) -> str:
+    """The text a partial stream event adds, or "" for any other event.
+
+    With a schema the CLI answers through a StructuredOutput tool call, so the
+    answer arrives as `input_json_delta` pieces of its input: the JSON being
+    written. Thinking deltas are never forwarded.
+    """
+    if event.get("type") != "content_block_delta":
+        return ""
+    delta = event.get("delta") or {}
+    if delta.get("type") == "text_delta":
+        return str(delta.get("text") or "")
+    if structured and delta.get("type") == "input_json_delta":
+        return str(delta.get("partial_json") or "")
+    return ""
+
+
+def starts_attempt(event: dict[str, Any]) -> bool:
+    """Whether a raw stream event opens a tool call: with a schema, a new attempt at the answer."""
+    block = event.get("content_block") or {}
+    return event.get("type") == "content_block_start" and block.get("type") == "tool_use"
+
+
+def tool_args(tools: list[str]) -> list[str]:
+    """`--tools` always, so a session gets exactly the configured built-ins and no
+    default set. The same list is pre-approved with `--allowedTools`: in `-p` mode
+    nobody answers a permission prompt, so an enabled tool that still needs one is
+    denied at the moment it is called."""
+    if not tools:
+        return ["--tools", ""]
+    listed = ",".join(tools)
+    return ["--tools", listed, "--allowedTools", listed]
+
+
+def cli_args(
+    exe: str, req: CanonRequest, output_format: str, tools: list[str] | None = None
+) -> list[str]:
     args = [exe, "-p", "--output-format", output_format, "--model", req.model_id]
+    args += tool_args(tools or [])
     schema = output_schema(req)
     if schema is not None:
         args += ["--json-schema", orjson.dumps(schema).decode()]
@@ -189,7 +265,7 @@ class ClaudeCliProvider(BlockingOnly):
     async def complete(self, req: CanonRequest) -> CanonResponse:
         exe = self._binary()
         prompt = flatten(req)
-        args = cli_args(exe, req, "json")
+        args = cli_args(exe, req, "json", self.cfg.tools)
 
         from .retry import BACKOFF_S
 
@@ -197,9 +273,11 @@ class ClaudeCliProvider(BlockingOnly):
         for attempt in range(len(BACKOFF_S) + 1):
             async with self.gate.semaphore():
                 rc, out, err = await self._run(args, prompt)
-                last = (err or out or "").strip()[:400]
+                last = failure_detail(out, err)
             if rc == 0:
                 break
+            if is_login_failure(last):
+                raise ProviderNotLoggedIn(not_logged_in_message(self.name, last), provider=self.name)
             if attempt == len(BACKOFF_S) or not is_retryable(last):
                 if is_retryable(last):
                     raise RateLimited(
@@ -225,27 +303,40 @@ class ClaudeCliProvider(BlockingOnly):
         return self._envelope_to_response(envelope, req)
 
     async def stream(self, req: CanonRequest) -> AsyncIterator[CanonEvent]:
-        # A schema-bound answer arrives whole in the final envelope, so there is
-        # nothing to stream natively: the text deltas would be unvalidated prose.
-        if self.cfg.stream_mode != "native" or output_schema(req) is not None:
+        if self.cfg.stream_mode != "native":
             async for event in super().stream(req):
                 yield event
             return
 
+        # A schema-bound call streams too: its deltas are the JSON as the model
+        # writes it, a live preview. The answer is the CLI's validated
+        # structured_output, sent on the final message_delta, never the deltas.
+        schema = output_schema(req)
+        structured: Any = None
+
         exe = self._binary()
         prompt = flatten(req)
+        # --include-partial-messages is what makes this a token stream: without it
+        # the CLI emits each assistant message only once it is complete.
         args = [
             exe, "-p", "--output-format", "stream-json", "--verbose",
-            "--model", req.model_id,
+            "--include-partial-messages", "--model", req.model_id,
+            *tool_args(self.cfg.tools),
         ]
+        if schema is not None:
+            args += ["--json-schema", orjson.dumps(schema).decode()]
 
         yield MessageStart(
             id=req.request_id, provider=self.name, model_id=req.model_id, alias=req.alias
         )
         yield BlockStart(index=0, block=TextBlock(text=""))
+        block = 0
+        block_has_text = False
 
         usage = CanonUsage()
         emitted = False
+        streamed = False
+        failure = ""
         proc: asyncio.subprocess.Process | None = None
         try:
             async with self.gate.semaphore():
@@ -271,12 +362,37 @@ class ClaudeCliProvider(BlockingOnly):
                         continue
 
                     kind = event.get("type")
-                    if kind == "assistant":
+                    if kind == "stream_event":
+                        # A raw Anthropic stream event, from --include-partial-messages.
+                        raw = event.get("event") or {}
+                        # With a schema, each StructuredOutput call is one attempt at the
+                        # answer, and the CLI makes the model try again when an attempt
+                        # fails validation. Each attempt gets its own block, so a viewer
+                        # restarts its preview instead of reading two attempts run together.
+                        if schema is not None and starts_attempt(raw) and block_has_text:
+                            yield BlockStop(index=block)
+                            block += 1
+                            block_has_text = False
+                            yield BlockStart(index=block, block=TextBlock(text=""))
+                        text = partial_text(raw, structured=schema is not None)
+                        if text:
+                            emitted = streamed = block_has_text = True
+                            yield TextDelta(index=block, text=text)
+                    elif kind == "assistant" and event.get("error"):
+                        # The CLI reports a failed session as a synthetic assistant
+                        # message with `error` set (authentication_failed, ...). Its
+                        # text is the failure, never an answer to stream.
                         message = event.get("message") or {}
-                        for block in message.get("content") or []:
-                            if block.get("type") == "text" and block.get("text"):
+                        texts = [b.get("text", "") for b in message.get("content") or []]
+                        failure = " ".join(t for t in texts if t) or str(event["error"])
+                    elif kind == "assistant":
+                        message = event.get("message") or {}
+                        # The finished message repeats text the partials already
+                        # sent; only a CLI that sends no partials needs it again.
+                        for part in message.get("content") or []:
+                            if not streamed and part.get("type") == "text" and part.get("text"):
                                 emitted = True
-                                yield TextDelta(index=0, text=block["text"])
+                                yield TextDelta(index=0, text=part["text"])
                         if message.get("usage"):
                             u = message["usage"]
                             usage = CanonUsage(
@@ -291,17 +407,43 @@ class ClaudeCliProvider(BlockingOnly):
                     elif kind == "result":
                         if event.get("total_cost_usd") is not None:
                             usage.reported_cost_usd = event["total_cost_usd"]
-                        if not emitted and event.get("result"):
+                        # The session's totals. An assistant message's usage is a
+                        # snapshot taken as it starts when partials are on.
+                        totals = event.get("usage") or {}
+                        if totals.get("output_tokens"):
+                            usage.input_tokens = totals.get("input_tokens") or usage.input_tokens
+                            usage.output_tokens = totals["output_tokens"]
+                            usage.cache_read_input_tokens = (
+                                totals.get("cache_read_input_tokens") or usage.cache_read_input_tokens
+                            )
+                            usage.cache_creation_input_tokens = (
+                                totals.get("cache_creation_input_tokens") or usage.cache_creation_input_tokens
+                            )
+                        # A failed session reports why in `result` ("Not logged in").
+                        # That is an error message, never text for the caller.
+                        if event.get("is_error"):
+                            failure = str(event.get("result") or "")
+                        elif schema is not None:
+                            structured = event.get("structured_output")
+                        elif not emitted and event.get("result"):
                             yield TextDelta(index=0, text=event["result"])
                             emitted = True
 
                 await proc.wait()
                 if proc.returncode not in (0, None):
-                    stderr = (await proc.stderr.read()).decode(errors="replace")[:400]
+                    stderr = (await proc.stderr.read()).decode(errors="replace")
+                    detail = " | ".join(part for part in (failure, stderr.strip()) if part)[:400]
+                    if is_login_failure(detail):
+                        yield StreamError(
+                            code=ProviderNotLoggedIn.code,
+                            message=not_logged_in_message(self.name, detail),
+                            retryable=False,
+                        )
+                        return
                     yield StreamError(
                         code="provider_error",
-                        message=f"{self.name}: `claude` exited {proc.returncode}: {stderr}",
-                        retryable=is_retryable(stderr),
+                        message=f"{self.name}: `claude` exited {proc.returncode}: {detail}",
+                        retryable=is_retryable(detail),
                     )
                     return
         except asyncio.CancelledError:
@@ -316,6 +458,12 @@ class ClaudeCliProvider(BlockingOnly):
             yield StreamError(code="provider_error", message=f"{self.name}: {e}")
             return
 
-        yield BlockStop(index=0)
-        yield MessageDelta(stop_reason=StopReason.END_TURN, usage=usage)
+        if schema is not None and structured is None:
+            yield StreamError(
+                code="provider_error",
+                message=f"{self.name}: a JSON schema was sent but the CLI returned no structured_output",
+            )
+            return
+        yield BlockStop(index=block)
+        yield MessageDelta(stop_reason=StopReason.END_TURN, usage=usage, structured=structured)
         yield MessageStop()

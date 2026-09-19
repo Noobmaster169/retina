@@ -8,21 +8,32 @@ export interface SummaryParts {
   queues: QueueSnapshot;
   llm: RunSummary["llm"];
   lastSubmission: StoredSubmission | undefined;
+  /** When the run's last email finished, if one has. */
+  lastFinishedAt: string | null;
+  now: number;
 }
 
 /** One run as the API reports it: its row, where its emails are, what it cost, how it scored. */
 export function toSummary(run: Run, parts: SummaryParts): RunSummary {
   const { stageCounts, queues, llm, lastSubmission: last } = parts;
+  const finishedEmails = stageCounts.done + stageCounts.failed;
+  const stopped = run.status === "cancelled" || run.status === "failed";
+  const processingDone = stopped || (run.totalEmails !== null && finishedEmails >= run.totalEmails);
+  const end = processingDone ? Date.parse(parts.lastFinishedAt ?? run.finishedAt ?? new Date(parts.now).toISOString()) : parts.now;
   return {
     id: run.id,
     status: run.status,
     ratePerSecond: run.ratePerSecond,
     totalEmails: run.totalEmails,
+    finishedEmails,
+    processingDone,
+    elapsedMs: run.startedAt ? Math.max(0, end - Date.parse(run.startedAt)) : null,
     stageCounts,
     queues,
     createdAt: run.createdAt,
     startedAt: run.startedAt,
     finishedAt: run.finishedAt,
+    promptSet: run.promptSet,
     llm,
     lastSubmission: last
       ? {

@@ -2,42 +2,46 @@
 
 import useSWR from "swr";
 
-import type { RunSummary } from "@/lib/api-client";
+import { RunList } from "@/lib/api/runs-schemas";
+import { parsedFetcher } from "@/lib/poll";
 
 import { NewRunForm } from "./new-run-form";
 import { RunRow } from "./run-row";
 
 const POLL_MS = 3000;
 
-async function fetchRuns(url: string): Promise<RunSummary[]> {
-  const response = await fetch(url);
-  const body = (await response.json().catch(() => ({}))) as { runs?: RunSummary[]; error?: string };
-  if (!response.ok || !body.runs) throw new Error(body.error ?? `Request failed with ${response.status}`);
-  return body.runs;
-}
+const fetchRuns = parsedFetcher(RunList);
 
 interface Props {
-  initialRuns: RunSummary[];
+  initialList: RunList | null;
   initialError: string | null;
 }
 
 /** The list, kept fresh by polling: long work is queued, never awaited by a request. */
-export function RunsTable({ initialRuns, initialError }: Props) {
+export function RunsTable({ initialList, initialError }: Props) {
   const { data, error, mutate } = useSWR("/api/runs", fetchRuns, {
-    fallbackData: initialRuns,
+    fallbackData: initialList ?? undefined,
     refreshInterval: POLL_MS,
     revalidateOnMount: initialError !== null,
   });
-  const runs = data ?? [];
+  const runs = data?.runs ?? [];
   const queues = runs[0]?.queues;
-  const message = error instanceof Error ? error.message : data === initialRuns ? initialError : null;
+  const message = error instanceof Error ? error.message : !data ? initialError : null;
 
   return (
     <>
       <NewRunForm onCreated={() => void mutate()} />
 
+      {data && (
+        <p className="mt-6 text-sm text-muted">
+          <span className="font-medium text-ink">Parallel</span> {data.concurrency.classify} emails at once,{" "}
+          {data.concurrency.llm} model calls in flight. Set by <code>CLASSIFY_CONCURRENCY</code> and{" "}
+          <code>LLM_MAX_CONCURRENCY</code> in the backend env.
+        </p>
+      )}
+
       {queues && (
-        <dl className="mt-6 flex flex-wrap gap-x-8 gap-y-1 text-sm text-muted">
+        <dl className="mt-2 flex flex-wrap gap-x-8 gap-y-1 text-sm text-muted">
           {(["classify", "compare"] as const).map((name) => (
             <div key={name} className="flex gap-2">
               <dt className="font-medium text-ink">{name} queue</dt>

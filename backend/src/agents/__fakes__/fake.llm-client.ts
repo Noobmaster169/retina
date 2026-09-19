@@ -22,6 +22,11 @@ export class FakeLlmClient implements LlmClient {
     if (reply === undefined) throw new Error("FakeLlmClient has no reply");
     if (reply instanceof Error) throw reply;
     const text = typeof reply === "function" ? reply(request) : typeof reply === "string" ? reply : reply.text;
+    // A streamed request hears the answer in two pieces, as it would from the proxy.
+    if (request.onText) {
+      await request.onText(text.slice(0, Math.ceil(text.length / 2)));
+      await request.onText(text);
+    }
     return {
       text,
       model: `fake/${request.model}`,

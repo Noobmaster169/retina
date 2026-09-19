@@ -59,6 +59,8 @@ async function runWith(
       emailRunId: (await emailRuns.idOf(pool, run.id, emailId)) as string,
       genCategory: category,
       genConfidence: 0.9,
+      verCategory: null,
+      verConfidence: null,
       finalCategory: category,
       decidedBy: "llm",
       rationale: {},
@@ -191,7 +193,7 @@ describe("run summaries", () => {
   it("report LLM usage and no submission for a fresh run", async () => {
     const { runId } = await runWith(["SPAM"]);
     const summary = await request(app()).get(`/runs/${runId}`).set(TEAM);
-    expect(summary.body.llm).toEqual({ calls: 0, failedCalls: 0, inputTokens: 0, outputTokens: 0, costUsd: 0 });
+    expect(summary.body.llm).toEqual({ calls: 0, failedCalls: 0, inputTokens: 0, outputTokens: 0, costUsd: 0, verifierShare: 0 });
     expect(summary.body.lastSubmission).toBeNull();
   });
 });

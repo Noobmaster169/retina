@@ -1,6 +1,9 @@
 import { z } from "zod";
 
-import { request } from "./transport";
+import { EvalReport, SubmissionList } from "./scoring-schemas";
+import { get, request } from "./transport";
+
+export * from "./scoring-schemas";
 
 /**
  * Submitting a run and reading the dev-only eval report.
@@ -54,14 +57,6 @@ export async function submitRun(id: string, force: boolean): Promise<SubmitOutco
   };
 }
 
-/** Dev only: a run scored by the backend against the answer key it holds locally. */
-const EvalReport = z.object({
-  full: ScoreboardHeadline,
-  holdout: ScoreboardHeadline,
-  run: ScoreboardHeadline,
-  wrong: z.object({ stage1: z.array(z.string()), stage3: z.array(z.string()), e2e: z.array(z.string()) }),
-});
-export type EvalReport = z.infer<typeof EvalReport>;
 
 /** Null where the backend has no answer key, which is everywhere but a dev machine. */
 export async function getEvalReport(id: string): Promise<EvalReport | null> {
@@ -72,4 +67,9 @@ export async function getEvalReport(id: string): Promise<EvalReport | null> {
   const parsed = EvalReport.safeParse(await response.json().catch(() => null));
   if (!parsed.success) throw new Error(`GET ${path} answered outside the contract`);
   return parsed.data;
+}
+
+/** Every submission of the run to the organisers' scorer, newest first, with its full scoreboard. */
+export async function listSubmissions(id: string): Promise<SubmissionList> {
+  return get(SubmissionList, `/runs/${encodeURIComponent(id)}/submissions`);
 }

@@ -1,7 +1,9 @@
 import type { EvalReport } from "../contracts";
 import type { Queryable } from "../db";
 import { buildSubmission } from "../ontology/submission";
-import { loadGroundTruth, loadSplit } from "./ground-truth";
+import { compareEmail } from "./compare";
+import { loadGroundTruth } from "./ground-truth";
+import { loadSplit } from "./id-lists";
 import { scoreAll, type Submission, type Truth } from "./score";
 
 function sameFields(a: string[] = [], b: string[] = []): boolean {
@@ -31,11 +33,15 @@ function wrongIds(truth: Truth, sub: Submission, ids: string[]): EvalReport["wro
  */
 export async function evaluateRun(db: Queryable, runId: string): Promise<EvalReport> {
   const [truth, split, built] = await Promise.all([loadGroundTruth(), loadSplit(), buildSubmission(db, runId)]);
-  const inRun = Object.keys(built.payload);
+  const inRun = Object.keys(built.payload).sort();
+  const held = new Set(split.holdout);
   return {
     full: scoreAll(truth, built.payload),
     holdout: scoreAll(truth, built.payload, { only: split.holdout }),
     run: scoreAll(truth, built.payload, { only: inRun }),
     wrong: wrongIds(truth, built.payload, inRun),
+    emails: inRun
+      .filter((id) => truth[id])
+      .map((id) => compareEmail(id, truth[id], built.payload[id], held.has(id))),
   };
 }

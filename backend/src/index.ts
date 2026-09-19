@@ -5,6 +5,7 @@ import { config } from "./config";
 import { closePool, getPool } from "./db";
 import { checkHealth } from "./health";
 import { childLogger } from "./lib/logger";
+import { redisLiveCalls } from "./live";
 import { closeRedis } from "./queues/connection";
 import { closeQueues } from "./queues/queues";
 import { bullRunQueues } from "./queues/run-queues";
@@ -30,12 +31,14 @@ function storeOrNull(): ObjectStore | null {
 
 const pool = getPool();
 const store = storeOrNull();
+const live = redisLiveCalls();
 const app = createApp({
   pool,
   runQueues: bullRunQueues(),
   store,
   scorer: inboxScorer(config.EMAIL_SERVER_URL),
   health: () => checkHealth({ pool, store }),
+  live,
 });
 
 const server = app.listen(config.PORT, () => log.info({ port: config.PORT }, "api listening"));
@@ -47,6 +50,7 @@ server.headersTimeout = 665_000;
 /** Never rejects: a signal handler cannot await it, so a failure is logged here or nowhere. */
 async function shutdown(): Promise<void> {
   try {
+    await live.close();
     await closeQueues();
     await closeRedis();
     await closePool();

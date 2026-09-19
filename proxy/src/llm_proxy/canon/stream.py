@@ -80,6 +80,9 @@ class MessageDelta(BaseModel):
     stop_sequence: str | None = None
     stop_details: dict[str, Any] | None = None
     usage: CanonUsage | None = None
+    # A schema-bound stream: the provider's validated answer. The text deltas
+    # before it are the model writing that JSON, a preview; this is the answer.
+    structured: Any = None
 
 
 class MessageStop(BaseModel):

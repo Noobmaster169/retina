@@ -22,6 +22,11 @@ placeholder.
 
 ## Prerequisites
 
+**Read `phase-05-handover.md` first.** Phase 4 changed what several items below land on:
+the migration is `005`, not `004`; new LLM steps must be wired into the prompt pinning; the
+compare worker needs the LLM outage policy; the run summary must count `review` as finished; the
+proxy is a compose service with no tools.
+
 Phase 4 merged. Python 3.12 locally. Docker for the doc-extract image.
 
 ## Scope

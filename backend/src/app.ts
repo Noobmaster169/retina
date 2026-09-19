@@ -9,8 +9,11 @@ import type { Scorer } from "./scorer/scorer";
 import type { ObjectStore } from "./storage";
 import type { RunQueues } from "./queues/run-queues";
 import { aiRouter } from "./routes/ai.routes";
+import { promptsRouter } from "./routes/prompts.routes";
 import { emailsRouter } from "./routes/emails.routes";
 import { evalRouter } from "./routes/eval.routes";
+import type { LiveCalls } from "./live";
+import { runTraceRouter } from "./routes/run-trace.routes";
 import { runsRouter } from "./routes/runs.routes";
 import { submissionsRouter } from "./routes/submissions.routes";
 
@@ -24,6 +27,8 @@ export interface AppDeps {
   store: ObjectStore | null;
   scorer: Scorer;
   health: () => Promise<HealthReport>;
+  /** Where in-flight model calls are kept, for the run page. Absent, nothing shows as live. */
+  live?: LiveCalls;
 }
 
 export function createApp(deps: AppDeps): express.Express {
@@ -42,8 +47,10 @@ export function createApp(deps: AppDeps): express.Express {
   app.use(requireCaller);
 
   app.use("/ai", aiRouter());
+  app.use("/prompts", promptsRouter(deps));
   app.use("/emails", emailsRouter());
   app.use("/runs", runsRouter(deps));
+  app.use("/runs", runTraceRouter(deps));
   app.use("/runs", submissionsRouter(deps));
   app.use("/eval", evalRouter(deps));
 

@@ -171,3 +171,5 @@ export async function listForSubmission(db: Queryable, runId: string): Promise<S
     reviewReason: row.review_reason,
   }));
 }
+
+export { inFlight, lastFinishedForRuns, stateOf } from "./email-runs.trace";

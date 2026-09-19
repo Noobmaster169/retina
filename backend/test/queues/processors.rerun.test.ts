@@ -44,6 +44,8 @@ describe("a classify job that runs again", () => {
         emailRunId,
         genCategory: "BL_COMPARISON",
         genConfidence: 0.9,
+        verCategory: null,
+        verConfidence: null,
         finalCategory: "BL_COMPARISON",
         decidedBy: "llm",
         rationale: {},

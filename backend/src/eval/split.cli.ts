@@ -1,7 +1,8 @@
 import { writeFile } from "node:fs/promises";
 
 import { childLogger } from "../lib/logger";
-import { loadGroundTruth, splitPath } from "./ground-truth";
+import { loadGroundTruth } from "./ground-truth";
+import { splitPath } from "./id-lists";
 import { splitIds } from "./split";
 
 const log = childLogger({ module: "eval:split" });

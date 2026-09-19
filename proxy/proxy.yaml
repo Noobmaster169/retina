@@ -2,47 +2,50 @@
 #
 # Shaped after LiteLLM's `model_list` on purpose: if this proxy ever stops being worth
 # maintaining, migrating to LiteLLM should be close to a rename.
+#
+# `${NAME:-default}` is read from the environment when the file loads. Only what
+# differs between a proxy on a laptop and the one in the compose stack is read that
+# way; the Dockerfile sets both values for the container.
 
 version: 1
 
 server:
-  host: 127.0.0.1          # loopback only; anything else needs i_know_this_is_exposed
+  # Loopback on a laptop. In the compose stack the container binds its own
+  # interface, reachable only on the compose network: nothing publishes its port on
+  # the box, and compose.local.yaml publishes it to host loopback only.
+  host: ${LLM_PROXY_HOST:-127.0.0.1}
   port: 4000
   request_timeout_s: 1800
-  cors_origins: []         # keep empty — see the origin guard in main.py
+  cors_origins: []         # keep empty; see the origin guard in main.py
+  i_know_this_is_exposed: ${LLM_PROXY_EXPOSED:-false}
 
 providers:
   # The Claude Code subscription, driven as `claude -p`. Needs Claude Code installed
-  # and logged in; the cost it reports is counterfactual (what the call would have
-  # cost via the API) — no money leaves the account.
+  # and logged in: in the container, CLAUDE_CODE_OAUTH_TOKEN (from `claude
+  # setup-token`) is the login. The cost it reports is counterfactual (what the call
+  # would have cost via the API); no money leaves the account.
   claudecli:
     type: claudecli
     binary: claude
-    max_concurrency: 2      # `claude -p` spawns a full agent session per call
+    max_concurrency: 8      # `claude -p` spawns a full agent session per call; matches CLASSIFY_CONCURRENCY
     timeout_s: 1200
     stream_mode: native
     neutralise_anthropic_key: true
+    # The CLI's built-in tools a session may use. None: a completion needs none,
+    # and a crafted email must have nothing to steer.
+    tools: []
 
-  ollama:
-    type: openai_compatible
-    base_url: http://127.0.0.1:11434/v1
-    api_key_env: null
-    max_concurrency: 2
-    # "OpenAI-compatible" is a spectrum. Two fixups Ollama needs, both of which
-    # otherwise fail with a perfectly ordinary 200 (measured on 0.32.15):
-    #
-    # It accepts `max_completion_tokens` and ignores it, generating to the
-    # context wall instead — a cap of 16 returned 722 tokens. Under the older
-    # name it honours the cap exactly.
-    max_tokens_field: max_tokens
-    # And `extra_body` is merged into every chat request, for switches the
-    # canonical request has no room for. `reasoning_effort: none` is the only
-    # thing that turns Qwen 3's thinking off; the documented `/no_think` prefix
-    # does not, and without it the reply arrives with `content` empty and the
-    # whole trace in `message.reasoning`, which reads as "the model returned
-    # nothing" to any Anthropic-shaped client.
-    extra_body:
-      reasoning_effort: none
+  # Template for a tool-using rail, off until needed. Uncomment this and the
+  # `sonnet-web` alias below: that alias gets web search, `sonnet` keeps none.
+  # Any built-in the CLI lists works here (WebSearch, WebFetch, Read...).
+  # claudecli_web:
+  #   type: claudecli
+  #   binary: claude
+  #   max_concurrency: 8
+  #   timeout_s: 1200
+  #   stream_mode: native
+  #   neutralise_anthropic_key: true
+  #   tools: [WebSearch]
 
   mock:
     type: mock
@@ -51,7 +54,7 @@ model_list:
   # Subscription rail. The model_id is passed verbatim to `claude --model`, so the
   # CLI's own short aliases work and track whatever is current for that tier. All
   # of these match the `claudecli/*` capability glob automatically.
-  # The alias IS the model name — nothing to decode.
+  # The alias IS the model name; nothing to decode.
   - model_name: sonnet
     params: { model: claudecli/sonnet }
 
@@ -61,21 +64,9 @@ model_list:
   - model_name: haiku
     params: { model: claudecli/haiku }
 
-  # Local Qwen 3 via Ollama. Free and unmetered. Tags must match `ollama list` on
-  # the machine running the proxy: the Monash box has `qwen3:14b-ctx16k` and
-  # `qwen3:4b-ctx16k` (tags built with num_ctx 16384), so edit these there.
-  #
-  # `max_tokens` is capped at 8000: with Ollama the prompt AND the completion
-  # share one `num_ctx`, so a generous output cap eats the window it is supposed
-  # to be reading. The alias is the Ollama tag minus any -ctx suffix.
-  - model_name: qwen3:14b
-    params: { model: ollama/qwen3:14b, max_tokens: 8000 }
-
-  - model_name: qwen3:4b
-    params: { model: ollama/qwen3:4b, max_tokens: 8000 }
-
-  - model_name: qwen3.8:27b
-    params: { model: ollama/qwen3.8:27b-ctx16k, max_tokens: 8000 }
+  # With the claudecli_web provider above:
+  # - model_name: sonnet-web
+  #   params: { model: claudecli_web/sonnet }
 
   # Scripted, free, offline: echoes the prompt back. For smoke tests.
   - model_name: test
@@ -86,23 +77,16 @@ model_list:
 # models reject `temperature` with a 400, and many clients send it by default.
 capabilities:
   # `claude -p` spawns a whole agent session: no tool-use API, no image input, and
-  # no separate system field — the provider folds `system` into the prompt body.
+  # no separate system field; the provider folds `system` into the prompt body.
+  # `tools: deny` here is the Messages API's client-defined tools, which the CLI
+  # cannot take. The CLI's own built-ins are the provider's `tools` list above.
   "claudecli/*":
     sampling: deny
     tools: deny
     images: deny
     system: merge_into_first_user
-  # Ollama takes ordinary sampling and has no Anthropic-shaped thinking control, so
-  # `thinking` / `effort` are stripped rather than forwarded (Qwen 3's reasoning is
-  # switched off by `extra_body` above). `context_window` is only real if the
-  # server was started with OLLAMA_CONTEXT_LENGTH, or the model tag carries
-  # `PARAMETER num_ctx` — the default is 4096 and it truncates a longer prompt
-  # without saying so.
-  "ollama/*":
-    sampling: allow
-    thinking: none
-    images: deny
-    context_window: 16384
+  # With the claudecli_web template: capabilities match by provider name.
+  # "claudecli_web/*": { sampling: deny, tools: deny, images: deny, system: merge_into_first_user }
 
 # What to do with a parameter the target model cannot take: strip it and say so in
 # the X-LLM-Proxy-Warnings response header. `strip_silent` and `reject` also exist.

@@ -14,7 +14,9 @@
     "db:migrate": "node --env-file-if-exists=.env db/migrate.mjs",
     "eval:split": "node --env-file-if-exists=.env --import tsx src/eval/split.cli.ts",
     "eval:parity": "node --env-file-if-exists=.env --import tsx src/eval/parity.ts",
-    "eval:score": "node --env-file-if-exists=.env --import tsx src/eval/run-eval.ts"
+    "eval:score": "node --env-file-if-exists=.env --import tsx src/eval/run-eval.ts",
+    "eval:sample": "node --env-file-if-exists=.env --import tsx src/eval/sample.cli.ts",
+    "eval:examples": "node --env-file-if-exists=.env --import tsx src/eval/examples.cli.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",

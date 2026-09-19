@@ -71,7 +71,8 @@ frontend/
 | minio | quay.io/minio/minio (`minio/minio` is gone from Docker Hub) | none (console reachable via `docker compose exec` or an SSH tunnel) | miniodata | `server /data --console-address :9001`; init job creates bucket `retina` |
 | minio-init | same minio image | none | none | one-shot: creates bucket `retina`, then exits 0 |
 | api | ghcr.io/noobmaster169/retina-api:main | `127.0.0.1:8091:8091` | none | runs migrations then listens; depends on postgres, redis, minio healthy |
-| worker | same image | none | none | `command: node --import tsx src/worker.ts` (no build step; the image runs TypeScript through tsx); `depends_on: api: service_started`, not `service_healthy`: an unhealthy api must not also take the worker down, and waiting on it aborted a deploy |
+| worker | same image | none | none | `command: node --import tsx src/worker.ts` (no build step; the image runs TypeScript through tsx); `depends_on: api, llm-proxy: service_started`, not `service_healthy`: an unhealthy api must not also take the worker down, and waiting on it aborted a deploy |
+| llm-proxy | built from `proxy/` in the clone (Python, plus the Claude Code CLI pinned by `CLAUDE_CODE_VERSION`) | none (private to the network) | none | `http://llm-proxy:4000` inside the network. Logged in by `CLAUDE_CODE_OAUTH_TOKEN` from `.env`, optional so the stack comes up without it; a call without a login is `provider_not_logged_in`, never retried. `auto-deploy.sh` rebuilds it when `proxy/` changes |
 | doc-extract | built from `services/doc-extract` | none | none | `:8000` inside network; healthcheck `/healthz`; 1 GB memory limit |
 | inbox | built from `emails/server` in the clone | none (private to the network) | `emails/data_v2:/data:ro`, `emails/data_v2/ground_truth.json:/secrets/ground_truth.json:ro` | organiser image, unchanged code |
 
@@ -100,9 +101,10 @@ Backend (`deploy/.env`, mirrored in `backend/.env.example`):
 | `MINIO_PUBLIC_ENDPOINT` | `https://<ngrok>/files` | api (presigned URLs are proxied, see 10) |
 | `DOC_EXTRACT_URL` | `http://doc-extract:8000` | worker |
 | `EMAIL_SERVER_URL` | `http://inbox:8000` (already set in `deploy/compose.yaml`) | api, worker |
-| `LLM_PROXY_URL` | `http://host.docker.internal:4001` | api, worker |
+| `LLM_PROXY_URL` | `http://llm-proxy:4000` in compose; `http://127.0.0.1:4001` from the host with `compose.local.yaml`. A remote `/ai/chat` is refused at boot | api, worker |
+| `CLAUDE_CODE_OAUTH_TOKEN` | from `claude setup-token`; read by compose into the llm-proxy container only | llm-proxy |
 | `LLM_MODEL_CLASSIFY`, `LLM_MODEL_VERIFY`, `LLM_MODEL_EXTRACT`, `LLM_MODEL_CHAT` | `sonnet` for every step. Must be a proxy alias from `proxy/proxy.yaml` | worker, api |
-| `LLM_MAX_CONCURRENCY` | `8` | worker (global semaphore) |
+| `LLM_MAX_CONCURRENCY` | follows `CLASSIFY_CONCURRENCY` when unset, so one number sets how parallel every run is. Model calls in flight per worker process | worker (in-process semaphore) |
 | `CLASSIFY_CONCURRENCY`, `COMPARE_CONCURRENCY` | `2`, `4`. Classify is 2 because the `claudecli` provider serves two calls at a time; more workers only queue inside the proxy with their request timeout already running | worker |
 | `API_SHARED_SECRET`, `TEAM_API_KEY` | hex | api |
 | `SITE_PASSWORD` | string | frontend gate in `proxy.ts` (Vercel env) |
@@ -170,9 +172,11 @@ the dataset). A repeatable job every hour writes the table into the `client:prio
 
 ### 4.4 LLM concurrency cap
 
-An in-process semaphore of size `LLM_MAX_CONCURRENCY` wraps every proxy call (default 8 in
-the worker, 2 in the api for chat). One process, one cap; no Redis coordination is needed while
-there is one worker replica.
+An in-process semaphore of size `LLM_MAX_CONCURRENCY` (`agents/llm-slot.ts`) wraps every proxy
+call the worker makes. Unset, it equals `CLASSIFY_CONCURRENCY`, so a run of 30, 104 or 520 emails
+runs exactly that many emails and that many calls at once. A retry waits outside the slot. One
+process, one cap; no Redis coordination is needed while there is one worker replica. The api's
+chat is not capped by it.
 
 ### 4.5 Failure handling
 
@@ -252,25 +256,28 @@ about the next draw. The model classifies, and the eval harness measures it.
 and the body, cut at `CLASSIFY_BODY_CHARS` with a marker when cut. The cap is a cost guard.
 Nothing is stripped, reordered or normalised.
 
-**Generator** (`prompts/classify/v1.md`). Defines the five categories in the organisers' words
+**Generator** (`prompts/classify/v3.md`, the active version; v1 and v2 are kept for comparison). Defines the five categories in the organisers' words
 (the brief and `emails/data_v2/README.md`), says that a body may carry a forwarded thread, a
 signature and a warning banner and that the category follows what the sender is asking for now.
-It names no sender, domain, subject code or phrase from the dataset. Zero-shot in phase 2; phase
-4 adds few-shot examples from the train split only if a holdout run shows they help. Output (JSON
-schema enforced, category restricted to the enum):
+It names no sender, domain, subject code or phrase from the dataset. Zero-shot. `v4` is `v3` plus
+ten train examples and is not active: it ships only if a holdout run shows it helps. Output (JSON
+schema enforced, category restricted to the enum, rationale first because a schema-bound answer
+has no room for reasoning before it):
 
 ```json
-{ "category": "BL_COMPARISON", "confidence": 0.93, "rationale": "The sender asks for the draft BL to be checked against the SI; two attachments are named as an SI and a BL." }
+{ "rationale": "The sender asks for the draft BL to be checked against the SI; two attachments are named as an SI and a BL.", "category": "BL_COMPARISON", "confidence": 0.93 }
 ```
 
-**Verifier trigger** (phase 4): `gen.confidence < VERIFY_BELOW`, a constant chosen on the train
-split. The model's own confidence is the only input; there is no branch on email content.
+**Verifier trigger** (`pipeline/classify/decide.ts`): `gen.confidence < VERIFY_BELOW`, `0.9`, chosen
+on the train split (24 of 401 train emails below it under v2; every recorded miss at 0.70 or
+lower). The model's own confidence is the only input; there is no branch on email content.
 
 **Verifier** (`prompts/classify-verify/v1.md`) receives the same input plus the generator's
-proposal and is told to argue for the strongest alternative before deciding. Output:
+proposal and is told to make the strongest case for every other category before deciding. The
+case comes first in the schema, for the same reason as the generator's rationale. Output:
 
 ```json
-{ "category": "GENERAL", "agrees": false, "confidence": 0.88, "rationale": "..." }
+{ "counter_cases": "...", "rationale": "...", "category": "GENERAL", "agrees": false, "confidence": 0.88 }
 ```
 
 **Decision**: the verifier's category if it ran, else the generator's. `classifications.decided_by`
@@ -284,9 +291,9 @@ late second pass cannot drag an email that compare already finished back to `cla
 cancelled while the model call is in flight is honoured: the status is read again after the call
 returns, before anything is written. No lock table and no Redis lock is needed for either.
 
-`ver_category`, `ver_confidence`, `human_category` and the `decided_by` values `verifier` and
-`human` exist in the schema from phase 2 and stay empty until the verifier (phase 4) and human
-review (phase 8) fill them.
+`ver_category` and `ver_confidence` hold the verifier's answer when it ran, and `rationale` holds
+`{ generator, verifier?, counterCases? }`. `human_category` and `decided_by = human` stay empty
+until human review (phase 8).
 
 ### 5.3 Compare
 
@@ -442,19 +449,18 @@ images, OCR text is used and the reviewer sees the PNG.
 ## 7. LLM layer
 
 - Client: existing `src/llm.ts` against `LLM_PROXY_URL/v1/messages` (Anthropic wire; the Anthropic SDK with `baseURL` set to the proxy).
-- Second transport, `src/llm-gateway.ts`: where the proxy is not reachable, `LLM_PROXY_URL` may name
-  another Retina API's `/ai/chat`, which fronts a proxy on its own host. A URL ending in `/ai/chat`
-  selects it, the bearer is `TEAM_API_KEY`, and the reply is validated with zod like any other
-  boundary. `chat()` hides the choice, so nothing above `llm.ts` knows which ran. That route has no
-  structured output, so on it the schema reaches the model through the prompt only and the zod parse
-  in `structured.ts` is the whole guarantee. `config.ts` refuses to boot a gateway URL with no
-  `TEAM_API_KEY`, because an empty bearer is a 401 and a 401 fails every email in the run for good.
+- One transport. The proxy is the `llm-proxy` service of the same compose stack; the second
+  transport to another Retina API's `/ai/chat` was removed with the remote proxy it existed for,
+  and `config.ts` refuses to boot an `LLM_PROXY_URL` that still names one.
+- A `claude` with no login is the proxy's `provider_not_logged_in`, 502 with `retryable: false`,
+  so the backend fails the email at once with a message naming `CLAUDE_CODE_OAUTH_TOKEN` instead
+  of reading a missing secret as an outage and requeueing forever.
 - Error envelope: the proxy answers `{ type: "error", error: { type, message, code, retryable } }`.
   `code` is its stable machine name and `retryable` its own verdict on whether another attempt could
   work. The backend reads `retryable` and falls back to the status only when it is absent: status
   alone cannot separate `unknown_provider` (a permanent 500) from a dead upstream (a transient 502),
   and treating the first as the second requeues a misconfiguration forever without spending an
-  attempt. `app.ts` relays the flag on its own error body so it survives the gateway hop.
+  attempt. `app.ts` relays the flag on its own error body, for callers of the API's own `/ai/chat`.
 - Structured output: the schema is a provider constraint, not a request. `agents/structured.ts`
   derives JSON Schema from the zod schema and sends it as `LlmRequest.outputSchema`, which
   `llm.ts` puts on the wire as `output_config: { format: { type: "json_schema", schema } }`. The
@@ -468,18 +474,44 @@ images, OCR text is used and the reviewer sees the PNG.
   ceiling, not a budget. A `max_tokens` stop reason is a `TerminalError` straight away: a retry
   under the same cap truncates the same way.
 - Prompt registry: `agents/prompts/<step>/<version>.md` with frontmatter
-  `{ step, version, model_default, schema }`. Active version per step comes from
-  `core.prompt_versions.active`. Every call stores `prompt_version`.
-- Few-shot examples live in `agents/prompts/<step>/examples.json`, generated by
-  `eval/split.ts` from the training split only.
+  `{ step, version, model, max_tokens? }`. `POST /runs` pins a version and a model per step in
+  `runs.prompt_set` (`agents/prompts/prompt-set.ts`): the run's `promptSet`/`models`, else the
+  `core.prompt_versions` active row and `LLM_MODEL_<STEP>`, else the newest file and its
+  frontmatter model. The worker loads exactly what the run pinned, so a file added mid-run cannot
+  change it. A run from before pinning (`prompt_set = {}`) gets the active versions, never simply
+  the newest file, which may be an unvalidated experiment. `PromptSet` drops a step it does not
+  know, so code rolled back under a later phase's runs still reads them. Every call stores
+  `prompt_version`.
+- Few-shot examples live in `agents/prompts/<step>/examples.<version>.json`, filled into the
+  prompt's `{{examples}}`. `pnpm eval:examples` writes them from the train split, never from the
+  holdout or the dev sample.
 - Timeouts: classify 60 s, extract 120 s, chat 240 s. The SDK's own retries are off
   (`maxRetries: 0`): a hidden second call doubles a hung call's wall time, holds a worker slot and
-  makes the ledger understate calls and cost. Retrying is BullMQ's job, and an outage pauses the
-  queue instead (4.5).
+  makes the ledger understate calls and cost. `proxyLlmClient` retries a transient failure twice,
+  at about 1 s and 3 s with jitter, while `isTransient(error)` holds (the proxy's verdict, never a
+  status list), then throws `LlmUnavailableError` and the queue pauses (4.5). A permanent failure
+  is a `TerminalError` at once. A timeout (600 s) is `LlmTimeoutError`: not retried in the client,
+  not an outage, so the queue spends an attempt and a call that always hangs ends as a failure.
+- A verifier that fails for good leaves the generator's category in place with `verifierError`
+  in the rationale. A retry after a verifier outage reuses the generator's answer from the ledger
+  (`llmCalls.latestAccepted`) instead of paying for it again.
+- Every call logs one line (`structured` module, info) with step, model, attempt, latency and
+  tokens; `LOG_LEVEL=debug` logs the full system prompt, input and answer.
+- Live preview: a call made for an email streams (`LlmRequest.onText`, `llm-stream.ts`), and
+  `agents/live-preview.ts` keeps the answer so far in Redis at `live:call:<email run id>` (15 min
+  TTL, at most one write per 250 ms, cleared when the call ends either way) through the `LiveCalls`
+  seam in `src/live/`. With a schema the preview is the JSON being written; the answer is the
+  proxy's validated `structured_output` on the final `message_delta`, with `usage.cost_usd`.
+  Each attempt at a schema answer is its own content block, and the preview restarts at each,
+  because the model sometimes writes a malformed first attempt that the CLI rejects. Redis for
+  previews is its own connection with the offline queue off: a preview write never waits on a
+  down Redis, and a failed one is logged, never fatal.
 - Every call inserts `core.llm_calls` with step, model, prompt_version, request, response,
   input_tokens, output_tokens, cost_usd (from the proxy's usage block), latency_ms, email_run_id.
-- Models: `sonnet` for every step (decided 2026-09-19). Values must be proxy aliases. Env vars allow swapping per role for experiments; Qwen aliases go in
-  when the proxy is upgraded (see the Retina deploy README).
+- Models: `sonnet` for every step (decided 2026-09-19). Values must be proxy aliases: `sonnet`,
+  `opus`, `haiku`, and `test` for smoke tests. Env vars and a run's `models` allow swapping per
+  step for experiments. There is no local model: Ollama was dropped when the proxy moved into
+  the stack.
 
 ## 8. Postgres schema
 
@@ -587,12 +619,16 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 | Method, path | Purpose |
 |---|---|
 | `GET /health` | `{ status: ok \| degraded, checks: { postgres, redis, minio, inbox } }`, 2 s per check. Degraded is still 200; only postgres down is 503, which is the signal auto-deploy rolls back on. The proxy is left out on purpose: a cold model would read as an outage. doc-extract joins in phase 5 |
-| `POST /runs` | start a run `{ source, ratePerSecond, limit?, emailIds?, promptSet? }` |
-| `GET /runs`, `GET /runs/:id` | list, detail with stage counts, queue depth, cost, score. `queues` is `null` when Redis cannot be reached; the rest comes from Postgres and is still served |
+| `POST /runs` | start a run `{ source, ratePerSecond, limit?, emailIds?, subset?: dev \| holdout, promptSet?: { step: vN }, models?: { step: alias } }`. `subset` reads the id lists in `backend/eval/` (ids only). 400 for an unknown prompt version or a model that is not a proxy alias, before anything is queued |
+| `GET /runs`, `GET /runs/:id` | list, detail with stage counts, `finishedEmails`, `processingDone`, `elapsedMs` (start to the last email finishing, or to now), queue depth, `promptSet`, `llm` usage with `verifierShare`, score. The list also carries `concurrency: { classify, llm }` from the env. `queues` is `null` when Redis cannot be reached; the rest comes from Postgres and is still served |
 | `POST /runs/:id/pause`, `/resume`, `/cancel` | control the replay |
 | `POST /runs/:id/submit?force=false` | build submission, post to averis, store scoreboard. 409 when the run holds fewer rows than `totalEmails` (still ingesting) or holds unfinished emails, both overridden by `?force=true`; 409 while another submission for the same run is being scored. The `core.submissions` row is written before the scorer is called and updated with the scoreboard after, so a scorer failure leaves an unscored row (null `scoreboard`, null `final_score`) pointing at the stored payload rather than an orphan payload. Only scored rows count as a run's last submission |
 | `GET /runs/:id/submission.json` | download the payload |
-| `GET /runs/:id/emails?stage=&category=&status=&q=` | paginated list |
+| `GET /runs/:id/emails?stage=&category=&decidedBy=&q=` | paginated list with `category`, `decidedBy`, `confidence`, `verifierCategory`, `error` |
+| `GET /runs/:id/calls?after=&limit=` | the run's newest `llm_calls` as summaries (no prompt or email text), newest first, for a live feed; `after` returns only newer ids |
+| `GET /runs/:id/live` | the run's model calls running now, each with the answer written so far (`LiveCallView`) |
+| `GET /runs/:id/emails/:emailId/trace` | one email: stage, error, how its category was settled (each reader's category, confidence, reasoning, counter-cases, verifier error), the call running now, and every finished call oldest first with system prompt, input, answer text, parsed answer, tokens, cost, latency |
+| `GET /prompts` | each prompt step's versions on disk, newest first, with the active one, the model the file names and any notes; the runs page offers exactly these |
 | `GET /emails/:runId/:emailId` | full trace: email, attachments, classification, extractions with fields, comparison, diffs, review case, llm_calls summary |
 | `GET /review?status=open` | review inbox |
 | `POST /review/:id/actions` | `{ kind, field?, value?, note? }` |
@@ -600,7 +636,7 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 | `GET /queues` | waiting/active/failed per queue |
 | `GET /clients`, `PUT /clients/:domain` | tiers |
 | `POST /chat/conversations`, `POST /chat/:id/messages`, `GET /chat/:id` | chat agent |
-| `GET /eval/runs/:id` | holdout and full-set score computed locally (dev only; returns 404 on the VPS where ground truth is absent) |
+| `GET /eval/runs/:id` | holdout, full-set and this-run scoreboards computed locally, plus `emails`: each email of the run, its answer beside the truth, check by check on the scorer's definitions (`EmailVerdict`), shown at `/runs/[id]/results`. Dev only; 404 on the VPS where ground truth is absent |
 | `GET /lessons`, `POST /lessons/:id/approve|reject` | gated self-improvement |
 | `GET /files/*key` | stream object |
 
@@ -633,7 +669,10 @@ tool implementations are shared modules, not duplicated.
 - `pnpm eval:split`: reads `ground_truth.json` (local path from `EVAL_GROUND_TRUTH_PATH`),
   stratifies by `(category, review_reason)`, writes `eval/split.json` with `train` and `holdout`
   id lists. Committed once and never regenerated unless the dataset changes.
-- `pnpm eval:examples`: builds `examples.json` per step from the `train` split.
+- `pnpm eval:sample`: writes `eval/dev-sample.json`, 30 train ids (six per category). The subset a
+  change is tried on before the holdout is read. Committed once.
+- `pnpm eval:examples`: writes `agents/prompts/classify/examples.v4.json` from the `train` split,
+  excluding the dev sample, and refuses any holdout id.
 - `pnpm eval:score --run <id> [--holdout]`: builds the submission for the run from Postgres,
   scores it with `eval/score.ts` (port of `scoring.py`: stage1 macro-F1, stage3 defect-F1,
   end-to-end with exact set equality, reliability diagnostics), prints the scoreboard and a
@@ -655,8 +694,8 @@ Pages (all behind the `proxy.ts` password gate; the cookie is an HMAC of `SITE_P
 | Route | Content | Polling |
 |---|---|---|
 | `/login` | password form | |
-| `/runs` | table of runs with score, start-run form (rate, limit) | 5 s |
-| `/runs/[id]` | stage funnel, queue depth, category mix, verifier share, cost, live email feed, submit button, score card | 2 s |
+| `/runs` | table of runs with score, the env concurrency, start-run form (dev sample, holdout, all 520 or first N; rate; optional prompt version and model) | 3 s |
+| `/runs/[id]` | progress, model calls, verifier share, tokens, cost, pinned prompts; a live feed of the newest calls; the emails with category, confidence and decider, filterable; for a chosen email every call with its exact input and output | 2 to 4 s |
 | `/emails/[runId]/[emailId]` | trace: email, attachments with viewer, classification panel (generator, verifier), extraction table with quotes highlighted in the document text, comparison table, review panel | on demand |
 | `/review` | open cases grouped by reason, plus Failures tab; case detail with actions and upload | 3 s |
 | `/chat` | conversations, messages, SQL shown in a collapsible block, result tables | on send |
@@ -704,14 +743,16 @@ it; client components never hold the secret. Polling uses SWR with `refreshInter
   for the live view.
 - `/health` returns per-dependency status and the worker heartbeat (worker writes
   `worker:heartbeat` to Redis every 10 s; api reports stale after 60 s).
-- Proxy spend by project at `172.17.0.1:4001/admin/usage`; set `X-Project: retina-worker`
-  and `retina-chat` headers so it is split.
+- Proxy spend by project at `http://llm-proxy:4000/admin/usage` inside the stack
+  (`docker compose exec llm-proxy curl -s 127.0.0.1:4000/admin/usage`); set `X-Project:
+  retina-worker` and `retina-chat` headers so it is split.
 
 ## 17. Failure modes
 
 | Failure | Effect | Handling |
 |---|---|---|
 | llm-proxy down | classify and compare jobs fail with 503 | retryable; after 3 attempts the email is `failed` and shows under Failures; dashboard shows proxy red in `/health` |
+| llm-proxy not logged in | every model call is `provider_not_logged_in` | permanent: each email fails at once naming `CLAUDE_CODE_OAUTH_TOKEN`; set it and `docker compose up -d llm-proxy`, then rerun |
 | Claude login expired on the box | `subscription*` calls fail, `test` works | runbook: run `claude` interactively as student |
 | doc-extract OOM on a big PDF | job fails | retryable; memory limit 1 GB; file size cap |
 | Redis restart | in-flight jobs stall | AOF restores the queue; stalled jobs re-run; job ids prevent duplicates |

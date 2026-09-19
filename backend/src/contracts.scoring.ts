@@ -107,11 +107,37 @@ export const SubmitRefused = z.object({
 });
 export type SubmitRefused = z.infer<typeof SubmitRefused>;
 
+const Answer = SubmissionRow.omit({ decided_by: true });
+
+/**
+ * One email, the submission against the truth, check by check on the scorer's
+ * definitions. A check is null where the scorer does not score it for this email.
+ */
+export const EmailVerdict = z.object({
+  emailId: z.string(),
+  inHoldout: z.boolean(),
+  /** False when the run holds no answer for it: it counts as GENERAL, the scorer's default. */
+  submitted: z.boolean(),
+  answer: Answer,
+  truth: Answer,
+  checks: z.object({
+    category: z.boolean(),
+    status: z.boolean().nullable(),
+    reviewReason: z.boolean().nullable(),
+    defect: z.boolean().nullable(),
+    defectFields: z.boolean().nullable(),
+    endToEnd: z.boolean().nullable(),
+  }),
+});
+export type EmailVerdict = z.infer<typeof EmailVerdict>;
+
 /** Dev only: scored here against the answer key. `run` is the scoreboard over just the emails this run holds. */
 export const EvalReport = z.object({
   full: Scoreboard,
   holdout: Scoreboard,
   run: Scoreboard,
   wrong: z.object({ stage1: z.array(z.string()), stage3: z.array(z.string()), e2e: z.array(z.string()) }),
+  /** Every email of the run, its answer beside the truth. */
+  emails: z.array(EmailVerdict),
 });
 export type EvalReport = z.infer<typeof EvalReport>;

@@ -17,8 +17,24 @@ import pytest
 from llm_proxy.canon.request import CanonMessage, CanonRequest, TextBlock
 from llm_proxy.canon.stream import aggregate
 from llm_proxy.config import ProviderConfig
-from llm_proxy.errors import InvalidRequest, ProviderError, ProviderTimeout, RateLimited
-from llm_proxy.providers.claude_cli import ClaudeCliProvider, child_env, cli_args, flatten
+from llm_proxy.errors import (
+    InvalidRequest,
+    ProviderError,
+    ProviderNotLoggedIn,
+    ProviderTimeout,
+    RateLimited,
+)
+from llm_proxy.providers.claude_cli import (
+    ClaudeCliProvider,
+    child_env,
+    cli_args,
+    failure_detail,
+    flatten,
+    partial_text,
+    starts_attempt,
+    tool_args,
+)
+from llm_proxy.providers.retry import is_login_failure
 from llm_proxy.providers.openai_api import OpenAIProvider
 
 
@@ -271,6 +287,8 @@ STREAM_STUB = textwrap.dedent("""\
     import json, sys
     args = sys.argv[1:]
     assert "stream-json" in args and "--verbose" in args, args
+    assert "--include-partial-messages" in args, args
+    assert args[args.index("--tools") + 1] == "", args
     assert args[args.index("--model") + 1] == "haiku", args
     prompt = sys.stdin.read()
     assert prompt.startswith("Be terse."), prompt
@@ -492,3 +510,242 @@ async def test_openai_wire_nests_the_schema_the_way_openai_expects():
         "type": "json_schema",
         "json_schema": {"name": "output", "schema": SCHEMA, "strict": True},
     }
+
+
+async def test_not_logged_in_is_permanent_and_says_what_to_set(fake_claude):
+    fake_claude(textwrap.dedent("""\
+        #!/usr/bin/env python3
+        import json, sys
+        sys.stdin.read()
+        print(json.dumps({"type": "result", "subtype": "success", "is_error": True,
+                          "total_cost_usd": 0, "usage": {"input_tokens": 0},
+                          "result": "Not logged in \u00b7 Please run /login"}))
+        sys.exit(1)
+    """))
+    provider = ClaudeCliProvider("claudecli", ProviderConfig(type="claudecli"))
+    with pytest.raises(ProviderNotLoggedIn) as exc:
+        await provider.complete(canon_req("claudecli", "opus"))
+    assert exc.value.retryable is False
+    assert "CLAUDE_CODE_OAUTH_TOKEN" in str(exc.value)
+
+
+def test_failure_detail_reads_the_envelope_result_not_its_counters():
+    envelope = '{"type":"result","usage":{"service_tier":"standard"},"result":"Not logged in"}'
+    assert failure_detail(envelope, "") == "Not logged in"
+    assert failure_detail("not json at all", "boom") == "boom"
+    assert failure_detail("", "") == ""
+
+
+@pytest.mark.parametrize(
+    "detail, login",
+    [
+        ("Not logged in · Please run /login", True),
+        ("Invalid API key · Fix external API key", True),
+        ("OAuth token has expired. Please obtain a new token", True),
+        ("Error: usage limit reached", False),
+        ("something broke permanently", False),
+    ],
+)
+def test_login_failures_are_told_apart_from_outages(detail, login):
+    assert is_login_failure(detail) is login
+
+
+
+# With --include-partial-messages the CLI sends raw stream events as the tokens
+# arrive, then the finished message, which repeats the same text.
+PARTIAL_STREAM_STUB = textwrap.dedent("""\
+    #!/usr/bin/env python3
+    import json, sys
+    sys.stdin.read()
+    def event(e):
+        print(json.dumps({"type": "stream_event", "event": e}))
+    print(json.dumps({"type": "system", "subtype": "init", "tools": []}))
+    event({"type": "message_start", "message": {}})
+    event({"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}})
+    for piece in ["pro", "xy ", "ok"]:
+        event({"type": "content_block_delta", "index": 0,
+               "delta": {"type": "text_delta", "text": piece}})
+    event({"type": "content_block_stop", "index": 0})
+    print(json.dumps({"type": "assistant", "message": {
+        "content": [{"type": "text", "text": "proxy ok"}],
+        "usage": {"input_tokens": 9, "output_tokens": 3}}}))
+    print(json.dumps({"type": "result", "subtype": "success", "result": "proxy ok",
+                      "total_cost_usd": 0.001}))
+""")
+
+
+async def test_partial_messages_stream_token_by_token_without_repeating_the_text(fake_claude):
+    fake_claude(PARTIAL_STREAM_STUB)
+    provider = ClaudeCliProvider("claudecli", ProviderConfig(type="claudecli"))
+    events = [e async for e in provider.stream(canon_req("claudecli", "haiku"))]
+    deltas = [e.text for e in events if e.type == "text_delta"]
+    assert deltas == ["pro", "xy ", "ok"]
+    resp = aggregate(events)
+    assert resp.text() == "proxy ok"
+    assert resp.usage.output_tokens == 3
+
+
+@pytest.mark.parametrize(
+    "event, text",
+    [
+        ({"type": "content_block_delta", "delta": {"type": "text_delta", "text": "hi"}}, "hi"),
+        ({"type": "content_block_delta", "delta": {"type": "input_json_delta", "partial_json": "{"}}, ""),
+        ({"type": "message_start", "message": {}}, ""),
+        ({}, ""),
+    ],
+)
+def test_partial_text_reads_only_text_deltas(event, text):
+    assert partial_text(event) == text
+
+
+def test_no_tools_unless_configured():
+    args = cli_args("claude", canon_req("claudecli", "sonnet"), "json")
+    assert args[args.index("--tools") + 1] == ""
+    assert "--allowedTools" not in args
+
+
+def test_configured_tools_are_enabled_and_pre_approved():
+    assert tool_args(["WebSearch", "WebFetch"]) == [
+        "--tools", "WebSearch,WebFetch", "--allowedTools", "WebSearch,WebFetch",
+    ]
+    args = cli_args("claude", canon_req("claudecli", "sonnet"), "json", ["WebSearch"])
+    assert args[args.index("--tools") + 1] == "WebSearch"
+
+
+STREAM_NOT_LOGGED_IN_STUB = textwrap.dedent("""\
+    #!/usr/bin/env python3
+    import json, sys
+    sys.stdin.read()
+    print(json.dumps({"type": "system", "subtype": "init", "tools": []}))
+    # What the pinned CLI (2.1.278) really sends first: a synthetic message.
+    print(json.dumps({"type": "assistant", "error": "authentication_failed", "message": {
+        "model": "<synthetic>",
+        "content": [{"type": "text", "text": "Not logged in \\u00b7 Please run /login"}]}}))
+    print(json.dumps({"type": "result", "subtype": "success", "is_error": True,
+                      "result": "Not logged in \\u00b7 Please run /login", "total_cost_usd": 0}))
+    sys.exit(1)
+""")
+
+
+async def test_a_failed_stream_never_sends_the_error_as_text_and_names_the_login(fake_claude):
+    fake_claude(STREAM_NOT_LOGGED_IN_STUB)
+    provider = ClaudeCliProvider("claudecli", ProviderConfig(type="claudecli"))
+    events = [e async for e in provider.stream(canon_req("claudecli", "haiku"))]
+    assert [e for e in events if e.type == "text_delta"] == []
+    error = next(e for e in events if e.type == "error")
+    assert error.code == "provider_not_logged_in"
+    assert error.retryable is False
+
+
+
+# The event sequence the pinned CLI (2.1.278) really sends for a schema-bound
+# call: thinking, then a StructuredOutput tool call whose input streams as JSON.
+SCHEMA_STREAM_STUB = textwrap.dedent("""\
+    #!/usr/bin/env python3
+    import json, sys
+    args = sys.argv[1:]
+    assert "--json-schema" in args and "--include-partial-messages" in args, args
+    sys.stdin.read()
+    def event(e):
+        print(json.dumps({"type": "stream_event", "event": e}))
+    event({"type": "content_block_start", "index": 0, "content_block": {"type": "thinking", "thinking": ""}})
+    event({"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "thinking": ""}})
+    event({"type": "content_block_start", "index": 1,
+           "content_block": {"type": "tool_use", "name": "StructuredOutput", "input": {}}})
+    for piece in ['{"rationale": "A draft', ' to check", "category"', ': "BL_COMPARISON", "confidence": 0.9}']:
+        event({"type": "content_block_delta", "index": 1,
+               "delta": {"type": "input_json_delta", "partial_json": piece}})
+    print(json.dumps({"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "StructuredOutput"}],
+                      "usage": {"input_tokens": 50, "output_tokens": 30}}}))
+    print(json.dumps({"type": "result", "subtype": "success", "result": "done",
+                      "structured_output": {"rationale": "A draft to check", "category": "BL_COMPARISON",
+                                            "confidence": 0.9},
+                      "usage": {"input_tokens": 60, "output_tokens": 42}, "total_cost_usd": 0.004}))
+""")
+
+
+async def test_a_schema_bound_call_streams_its_json_and_ends_with_the_validated_answer(fake_claude):
+    fake_claude(SCHEMA_STREAM_STUB)
+    provider = ClaudeCliProvider("claudecli", ProviderConfig(type="claudecli"))
+    req = canon_req("claudecli", "haiku", response_format=JSON_FORMAT)
+    events = [e async for e in provider.stream(req)]
+    preview = "".join(e.text for e in events if e.type == "text_delta")
+    assert preview == '{"rationale": "A draft to check", "category": "BL_COMPARISON", "confidence": 0.9}'
+    final = next(e for e in events if e.type == "message_delta")
+    assert final.structured == {"rationale": "A draft to check", "category": "BL_COMPARISON", "confidence": 0.9}
+    assert final.usage.reported_cost_usd == 0.004
+    assert final.usage.output_tokens == 42, "the session totals, not the first snapshot"
+
+
+def test_partial_text_forwards_json_deltas_only_for_a_schema_call():
+    event = {"type": "content_block_delta", "delta": {"type": "input_json_delta", "partial_json": '{"a"'}}
+    assert partial_text(event, structured=True) == '{"a"'
+    assert partial_text(event) == ""
+    thinking = {"type": "content_block_delta", "delta": {"type": "thinking_delta", "thinking": "hmm"}}
+    assert partial_text(thinking, structured=True) == ""
+
+
+def test_the_final_stream_event_carries_the_cost_and_the_structured_answer():
+    from llm_proxy.canon.response import CanonUsage, StopReason
+    from llm_proxy.canon.stream import MessageDelta
+    from llm_proxy.wire.anthropic_out import event_frames
+
+    ev = MessageDelta(
+        stop_reason=StopReason.END_TURN,
+        usage=CanonUsage(input_tokens=5, output_tokens=7, reported_cost_usd=0.01),
+        structured={"category": "SPAM"},
+    )
+    [(name, payload)] = event_frames(ev, "msg_1", "haiku")
+    assert name == "message_delta"
+    assert payload["usage"] == {"input_tokens": 5, "output_tokens": 7, "cost_usd": 0.01}
+    assert payload["structured_output"] == {"category": "SPAM"}
+
+
+def test_a_stream_error_frame_carries_the_verdict():
+    from llm_proxy.canon.stream import StreamError
+    from llm_proxy.wire.anthropic_out import event_frames
+
+    [(name, payload)] = event_frames(
+        StreamError(code="provider_not_logged_in", message="not logged in", retryable=False), "msg_1", "haiku"
+    )
+    assert name == "error"
+    assert payload["error"]["code"] == "provider_not_logged_in"
+    assert payload["error"]["retryable"] is False
+
+
+RETRIED_SCHEMA_STREAM_STUB = textwrap.dedent("""\
+    #!/usr/bin/env python3
+    import json, sys
+    sys.stdin.read()
+    def event(e):
+        print(json.dumps({"type": "stream_event", "event": e}))
+    def attempt(pieces):
+        event({"type": "content_block_start", "index": 1,
+               "content_block": {"type": "tool_use", "name": "StructuredOutput", "input": {}}})
+        for piece in pieces:
+            event({"type": "content_block_delta", "index": 1,
+                   "delta": {"type": "input_json_delta", "partial_json": piece}})
+    attempt(['{"$PARAMETER_NAME": ', '"broken"}'])
+    attempt(['{"category": ', '"SPAM"}'])
+    print(json.dumps({"type": "result", "subtype": "success", "result": "done",
+                      "structured_output": {"category": "SPAM"}, "total_cost_usd": 0.001}))
+""")
+
+
+async def test_each_attempt_at_a_schema_answer_streams_as_its_own_block(fake_claude):
+    fake_claude(RETRIED_SCHEMA_STREAM_STUB)
+    provider = ClaudeCliProvider("claudecli", ProviderConfig(type="claudecli"))
+    events = [e async for e in provider.stream(canon_req("claudecli", "haiku", response_format=JSON_FORMAT))]
+    by_block: dict[int, str] = {}
+    for e in events:
+        if e.type == "text_delta":
+            by_block[e.index] = by_block.get(e.index, "") + e.text
+    assert by_block == {0: '{"$PARAMETER_NAME": "broken"}', 1: '{"category": "SPAM"}'}
+    assert [e.index for e in events if e.type == "block_stop"] == [0, 1]
+    assert next(e for e in events if e.type == "message_delta").structured == {"category": "SPAM"}
+
+
+def test_only_a_tool_call_opens_an_attempt():
+    assert starts_attempt({"type": "content_block_start", "content_block": {"type": "tool_use"}})
+    assert not starts_attempt({"type": "content_block_start", "content_block": {"type": "thinking"}})
+    assert not starts_attempt({"type": "content_block_delta", "delta": {}})

@@ -1,12 +1,17 @@
-import type { Category } from "../../contracts";
+import { z } from "zod";
+
+import type { Category, ClassificationView, DecidedBy } from "../../contracts";
 import type { Queryable } from "../../db";
 
 export interface NewClassification {
   emailRunId: string;
   genCategory: Category;
   genConfidence: number;
+  /** Null when the generator was sure enough that the verifier did not run. */
+  verCategory: Category | null;
+  verConfidence: number | null;
   finalCategory: Category;
-  decidedBy: "llm" | "verifier" | "human";
+  decidedBy: DecidedBy;
   rationale: Record<string, unknown>;
   model: string;
   promptVersion: string;
@@ -16,7 +21,7 @@ export interface StoredClassification {
   finalCategory: Category;
   humanCategory: Category | null;
   genConfidence: number | null;
-  decidedBy: "llm" | "verifier" | "human";
+  decidedBy: DecidedBy;
   model: string | null;
   promptVersion: string | null;
 }
@@ -25,11 +30,14 @@ export interface StoredClassification {
 export async function upsert(db: Queryable, row: NewClassification): Promise<void> {
   await db.query(
     `insert into core.classifications
-       (email_run_id, gen_category, gen_confidence, final_category, decided_by, rationale, model, prompt_version)
-     values ($1, $2, $3, $4, $5, $6, $7, $8)
+       (email_run_id, gen_category, gen_confidence, ver_category, ver_confidence, final_category, decided_by,
+        rationale, model, prompt_version)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      on conflict (email_run_id) do update set
        gen_category = excluded.gen_category,
        gen_confidence = excluded.gen_confidence,
+       ver_category = excluded.ver_category,
+       ver_confidence = excluded.ver_confidence,
        final_category = excluded.final_category,
        decided_by = excluded.decided_by,
        rationale = excluded.rationale,
@@ -40,6 +48,8 @@ export async function upsert(db: Queryable, row: NewClassification): Promise<voi
       row.emailRunId,
       row.genCategory,
       row.genConfidence,
+      row.verCategory,
+      row.verConfidence,
       row.finalCategory,
       row.decidedBy,
       JSON.stringify(row.rationale),
@@ -54,7 +64,7 @@ export async function get(db: Queryable, emailRunId: string): Promise<StoredClas
     final_category: Category;
     human_category: Category | null;
     gen_confidence: string | null;
-    decided_by: StoredClassification["decidedBy"];
+    decided_by: DecidedBy;
     model: string | null;
     prompt_version: string | null;
   }>(
@@ -69,6 +79,69 @@ export async function get(db: Queryable, emailRunId: string): Promise<StoredClas
     humanCategory: row.human_category,
     genConfidence: row.gen_confidence === null ? null : Number(row.gen_confidence),
     decidedBy: row.decided_by,
+    model: row.model,
+    promptVersion: row.prompt_version,
+  };
+}
+
+/**
+ * Of each run's classified emails, the share the verifier settled, as a total
+ * lookup: a run with nothing classified reads as 0 rather than as absent.
+ */
+export async function verifierShareForRuns(db: Queryable, runIds: string[]): Promise<(runId: string) => number> {
+  if (runIds.length === 0) return () => 0;
+  const { rows } = await db.query<{ run_id: string; share: string }>(
+    `select er.run_id, avg(case when c.decided_by = 'verifier' then 1 else 0 end) as share
+       from core.classifications c join core.email_runs er on er.id = c.email_run_id
+      where er.run_id = any($1::uuid[]) group by er.run_id`,
+    [runIds],
+  );
+  const shares = new Map(rows.map((row) => [row.run_id, Number(row.share)]));
+  return (runId) => shares.get(runId) ?? 0;
+}
+
+/** What the rationale column holds: each reader's reasoning, and a verifier failure if one happened. */
+const Rationale = z.object({
+  generator: z.string().default(""),
+  verifier: z.string().optional(),
+  counterCases: z.string().optional(),
+  verifierError: z.string().optional(),
+});
+
+/** How the email's category was settled, for the run page. Null before it is classified. */
+export async function view(db: Queryable, emailRunId: string): Promise<ClassificationView | null> {
+  const { rows } = await db.query<{
+    final_category: Category;
+    decided_by: DecidedBy;
+    gen_category: Category;
+    gen_confidence: string;
+    ver_category: Category | null;
+    ver_confidence: string | null;
+    rationale: unknown;
+    model: string | null;
+    prompt_version: string | null;
+  }>(
+    `select final_category, decided_by, gen_category, gen_confidence, ver_category, ver_confidence,
+            rationale, model, prompt_version
+       from core.classifications where email_run_id = $1`,
+    [emailRunId],
+  );
+  const row = rows[0];
+  if (!row) return null;
+  const why = Rationale.parse(row.rationale ?? {});
+  return {
+    finalCategory: row.final_category,
+    decidedBy: row.decided_by,
+    generator: { category: row.gen_category, confidence: Number(row.gen_confidence), rationale: why.generator },
+    verifier: row.ver_category
+      ? {
+          category: row.ver_category,
+          confidence: Number(row.ver_confidence),
+          rationale: why.verifier ?? "",
+          counterCases: why.counterCases ?? null,
+        }
+      : null,
+    verifierError: why.verifierError ?? null,
     model: row.model,
     promptVersion: row.prompt_version,
   };

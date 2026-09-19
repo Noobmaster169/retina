@@ -94,6 +94,18 @@ class RateLimited(ProviderError):
     anthropic_type = "rate_limit_error"
 
 
+
+class ProviderNotLoggedIn(ProviderError):
+    """The provider refused the proxy's own credentials: `claude` is not logged in.
+
+    Not retryable, unlike ProviderError. No attempt succeeds until someone logs it
+    in, and a caller that reads `retryable` to decide between pausing and failing
+    would otherwise wait out an outage that is really a missing secret.
+    """
+
+    code = "provider_not_logged_in"
+    retryable = False
+
 class ProviderTimeout(ProviderError):
     status = 504
     code = "provider_timeout"

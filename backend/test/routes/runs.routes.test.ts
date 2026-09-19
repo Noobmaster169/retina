@@ -187,7 +187,19 @@ describe("GET /runs/:id and /runs/:id/emails", () => {
     const listed = await request(app()).get(`/runs/${id}/emails?stage=done&pageSize=10`).set(TEAM);
     expect(listed.body).toEqual({
       emails: [
-        { emailId, from: "docs@algurg.ae", subject: "TO CONFIRM DOCS _ OC1 _ JEBEL ALI", stage: "done", attachmentCount: 1, outcome: "OK" },
+        {
+          emailId,
+          from: "docs@algurg.ae",
+          subject: "TO CONFIRM DOCS _ OC1 _ JEBEL ALI",
+          stage: "done",
+          attachmentCount: 1,
+          outcome: "OK",
+          category: null,
+          decidedBy: null,
+          confidence: null,
+          verifierCategory: null,
+          error: null,
+        },
       ],
       total: 1,
       page: 1,

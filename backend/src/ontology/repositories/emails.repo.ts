@@ -1,4 +1,4 @@
-import type { EmailListItem, Stage } from "../../contracts";
+import type { Category, DecidedBy, EmailListItem, Stage } from "../../contracts";
 import type { Queryable } from "../../db";
 
 export interface NewEmail {
@@ -38,7 +38,12 @@ interface ListRow {
   subject: string;
   stage: Stage;
   outcome: string | null;
+  error: string | null;
   attachment_count: number;
+  final_category: Category | null;
+  decided_by: DecidedBy | null;
+  gen_confidence: string | null;
+  ver_category: Category | null;
 }
 
 function toEmail(row: EmailRow): StoredEmail {
@@ -61,6 +66,11 @@ function toListItem(row: ListRow): EmailListItem {
     stage: row.stage,
     attachmentCount: row.attachment_count,
     outcome: row.outcome,
+    category: row.final_category,
+    decidedBy: row.decided_by,
+    confidence: row.gen_confidence === null ? null : Number(row.gen_confidence),
+    verifierCategory: row.ver_category,
+    error: row.error,
   };
 }
 
@@ -94,6 +104,8 @@ export async function get(db: Queryable, emailId: string): Promise<StoredEmail |
 
 export interface RunEmailFilters {
   stage?: Stage;
+  category?: Category;
+  decidedBy?: DecidedBy;
   q?: string;
 }
 
@@ -108,22 +120,24 @@ export async function listForRun(
   filters: RunEmailFilters,
   page: { page: number; pageSize: number },
 ): Promise<{ emails: EmailListItem[]; total: number }> {
+  const from = `core.email_runs er join core.emails e using (email_id)
+     left join core.classifications c on c.email_run_id = er.id`;
   const where = `er.run_id = $1
      and ($2::text is null or er.stage = $2)
-     and ($3::text is null or e.subject ilike $3 or e.from_addr ilike $3)`;
-  const params = [runId, filters.stage ?? null, likePattern(filters.q)];
+     and ($3::text is null or e.subject ilike $3 or e.from_addr ilike $3)
+     and ($4::text is null or c.final_category = $4)
+     and ($5::text is null or c.decided_by = $5)`;
+  const params = [runId, filters.stage ?? null, likePattern(filters.q), filters.category ?? null, filters.decidedBy ?? null];
 
-  const counted = await db.query<{ total: string }>(
-    `select count(*) as total from core.email_runs er join core.emails e using (email_id) where ${where}`,
-    params,
-  );
+  const counted = await db.query<{ total: string }>(`select count(*) as total from ${from} where ${where}`, params);
   const { rows } = await db.query<ListRow>(
-    `select e.email_id, e.from_addr, e.subject, er.stage, er.outcome,
-            cardinality(e.attachment_paths) as attachment_count
-       from core.email_runs er join core.emails e using (email_id)
+    `select e.email_id, e.from_addr, e.subject, er.stage, er.outcome, er.error,
+            cardinality(e.attachment_paths) as attachment_count,
+            c.final_category, c.decided_by, c.gen_confidence, c.ver_category
+       from ${from}
       where ${where}
       order by e.email_id
-      limit $4 offset $5`,
+      limit $6 offset $7`,
     [...params, page.pageSize, (page.page - 1) * page.pageSize],
   );
   return { emails: rows.map(toListItem), total: Number(counted.rows[0].total) };

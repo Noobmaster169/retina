@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 import type { RunAction, RunStatus, RunSummary, Stage } from "@/lib/api-client";
+import { formatDuration } from "@/lib/duration";
 
 import { ScoreCell } from "./score-cell";
 
@@ -45,8 +47,7 @@ export function RunRow({ run, onChanged }: Props) {
   const [pending, setPending] = useState<RunAction | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const settled = run.stageCounts.done + run.stageCounts.failed;
-  const percent = run.totalEmails ? Math.round((settled / run.totalEmails) * 100) : 0;
+  const percent = run.totalEmails ? Math.round((run.finishedEmails / run.totalEmails) * 100) : 0;
 
   async function act(action: RunAction) {
     setPending(action);
@@ -69,7 +70,9 @@ export function RunRow({ run, onChanged }: Props) {
   return (
     <tr className="border-b border-line align-top">
       <td className="py-3 pr-4 whitespace-nowrap">
-        <div>{startedLabel(run)}</div>
+        <Link href={`/runs/${run.id}`} className="hover:text-accent-ink hover:underline">
+          {startedLabel(run)}
+        </Link>
         <div className="font-mono text-xs text-muted">{run.id.slice(0, 8)}</div>
       </td>
       <td className={`py-3 pr-4 font-medium ${STATUS_TONE[run.status]}`}>{run.status}</td>
@@ -89,9 +92,14 @@ export function RunRow({ run, onChanged }: Props) {
             <div className="h-full bg-accent transition-[width] duration-500" style={{ width: `${percent}%` }} />
           </div>
           <span className="whitespace-nowrap tabular-nums">
-            {settled} / {run.totalEmails ?? "?"}
+            {run.finishedEmails} / {run.totalEmails ?? "?"}
           </span>
         </div>
+        {run.elapsedMs !== null && (
+          <div className="mt-1 text-xs tabular-nums text-muted">
+            {run.processingDone ? "took" : "running for"} {formatDuration(run.elapsedMs)}
+          </div>
+        )}
       </td>
       <td className="py-3 pr-4">
         <ul className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted">

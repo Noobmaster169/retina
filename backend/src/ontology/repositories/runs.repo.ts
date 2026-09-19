@@ -1,4 +1,4 @@
-import type { RunStatus } from "../../contracts";
+import { PromptSet, type RunStatus } from "../../contracts";
 import type { Queryable } from "../../db";
 
 export interface Run {
@@ -11,6 +11,8 @@ export interface Run {
   totalEmails: number | null;
   /** Which ingest job owns the run. Every resume raises it. */
   ingestEpoch: number;
+  /** The prompt version and model of every LLM step, fixed when the run was created. */
+  promptSet: PromptSet;
   createdBy: string | null;
   createdAt: string;
   startedAt: string | null;
@@ -23,6 +25,7 @@ export interface NewRun {
   ratePerSecond: number;
   emailLimit?: number;
   emailIds?: string[];
+  promptSet?: PromptSet;
   createdBy?: string;
 }
 
@@ -35,6 +38,7 @@ interface RunRow {
   status: RunStatus;
   total_emails: number | null;
   ingest_epoch: number;
+  prompt_set: unknown;
   created_by: string | null;
   created_at: Date;
   started_at: Date | null;
@@ -42,7 +46,7 @@ interface RunRow {
 }
 
 const COLUMNS = `id, source, rate_per_second, email_limit, email_ids, status, total_emails,
-  ingest_epoch, created_by, created_at, started_at, finished_at`;
+  ingest_epoch, prompt_set, created_by, created_at, started_at, finished_at`;
 
 function toRun(row: RunRow): Run {
   return {
@@ -54,6 +58,7 @@ function toRun(row: RunRow): Run {
     status: row.status,
     totalEmails: row.total_emails,
     ingestEpoch: row.ingest_epoch,
+    promptSet: PromptSet.parse(row.prompt_set),
     createdBy: row.created_by,
     createdAt: row.created_at.toISOString(),
     startedAt: row.started_at?.toISOString() ?? null,
@@ -63,10 +68,18 @@ function toRun(row: RunRow): Run {
 
 export async function create(db: Queryable, run: NewRun): Promise<Run> {
   const { rows } = await db.query<RunRow>(
-    `insert into core.runs (id, source, rate_per_second, email_limit, email_ids, status, created_by)
-     values ($1, $2, $3, $4, $5, 'created', $6)
+    `insert into core.runs (id, source, rate_per_second, email_limit, email_ids, status, prompt_set, created_by)
+     values ($1, $2, $3, $4, $5, 'created', $6, $7)
      returning ${COLUMNS}`,
-    [run.id, run.source, run.ratePerSecond, run.emailLimit ?? null, run.emailIds ?? null, run.createdBy ?? null],
+    [
+      run.id,
+      run.source,
+      run.ratePerSecond,
+      run.emailLimit ?? null,
+      run.emailIds ?? null,
+      JSON.stringify(run.promptSet ?? {}),
+      run.createdBy ?? null,
+    ],
   );
   return toRun(rows[0]);
 }

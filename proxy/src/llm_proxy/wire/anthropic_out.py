@@ -280,15 +280,27 @@ def event_frames(ev: CanonEvent, resp_id: str, model_id: str) -> list[tuple[str,
                 "input_tokens": ev.usage.input_tokens,
                 "output_tokens": ev.usage.output_tokens,
             }
+            # Headers go out before a stream's cost is known, so a streamed call
+            # carries it here instead of X-LLM-Proxy-Cost-USD. An extension:
+            # Anthropic clients ignore fields they do not know.
+            if ev.usage.reported_cost_usd is not None:
+                payload["usage"]["cost_usd"] = ev.usage.reported_cost_usd
+        if ev.structured is not None:
+            payload["structured_output"] = ev.structured
         return [("message_delta", payload)]
 
     if kind == "message_stop":
         return [("message_stop", {"type": "message_stop"})]
 
     if kind == "error":
+        # The same `code` and `retryable` a non-streamed error carries: a client
+        # decides from `retryable` whether to wait out an outage or fail now, and
+        # without it a missing login read as an outage and was retried forever.
         return [(
             "error",
-            {"type": "error", "error": {"type": "api_error", "message": ev.message}},
+            {"type": "error", "error": {
+                "type": "api_error", "message": ev.message, "code": ev.code, "retryable": ev.retryable,
+            }},
         )]
 
     return []

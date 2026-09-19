@@ -87,3 +87,5 @@ export async function usageForRuns(db: Queryable, runIds: string[]): Promise<(ru
 export async function usageForRun(db: Queryable, runId: string): Promise<LlmUsage> {
   return (await usageForRuns(db, [runId]))(runId);
 }
+
+export { latestAccepted, listForEmail, listRecent } from "./llm-calls.trace";

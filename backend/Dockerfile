@@ -26,6 +26,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json tsconfig.json ./
 COPY src ./src
 COPY db ./db
+# Id lists only, so a run can be started on the dev sample or the holdout. Never the answer key, never reports.
+COPY eval/split.json eval/dev-sample.json ./eval/
 
 USER api
 EXPOSE 8091

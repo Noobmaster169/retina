@@ -7,7 +7,8 @@ Four independent packages. Run commands inside a package, never at the root.
 
 - `frontend/` Next.js 16, on Vercel. Read `frontend/AGENTS.md` before writing Next code.
 - `backend/` Express + Postgres, on the Monash server behind ngrok.
-- `proxy/` Python. Anthropic-wire gateway to `claude -p` and Ollama.
+- `proxy/` Python. Anthropic-wire gateway to `claude -p`, run as the `llm-proxy` container of
+  the compose stack (local and box), logged in by `CLAUDE_CODE_OAUTH_TOKEN`.
 - `emails/` The Averis kit: a FastAPI server in `emails/server` that serves the synthetic
   inbox in `emails/data_v2` and scores submissions at `POST /submit`. The backend reads it
   over HTTP. Do not edit the dataset by hand; `data_v2/generate.py` makes it.
@@ -39,9 +40,9 @@ what is left in it.
 ## Commands
 
 ```bash
-# proxy, inside proxy/
-./start.sh                          # :4000
-pytest
+# proxy: a container of the backend compose stack (host :4001), built from proxy/
+docker compose -f compose.local.yaml up -d --build llm-proxy   # inside backend/
+pytest                              # inside proxy/
 
 # backend, inside backend/
 pnpm install && pnpm db:migrate
@@ -162,7 +163,9 @@ needed.
   `retryable`. The backend depends on it. Change both sides or neither.
 - Retryability is the proxy's to state, never the caller's to guess from a status. An unknown
   provider and a dead upstream are both 500; only one is worth another attempt.
-- Aliases in `proxy/proxy.yaml` are model names (`haiku`, `qwen3:14b`). Do not invent names.
+- Aliases in `proxy/proxy.yaml` are model names (`sonnet`, `haiku`). Do not invent names.
+- The proxy is part of the stack. There is no remote gateway: `LLM_PROXY_URL` names the
+  `llm-proxy` service, and a missing Claude login is a permanent error, never an outage.
 
 ## Classification and enums
 

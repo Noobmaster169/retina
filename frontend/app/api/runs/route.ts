@@ -1,4 +1,5 @@
 import { createRun, type CreateRunInput, listRuns } from "@/lib/api-client";
+import { gatedRead } from "@/lib/api-route";
 import { hasSiteAccess } from "@/lib/site-gate";
 
 function refused(status: number, error: string): Response {
@@ -7,13 +8,7 @@ function refused(status: number, error: string): Response {
 
 /** What the runs table polls. A thin pass-through so the shared secret stays on the server. */
 export async function GET() {
-  if (!(await hasSiteAccess())) return refused(401, "Signed out. Reload the page to sign in.");
-  try {
-    return Response.json({ runs: await listRuns() });
-  } catch (error) {
-    console.error("[api/runs] list failed:", error);
-    return refused(503, "Could not reach the backend.");
-  }
+  return gatedRead("list runs", () => listRuns());
 }
 
 /** Validation is the backend's job; its refusal comes back with its status. */

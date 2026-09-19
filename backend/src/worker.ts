@@ -3,6 +3,7 @@ import { config } from "./config";
 import { closePool, getPool } from "./db";
 import { AverisSource } from "./ingest";
 import { childLogger } from "./lib/logger";
+import { redisLiveCalls } from "./live";
 import { closeRedis, getRedis } from "./queues/connection";
 import { closeQueues, getQueues } from "./queues/queues";
 import { startWorkers } from "./queues/workers";
@@ -14,18 +15,23 @@ const store = createMinioStore();
 await store.ensureBucket();
 
 const queues = getQueues();
+const live = redisLiveCalls();
 const workers = startWorkers(
   {
     pool: getPool(),
     source: new AverisSource(config.EMAIL_SERVER_URL),
     store,
-    llm: proxyLlmClient(),
+    llm: proxyLlmClient({ maxConcurrency: config.LLM_MAX_CONCURRENCY }),
+    live,
     classify: queues.classify,
     compare: queues.compare,
   },
   getRedis(),
 );
-log.info({ classify: config.CLASSIFY_CONCURRENCY, compare: config.COMPARE_CONCURRENCY }, "worker started");
+log.info(
+  { classify: config.CLASSIFY_CONCURRENCY, compare: config.COMPARE_CONCURRENCY, llm: config.LLM_MAX_CONCURRENCY },
+  "worker started",
+);
 
 let shuttingDown = false;
 /** Never rejects: a signal handler cannot await it, so a failure is logged here or nowhere. */
@@ -35,6 +41,7 @@ async function shutdown(signal: string): Promise<void> {
   log.info({ signal }, "worker stopping");
   try {
     await workers.stop();
+    await live.close();
     await closeQueues();
     await closeRedis();
     await closePool();

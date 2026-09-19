@@ -43,7 +43,8 @@ create table core.prompt_versions (
 create unique index prompt_versions_one_active on core.prompt_versions (step) where active;
 ```
 
-Seed rows `('classify','v1',true)` and `('classify-verify','v1',true)`. `core.llm_calls` already
+Seed rows `('classify','v3',true)` and `('classify-verify','v1',true)` (`v3` is the version phase 2
+shipped; the spec first said `v1`). `core.llm_calls` already
 exists from phase 2.
 
 Expand/contract, like every migration here: rollback restores the previous image and never touches
@@ -96,9 +97,9 @@ sender, subject or body.
 ### 6. Few-shot, gated: `src/eval/examples.ts` (`pnpm eval:examples`)
 
 Picks a seeded few per category from `split.json.train`, asserts no holdout id appears, writes
-`prompts/classify/examples.json` for a new prompt version (`v2`), and leaves `v1` untouched.
-Examples ship only if a holdout run of `v2` beats `v1`; both numbers go in `PROGRESS.md`. If it
-does not, `v2` is deleted and the result is still recorded, so nobody repeats the experiment
+`prompts/classify/examples.v4.json` for a new prompt version (`v4`), and leaves `v3` untouched.
+Examples ship only if a holdout run of `v4` beats `v3`; both numbers go in `PROGRESS.md`. If it
+does not, `v4` is deleted and the result is still recorded, so nobody repeats the experiment
 blind. Examples are data the model reads, never a lookup: the pipeline does not match an incoming
 email against them.
 
@@ -129,7 +130,8 @@ The rest is unchanged: `BL_COMPARISON` goes to the compare queue, anything else 
 aggregate over `llm_calls` and `classifications`. The email list gains `category` and `decidedBy`
 columns and a category filter.
 
-The frontend mirror is a zod schema in `frontend/lib/api/runs-client.ts`, not an interface: every
+The frontend mirror is a zod schema in `frontend/lib/api/runs-schemas.ts` (and `trace-schemas.ts`
+for the email list and calls), not an interface: every
 response is parsed there now. `getRun` and `listRunEmails` were deleted as unused in the phase 3
 review and come back with this page; restore them from `git show d68ed1b^:frontend/lib/api-client.ts`
 as schemas. See `phase-04-handover.md` sections 3 and 4.

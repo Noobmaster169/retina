@@ -206,6 +206,8 @@ NON_INTERACTIVE=0
 if [[ "$NON_INTERACTIVE" == "1" ]]; then
   pause()   { note "${1:-continuing} [non-interactive]"; }
   confirm() { note "$1 -> yes [non-interactive]"; return 0; }
+  # A secret nobody is there to type keeps what .env has, or stays empty.
+  ask_secret() { printf -v "$1" "%s" "$(_existing "$1" || true)"; note "$2 [non-interactive: skipped]"; }
 fi
 
 REPO="${REPO:-$HOME/projects/retina}"
@@ -229,7 +231,6 @@ trap 'rm -f "$WIZARD_DETACHED"' EXIT
   exit 1
 }
 retina_stack_defaults
-PROXY_URL="${PROXY_URL:-http://172.17.0.1:4001}"
 ENV_FILE="$STACK/.env"
 
 fail() { printf '\n  %s✗ %s%s\n\n' "$RED" "$1" "$RESET"; exit 1; }
@@ -283,16 +284,6 @@ ok "clone at $REPO ($(git -C "$REPO" rev-parse --short HEAD))"
 mkdir -p "$STACK" "$STACK/backups"
 ok "stack directory $STACK"
 
-# Every pipeline step asks the proxy for structured output, which it serves
-# with `claude -p --json-schema`. An older CLI has no such flag.
-if command -v claude >/dev/null 2>&1; then
-  note "claude $(claude --version 2>/dev/null | head -n1)"
-  note "it must be 2.1.274 or newer; stage 6 checks what the proxy actually does"
-else
-  warn "no claude CLI on PATH for this account: the sonnet aliases will fail"
-  SKIPPED+=("install or log in to the claude CLI as this user")
-fi
-
 pause "Press Enter to install the stack files."
 
 # ── 2 ─────────────────────────────────────────────────────────────────────
@@ -314,9 +305,7 @@ install_stack_file() {
 
 install_stack_file "$REPO/deploy/compose.yaml"   "$STACK/compose.yaml"   644 || fail "could not install compose.yaml"
 install_stack_file "$REPO/deploy/auto-deploy.sh" "$STACK/auto-deploy.sh" 755 || fail "could not install auto-deploy.sh"
-for runner in run-ngrok.sh run-proxy.sh; do
-  [[ -f "$STACK/$runner" ]] || { warn "$STACK/$runner is missing"; SKIPPED+=("copy deploy/$runner to $STACK and set its domain or port"); }
-done
+[[ -f "$STACK/run-ngrok.sh" ]] || { warn "$STACK/run-ngrok.sh is missing"; SKIPPED+=("copy deploy/run-ngrok.sh to $STACK and set its domain"); }
 
 pause "Press Enter to check the secrets."
 
@@ -348,6 +337,23 @@ ensure_secret TEAM_API_KEY     32 "Bearer teammates use to call the API directly
 ensure_secret MINIO_ACCESS_KEY 16 "MinIO root user, and the access key the api and worker sign with."
 ensure_secret MINIO_SECRET_KEY 16 "MinIO root password, and the secret key the api and worker sign with."
 
+# Not generated: only the Claude account can issue it. Optional for the stack
+# to come up (the proxy starts and refuses every model call as "not logged in"),
+# so a skip is recorded rather than fatal.
+if [[ -n "$(_existing CLAUDE_CODE_OAUTH_TOKEN || true)" ]]; then
+  note "CLAUDE_CODE_OAUTH_TOKEN already set, keeping it"
+else
+  say "The llm-proxy container logs in to the Claude subscription with a token."
+  say "Make one with \`claude setup-token\` on any machine logged in to that account."
+  ask_secret CLAUDE_CODE_OAUTH_TOKEN "Paste CLAUDE_CODE_OAUTH_TOKEN (Enter to skip for now):"
+  if [[ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]]; then
+    write_env CLAUDE_CODE_OAUTH_TOKEN "$CLAUDE_CODE_OAUTH_TOKEN"
+  else
+    warn "no token: every model call will fail as not logged in until one is set"
+    SKIPPED+=("put CLAUDE_CODE_OAUTH_TOKEN in $ENV_FILE, then: cd $STACK && docker compose up -d llm-proxy")
+  fi
+fi
+
 if confirm "Show the two values Vercel needs (BACKEND_URL and API_SHARED_SECRET)?"; then
   note "API_SHARED_SECRET=$(_existing API_SHARED_SECRET || echo '?')"
   note "BACKEND_URL is the ngrok domain in $STACK/run-ngrok.sh"
@@ -357,8 +363,8 @@ pause "Press Enter to bring the stack up."
 
 # ── 4 ─────────────────────────────────────────────────────────────────────
 stage "The stack"
-say "postgres, redis, minio, inbox, api, worker. Only the api publishes a port,"
-say "on loopback; ngrok is the single door in."
+say "postgres, redis, minio, inbox, llm-proxy, api, worker. Only the api publishes"
+say "a port, on loopback; ngrok is the single door in."
 
 # Always, never "only when absent": the tag on this box may be an image from
 # well before the clone's HEAD, and starting that under a new compose file is
@@ -369,6 +375,10 @@ docker build -t "$IMAGE" "$REPO/backend" || fail "the api image would not build"
 ok "api image built from $(git -C "$REPO" rev-parse --short HEAD)"
 
 cd "$STACK"
+# The proxy image is built from the clone, like the inbox. Explicit, so a repeat
+# run picks up proxy/ as it is now rather than whatever image a past run left.
+say "building the llm-proxy image from the clone (node and the claude CLI, a few minutes the first time)."
+docker compose build llm-proxy || fail "the llm-proxy image would not build"
 docker compose up -d || fail "docker compose up failed; docker compose logs will say why"
 
 say "waiting for the api to migrate and answer /health"
@@ -400,7 +410,6 @@ say "Deploys are pulled, not pushed: cron is what makes a push to main arrive."
 
 CRON_WANTED=(
   "*/3 * * * * $STACK/auto-deploy.sh"
-  "@reboot setsid nohup $STACK/run-proxy.sh >/dev/null 2>&1 </dev/null &"
   "@reboot setsid nohup $STACK/run-ngrok.sh >/dev/null 2>&1 </dev/null &"
   # \% because cron reads a bare % as a newline into the command's stdin.
   "0 3 * * * cd $STACK && docker compose exec -T postgres pg_dump -U retina retina_prod | gzip > backups/retina_\$(date +\\%F).sql.gz"
@@ -416,7 +425,7 @@ else
     grep -Fqx -- "$line" <<<"$CURRENT_CRON" || MISSING+=("$line")
   done
   if (( ${#MISSING[@]} == 0 )); then
-    ok "all four cron lines are already there"
+    ok "all three cron lines are already there"
   else
     say "missing:"
     for line in "${MISSING[@]}"; do note "  $line"; done
@@ -436,16 +445,16 @@ stage "Day one checks"
 say "What phase 4 needs to know about this box, in a block to paste into"
 say "docs/PROGRESS.md under 'Verified on the box'."
 say "This is deploy/smoke-test.sh, which you can re-run on its own any time"
-say "(after a claude upgrade, say) without going through the wizard again."
+say "(after the token changes, say) without going through the wizard again."
 
-SMOKE_ARGS=("$PROXY_URL")
+SMOKE_ARGS=()
 confirm "Send one small call with a JSON schema? It proves structured output really works here." &&
   SMOKE_ARGS+=(--schema)
 confirm "Fire 8 parallel calls to see whether the proxy queues or refuses them?" &&
   SMOKE_ARGS+=(--parallel)
 
-if ! bash "$REPO/deploy/smoke-test.sh" "${SMOKE_ARGS[@]}"; then
-  SKIPPED+=("deploy/smoke-test.sh reported a problem; re-run it after fixing and check ~/retina/llm-proxy.log")
+if ! STACK="$STACK" bash "$REPO/deploy/smoke-test.sh" "${SMOKE_ARGS[@]}"; then
+  SKIPPED+=("deploy/smoke-test.sh reported a problem; re-run it after fixing and check: cd $STACK && docker compose logs llm-proxy")
 fi
 
 finish

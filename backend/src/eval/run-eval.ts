@@ -9,7 +9,7 @@ import { parseArgs } from "node:util";
 import type { Scoreboard } from "../contracts";
 import { closePool, getPool } from "../db";
 import { TerminalError } from "../lib/errors";
-import { splitPath } from "./ground-truth";
+import { splitPath } from "./id-lists";
 import { evaluateRun } from "./report";
 import { CATEGORIES } from "./score";
 
