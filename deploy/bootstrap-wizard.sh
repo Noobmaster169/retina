@@ -183,8 +183,11 @@ finish() {
 # STAGES — the Monash box, from a fresh clone to a running phase 3 stack.
 #
 #   ssh student@118.139.133.14
-#   cd ~/projects/retina && git pull
+#   cd ~/projects/retina && git pull      # only needed the first time, to get this file
 #   bash deploy/bootstrap-wizard.sh
+#
+# After that it fast-forwards the clone itself, and restores files a build
+# rewrote, because auto-deploy.sh skips every run while the clone is dirty.
 #
 # Safe to re-run: it keeps every secret already in ~/retina/.env, installs a
 # stack file only when it differs, and adds a cron line only when it is absent.
@@ -206,6 +209,20 @@ if [[ "$NON_INTERACTIVE" == "1" ]]; then
 fi
 
 REPO="${REPO:-$HOME/projects/retina}"
+
+# This script lives in the clone and pulls that clone, and bash reads a script
+# as it executes it: a pull that rewrote this file would feed the shell
+# whatever landed at its current offset. Run from a private copy instead, so
+# the file being read is one nothing else can touch.
+if [[ -z "${WIZARD_DETACHED:-}" ]]; then
+  SELF="$(mktemp "${TMPDIR:-/tmp}/retina-wizard.XXXXXX")"
+  cp "${BASH_SOURCE[0]}" "$SELF"
+  export WIZARD_DETACHED="$SELF"
+  exec bash "$SELF" "$@"
+fi
+# The copy deletes itself, since the process that made it no longer exists.
+trap 'rm -f "$WIZARD_DETACHED"' EXIT
+
 STACK="${STACK:-$HOME/retina}"
 IMAGE="${IMAGE:-ghcr.io/noobmaster169/retina-api:main}"
 PROXY_URL="${PROXY_URL:-http://172.17.0.1:4001}"
@@ -232,6 +249,32 @@ ok "the docker daemon answers"
 
 [[ -d "$REPO/.git" ]] || fail "no clone at $REPO. Make it first:
      git clone git@github.com-retina:Noobmaster169/retina.git $REPO"
+
+# A dirty clone stops auto-deploy.sh dead, by design: it will not discard
+# someone's work. What it cannot tell apart is a file a tool rewrote. Restore
+# those, name anything else, and never guess.
+DIRTY="$(git -C "$REPO" status --porcelain)"
+if [[ -n "$DIRTY" ]]; then
+  GENERATED="$(grep -E '(\.egg-info/|__pycache__/|\.pyc$)' <<<"$DIRTY" || true)"
+  OTHER="$(grep -vE '(\.egg-info/|__pycache__/|\.pyc$)' <<<"$DIRTY" || true)"
+  if [[ -n "$OTHER" ]]; then
+    warn "the clone has changes that are not generated files:"
+    printf '%s\n' "$OTHER" | sed 's/^/      /'
+    fail "deal with those first. auto-deploy.sh will skip every run until the clone is clean."
+  fi
+  say "the clone is dirty, and only with files a build wrote:"
+  printf '%s\n' "$GENERATED" | sed 's/^/      /'
+  # Restore, never clean: `git clean` would also delete anything untracked
+  # someone left in the clone, and this script must never be why work is lost.
+  if confirm "Restore them to what is committed? Nothing untracked is touched."; then
+    git -C "$REPO" checkout -- . 2>/dev/null || fail "could not restore the clone"
+    ok "clone restored"
+  else
+    fail "auto-deploy.sh skips every run while the clone is dirty"
+  fi
+fi
+
+git -C "$REPO" pull --ff-only --quiet origin main 2>/dev/null || warn "could not fast-forward the clone; using what is checked out"
 ok "clone at $REPO ($(git -C "$REPO" rev-parse --short HEAD))"
 
 mkdir -p "$STACK" "$STACK/backups"

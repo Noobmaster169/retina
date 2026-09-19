@@ -80,9 +80,16 @@ ssh command line kills your session.)
 One script does all of it, and is safe to run again:
 
 ```bash
-cd ~/projects/retina && git pull
+cd ~/projects/retina && git pull      # only the first time, to get the script
 bash deploy/bootstrap-wizard.sh
 ```
+
+If that `git pull` refuses because the clone is dirty, look at what changed.
+`pip install -e proxy` used to rewrite `proxy/src/retina_proxy.egg-info/`,
+which was tracked, so the clone went dirty on its own and `auto-deploy.sh`
+skipped every run after it. Those files are ignored now; restore them once
+(`git restore proxy/src/retina_proxy.egg-info`) and the pull goes through. The
+wizard does that check itself on every later run.
 
 It installs `~/retina/compose.yaml` and `~/retina/auto-deploy.sh`, generates only
 the secrets `~/retina/.env` is missing (it keeps every value already there, and
