@@ -497,6 +497,15 @@ images, OCR text is used and the reviewer sees the PNG.
   (`llmCalls.latestAccepted`) instead of paying for it again.
 - Every call logs one line (`structured` module, info) with step, model, attempt, latency and
   tokens; `LOG_LEVEL=debug` logs the full system prompt, input and answer.
+- Live preview: a call made for an email streams (`LlmRequest.onText`, `llm-stream.ts`), and
+  `agents/live-preview.ts` keeps the answer so far in Redis at `live:call:<email run id>` (15 min
+  TTL, at most one write per 250 ms, cleared when the call ends either way) through the `LiveCalls`
+  seam in `src/live/`. With a schema the preview is the JSON being written; the answer is the
+  proxy's validated `structured_output` on the final `message_delta`, with `usage.cost_usd`.
+  Each attempt at a schema answer is its own content block, and the preview restarts at each,
+  because the model sometimes writes a malformed first attempt that the CLI rejects. Redis for
+  previews is its own connection with the offline queue off: a preview write never waits on a
+  down Redis, and a failed one is logged, never fatal.
 - Every call inserts `core.llm_calls` with step, model, prompt_version, request, response,
   input_tokens, output_tokens, cost_usd (from the proxy's usage block), latency_ms, email_run_id.
 - Models: `sonnet` for every step (decided 2026-09-19). Values must be proxy aliases: `sonnet`,
@@ -617,7 +626,9 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 | `GET /runs/:id/submission.json` | download the payload |
 | `GET /runs/:id/emails?stage=&category=&decidedBy=&q=` | paginated list with `category`, `decidedBy`, `confidence`, `verifierCategory`, `error` |
 | `GET /runs/:id/calls?after=&limit=` | the run's newest `llm_calls` as summaries (no prompt or email text), newest first, for a live feed; `after` returns only newer ids |
-| `GET /runs/:id/emails/:emailId/calls` | one email's calls oldest first: system prompt, input, answer text, parsed answer, tokens, cost, latency |
+| `GET /runs/:id/live` | the run's model calls running now, each with the answer written so far (`LiveCallView`) |
+| `GET /runs/:id/emails/:emailId/trace` | one email: stage, error, how its category was settled (each reader's category, confidence, reasoning, counter-cases, verifier error), the call running now, and every finished call oldest first with system prompt, input, answer text, parsed answer, tokens, cost, latency |
+| `GET /prompts` | each prompt step's versions on disk, newest first, with the active one, the model the file names and any notes; the runs page offers exactly these |
 | `GET /emails/:runId/:emailId` | full trace: email, attachments, classification, extractions with fields, comparison, diffs, review case, llm_calls summary |
 | `GET /review?status=open` | review inbox |
 | `POST /review/:id/actions` | `{ kind, field?, value?, note? }` |

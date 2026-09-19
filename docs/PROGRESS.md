@@ -481,6 +481,16 @@ in brackets.
       `RecordingLlmClient` was missing; the unknown-provider processor test bypassed the client.
 
 ## Found while building
+- The CLI streams a schema-bound answer after all: a StructuredOutput tool call whose input
+  arrives as `input_json_delta` pieces. That is what makes the live preview possible. Two
+  things seen in it: the model does not keep the schema's property order (it wrote `category`
+  before `rationale` though the schema lists `rationale` first, so "rationale first" in the
+  schema is a request, not a guarantee), and sonnet sometimes writes a malformed first attempt
+  (`{"$PARAMETER_NAME": ...}`) that the CLI rejects before a valid one.
+- A stream's `error` frame carried no `retryable`, so a streamed missing login read as an
+  outage. Every error the proxy sends carries its verdict now, streamed or not.
+- The frontend's catch-all turned a backend 401 into "Could not reach the backend", which hid a
+  mismatched `API_SHARED_SECRET` between `frontend/.env.local` and `backend/.env`.
 - A `claude -p` with no login exits 1 with `Not logged in` inside its JSON envelope, after a block
   of usage counters, and the proxy called it a generic provider error with `retryable: true`.
   Behind the backend's retry-on-verdict that is the phase 3 loop again: a missing secret read as

@@ -124,7 +124,9 @@ All routes except `/health` need `Authorization: Bearer <key>`. The key is
 | `GET /eval/runs/:id` | dev only, 404 unless `EVAL_GROUND_TRUTH_PATH` is set: the run scored locally, `{ full, holdout, run, wrong }` |
 | `GET /runs/:id/emails?stage=&category=&decidedBy=&q=&page=&pageSize=` | `{ emails: [{ emailId, from, subject, stage, attachmentCount, outcome, category, decidedBy, confidence, verifierCategory, error }], total, page, pageSize }` |
 | `GET /runs/:id/calls?after=` | the run's newest model calls as summaries, for a live feed |
-| `GET /runs/:id/emails/:emailId/calls` | every model call for one email: system prompt, input, answer, tokens, cost |
+| `GET /runs/:id/live` | the run's model calls running now, each with the answer written so far |
+| `GET /runs/:id/emails/:emailId/trace` | one email: stage, the verdict (each reader's answer), the call running now, and every model call with its system prompt, input, answer, final JSON, tokens and cost |
+| `GET /prompts` | each prompt step's versions on disk, the active one marked |
 
 ```bash
 curl -s 127.0.0.1:8091/ai/chat -H "authorization: Bearer $TEAM_API_KEY" \

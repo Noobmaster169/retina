@@ -70,8 +70,12 @@ request, 502/503/504 upstream failure.
 `"stream": true` streams token by token: the provider runs `claude -p --output-format
 stream-json --verbose --include-partial-messages` and forwards each text delta as an
 Anthropic `content_block_delta`. Verified live: the first delta at about 2.4 s, then
-deltas as the model writes. A request with a schema does not stream (the answer is
-validated whole), and a failed session ends in an `error` event, never in text.
+deltas as the model writes. A request with a schema streams too: its deltas are the JSON as
+the model writes it (the CLI's StructuredOutput call), a preview, and the validated answer
+arrives on the final `message_delta` as `structured_output`, with `usage.cost_usd` (headers
+go out before a stream's cost is known). Each attempt at a schema answer is its own content
+block: the model sometimes writes a malformed attempt that the CLI rejects before a valid one.
+A failed session ends in an `error` event carrying `code` and `retryable`, never in text.
 
 ## Tools
 
