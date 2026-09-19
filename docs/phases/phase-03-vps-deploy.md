@@ -23,12 +23,21 @@ runbook. Out: pipeline changes of any kind.
 
 ## What was already wrong
 
-The box served a pre-phase-1 image: `GET /runs` answered 404 through the tunnel and `/health`
-returned the old `{"status":"ok","database":"up"}` shape. `auto-deploy.sh` gated a deploy on
-`"status":"ok"`, and phase 1's `/health` answers `degraded` whenever Redis or MinIO is down,
-which on that box was always. So every phase 1 deploy came up, was read as a failure, and
-rolled itself back. Fixing the gate comes before adding services, or the same thing eats this
-phase's deploy.
+Observed from outside the box: it serves a pre-phase-1 image. `GET /runs` answers 404 through
+the tunnel with a valid bearer, on a route `main` registers unconditionally, and `/health`
+returns the old `{"status":"ok","database":"up"}` shape.
+
+Two defects in the deploy scripts can each produce that, and both are fixed here. Which one
+actually bit is unconfirmed until someone reads `~/retina/auto-deploy.log`.
+
+1. The health gate was `"status":"ok"`, and phase 1's `/health` answers `degraded` whenever
+   Redis or MinIO is down, which on that box was always. A phase 1 deploy came up, was read as
+   a failure, and rolled itself back.
+2. `proxy/src/retina_proxy.egg-info/` was tracked, and the script runs `pip install -e proxy`
+   whenever a push touches `proxy/`. setuptools rewrites those files, the clone goes dirty on
+   its own, and the dirty-tree refusal at the top of the script then skips every run after it.
+
+Both come before adding services, or the same thing eats this phase's deploy.
 
 ## Work items
 

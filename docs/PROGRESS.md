@@ -148,15 +148,24 @@ train ids in the interrupted full run are the cleaner evidence: none was looked 
 
 ### Phase 3 (in progress, 2026-09-19)
 Deploy only. Nothing under `backend/src` changed except one header in the frontend's api-client.
-- [x] The reason the box was stuck: it served a pre-phase-1 image. Through the tunnel `GET /runs`
-      was 404 with a valid bearer, and `/health` answered the old `{"status":"ok","database":"up"}`.
-      `auto-deploy.sh` gated on `"status":"ok"`, and phase 1's `/health` answers `degraded`
-      whenever Redis or MinIO is down, which there was always, so every phase 1 deploy was read as
-      a failure and rolled back. The gate is now `postgres` and `redis` up.
+- [x] What was observed, from outside the box: it serves a pre-phase-1 image. Through the tunnel
+      `GET /runs` is 404 with a valid bearer, on a route `main` registers unconditionally, and
+      `/health` answers the old `{"status":"ok","database":"up"}` shape. Neither phase 1 nor
+      phase 2 is live there.
+- [x] Two defects in the deploy scripts can each produce exactly that, and both are fixed. Which
+      one actually bit, or both, is unconfirmed until someone reads `~/retina/auto-deploy.log`.
+      First: the gate was `"status":"ok"`, and phase 1's `/health` answers `degraded` whenever
+      Redis or MinIO is down, which on that box was always, so a phase 1 deploy came up, was read
+      as a failure, and rolled itself back. The gate is now `postgres` and `redis` up.
 - [x] `deploy/compose.yaml` has redis, minio, minio-init, worker beside postgres, inbox and api.
       One env anchor shared by api and worker. Only `127.0.0.1:8091` published.
 - [x] `auto-deploy.sh` keeps `~/retina/compose.yaml` and `~/retina/auto-deploy.sh` in step with
       the clone, so after one bootstrap no phase needs a box login again.
+- [x] Second: `proxy/src/retina_proxy.egg-info/` was tracked, and `auto-deploy.sh` runs
+      `pip install -e proxy` whenever a push touches `proxy/`. setuptools rewrites those files,
+      so the clone dirties itself, and the script's own dirty-tree refusal then skips every run
+      after it. Untracked and gitignored. This one would have outlived the health-gate fix, and
+      it is why the bootstrap wizard restores a clone dirtied by generated files.
 - [x] `deploy/sim/sim.sh test`: 15 of 15 on a fresh simulated box. It found three real bugs, all
       fixed (see below).
 - [x] CI gates run on pull requests, `pnpm test` runs against a Postgres service container, and
@@ -269,6 +278,13 @@ dev machine:
   to do.
 - On Windows `core.autocrlf=true` gives the working tree CRLF, and a CRLF heredoc terminator is
   a syntax error while a CRLF shebang breaks on Linux. `.gitattributes` pins `*.sh` to LF.
+- A generated file that is tracked will eventually be rewritten by the tool that generates it,
+  and on a server that means a dirty clone. Ours combined with a deploy script that refuses to
+  touch a dirty clone, and the two together stopped deployment altogether, quietly, in a log
+  nobody was reading.
+- Two of the three script bugs here are the same bug: a program that rewrites a file something
+  is still reading. bash reads a script as it executes it, so both `auto-deploy.sh` updating
+  itself and the wizard pulling the clone it lives in have to move to a new inode first.
 - A category definition can be wrong while the model is right. `v1` missed 25 of 25 SI_REQUEST on
   the holdout because it defined the category as "asks for an SI". The organisers' generator shows
   an SI_REQUEST hands the instruction over. Read their definition before blaming the model.
