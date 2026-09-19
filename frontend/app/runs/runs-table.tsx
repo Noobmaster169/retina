@@ -58,7 +58,7 @@ export function RunsTable({ initialRuns, initialError }: Props) {
       )}
 
       <div className="mt-4 overflow-x-auto border-t border-line">
-        <table className="w-full min-w-[46rem] text-left text-sm">
+        <table className="w-full min-w-[64rem] text-left text-sm">
           <thead className="text-xs uppercase tracking-wide text-muted">
             <tr className="border-b border-line">
               <th className="py-2 pr-4 font-medium">Started</th>
@@ -66,6 +66,7 @@ export function RunsTable({ initialRuns, initialError }: Props) {
               <th className="py-2 pr-4 font-medium">Rate</th>
               <th className="py-2 pr-4 font-medium">Progress</th>
               <th className="py-2 pr-4 font-medium">Stages</th>
+              <th className="py-2 pr-4 font-medium">Score</th>
               <th className="py-2 font-medium">
                 <span className="sr-only">Actions</span>
               </th>

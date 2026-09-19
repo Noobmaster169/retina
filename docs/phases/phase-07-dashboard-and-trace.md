@@ -115,7 +115,7 @@ Sections, top to bottom:
 
 1. Header: run id, status, rate, started, controls (pause, resume, cancel, submit).
 2. Stat tiles: ingested, classified, compared, needs review, done, failed; LLM calls, cost,
-   rule share; throughput per minute; queue badges (waiting/active per queue).
+   verifier share; throughput per minute; queue badges (waiting/active per queue).
 3. Stage funnel (ingested → classified → compared → done) with review and failed as side bars.
 4. Category bars and outcome bars (OK, MISMATCH, review by reason, awaiting draft).
 5. Defect field bars.

@@ -40,6 +40,20 @@ def _split(content: list[ContentBlock]) -> tuple[str, list[dict[str, Any]]]:
     return "".join(text_parts), tool_calls
 
 
+def _response_format(fmt: dict[str, Any]) -> dict[str, Any]:
+    """Anthropic's `{type: json_schema, schema}` as OpenAI's nested `json_schema` object.
+
+    The canonical request holds the Anthropic shape, since that is the only wire in.
+    Passed through unchanged, an OpenAI-compatible server ignores it or answers 400.
+    """
+    if fmt.get("type") == "json_schema" and "schema" in fmt and "json_schema" not in fmt:
+        return {
+            "type": "json_schema",
+            "json_schema": {"name": "output", "schema": fmt["schema"], "strict": True},
+        }
+    return fmt
+
+
 def build_request(req: CanonRequest) -> dict[str, Any]:
     """Canonical -> the JSON body for POST /v1/chat/completions.
 
@@ -131,7 +145,7 @@ def build_request(req: CanonRequest) -> dict[str, Any]:
     if req.reasoning.effort:
         body["reasoning_effort"] = req.reasoning.effort
     if req.response_format:
-        body["response_format"] = req.response_format
+        body["response_format"] = _response_format(req.response_format)
 
     body.update(req.extra)
     return body

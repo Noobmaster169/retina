@@ -50,14 +50,14 @@ The seven fields: `shipper`, `consignee`, `notify_party`, `port_of_loading`, `po
 
 ### 4.2 Triage (classification)
 
-- A rules layer reads sender domain, subject codes, and body verbs and proposes a category with a
-  confidence. Spam sender domains and coded subjects such as `TO CONFIRM DOCS` or `REQUEST SI`
-  resolve most emails deterministically.
-- An AI generator classifies every email with chain-of-thought and curated few-shot examples,
-  seeing the rule proposal as one piece of evidence.
-- An AI verifier runs only when the rule and generator disagree or confidence is low. It argues
+- An AI generator classifies every email from the sender, subject, attachment names and body,
+  with a short rationale and a confidence. The prompt defines the five categories in the
+  organisers' words. There are no hand-written rules: no sender lists, no subject keywords. The
+  inbox is one small seeded sample, and a rule fitted to it is an assumption about the next one.
+- An AI verifier runs only when the generator's confidence is low. It argues
   against the proposed category and either agrees or overrides.
-- The final category, confidence, and which layer decided it (`rule`, `llm`, `verifier`) are stored.
+- The final category, confidence, and which layer decided it (`llm`, `verifier`, `human`) are stored.
+- Categories, statuses, review reasons and field names are the organisers' enums, value for value.
 - Work is prioritised by client tier (from the sender domain) with shipment tonnage as a tiebreaker.
   Waiting jobs age upward so small clients are never starved.
 
@@ -103,14 +103,14 @@ failures and retries).
   aggregate questions.
 - A **chat page** lets a user ask questions in plain language. An agent translates them into
   read-only SQL over the ontology, runs it, and answers with the numbers and the query it used.
-  It can also **explain a decision**: given an email id, it narrates the rule result, the AI
+  It can also **explain a decision**: given an email id, it narrates the AI
   rationale, the verifier verdict, the extracted evidence, and any human action.
 - The same tools are exposed as an MCP server later so teammates can query from Claude Code.
 
 ### 4.6 Dashboard
 
 - Run view: emails ingested, per-stage progress, queue depth, throughput, category mix,
-  mismatch count, review count, rule-resolved share, LLM cost.
+  mismatch count, review count, verifier share, LLM cost.
 - Email list with filters and a per-email trace page.
 - Submit-to-scorer button that posts the run's submission to the Averis server and stores the
   scoreboard. Score history per run and per prompt version.
@@ -140,8 +140,8 @@ failures and retries).
 ## 5. Demo storyline
 
 1. Start a run at 2 emails per second. Dashboard shows emails arriving and queues filling.
-2. Open a spam email: rule decided it in 0 ms, no LLM call. Open a comparison email: rule hint,
-   generator rationale, no verifier needed.
+2. Open a spam email: the generator's category, confidence and rationale, no verifier needed.
+   Open an ambiguous one: the verifier's argument and the category it settled on.
 3. Open a mismatch: extracted fields with highlighted source quotes, `SI: 3 / BL: 4` on container
    count, nothing else flagged.
 4. Open the review inbox: a scanned PDF escalated as `unreadable` with the page image; an SI with
@@ -173,7 +173,7 @@ failures and retries).
 | SI | Shipping Instruction. Written by the shipper. The reference document. |
 | BL | Bill of Lading. Written by the carrier. Draft is checked against the SI. |
 | Run | One replay of an inbox through the pipeline, with its own results and score. |
-| Rule-resolved | A decision made by deterministic code, no LLM call. |
+| Organiser enum | A value set fixed by the organisers (category, status, review reason, field name). Never extended. |
 | Generator / verifier | The AI that proposes an answer, and the AI that checks it. |
 | Evidence | The exact source text an extracted value was read from. |
 | Escalation | Sending an email to human review with a reason code. |

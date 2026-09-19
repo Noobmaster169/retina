@@ -36,7 +36,19 @@ const Env = z.object({
   API_SHARED_SECRET: optionalString,
   TEAM_API_KEY: optionalString,
 
-  CLASSIFY_CONCURRENCY: z.coerce.number().int().positive().default(4),
+  // The answer key, for the eval harness only. Set on a dev machine, never on
+  // the VPS: there the key exists only inside the inbox container.
+  EVAL_GROUND_TRUTH_PATH: optionalString,
+
+  // Every LLM step runs the model its prompt file names, which is sonnet. This
+  // replaces it for an experiment; it must be an alias from proxy/proxy.yaml.
+  LLM_MODEL_CLASSIFY: optionalString,
+  // How much of a body the classifier reads. A cost guard, not a judgement.
+  CLASSIFY_BODY_CHARS: z.coerce.number().int().positive().default(4000),
+
+  // The proxy serves two `claude -p` calls at a time (max_concurrency in proxy/proxy.yaml). More
+  // workers than that only queue inside the proxy with their request timeout already running.
+  CLASSIFY_CONCURRENCY: z.coerce.number().int().positive().default(2),
   COMPARE_CONCURRENCY: z.coerce.number().int().positive().default(4),
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"]).default("info"),
 });

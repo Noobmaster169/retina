@@ -1,5 +1,18 @@
 # Phase 5: Document parsing and triage
 
+## Amended 2026-09-19: the model decides what a document is
+
+This governs wherever the work items below disagree with it.
+
+- **No fingerprint table.** Work item 5 matched document titles and labels in code. That is a
+  rule fitted to this dataset's renderer. Document type is an LLM call (`prompts/doc-type/v1.md`,
+  `sonnet`) over the extracted text; see `03-infra-deep.md` 5.3. `fingerprint.ts` is not built.
+- **Triage** already reads the email through the model for the no-attachment case (work item 4).
+- The three escalations keep the organisers' reasons, value for value: `missing_attachment`,
+  `wrong_doc_type`, `unreadable`. `unreadable` stays a fact from doc-extract (no text layer, will
+  not open, zero bytes), which is not a judgement and needs no model.
+- When this phase starts, rewrite work items 5 and 6 and the tests under this section first.
+
 ## Goal
 
 Every attachment becomes text (or is declared unreadable), the SI and BL are identified by
@@ -163,7 +176,11 @@ create table core.documents (
 create table core.review_cases (
   id            bigserial primary key,
   email_run_id  bigint not null references core.email_runs(id) on delete cascade,
-  reason        text not null check (reason in ('wrong_doc_type','missing_attachment','unreadable','missing_value','low_confidence','processing_error')),
+  -- 'review' carries one of the organisers' four reasons. 'failure' (a job that failed for good,
+  -- phase 8) carries none: a failure is not a review_reason.
+  kind          text not null default 'review' check (kind in ('review','failure')),
+  reason        text check (reason in ('wrong_doc_type','missing_attachment','unreadable','missing_value')),
+  check ((kind = 'review') = (reason is not null)),
   stage         text not null,
   detail        jsonb not null default '{}'::jsonb,
   status        text not null default 'open' check (status in ('open','resolved')),
@@ -178,23 +195,30 @@ create unique index review_cases_one_open on core.review_cases (email_run_id) wh
 ### 4. Triage: `src/pipeline/compare/triage.ts` (pure)
 
 ```ts
-export interface TriageInput { body: string; attachments: { filename: string; role: "SI"|"BL"|"UNKNOWN"; bytes: number }[] }
+export interface TriageInput { request: "send_draft" | "compare_documents" | null; attachments: { filename: string; role: "SI"|"BL"|"UNKNOWN"; bytes: number }[] }
 export type TriageResult =
   | { kind: "compare"; si: string; bl: string; extras: string[] }
   | { kind: "awaiting_draft"; note: string }
   | { kind: "missing_attachment"; missing: ("SI"|"BL")[]; note: string }
 ```
 
-Decision table (cleaned body from phase 2's `body-clean.ts`):
+Which attachments are present is a fact, and code decides on it. What the sender is asking for is
+a reading of the email, and the model decides that: there are no verb lists or regexes over the
+body, for the same reason there are no classification rules (see phase 2).
 
-| SI present | BL present | body asks to send a draft (`/\b(send|share|forward|provide)\b[^.\n]{0,60}\bdraft\b/i` or `/\bdraft\b[^.\n]{0,40}\b(once|when) available/i`) | Result |
+| SI present | BL present | Decided by | Result |
 |---|---|---|---|
-| yes | yes | any | `compare` |
-| yes | no | any | `missing_attachment` [BL] |
-| no | yes | any | `missing_attachment` [SI] |
-| no | no | yes | `awaiting_draft` |
-| no | no | no, and body mentions `attach`, `compare`, `check the`, `verify` | `missing_attachment` [SI, BL] |
-| no | no | no, none of the above | `awaiting_draft` with note `low_signal` |
+| yes | yes | code | `compare` |
+| yes | no | code | `missing_attachment` [BL] |
+| no | yes | code | `missing_attachment` [SI] |
+| no | no | the model (`prompts/triage/v1.md`) | `awaiting_draft` or `missing_attachment` [SI, BL] |
+
+The triage prompt states the organisers' distinction (README, "Attachments" and "Edge cases"): a
+request to send the draft BL has nothing to compare yet and is `OK`; a request to compare
+documents that did not arrive is `missing_attachment`. It receives the full body, length-capped
+only, and answers `{ request: "send_draft" | "compare_documents", confidence, rationale }` through
+`callStructured`. `triage.ts` stays pure: it takes that answer as an input, and the processor
+makes the call only for the no-attachment row.
 
 Roles: filename role first; `UNKNOWN` files are resolved by fingerprint after parsing (work
 item 6 re-runs triage with resolved roles). More than one file per role: keep the first, list
@@ -297,7 +321,7 @@ Python (`pytest`):
 
 TypeScript:
 
-- `pipeline/compare/triage.test.ts`: every row of the decision table, plus extras and
+- `pipeline/compare/triage.test.ts`: every row of the decision table (the model's answer passed in as data), plus extras and
   UNKNOWN roles.
 - `pipeline/compare/fingerprint.test.ts`: each title; label-set fallbacks; the PDF SI title
   `BILL OF LADING INSTRUCTION` → SI; an `xlsx` SI (`BL INSTRUCTION`) → SI; docx BL → BL.

@@ -8,6 +8,7 @@ import { childLogger } from "./lib/logger";
 import { closeRedis } from "./queues/connection";
 import { closeQueues } from "./queues/queues";
 import { bullRunQueues } from "./queues/run-queues";
+import { inboxScorer } from "./scorer/scorer";
 import { createMinioStore, type ObjectStore } from "./storage";
 
 const log = childLogger({ module: "api" });
@@ -29,7 +30,13 @@ function storeOrNull(): ObjectStore | null {
 
 const pool = getPool();
 const store = storeOrNull();
-const app = createApp({ pool, runQueues: bullRunQueues(), health: () => checkHealth({ pool, store }) });
+const app = createApp({
+  pool,
+  runQueues: bullRunQueues(),
+  store,
+  scorer: inboxScorer(config.EMAIL_SERVER_URL),
+  health: () => checkHealth({ pool, store }),
+});
 
 const server = app.listen(config.PORT, () => log.info({ port: config.PORT }, "api listening"));
 // A cold model plus a long generation can outlast the default 5-minute

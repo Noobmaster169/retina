@@ -6,8 +6,9 @@ import { CreateRunBody, RunEmailsQuery, type RunStatus, type RunSummary } from "
 import { RetryableError } from "../lib/errors";
 import { newRunId, resumeJobId } from "../lib/ids";
 import { childLogger } from "../lib/logger";
-import { emailRuns, emails, type Run, runs } from "../ontology/repositories";
+import { emailRuns, emails, llmCalls, type Run, runs, submissions } from "../ontology/repositories";
 import type { RunQueues } from "../queues/run-queues";
+import { type QueueSnapshot, toSummary } from "./run-summary";
 
 export interface RunsDeps {
   pool: Pool;
@@ -15,22 +16,6 @@ export interface RunsDeps {
 }
 
 const log = childLogger({ module: "runs.routes" });
-
-type QueueSnapshot = RunSummary["queues"];
-
-function toSummary(run: Run, stageCounts: RunSummary["stageCounts"], queues: QueueSnapshot): RunSummary {
-  return {
-    id: run.id,
-    status: run.status,
-    ratePerSecond: run.ratePerSecond,
-    totalEmails: run.totalEmails,
-    stageCounts,
-    queues,
-    createdAt: run.createdAt,
-    startedAt: run.startedAt,
-    finishedAt: run.finishedAt,
-  };
-}
 
 /** The run id from the path, or null after answering 400. */
 function runIdParam(req: Request, res: Response): string | null {
@@ -56,8 +41,13 @@ export function runsRouter(deps: RunsDeps): Router {
   }
 
   async function summaryOf(run: Run): Promise<RunSummary> {
-    const [stageCounts, queues] = await Promise.all([emailRuns.stageCounts(pool, run.id), queueSnapshot()]);
-    return toSummary(run, stageCounts, queues);
+    const [stageCounts, queues, llm, latest] = await Promise.all([
+      emailRuns.stageCounts(pool, run.id),
+      queueSnapshot(),
+      llmCalls.usageForRun(pool, run.id),
+      submissions.latestForRuns(pool, [run.id]),
+    ]);
+    return toSummary(run, { stageCounts, queues, llm, lastSubmission: latest.get(run.id) });
   }
 
   /** Answers 404 or 409 for a move the run could not make. */
@@ -104,17 +94,19 @@ export function runsRouter(deps: RunsDeps): Router {
 
   router.get("/", async (_req, res) => {
     const all = await runs.list(pool);
-    const [counts, queues] = await Promise.all([
-      emailRuns.stageCountsForRuns(
-        pool,
-        all.map((run) => run.id),
-      ),
+    const ids = all.map((run) => run.id);
+    const [counts, queues, usage, latest] = await Promise.all([
+      emailRuns.stageCountsForRuns(pool, ids),
       queueSnapshot(),
+      llmCalls.usageForRuns(pool, ids),
+      submissions.latestForRuns(pool, ids),
     ]);
     res.json({
       runs: all.flatMap((run) => {
         const stageCounts = counts.get(run.id);
-        return stageCounts ? [toSummary(run, stageCounts, queues)] : [];
+        const llm = usage.get(run.id);
+        if (!stageCounts || !llm) return [];
+        return [toSummary(run, { stageCounts, queues, llm, lastSubmission: latest.get(run.id) })];
       }),
     });
   });

@@ -17,8 +17,8 @@ import pytest
 from llm_proxy.canon.request import CanonMessage, CanonRequest, TextBlock
 from llm_proxy.canon.stream import aggregate
 from llm_proxy.config import ProviderConfig
-from llm_proxy.errors import ProviderError, ProviderTimeout, RateLimited
-from llm_proxy.providers.claude_cli import ClaudeCliProvider, child_env, flatten
+from llm_proxy.errors import InvalidRequest, ProviderError, ProviderTimeout, RateLimited
+from llm_proxy.providers.claude_cli import ClaudeCliProvider, child_env, cli_args, flatten
 from llm_proxy.providers.openai_api import OpenAIProvider
 
 
@@ -433,3 +433,62 @@ async def test_blocking_caller_sees_the_stream_error_status():
 
     with pytest.raises(RateLimited):
         await ollama_provider(handler).complete(canon_req("ollama", "m"))
+
+
+# ------------------------------------------------------------ structured output
+
+SCHEMA = {
+    "type": "object",
+    "properties": {"category": {"type": "string", "enum": ["SPAM", "GENERAL"]}},
+    "required": ["category"],
+    "additionalProperties": False,
+}
+JSON_FORMAT = {"type": "json_schema", "schema": SCHEMA}
+
+
+def test_cli_gets_the_schema_as_json_schema_flag():
+    args = cli_args("claude", canon_req("claudecli", "sonnet", response_format=JSON_FORMAT), "json")
+    assert json.loads(args[args.index("--json-schema") + 1]) == SCHEMA
+    assert "--json-schema" not in cli_args("claude", canon_req("claudecli", "sonnet"), "json")
+
+
+def test_cli_rejects_a_format_it_cannot_honour():
+    with pytest.raises(InvalidRequest):
+        cli_args("claude", canon_req("claudecli", "sonnet", response_format={"type": "json_object"}), "json")
+
+
+def test_cli_answers_with_the_validated_object_not_the_prose():
+    provider = ClaudeCliProvider("claudecli", ProviderConfig(type="claudecli"))
+    envelope = {
+        "subtype": "success",
+        "result": "Here you go: {\"category\": \"SPAM\"} hope that helps",
+        "structured_output": {"category": "SPAM"},
+    }
+    resp = provider._envelope_to_response(envelope, canon_req("claudecli", "sonnet", response_format=JSON_FORMAT))
+    assert json.loads(resp.text()) == {"category": "SPAM"}
+
+
+def test_cli_without_structured_output_is_an_error_not_prose():
+    provider = ClaudeCliProvider("claudecli", ProviderConfig(type="claudecli"))
+    envelope = {"subtype": "success", "result": "SPAM, I think"}
+    with pytest.raises(ProviderError, match="structured_output"):
+        provider._envelope_to_response(envelope, canon_req("claudecli", "sonnet", response_format=JSON_FORMAT))
+
+
+async def test_openai_wire_nests_the_schema_the_way_openai_expects():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.update(json.loads(request.content))
+        return httpx.Response(200, json={
+            "id": "c1", "model": "qwen3:14b",
+            "choices": [{"message": {"role": "assistant", "content": "{}"}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+        })
+
+    provider = ollama_provider(handler)
+    await provider.complete(canon_req("ollama", "qwen3:14b", response_format=JSON_FORMAT))
+    assert seen["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {"name": "output", "schema": SCHEMA, "strict": True},
+    }

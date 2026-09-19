@@ -38,8 +38,8 @@ second sample if time allows.
 
 | Drill | How | Expected | Runbook line |
 |---|---|---|---|
-| Proxy down | `pkill -f "uvicorn llm_proxy"` for 2 minutes | jobs retry with backoff; some `processing_error` cases if beyond 3 attempts; `/health` shows `llmProxy: down`; after restart, retry from the review inbox clears them | yes |
-| doc-extract OOM | `docker compose stop doc-extract` | `processing_error` on comparison emails; retry works after start | yes |
+| Proxy down | `pkill -f "uvicorn llm_proxy"` for 2 minutes | jobs retry with backoff; some failure cases if beyond 3 attempts; `/health` shows `llmProxy: down`; after restart, retry from the review inbox clears them | yes |
+| doc-extract OOM | `docker compose stop doc-extract` | failure cases on comparison emails; retry works after start | yes |
 | Redis restart | `docker compose restart redis` | AOF restores waiting jobs; stalled active jobs re-run; no duplicate rows (`unique (run_id, email_id)` holds) | yes |
 | Worker crash | `docker compose kill worker` then `up -d worker` | stalled jobs picked up within `stalledInterval`; run completes | yes |
 | ngrok down | `pkill ngrok` | frontend shows backend unreachable; pipeline continues; restart via runbook | yes |
@@ -71,7 +71,7 @@ Demo script (7 minutes, from `01-product.md` section 5), with timings:
 | Minute | Action | What to say |
 |---|---|---|
 | 0:00 | Start a run at 2 emails/s from `/runs` | the inbox is a stream; every email becomes a job; two queues |
-| 0:45 | Run page: funnel and feed moving; point at rule share | rules decide the obvious ones for free; the model decides the rest; verifier only on doubt |
+| 0:45 | Run page: funnel and feed moving; point at verifier share and cost | the model classifies every email, nothing is fitted to the sample; a second model checks only on doubt |
 | 1:30 | Open a spam trace, then a comparison trace | evidence for the decision: rule reasons, model rationale |
 | 2:30 | Open the two-field mismatch | extracted values with quoted lines; deterministic comparison; exact fields flagged |
 | 3:30 | `/review`: scanned case with page image and provisional result; missing-value case, correct it, watch it resolve | escalate with evidence, never guess; the human fixes it in one click; the report updates |

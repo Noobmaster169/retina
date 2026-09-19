@@ -9,6 +9,8 @@ import { closePool, getPool } from "../../src/db";
 import { RetryableError } from "../../src/lib/errors";
 import { emailRuns, emails, runs } from "../../src/ontology/repositories";
 import { MemoryRunQueues } from "../../src/queues/__fakes__/memory.run-queues";
+import { FakeScorer } from "../../src/scorer/__fakes__/fake.scorer";
+import { MemoryStore } from "../../src/storage/__fakes__/memory.store";
 import { TEST_ENV } from "../../vitest.config";
 import { uniqueEmailId } from "../db";
 
@@ -19,7 +21,7 @@ let runQueues: MemoryRunQueues;
 let health: HealthReport;
 
 function app() {
-  return createApp({ pool: getPool(), runQueues, health: async () => health });
+  return createApp({ pool: getPool(), runQueues, store: new MemoryStore(), scorer: new FakeScorer(), health: async () => health });
 }
 
 beforeEach(() => {

@@ -2,11 +2,13 @@ import { DelayedError, type Job, UnrecoverableError, Worker } from "bullmq";
 import type { Redis } from "ioredis";
 import type { z } from "zod";
 
+import type { LlmClient } from "../agents";
 import { config } from "../config";
 import { type IngestDeps, replayRun } from "../ingest";
 import { TerminalError } from "../lib/errors";
 import { childLogger } from "../lib/logger";
 import { emailRuns, runs } from "../ontology/repositories";
+import { isFinalFailure, pausingOnLlmOutage, type QueuePauser } from "./failure-policy";
 import { ClassifyJob, CompareJob, DEFAULT_PRIORITY, IngestJob, type JobAdder, QUEUES } from "./names";
 import { processClassify } from "./processors/classify.processor";
 import { processCompare } from "./processors/compare.processor";
@@ -14,11 +16,18 @@ import { processCompare } from "./processors/compare.processor";
 const log = childLogger({ module: "workers" });
 
 export interface WorkerDeps extends IngestDeps {
+  llm: LlmClient;
+  classify: JobAdder<ClassifyJob> & QueuePauser;
   compare: JobAdder<CompareJob>;
 }
 
-// LLM calls are slow, so an email job may hold its lock for a while.
-const EMAIL_LOCK = { lockDuration: 120_000, stalledInterval: 30_000 };
+// LLM calls are slow, so an email job may hold its lock for a while. A job
+// stalls once per worker restart that catches it mid-call, and a deploy is a
+// restart, so the default of one stall would fail emails that did nothing wrong.
+const EMAIL_LOCK = { lockDuration: 120_000, stalledInterval: 30_000, maxStalledCount: 10 };
+// BullMQ honours a manual rate limit only on a worker that has a limiter. This
+// one is never reached; it exists so `rateLimit` below takes effect.
+const NEVER_REACHED_LIMITER = { max: 10_000, duration: 1000 };
 // An ingest job is only ever waiting on the inbox, and a run sits idle until a
 // dead worker's job is declared stalled, so that is noticed quickly. It may
 // stall once per worker restart, hence the generous count.
@@ -40,10 +49,6 @@ async function noRetryOnTerminal<T>(work: () => Promise<T>): Promise<T> {
     if (error instanceof TerminalError) throw new UnrecoverableError(error.message);
     throw error;
   }
-}
-
-function isFinalFailure(job: Job, error: Error): boolean {
-  return error instanceof UnrecoverableError || job.attemptsMade >= (job.opts.attempts ?? 1);
 }
 
 type FailedListener = (job: Job | undefined, error: Error) => Promise<void>;
@@ -116,9 +121,11 @@ export function startWorkers(deps: WorkerDeps, connection: Redis): RunningWorker
     QUEUES.classify,
     (job) =>
       noRetryOnTerminal(() =>
-        processClassify(deps, parse(ClassifyJob, job), job.opts.priority ?? DEFAULT_PRIORITY),
+        pausingOnLlmOutage(deps.classify, () =>
+          processClassify(deps, parse(ClassifyJob, job), job.opts.priority ?? DEFAULT_PRIORITY),
+        ),
       ),
-    { connection, concurrency: config.CLASSIFY_CONCURRENCY, ...EMAIL_LOCK },
+    { connection, concurrency: config.CLASSIFY_CONCURRENCY, limiter: NEVER_REACHED_LIMITER, ...EMAIL_LOCK },
   );
 
   const compare = new Worker(

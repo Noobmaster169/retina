@@ -81,8 +81,8 @@ docker compose -f compose.local.yaml up -d
 
 ## Module rules
 
-**Deep modules.** A module exposes a small interface and hides a lot. `normalise.ts` exports
-seven functions and nothing about regexes leaks out. If a caller needs to know how a module works
+**Deep modules.** A module exposes a small interface and hides a lot. `structured.ts` exports
+one function and nothing about JSON extraction or retries leaks out. If a caller needs to know how a module works
 to use it, the interface is wrong.
 
 **One responsibility per file.** File name states it: `fingerprint.ts` fingerprints documents.
@@ -152,20 +152,40 @@ needed.
   neither.
 - Aliases in `proxy/proxy.yaml` are model names (`haiku`, `qwen3:14b`). Do not invent names.
 
+## Classification and enums
+
+- The LLM classifies. No hand-written rule decides a category: no sender or domain lists, no
+  subject or body keyword tables, no regexes over email content, no pattern-based stripping of
+  signatures or threads. The inbox is one small seeded sample and the judges may score another.
+- Prompts describe the task, not the dataset. Every statement in a prompt traces to the
+  organisers' written definitions (the brief, `emails/data_v2/README.md`), never to a frequency
+  seen in the inbox.
+- `category`, `status`, `review_reason` and the seven field names are the organisers' enums, value
+  for value. One zod definition each in `contracts.ts`, repeated as database check constraints,
+  mirrored in `api-client.ts`. Never add a value. A job that fails is a failure, not a
+  `review_reason`.
+- The eval harness, not intuition, says whether a change helped. Develop on the train split,
+  read the holdout last.
+
 ## LLM rules
 
 - Prompts are files under `agents/prompts/<step>/<version>.md`. Code never contains prompt text.
 - Every call goes through `agents/structured.ts` with a zod schema. Free-text parsing is banned.
-- Models extract, code compares. The model never emits the final `defect_fields`.
+- The model reads and the model judges. Document type, field extraction, and whether two field
+  values mean the same thing are LLM calls. Code assembles the answer (the set of fields the
+  model judged different) and validates it against the enums. No hand-written normalisers,
+  label tables or title matching: those are rules fitted to one sample, like the email ones.
+- Every LLM step runs `sonnet`. `LLM_MODEL_<STEP>` exists for experiments, not as a default.
 - Extracted values carry `source_quote`; the evidence check runs before any verifier.
 - Store every call in `llm_calls` with `prompt_version`, tokens, cost, latency.
-- Few-shot examples come from `eval/split.json` train ids only.
+- Few-shot examples come from `eval/split.json` train ids only, and ship only when a holdout
+  run shows they help.
 
 ## Testing
 
 - vitest in `backend/`, pytest in `services/doc-extract/` and `proxy/`.
-- Unit tests are mandatory for pure modules: `rules`, `fingerprint`, `normalise`, `compare`,
-  `decide`, `triage`, `evidence`, `eval/score`. Table-driven, fixtures from real dataset lines
+- Unit tests are mandatory for pure modules: `classify/input`, `compare/assemble`, `decide`,
+  `triage`, `evidence`, `eval/score`, `eval/split`. Table-driven, fixtures from real dataset lines
   copied into `test/fixtures/`.
 - Repository tests run against the local Postgres in a transaction rolled back per test.
 - Workers are tested with fakes for `LlmClient`, `DocExtractClient`, `ObjectStore`.
@@ -212,7 +232,9 @@ needed.
 - Do not add a queue, service, table, or abstraction the current phase does not need.
 - Do not put SQL, HTTP, or queue calls inside `pipeline/`.
 - Do not let an LLM output reach the database without passing a zod schema.
-- Do not write rules keyed on specific `email_id`s. Judges may use a fresh dataset seed.
+- Do not classify with hand-written rules, and do not key anything on specific `email_id`s.
+  Judges may use a fresh dataset seed.
+- Do not store or submit an enum value the organisers did not define.
 - Do not bind Redis, MinIO, Postgres, doc-extract, or the Averis server to a public interface.
 - Do not mount the answer key into `api` or `worker`.
 - Do not skip the evidence check to save an LLM call.

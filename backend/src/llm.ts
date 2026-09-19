@@ -1,12 +1,19 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-import type { Caller } from "./auth";
 import { config } from "./config";
+import { LlmProxyError } from "./lib/errors";
+import { chatViaGateway, isGatewayUrl, listModelsViaGateway } from "./llm-gateway";
 
 /**
  * The llm-proxy client. The proxy speaks the Anthropic wire, owns every
  * provider (Claude Code subscription, local Ollama) and authenticates nobody
  * — the API's bearer check in auth.ts is the only thing in front of it.
+ *
+ * Where the proxy cannot be reached directly, `LLM_PROXY_URL` may instead name
+ * another Retina API's `/ai/chat`, which fronts a proxy on its own host. That
+ * door takes a bearer and speaks this project's chat shape rather than the
+ * Anthropic wire, so the transport is chosen from the URL. Everything above
+ * this module sees one `chat()` either way.
  */
 
 export interface ChatMessage {
@@ -20,6 +27,13 @@ export interface ChatRequest {
   messages: ChatMessage[];
   system?: string;
   maxTokens?: number;
+  /**
+   * A JSON Schema the answer must match. Sent as `output_config.format`, which
+   * the proxy turns into the provider's own structured output (`--json-schema`
+   * for `claude -p`, `response_format` for Ollama), so the text that comes back
+   * is that JSON object and nothing else.
+   */
+  outputSchema?: Record<string, unknown>;
 }
 
 export interface ChatResult {
@@ -44,22 +58,21 @@ export interface ModelInfo {
 const DEFAULT_PROXY_URL = "http://127.0.0.1:4000";
 /** Cold 27B load plus a long generation can take minutes. */
 const REQUEST_TIMEOUT_MS = 600_000;
-const DEFAULT_MAX_TOKENS = 2048;
-
-/** An error carrying the HTTP status the API should relay. */
-export class LlmProxyError extends Error {
-  constructor(
-    public readonly status: number,
-    message: string,
-    options?: { cause?: unknown },
-  ) {
-    super(message, options);
-    this.name = "LlmProxyError";
-  }
-}
+/**
+ * The wire requires a cap, so this is a generous one, not a budget: a cap that
+ * bites truncates the answer mid-object. 8000 is the most the proxy passes to
+ * Ollama; `claude -p` has no such setting and ignores it.
+ */
+const DEFAULT_MAX_TOKENS = 8000;
 
 function baseUrl(): string {
   return config.LLM_PROXY_URL.replace(/\/+$/, "");
+}
+
+/** The `/ai/chat` of another Retina API, or null when the URL is a proxy we speak the Anthropic wire to. */
+function gatewayUrl(): string | null {
+  const url = baseUrl();
+  return isGatewayUrl(url) ? url : null;
 }
 
 /**
@@ -71,15 +84,26 @@ function stripThinking(text: string): string {
   return text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
 }
 
-/** One non-streaming call. `temperature` is never sent: Claude 5 rejects it. */
-export async function chat(caller: Caller, req: ChatRequest): Promise<ChatResult> {
+/** One non-streaming call, billed to `project` in the proxy. `temperature` is never sent: Claude 5 rejects it. */
+export async function chat(project: string, req: ChatRequest): Promise<ChatResult> {
+  const gateway = gatewayUrl();
+  if (gateway) {
+    const result = await chatViaGateway(gateway, req, {
+      defaultMaxTokens: DEFAULT_MAX_TOKENS,
+      timeoutMs: REQUEST_TIMEOUT_MS,
+    });
+    return { ...result, text: stripThinking(result.text) };
+  }
+
   const url = baseUrl();
   const anthropic = new Anthropic({
     baseURL: url,
     // Not a credential: the proxy reads this as the project name that spend
     // is attributed and budgeted against, so callers show up separately.
-    apiKey: `retina-${caller}`,
-    maxRetries: 1,
+    apiKey: `retina-${project}`,
+    // Retries belong to the caller: BullMQ for the pipeline, the user for chat. A
+    // silent second try here doubled a hung call to 20 minutes and hid a call from the ledger.
+    maxRetries: 0,
     timeout: REQUEST_TIMEOUT_MS,
   });
 
@@ -89,6 +113,7 @@ export async function chat(caller: Caller, req: ChatRequest): Promise<ChatResult
     messages: req.messages,
   };
   if (req.system) params.system = req.system;
+  if (req.outputSchema) params.output_config = { format: { type: "json_schema", schema: req.outputSchema } };
 
   let data: Anthropic.Message;
   let response: Response;
@@ -123,6 +148,9 @@ export async function chat(caller: Caller, req: ChatRequest): Promise<ChatResult
 
 /** The aliases the proxy is configured with. */
 export async function listModels(): Promise<ModelInfo[]> {
+  const gateway = gatewayUrl();
+  if (gateway) return listModelsViaGateway(gateway, 5000);
+
   const url = baseUrl();
   let response: Response;
   try {

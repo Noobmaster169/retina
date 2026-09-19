@@ -1,4 +1,4 @@
-import { Stage } from "../../contracts";
+import { type Category, type ComparisonStatus, type ReviewReason, Stage } from "../../contracts";
 import type { Queryable } from "../../db";
 
 export interface NewEmailRun {
@@ -68,6 +68,31 @@ export async function setStage(
   );
 }
 
+/**
+ * Moves the email to `to` only from one of `from`. False when it was somewhere
+ * else, which is how a job that runs twice (a retry, a stalled job reclaimed
+ * while the first copy finishes) is kept from dragging a finished email backwards.
+ */
+export async function moveStage(
+  db: Queryable,
+  runId: string,
+  emailId: string,
+  from: Stage[],
+  to: Stage,
+  change: StageChange = {},
+): Promise<boolean> {
+  const { rowCount } = await db.query(
+    `update core.email_runs
+        set stage = $3,
+            outcome = coalesce($4, outcome),
+            error = $5,
+            finished_at = case when $6 then now() else null end
+      where run_id = $1 and email_id = $2 and stage = any($7)`,
+    [runId, emailId, to, change.outcome ?? null, change.error ?? null, change.finished ?? false, from],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
 export async function incrementAttempt(db: Queryable, runId: string, emailId: string): Promise<void> {
   await db.query("update core.email_runs set attempt = attempt + 1 where run_id = $1 and email_id = $2", [
     runId,
@@ -94,4 +119,50 @@ export async function stageCountsForRuns(db: Queryable, runIds: string[]): Promi
 
 export async function stageCounts(db: Queryable, runId: string): Promise<StageCounts> {
   return (await stageCountsForRuns(db, [runId])).get(runId) ?? emptyCounts();
+}
+
+/** The row id that classifications, comparisons and the LLM ledger hang off. */
+export async function idOf(db: Queryable, runId: string, emailId: string): Promise<string | null> {
+  const { rows } = await db.query<{ id: string }>(
+    "select id from core.email_runs where run_id = $1 and email_id = $2",
+    [runId, emailId],
+  );
+  return rows[0]?.id ?? null;
+}
+
+/** Everything the scorer's payload is built from, one row per email of the run. */
+export interface SubmissionSource {
+  emailId: string;
+  stage: Stage;
+  finalCategory: Category | null;
+  humanCategory: Category | null;
+  status: ComparisonStatus | null;
+  reviewReason: ReviewReason | null;
+}
+
+export async function listForSubmission(db: Queryable, runId: string): Promise<SubmissionSource[]> {
+  const { rows } = await db.query<{
+    email_id: string;
+    stage: Stage;
+    final_category: Category | null;
+    human_category: Category | null;
+    status: ComparisonStatus | null;
+    review_reason: ReviewReason | null;
+  }>(
+    `select er.email_id, er.stage, c.final_category, c.human_category, cmp.status, cmp.review_reason
+       from core.email_runs er
+       left join core.classifications c on c.email_run_id = er.id
+       left join core.comparisons cmp on cmp.email_run_id = er.id
+      where er.run_id = $1
+      order by er.email_id`,
+    [runId],
+  );
+  return rows.map((row) => ({
+    emailId: row.email_id,
+    stage: row.stage,
+    finalCategory: row.final_category,
+    humanCategory: row.human_category,
+    status: row.status,
+    reviewReason: row.review_reason,
+  }));
 }

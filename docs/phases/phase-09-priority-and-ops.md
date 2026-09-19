@@ -24,13 +24,12 @@ lessons (phase 11).
 Seed migration `008_clients_seed.sql`: insert every sender domain seen in the dataset with a
 kind and default tier. Internal: `aprilasia.com`, `april.com.my` (kind `internal`, tier 3).
 Customers and forwarders: `fujitogrp.com`, `psabdp.com`, `algurg.ae`, `safqa.co.ke`,
-`roxcel.at`, `ifpla.com`, `vitalsolutions.sg` (kind `customer`, tier 3). Spam domains from
-phase 2 (kind `spam`, tier 5). Tiers are edited by hand; the demo sets two customers to
+`roxcel.at`, `ifpla.com`, `vitalsolutions.sg` (kind `customer`, tier 3). Tiers only order the
+queue; they never decide a category, and there is no spam list. Tiers are edited by hand; the demo sets two customers to
 tier 1.
 
-Rules engine change: the spam domain list is loaded from `clients where kind = 'spam'` at
-worker boot and refreshed by the scheduler (work item 4). A domain added through the UI as
-spam takes effect within one refresh.
+`clients.kind = 'spam'` stays in the schema as a label a person can set. Nothing reads it to
+classify: the LLM classifies every email, and no sender list overrides it.
 
 Routes: `GET /clients` (with counts of emails and mismatches per domain from a join),
 `PUT /clients/:domain { name?, tier?, kind? }` (upsert; also writes the Redis cache
@@ -72,7 +71,7 @@ depending on the BullMQ version installed).
 
 | Job | Every | Does |
 |---|---|---|
-| `refresh-priority-cache` | 1 h and at worker boot | `clients` → `client:priority` hash; spam domain list into a `clients:spam` set; rules engine reloads from the set |
+| `refresh-priority-cache` | 1 h and at worker boot | `clients` → `client:priority` hash |
 | `age-waiting-jobs` | 60 s | work item 3 |
 | `heartbeat` | 10 s | `SET worker:heartbeat <iso> EX 60` (moved here from the ad hoc write) |
 | `expire-counters` | 1 h | `EXPIRE run:{id}:counters 604800` for finished runs |
@@ -149,7 +148,7 @@ without failures. Record both durations in `PROGRESS.md`.
 - [ ] In-flight LLM calls never exceed `LLM_MAX_CONCURRENCY` (assert with the semaphore's peak counter logged at the end of a run).
 - [ ] `/health` turns `degraded` within 60 s of stopping the worker and `down` (503) when Postgres is stopped.
 - [ ] Both load-test durations recorded; zero 429s at concurrency 8.
-- [ ] Spam domain added through `/clients` is used by the rules engine after the next refresh.
+- [ ] A tier changed through `/clients` reorders waiting jobs after the next refresh, and changes no category.
 
 ## Hand-off notes for phase 10
 

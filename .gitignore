@@ -30,3 +30,6 @@ __pycache__/
 
 # Playwright MCP output
 .playwright-mcp/
+
+# eval harness output
+backend/eval/reports/

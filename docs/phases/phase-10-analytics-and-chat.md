@@ -152,7 +152,7 @@ runTurn(conversationId, userMessage):
 `prompts/chat/v1.md`: role (analyst over this pipeline's data), the schema docs, tool
 descriptions, rules: always run SQL rather than guessing numbers, always report the SQL used,
 prefer `analytics` views, say when a result was truncated, never claim writes. Model
-`LLM_MODEL_CHAT` (default `subscription-sonnet`), `maxTokens` 1500, timeout 240 s. Each
+`LLM_MODEL_CHAT` (default `sonnet`, a proxy alias), `maxTokens` 1500, timeout 240 s. Each
 loop iteration is one `llm_calls` row with `step = chat` and `run_id = null`.
 
 ### 6. Migration `011_chat.sql`
