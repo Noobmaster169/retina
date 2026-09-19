@@ -296,8 +296,8 @@ are open, not failed.
       `begin; insert into core.prompt_versions (step, version, notes) values ('classify', 'v4', 'few-shot'); update core.prompt_versions set active = false where step = 'classify' and version = 'v3'; update core.prompt_versions set active = true where step = 'classify' and version = 'v4'; commit;`
       Since `v3` already scored 1.0000 there, it can at best tie; if it does not beat `v3`,
       delete `v4.md` and `examples.v4.json` and record both numbers here.
-- [ ] The model comparison: one holdout run per alias under `v3`, Model = haiku, opus,
-      qwen3:14b. Record macro-F1, the confusion matrix, cost per email and latency per email:
+- [ ] The model comparison: one holdout run per alias under `v3`, Model = haiku, opus (the
+      Qwen aliases went with Ollama, see Design decisions). Record macro-F1, the confusion matrix, cost per email and latency per email:
       `select step, model, count(*), sum(cost_usd), avg(latency_ms) from core.llm_calls where run_id = '<id>' group by 1, 2`.
       The default stays sonnet unless the user changes it.
 - [x] Still no rule decides a category; every enum is the organisers'. `needsVerifier` reads the
@@ -363,6 +363,13 @@ dev machine:
   the user saying so.
 
 ## Design decisions (phase 4)
+- 2026-09-19, **the llm-proxy is a service of our own compose stack**, decided with the user.
+  No more remote proxy: the gateway transport to another Retina API's `/ai/chat` is deleted, and
+  `LLM_PROXY_URL` names the `llm-proxy` service (`http://llm-proxy:4000` on the box,
+  `http://127.0.0.1:4001` from the host locally). The container carries the Claude Code CLI and
+  logs in with `CLAUDE_CODE_OAUTH_TOKEN` from `.env` (`claude setup-token`), not a mounted
+  host login. **Ollama and the Qwen aliases are dropped**: the proxy serves sonnet, opus, haiku
+  and the mock `test`. Same PR as phase 4 (#3), at the user's choice.
 - 2026-09-19, **`VERIFY_BELOW = 0.9`**, chosen on train: under `v2`, 24 of 401 train emails
   (6.0%) fell below it, and every miss phase 2 recorded sat at 0.70 or lower.
 - 2026-09-19, **`classify v3` is the active row, not `v1`** as the spec's seed said: `v3` is what
@@ -402,11 +409,10 @@ dev machine:
   paths), not clicked in a browser: the browser tool failed to connect in the building session.
 - A full run is 520 sonnet calls at 2 at a time: about 40 minutes, and about 59 USD at API prices
   (nothing is billed on the subscription rail, but it uses the subscription's limits).
-- The box's proxy still runs the code on `main`, which parses `output_config` but never passes it
-  to `claude -p`. `auto-deploy.sh` reinstalls and restarts it on any push touching `proxy/`, so the
-  merge of this branch is what makes structured output real there. Its `claude` must be 2.1.274 or
-  newer; check with `claude --version` before the phase 3 smoke test. There is no proxy image to
-  rebuild: the box runs it from the clone, not a container.
+- ~~The box's proxy runs from the clone on the host.~~ It is the `llm-proxy` container now, built
+  from the clone with the CLI pinned in `proxy/Dockerfile`. The box still needs, once, by someone
+  with SSH: a `CLAUDE_CODE_OAUTH_TOKEN` in `~/retina/.env` (the wizard asks), and the old host
+  proxy on `172.17.0.1:4001` stopped with its `@reboot` cron line removed (see `deploy/README.md`).
 - The Score cell was exercised through the frontend's own `/api/runs/:id/submit` route, not clicked
   in a browser: no browser tool in the session that did it, as in the phase 2 build.
 - ~~Worker, Redis and MinIO on the VPS, phase 3.~~ In `deploy/compose.yaml` as of phase 3 and
@@ -419,11 +425,12 @@ dev machine:
   still ingesting), which is a better home for it than a one-off on the box. Not done yet. The
   hard-kill path was exercised live and works.
 - Attachments are copied per run (250 objects each). Dedupe by sha256 later if disk matters.
-- Structured output is not exercised on the gateway transport. `/ai/chat` has no `output_config`,
-  so where `LLM_PROXY_URL` names one, the answer schema reaches the model through the prompt only
-  and `structured.ts`'s zod parse is the whole guarantee. The provider constraint is exercised only
-  against a proxy we speak the Anthropic wire to. If the box ever exposes `/v1/messages`, delete the
-  gateway transport rather than keep two.
+- ~~Structured output is not exercised on the gateway transport.~~ The gateway transport is
+  deleted: every call now goes to our own proxy over the Anthropic wire, schema as a provider
+  constraint.
+- A token from `claude setup-token` expires (about a year). When it does, every model call fails
+  as `provider_not_logged_in` and emails fail fast; nothing warns ahead of time. A `/health`
+  check of the proxy's login would, but a real call per probe costs subscription usage.
 - A cancelled run's emails stay at the stage they reached; there is no `cancelled` stage. Add one
   if a later dashboard needs to tell them from emails still in flight.
 - One `emailIds` entry that is not in the inbox fails the whole run with a terminal error naming
@@ -465,6 +472,13 @@ in brackets.
       `RecordingLlmClient` was missing; the unknown-provider processor test bypassed the client.
 
 ## Found while building
+- A `claude -p` with no login exits 1 with `Not logged in` inside its JSON envelope, after a block
+  of usage counters, and the proxy called it a generic provider error with `retryable: true`.
+  Behind the backend's retry-on-verdict that is the phase 3 loop again: a missing secret read as
+  an outage and every email requeued forever. Found by calling the container with no token
+  before wiring it in; `ProviderNotLoggedIn` is permanent now.
+- On this Windows checkout `proxy/start.sh` is CRLF in the working tree despite `.gitattributes`,
+  so an image built locally from it gets a broken shebang. The Dockerfile runs uvicorn directly.
 - vitest 5 treats a function returned from `beforeEach` as a cleanup hook and calls it. So
   `beforeEach(() => mock.mockReset())` calls the mock after every test, because `mockReset`
   returns it. The old client test only passed because its one-shot rejection was already spent.

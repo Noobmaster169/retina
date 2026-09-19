@@ -1,19 +1,38 @@
 # proxy
 
 A small HTTP gateway. It speaks the Anthropic Messages API and routes each
-request, by alias, to `claude -p` (your Claude Code login), a local Ollama, or
-an offline echo. The backend is its only client. It listens on loopback and
-has no auth.
+request, by alias, to `claude -p` (the Claude subscription) or an offline echo.
+The backend is its only client. It has no auth, so it is reachable only on the
+compose network (and on host loopback 4001 in `backend/compose.local.yaml`).
 
 ## Run
 
+It runs as the `llm-proxy` container of the backend's compose stack, built from
+this directory with `Dockerfile`. The image carries the Claude Code CLI, pinned by
+`CLAUDE_CODE_VERSION`, and logs in with `CLAUDE_CODE_OAUTH_TOKEN` (make one with
+`claude setup-token`; compose reads it from `backend/.env`, or `~/retina/.env`
+on the box).
+
+```sh
+cd ../backend && docker compose -f compose.local.yaml up -d --build llm-proxy   # :4001 on the host
+```
+
+To work on the proxy itself, it still runs outside a container:
+
 ```sh
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
-./start.sh                      # 127.0.0.1:4000, config from ./proxy.yaml
+./start.sh                      # 127.0.0.1:4000, config from ./proxy.yaml, your own claude login
 .venv/bin/pytest -q             # tests, all offline
 ```
 
 Env overrides: `LLM_PROXY_HOST`, `LLM_PROXY_PORT`, `LLM_PROXY_CONFIG`.
+`proxy.yaml` reads `${NAME:-default}` from the env; the image sets
+`LLM_PROXY_HOST=0.0.0.0` and `LLM_PROXY_EXPOSED=true`, and nothing else in the
+file differs between a laptop and the container.
+
+A `claude` with no login answers 502 `provider_not_logged_in` with
+`retryable: false`: no attempt succeeds until someone logs it in, so a caller
+must not wait it out as an outage.
 
 ## Aliases
 
@@ -21,12 +40,12 @@ Set in `proxy.yaml`. The alias is the model name.
 
 | Alias | Goes to | Needs |
 | --- | --- | --- |
-| `sonnet`, `opus`, `haiku` | `claude -p --model <alias>` | `claude -p "hi"` works in your shell |
-| `qwen3:14b`, `qwen3:4b`, `qwen3.8:27b` | Ollama on `127.0.0.1:11434` | the tag pulled (`ollama list`) |
+| `sonnet`, `opus`, `haiku` | `claude -p --model <alias>` | a login: the token in the container, `claude` itself outside |
 | `test` | echo | nothing |
 
-You can also send `provider/model` directly, e.g. `claudecli/sonnet` or
-`ollama/qwen3:14b`.
+You can also send `provider/model` directly, e.g. `claudecli/sonnet`. Ollama and
+the Qwen aliases were dropped when the proxy moved into the stack; the
+`openai_compatible` provider type is still in the code if a local model returns.
 
 ## Endpoints
 
@@ -56,7 +75,7 @@ schema a constraint on the provider, not a request in the prompt:
   where `--json-schema` was checked; 2.1.276 was used for the phase 2 live run). An older
   CLI returns no `structured_output`, and the provider answers 502 rather than pass prose
   on as if it were JSON. Streaming falls back to the blocking path while a schema is set.
-- `ollama` and other OpenAI-compatible servers get
+- An `openai_compatible` provider, where one is configured, gets
   `response_format: { type: "json_schema", json_schema: { name, schema, strict } }`.
 
 The schema subset does not carry numeric or string bounds (`minimum`, `maxLength`);
@@ -65,9 +84,5 @@ those are advisory and the caller still validates the answer.
 ## What the config does
 
 - `capabilities` strips parameters a model rejects. `temperature` never reaches
-  Claude. `thinking` never reaches Ollama.
-- `extra_body: { reasoning_effort: none }` on the Ollama provider turns Qwen's
-  thinking off. `/no_think` in the prompt does not work.
-- `max_tokens: 8000` on Qwen aliases. Prompt and answer share one context window.
-  A request without `max_tokens` is fine: `claude -p` has no cap of its own and
-  Ollama gets the 8000 ceiling.
+  Claude.
+- A request without `max_tokens` is fine: `claude -p` has no cap of its own.

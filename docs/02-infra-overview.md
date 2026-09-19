@@ -19,7 +19,7 @@ prompts, routes) are in `03-infra-deep.md`.
                                     │  worker (same image, different entrypoint)                 │
                                     │   ├─ classify queue consumer ─┐                            │
                                     │   ├─ compare queue consumer  ─┼──▶ llm-proxy ──▶ claude -p  │
-                                    │   ├─ ingest replay controller │              └▶ Ollama/Qwen │
+                                    │   ├─ ingest replay controller │   (compose service)        │
                                     │   └─ scheduled jobs           │                            │
                                     │        │                      └──▶ doc-extract (Python)    │
                                     │        └──▶ averis server :8080 (emails, attachments,      │
@@ -40,7 +40,7 @@ prompts, routes) are in `03-infra-deep.md`.
 | redis | VPS, compose | Redis 7, AOF, noeviction | Two BullMQ queues, client priority cache, small counters. | |
 | minio | VPS, compose | MinIO | S3-compatible bucket: raw attachments, rendered pages, extracted text, reviewer uploads. | |
 | averis | VPS, compose (their file, port bound to localhost) | FastAPI | Dataset source and self-scoring endpoint. | |
-| llm-proxy | VPS, existing, shared with yt-engine | uvicorn on `172.17.0.1:4000` | One door to Claude (subscription) and Qwen (local GPU). | claude CLI, Ollama |
+| llm-proxy | VPS, compose (built from `proxy/`) | uvicorn and the Claude Code CLI, `llm-proxy:4000` on the private network | One door to Claude (subscription), logged in by `CLAUDE_CODE_OAUTH_TOKEN`. | claude CLI |
 | ngrok | VPS, existing pattern | ngrok agent | Outbound tunnel that publishes `127.0.0.1:8091` on a static hostname. | api |
 
 ## 3. Network boundaries
@@ -50,8 +50,7 @@ Three rings. Nothing crosses inward except through the ring's one door.
 | Ring | What is there | Door |
 |---|---|---|
 | Public internet | Vercel app URL, ngrok hostname | Password gate on the page; bearer key on the API |
-| Compose private network | api, worker, doc-extract, postgres, redis, minio, averis | Only api is exposed, and only on `127.0.0.1:8091` for ngrok |
-| Host | llm-proxy on the Docker bridge, Ollama on localhost | Reached by containers through `172.17.0.1`; never bound wider |
+| Compose private network | api, worker, doc-extract, postgres, redis, minio, averis, llm-proxy | Only api is exposed, and only on `127.0.0.1:8091` for ngrok |
 
 The Averis container's port mapping must be `127.0.0.1:8080:8000`, not `8080:8000`. It holds the
 answer key. The api and worker reach it by service name on the compose network.
@@ -169,7 +168,7 @@ frontend: Vercel deploys every push to main
 |---|---|---|
 | Postgres | compose.local.yaml, port 5433 | compose service, private |
 | Redis, MinIO, doc-extract, averis | same compose.local.yaml | compose services |
-| llm-proxy | `~/ai/tools/llm-proxy` on 127.0.0.1:4000, or `test` alias | shared proxy on 172.17.0.1:4000 |
+| llm-proxy | compose.local.yaml, built from `proxy/`, on 127.0.0.1:4001 | compose service, private |
 | api, worker | `pnpm dev`, `pnpm dev:worker` | compose services |
 | frontend | `pnpm dev` on :3000, `BACKEND_URL=http://localhost:8091` | Vercel |
 | Scoring | `score_cli.py` on the holdout, or local averis `/submit` | averis `/submit` only |
@@ -182,7 +181,7 @@ frontend: Vercel deploys every push to main
 | ngrok free tier: one static domain per account, connection limits, possible buffering | Polling instead of SSE; a second ngrok account for retina |
 | Firewall blocks inbound | Pull-based deploys, outbound tunnel |
 | Around 8 parallel `claude -p` calls | Worker concurrency 4 per queue, one worker replica, adjustable by env |
-| Proxy predates Qwen `reasoning_effort` passthrough | Sonnet for every role now; Qwen aliases when the proxy is upgraded |
+| The proxy is a container with no host login | It logs in with `CLAUDE_CODE_OAUTH_TOKEN`; a missing login fails calls permanently, never as an outage. No local models |
 | Proxy image passthrough unverified | OCR is the guaranteed path for scans; vision is additive |
 | Answer key present on the box | Eval-only, never mounted into pipeline containers |
 | Judges may use a fresh seed | No hand-written classification rules; nothing keyed on email ids; holdout read last |

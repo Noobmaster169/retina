@@ -15,15 +15,14 @@ What runs here for retina, next to the yt-engine stack that was there first:
 | retina API | compose service | `127.0.0.1:8091` (and the tunnel) |
 | retina worker | compose service, same image, `node --import tsx src/worker.ts` | — |
 | inbox (email server) | compose service, built from `emails/server` in the clone, serving `emails/data_v2` | private network, `inbox:8000` |
-| llm-proxy | `proxy/` from the clone at `~/projects/retina`, run on the host by `~/retina/run-proxy.sh` | `172.17.0.1:4001` (Docker bridge; yt-engine's own proxy is on 4000) |
-| Ollama | `monash-ollama` container, pre-existing | `127.0.0.1:11434` |
+| llm-proxy | compose service, built from `proxy/` in the clone, with the Claude Code CLI inside. Logged in by `CLAUDE_CODE_OAUTH_TOKEN` in `~/retina/.env` | private network, `llm-proxy:4000` |
 | ngrok | `~/retina/run-ngrok.sh` | outbound only |
 
 Directories: `~/projects/retina` is the git clone (code); `~/retina` is the
 running stack (compose, `.env`, runner scripts, logs).
 
 The API's two bearer keys are the only auth in front of the proxy, which
-authenticates nobody. Never bind the proxy or Ollama wider than they are.
+authenticates nobody. Never publish the llm-proxy's port.
 
 ## First-time setup
 
@@ -45,35 +44,32 @@ Host github.com-retina
 git clone git@github.com-retina:Noobmaster169/retina.git ~/projects/retina
 ```
 
-### 2. The proxy
+### 2. The proxy's login
 
-The proxy shells out to `claude`, which lives under nvm for the `student`
-user and is already logged in (`claude -p "say ok"` works in a shell). Ollama
-serves the Qwen tags on loopback.
-
-**Claude Code must be 2.1.274 or newer on this box.** Every pipeline step asks the
-proxy for structured output, which it serves with `claude -p --json-schema`; an older
-CLI does not have the flag and the proxy answers 502 rather than pass prose on. Check
-with `claude --version`, and after an upgrade re-run `deploy/smoke-test.sh --schema`. `proxy/proxy.yaml` is committed; on this box
-the two Qwen tags are the `-ctx16k` profiles, so check `docker exec
-monash-ollama ollama list` matches what the config names.
+The llm-proxy is a container of the stack: nothing to install on the host, and
+no `claude` login on the `student` account is used. It logs in with a token.
+On any machine already logged in to the Claude subscription:
 
 ```bash
-# The system python3 has no venv module and there is no sudo; miniforge's does.
-cd ~/projects/retina/proxy && ~/miniforge3/bin/python3 -m venv .venv && .venv/bin/pip install -e .
-cp ~/projects/retina/deploy/run-proxy.sh ~/retina/ && chmod +x ~/retina/run-proxy.sh
-setsid nohup ~/retina/run-proxy.sh >/dev/null 2>&1 </dev/null &
-sleep 5 && curl -s 172.17.0.1:4001/healthz
-curl -s 172.17.0.1:4001/v1/messages -H 'content-type: application/json' -H 'x-api-key: smoke' \
-  -d '{"model":"qwen3:4b","max_tokens":20,"messages":[{"role":"user","content":"Say hi in one word."}]}'
+claude setup-token          # prints a long-lived token; keep it secret
 ```
 
-`auto-deploy.sh` reinstalls and restarts it whenever a push touches `proxy/`.
-By hand: `pkill -f "^\.venv/bin/python -m uvicorn llm_proxy.*--port 4001"`; the
-runner restarts it in 5 s. (start.sh execs `.venv/bin/python` by relative path,
-and yt-engine's proxy has the same command line on port 4000 — hence the
-anchor and the port. An unanchored `pkill -f` whose pattern appears in your own
-ssh command line kills your session.)
+The wizard (next step) asks for it and writes it to `~/retina/.env` as
+`CLAUDE_CODE_OAUTH_TOKEN`. Without it the stack still comes up, and every
+model call fails fast as `provider_not_logged_in`, never retried. To change it
+later: edit `~/retina/.env`, then `cd ~/retina && docker compose up -d
+llm-proxy`.
+
+The CLI version is pinned in `proxy/Dockerfile` (`CLAUDE_CODE_VERSION`, 2.1.274
+or newer for `--json-schema`). `auto-deploy.sh` rebuilds the container whenever
+a push touches `proxy/`. `deploy/smoke-test.sh --schema` proves the login and
+structured output from inside the container.
+
+The old host proxy on `172.17.0.1:4001` (`run-proxy.sh`) is retired. If it is
+still running on the box, stop it and drop its `@reboot` cron line:
+`pkill -f "^\.venv/bin/python -m uvicorn llm_proxy.*--port 4001"` (anchored: an
+unanchored `pkill -f` whose pattern appears in your own ssh command line kills
+your session).
 
 ### 3. The stack
 
@@ -135,7 +131,6 @@ curl -s https://<domain>.ngrok-free.dev/health
 ### 5. Cron
 
 ```
-@reboot setsid nohup /home/student/retina/run-proxy.sh >/dev/null 2>&1 </dev/null &
 @reboot setsid nohup /home/student/retina/run-ngrok.sh >/dev/null 2>&1 </dev/null &
 */3 * * * * /home/student/retina/auto-deploy.sh
 ```
@@ -183,8 +178,8 @@ cd deploy/sim && ./sim.sh up && ./sim.sh test
 It runs the real `auto-deploy.sh` and `bootstrap-wizard.sh` against a replica
 of this layout in Docker-in-Docker, including a deploy whose `/health` reports
 Postgres down, so rollback is exercised somewhere a mistake is cheap. What it
-cannot exercise: the host proxy on `172.17.0.1:4001`, the `claude` CLI, ngrok,
-cron and this box's real `.env`.
+cannot exercise: a logged-in `claude` (it has no token, so model calls fail as not
+logged in), ngrok, cron and this box's real `.env`.
 
 ## Calling the API as a teammate
 
@@ -192,14 +187,12 @@ cron and this box's real `.env`.
 export RETINA_URL=https://<domain>.ngrok-free.dev TEAM_API_KEY=...
 curl -s -H "authorization: Bearer $TEAM_API_KEY" $RETINA_URL/ai/models
 curl -s -H "authorization: Bearer $TEAM_API_KEY" -H 'content-type: application/json' \
-  -d '{"model":"qwen3:14b","messages":[{"role":"user","content":"Explain Docker volumes in two sentences."}]}' \
+  -d '{"model":"haiku","messages":[{"role":"user","content":"Explain Docker volumes in two sentences."}]}' \
   $RETINA_URL/ai/chat
 ```
 
-Aliases come from `proxy/proxy.yaml`: `sonnet`, `opus`, `haiku`
-(Claude Code subscription), `qwen3:14b`, `qwen3:4b`, `qwen3.8:27b` (local GPU),
-`test` (echo). Non-streaming; a cold `qwen3.8:27b` can take a minute on the
-first call.
+Aliases come from `proxy/proxy.yaml`: `sonnet`, `opus`, `haiku` (Claude Code
+subscription) and `test` (echo). Non-streaming.
 
 ## Looking around
 
@@ -208,7 +201,7 @@ cd ~/retina && docker compose ps && docker compose logs -f api
 docker compose logs -f worker                # the pipeline: one JSON line per stage
 docker compose exec postgres psql -U retina retina_prod
 docker compose exec redis redis-cli info memory
-tail -f ~/retina/llm-proxy.log
+docker compose logs -f llm-proxy
 tail -f ~/retina/ngrok.log
 ```
 
@@ -225,10 +218,9 @@ MinIO's console is on the container's `:9001`, so the simplest route is to add
 `ports: ["127.0.0.1:9001:9001"]` to the `minio` service, `docker compose up -d
 minio`, look, then take it out again. Never leave it published.
 
-- **503 "llm-proxy unreachable"** — `pgrep -af "port 4001"`; if gone, `setsid nohup ~/retina/run-proxy.sh >/dev/null 2>&1 </dev/null &` and read `~/retina/llm-proxy.log`.
-- **`sonnet`/`opus`/`haiku` fail, qwen works** — the Claude login expired: run `claude` interactively as student.
-- **502 "claude returned no structured_output"** — the CLI is older than 2.1.274 or the push that
-  added `--json-schema` has not reached the box. `claude --version`, then `tail ~/retina/auto-deploy.log`.
+- **503 "llm-proxy unreachable"**: `docker compose ps llm-proxy`, then `docker compose logs --tail=50 llm-proxy`; `docker compose up -d llm-proxy` brings it back.
+- **Emails fail with `provider_not_logged_in`**: the token is missing, expired or revoked. Make a new one with `claude setup-token`, put it in `~/retina/.env`, `docker compose up -d llm-proxy`. Failed emails do not recover on their own; start a new run.
+- **502 "claude returned no structured_output"**: the pinned CLI is older than 2.1.274, or the build that bumped it has not reached the box. `docker compose exec llm-proxy claude --version`, then `tail ~/retina/auto-deploy.log`.
 - **A run sits at `ingested` and nothing moves** — the worker is the only thing that consumes queues: `docker compose ps worker`, `docker compose logs --tail=50 worker`, then `docker compose restart worker`. Jobs it was holding are marked stalled by BullMQ and re-run; job ids stop a stage from running twice.
 - **Redis errors about memory (OOM command not allowed)** — the queues are `noeviction` on purpose, so Redis refuses writes rather than dropping jobs. `docker compose exec redis redis-cli info memory`, then either raise `--maxmemory` in `compose.yaml` or clear finished jobs. 520 emails is far under 512 MB, so this usually means a run loop, not real growth.
 - **`/health` says `minio` is down** — `docker compose logs minio`. Attachments are the only thing that needs it: classification keeps working and a deploy is no longer rolled back for it, but ingest of a new run will fail.

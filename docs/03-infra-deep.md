@@ -71,7 +71,8 @@ frontend/
 | minio | quay.io/minio/minio (`minio/minio` is gone from Docker Hub) | none (console reachable via `docker compose exec` or an SSH tunnel) | miniodata | `server /data --console-address :9001`; init job creates bucket `retina` |
 | minio-init | same minio image | none | none | one-shot: creates bucket `retina`, then exits 0 |
 | api | ghcr.io/noobmaster169/retina-api:main | `127.0.0.1:8091:8091` | none | runs migrations then listens; depends on postgres, redis, minio healthy |
-| worker | same image | none | none | `command: node --import tsx src/worker.ts` (no build step; the image runs TypeScript through tsx); `depends_on: api: service_started`, not `service_healthy`: an unhealthy api must not also take the worker down, and waiting on it aborted a deploy |
+| worker | same image | none | none | `command: node --import tsx src/worker.ts` (no build step; the image runs TypeScript through tsx); `depends_on: api, llm-proxy: service_started`, not `service_healthy`: an unhealthy api must not also take the worker down, and waiting on it aborted a deploy |
+| llm-proxy | built from `proxy/` in the clone (Python, plus the Claude Code CLI pinned by `CLAUDE_CODE_VERSION`) | none (private to the network) | none | `http://llm-proxy:4000` inside the network. Logged in by `CLAUDE_CODE_OAUTH_TOKEN` from `.env`, optional so the stack comes up without it; a call without a login is `provider_not_logged_in`, never retried. `auto-deploy.sh` rebuilds it when `proxy/` changes |
 | doc-extract | built from `services/doc-extract` | none | none | `:8000` inside network; healthcheck `/healthz`; 1 GB memory limit |
 | inbox | built from `emails/server` in the clone | none (private to the network) | `emails/data_v2:/data:ro`, `emails/data_v2/ground_truth.json:/secrets/ground_truth.json:ro` | organiser image, unchanged code |
 
@@ -100,7 +101,8 @@ Backend (`deploy/.env`, mirrored in `backend/.env.example`):
 | `MINIO_PUBLIC_ENDPOINT` | `https://<ngrok>/files` | api (presigned URLs are proxied, see 10) |
 | `DOC_EXTRACT_URL` | `http://doc-extract:8000` | worker |
 | `EMAIL_SERVER_URL` | `http://inbox:8000` (already set in `deploy/compose.yaml`) | api, worker |
-| `LLM_PROXY_URL` | `http://host.docker.internal:4001` | api, worker |
+| `LLM_PROXY_URL` | `http://llm-proxy:4000` in compose; `http://127.0.0.1:4001` from the host with `compose.local.yaml`. A remote `/ai/chat` is refused at boot | api, worker |
+| `CLAUDE_CODE_OAUTH_TOKEN` | from `claude setup-token`; read by compose into the llm-proxy container only | llm-proxy |
 | `LLM_MODEL_CLASSIFY`, `LLM_MODEL_VERIFY`, `LLM_MODEL_EXTRACT`, `LLM_MODEL_CHAT` | `sonnet` for every step. Must be a proxy alias from `proxy/proxy.yaml` | worker, api |
 | `LLM_MAX_CONCURRENCY` | follows `CLASSIFY_CONCURRENCY` when unset, so one number sets how parallel every run is. Model calls in flight per worker process | worker (in-process semaphore) |
 | `CLASSIFY_CONCURRENCY`, `COMPARE_CONCURRENCY` | `2`, `4`. Classify is 2 because the `claudecli` provider serves two calls at a time; more workers only queue inside the proxy with their request timeout already running | worker |
@@ -447,19 +449,18 @@ images, OCR text is used and the reviewer sees the PNG.
 ## 7. LLM layer
 
 - Client: existing `src/llm.ts` against `LLM_PROXY_URL/v1/messages` (Anthropic wire; the Anthropic SDK with `baseURL` set to the proxy).
-- Second transport, `src/llm-gateway.ts`: where the proxy is not reachable, `LLM_PROXY_URL` may name
-  another Retina API's `/ai/chat`, which fronts a proxy on its own host. A URL ending in `/ai/chat`
-  selects it, the bearer is `TEAM_API_KEY`, and the reply is validated with zod like any other
-  boundary. `chat()` hides the choice, so nothing above `llm.ts` knows which ran. That route has no
-  structured output, so on it the schema reaches the model through the prompt only and the zod parse
-  in `structured.ts` is the whole guarantee. `config.ts` refuses to boot a gateway URL with no
-  `TEAM_API_KEY`, because an empty bearer is a 401 and a 401 fails every email in the run for good.
+- One transport. The proxy is the `llm-proxy` service of the same compose stack; the second
+  transport to another Retina API's `/ai/chat` was removed with the remote proxy it existed for,
+  and `config.ts` refuses to boot an `LLM_PROXY_URL` that still names one.
+- A `claude` with no login is the proxy's `provider_not_logged_in`, 502 with `retryable: false`,
+  so the backend fails the email at once with a message naming `CLAUDE_CODE_OAUTH_TOKEN` instead
+  of reading a missing secret as an outage and requeueing forever.
 - Error envelope: the proxy answers `{ type: "error", error: { type, message, code, retryable } }`.
   `code` is its stable machine name and `retryable` its own verdict on whether another attempt could
   work. The backend reads `retryable` and falls back to the status only when it is absent: status
   alone cannot separate `unknown_provider` (a permanent 500) from a dead upstream (a transient 502),
   and treating the first as the second requeues a misconfiguration forever without spending an
-  attempt. `app.ts` relays the flag on its own error body so it survives the gateway hop.
+  attempt. `app.ts` relays the flag on its own error body, for callers of the API's own `/ai/chat`.
 - Structured output: the schema is a provider constraint, not a request. `agents/structured.ts`
   derives JSON Schema from the zod schema and sends it as `LlmRequest.outputSchema`, which
   `llm.ts` puts on the wire as `output_config: { format: { type: "json_schema", schema } }`. The
@@ -498,8 +499,10 @@ images, OCR text is used and the reviewer sees the PNG.
   tokens; `LOG_LEVEL=debug` logs the full system prompt, input and answer.
 - Every call inserts `core.llm_calls` with step, model, prompt_version, request, response,
   input_tokens, output_tokens, cost_usd (from the proxy's usage block), latency_ms, email_run_id.
-- Models: `sonnet` for every step (decided 2026-09-19). Values must be proxy aliases. Env vars allow swapping per role for experiments; Qwen aliases go in
-  when the proxy is upgraded (see the Retina deploy README).
+- Models: `sonnet` for every step (decided 2026-09-19). Values must be proxy aliases: `sonnet`,
+  `opus`, `haiku`, and `test` for smoke tests. Env vars and a run's `models` allow swapping per
+  step for experiments. There is no local model: Ollama was dropped when the proxy moved into
+  the stack.
 
 ## 8. Postgres schema
 
@@ -729,14 +732,16 @@ it; client components never hold the secret. Polling uses SWR with `refreshInter
   for the live view.
 - `/health` returns per-dependency status and the worker heartbeat (worker writes
   `worker:heartbeat` to Redis every 10 s; api reports stale after 60 s).
-- Proxy spend by project at `172.17.0.1:4001/admin/usage`; set `X-Project: retina-worker`
-  and `retina-chat` headers so it is split.
+- Proxy spend by project at `http://llm-proxy:4000/admin/usage` inside the stack
+  (`docker compose exec llm-proxy curl -s 127.0.0.1:4000/admin/usage`); set `X-Project:
+  retina-worker` and `retina-chat` headers so it is split.
 
 ## 17. Failure modes
 
 | Failure | Effect | Handling |
 |---|---|---|
 | llm-proxy down | classify and compare jobs fail with 503 | retryable; after 3 attempts the email is `failed` and shows under Failures; dashboard shows proxy red in `/health` |
+| llm-proxy not logged in | every model call is `provider_not_logged_in` | permanent: each email fails at once naming `CLAUDE_CODE_OAUTH_TOKEN`; set it and `docker compose up -d llm-proxy`, then rerun |
 | Claude login expired on the box | `subscription*` calls fail, `test` works | runbook: run `claude` interactively as student |
 | doc-extract OOM on a big PDF | job fails | retryable; memory limit 1 GB; file size cap |
 | Redis restart | in-flight jobs stall | AOF restores the queue; stalled jobs re-run; job ids prevent duplicates |

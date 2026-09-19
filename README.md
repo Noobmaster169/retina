@@ -3,7 +3,7 @@
 Three packages in one repo:
 
 ```
-browser → frontend (Next.js) → backend api (Express + Postgres) → proxy (Python) → claude -p / Ollama
+browser → frontend (Next.js) → backend api (Express + Postgres) → llm-proxy container (Python) → claude -p
                                         ↓ Redis queues          ↘ email server (Python) → emails/data_v2
                                backend worker → MinIO (attachments)
 ```
@@ -12,7 +12,7 @@ browser → frontend (Next.js) → backend api (Express + Postgres) → proxy (P
 | --- | --- | --- |
 | `frontend/` | Next.js app. Calls the backend with a shared secret. | 3000 |
 | `backend/` | Express API, plus a worker process that runs the pipeline off Redis queues. | 8091 |
-| `proxy/` | Small LLM gateway. Runs `claude -p` (your Claude Code login) or Ollama. | 4000, 4001 in practice |
+| `proxy/` | Small LLM gateway, run as the `llm-proxy` container of the compose stack. Drives `claude -p` on the Claude subscription. | 4001 on the host (4000 in the container) |
 | `emails/` | The inbox: a FastAPI server over the synthetic shipping-documents dataset. The backend reads it. | 8080 |
 | `deploy/` | Scripts and runbook for the Monash server. | — |
 
@@ -22,59 +22,36 @@ package first. Nothing runs from the repo root.
 ## You need
 
 - Node 24 and pnpm 11 (`corepack enable`)
-- Docker (for the local Postgres, Redis, MinIO and the email server)
-- Python 3.10+
-- Claude Code, logged in. `claude -p "say ok"` must print ok.
-- Optional: Ollama with `qwen3:14b` pulled, for the `qwen*` aliases.
+- Docker (for the local Postgres, Redis, MinIO, the email server and the llm-proxy)
+- A Claude subscription token for the proxy container: run `claude setup-token` once on a
+  machine logged in to the account and keep what it prints. Python is only needed to work
+  on `proxy/` itself.
 
 ## Run it
 
-Four terminals, in this order. The email server no longer needs its own: the
-backend's local compose file runs it.
+Three terminals, in this order. The email server and the llm-proxy need none of their own:
+the backend's local compose file runs both.
 
-**1. Proxy**
-
-```bash
-cd proxy
-python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
-./start.sh
-```
-
-On Windows (Git Bash) the interpreter is elsewhere, and if another project already holds port
-4000, take 4001 and point `LLM_PROXY_URL` in `backend/.env` at it:
-
-```bash
-python -m venv .venv && .venv/Scripts/python.exe -m pip install -e ".[dev]"
-PYTHON=.venv/Scripts/python.exe LLM_PROXY_PORT=4001 ./start.sh
-```
-
-**Or use a proxy someone else is already running.** Where the proxy itself is not reachable (the
-Monash box keeps it on its Docker bridge, never public), point `LLM_PROXY_URL` at another Retina
-API's `/ai/chat`, which fronts one:
-
-```
-LLM_PROXY_URL=https://<host>/ai/chat
-TEAM_API_KEY=<that API's key>
-```
-
-A URL ending in `/ai/chat` selects that transport; anything else is a proxy and gets the Anthropic
-wire. The bearer sent is `TEAM_API_KEY`. The cost: `/ai/chat` has no structured output, so the
-answer schema reaches the model through the prompt only and the zod parse in `agents/structured.ts`
-is the whole guarantee. Every call then spends that host's Claude login, not yours.
-
-**2. Backend**
+**1. Backend, with the stack**
 
 ```bash
 cd backend
-cp .env.example .env
-docker compose -f compose.local.yaml up -d      # Postgres 5433, Redis 6379, MinIO 9000, email server 8080
+cp .env.example .env                            # then set CLAUDE_CODE_OAUTH_TOKEN in it
+docker compose -f compose.local.yaml up -d      # Postgres 5433, Redis 6379, MinIO 9000, email server 8080, llm-proxy 4001
 pnpm install && pnpm db:migrate && pnpm dev     # the api
 ```
 
-**3. Worker**, a second terminal in `backend/`. It consumes the queues; without it a
+The llm-proxy is built from `proxy/`. After changing anything there, rebuild it:
+`docker compose -f compose.local.yaml up -d --build llm-proxy`. Check it is logged in with
+`curl -s 127.0.0.1:4001/v1/messages -H 'content-type: application/json' -d
+'{"model":"haiku","max_tokens":20,"messages":[{"role":"user","content":"say ok"}]}'`: a
+`provider_not_logged_in` error means the token is missing or expired, and every pipeline call
+will fail the same way (fast, not retried).
+
+**2. Worker**, a second terminal in `backend/`. It consumes the queues; without it a
 run is created and never moves. It classifies every email with an LLM call through the
-proxy, so the proxy must be up and `claude` logged in. The proxy serves 2 Claude calls at
-a time: set `CLASSIFY_CONCURRENCY=2`, and expect about 25 minutes for the full inbox.
+proxy, so the llm-proxy container must be up with its token. The proxy serves 2 Claude calls
+at a time: set `CLASSIFY_CONCURRENCY=2`, and expect about 40 minutes for the full inbox.
 If the proxy goes down mid-run the worker does not fail the emails: it logs `model unavailable,
 pausing the classify queue`, stops taking classify jobs for 30 s and puts the job back with its
 attempts untouched, so the run carries on once the proxy is back.
@@ -87,7 +64,7 @@ pnpm dev:worker
 `emails/docker-compose.yml` starts the same email server on the same port. Use it
 when you want only the inbox; do not run both.
 
-**4. Frontend**
+**3. Frontend**
 
 ```bash
 cd frontend
@@ -108,7 +85,7 @@ them if you want, but change both.
 
 In `frontend/.env.local` set `BACKEND_URL=https://purebred-shank-riptide.ngrok-free.dev`
 and `API_SHARED_SECRET` to the production value (ask the box owner). Then you
-only need terminal 4.
+only need terminal 3.
 
 ## Models
 
@@ -116,16 +93,14 @@ Aliases are model names. They live in `proxy/proxy.yaml`.
 
 | Alias | Runs on | Needs |
 | --- | --- | --- |
-| `sonnet`, `opus`, `haiku` | Claude Code subscription | `claude` logged in |
-| `qwen3:14b`, `qwen3:4b`, `qwen3.8:27b` | Ollama | model pulled |
+| `sonnet`, `opus`, `haiku` | Claude Code subscription, from the llm-proxy container | `CLAUDE_CODE_OAUTH_TOKEN` |
 | `test` | nothing | nothing |
 
 Every LLM step in the pipeline runs `sonnet`. There are no hand-written classification
 rules: the model reads the email, and the eval harness measures it (see `CLAUDE.md`).
 
-Use `qwen3:14b`, not `qwen3:4b`. The 4B model writes its reasoning into the
-answer. `costUsd` on Claude calls is what the API would have charged. Nothing
-is billed.
+`costUsd` on Claude calls is what the API would have charged. Nothing is billed. There are no
+local models: Ollama and the Qwen aliases were dropped when the proxy moved into the stack.
 
 ## API
 
@@ -140,14 +115,16 @@ All routes except `/health` need `Authorization: Bearer <key>`. The key is
 | `GET /emails?q=&filter=attachments&page=&limit=` | `{ emails: [{ id, from, subject, snippet, attachmentCount }], total, page, limit, counts }` |
 | `GET /emails/:id` | `{ email_id, from, subject, body, attachments }` |
 | `GET /emails/attachments/:name` | the file |
-| `POST /runs` | `{ ratePerSecond?: 0-50, limit?, emailIds? }` → a run summary. `0` is a burst. Repeated `emailIds` are dropped |
+| `POST /runs` | `{ ratePerSecond?: 0-50, limit?, emailIds?, subset?: "dev" \| "holdout", promptSet?: { classify: "v3" }, models?: { classify: "haiku" } }` → a run summary. `0` is a burst. Repeated `emailIds` are dropped. The prompt version and model of every step are pinned at creation |
 | `GET /runs`, `GET /runs/:id` | `{ id, status, ratePerSecond, totalEmails, stageCounts, queues, llm, lastSubmission, createdAt, startedAt, finishedAt }`. `queues` is `null` when Redis cannot be reached; `llm` is the model calls, tokens and cost of the run; `lastSubmission` carries the headline scores |
 | `POST /runs/:id/pause`, `/resume`, `/cancel` | the run summary, or 409 when the status does not allow it. A resume that cannot queue its job answers 503 and leaves the run `paused` |
 | `POST /runs/:id/submit?force=false` | sends the run to the organisers' scorer → `{ submissionId, finalScore, scoreboard }`. 409 while the run is still ingesting, and 409 `{ incomplete }` while emails are unfinished, both unless forced; 409 while an earlier submission of the same run is still being scored. 502 when the scorer refuses, which leaves an unscored submission row pointing at the stored payload |
 | `GET /runs/:id/submission.json` | the payload as it would be sent now: `{ email_id: { category, status, review_reason, has_defect, defect_fields, decided_by } }`, the organisers' enums only |
 | `GET /runs/:id/submissions` | `{ submissions: [{ id, finalScore, nEmails, forced, createdAt, scoreboard }] }` |
 | `GET /eval/runs/:id` | dev only, 404 unless `EVAL_GROUND_TRUTH_PATH` is set: the run scored locally, `{ full, holdout, run, wrong }` |
-| `GET /runs/:id/emails?stage=&q=&page=&pageSize=` | `{ emails: [{ emailId, from, subject, stage, attachmentCount, outcome }], total, page, pageSize }` |
+| `GET /runs/:id/emails?stage=&category=&decidedBy=&q=&page=&pageSize=` | `{ emails: [{ emailId, from, subject, stage, attachmentCount, outcome, category, decidedBy, confidence, verifierCategory, error }], total, page, pageSize }` |
+| `GET /runs/:id/calls?after=` | the run's newest model calls as summaries, for a live feed |
+| `GET /runs/:id/emails/:emailId/calls` | every model call for one email: system prompt, input, answer, tokens, cost |
 
 ```bash
 curl -s 127.0.0.1:8091/ai/chat -H "authorization: Bearer $TEAM_API_KEY" \
@@ -159,7 +136,7 @@ curl -s 127.0.0.1:8091/ai/chat -H "authorization: Bearer $TEAM_API_KEY" \
 
 | Task | Where |
 | --- | --- |
-| Add a model alias | `proxy/proxy.yaml`, restart `./start.sh` |
+| Add a model alias | `proxy/proxy.yaml`, then rebuild the llm-proxy container |
 | Add a table | new file in `backend/db/migrations/`, then `pnpm db:migrate` |
 | Add a backend route | a router in `backend/src/routes/`, mounted in `backend/src/app.ts`; its shapes in `backend/src/contracts.ts`; then call it from `frontend/lib/api-client.ts` |
 | Add an env var | `backend/src/config.ts` (the only reader) and `backend/.env.example` |
