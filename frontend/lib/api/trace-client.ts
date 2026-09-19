@@ -1,4 +1,4 @@
-import { LlmCallList, type LlmCall, RunEmailsPage, type RunEmailsQuery } from "./trace-schemas";
+import { LlmCallList, type LlmCall, type LlmCallSummary, LlmCallSummaryList, RunEmailsPage, type RunEmailsQuery } from "./trace-schemas";
 import { get } from "./transport";
 
 export * from "./trace-schemas";
@@ -18,7 +18,7 @@ export async function listEmailCalls(runId: string, emailId: string): Promise<Ll
   return (await get(LlmCallList, path)).calls;
 }
 
-/** The run's newest calls, newest first; with `after`, only those newer than that call id. */
-export async function listRunCalls(runId: string, after?: number): Promise<LlmCall[]> {
-  return (await get(LlmCallList, `/runs/${encodeURIComponent(runId)}/calls${queryString({ after })}`)).calls;
+/** The run's newest calls without their text, newest first; with `after`, only those newer than that call id. */
+export async function listRunCalls(runId: string, after?: number): Promise<LlmCallSummary[]> {
+  return (await get(LlmCallSummaryList, `/runs/${encodeURIComponent(runId)}/calls${queryString({ after })}`)).calls;
 }

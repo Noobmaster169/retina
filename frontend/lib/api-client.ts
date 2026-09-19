@@ -31,7 +31,7 @@ export {
   type RunStatus,
   type RunSubset,
   type RunSummary,
-  type Stage,
+  Stage,
 } from "./api/runs-client";
 export {
   Category,
@@ -40,6 +40,7 @@ export {
   listRunCalls,
   listRunEmails,
   type LlmCall,
+  type LlmCallSummary,
   type RunEmailItem,
   type RunEmailsPage,
   type RunEmailsQuery,

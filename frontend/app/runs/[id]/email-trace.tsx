@@ -14,12 +14,14 @@ const fetchCalls = parsedFetcher(LlmCallList);
 interface Props {
   runId: string;
   emailId: string | null;
+  /** False once the run is finished: a finished email's calls cannot change. */
+  live: boolean;
 }
 
 /** The chosen email's model calls in the order they were made: the generator, then the verifier if it ran. */
-export function EmailTrace({ runId, emailId }: Props) {
+export function EmailTrace({ runId, emailId, live }: Props) {
   const { data, error } = useSWR(emailId ? `/api/runs/${runId}/emails/${emailId}/calls` : null, fetchCalls, {
-    refreshInterval: POLL_MS,
+    refreshInterval: live ? POLL_MS : 0,
   });
 
   if (!emailId) {

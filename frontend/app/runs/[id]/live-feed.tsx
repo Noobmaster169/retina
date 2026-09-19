@@ -3,28 +3,30 @@
 import useSWR from "swr";
 import { z } from "zod";
 
-import { type LlmCall, LlmCallList } from "@/lib/api/trace-schemas";
+import { type LlmCallSummary, LlmCallSummaryList } from "@/lib/api/trace-schemas";
 import { parsedFetcher } from "@/lib/poll";
 
 const POLL_MS = 2000;
-const fetchCalls = parsedFetcher(LlmCallList);
+const fetchCalls = parsedFetcher(LlmCallSummaryList);
 
 /** The part of a parsed answer worth a glance in the feed. Both steps answer with these two. */
 const Verdict = z.object({ category: z.string(), confidence: z.number() });
 
-function verdictOf(call: LlmCall): string {
+function verdictOf(call: LlmCallSummary): string {
   const verdict = Verdict.safeParse(call.parsed);
   return verdict.success ? `${verdict.data.category} at ${verdict.data.confidence.toFixed(2)}` : "";
 }
 
 interface Props {
   runId: string;
+  /** False once the run is finished: the feed loads once and stops polling. */
+  live: boolean;
   onSelect: (emailId: string) => void;
 }
 
-/** The run's newest model calls, refreshed every two seconds, so a running run can be watched call by call. */
-export function LiveFeed({ runId, onSelect }: Props) {
-  const { data, error } = useSWR(`/api/runs/${runId}/calls`, fetchCalls, { refreshInterval: POLL_MS });
+/** The run's newest model calls, refreshed every two seconds while it runs, so it can be watched call by call. */
+export function LiveFeed({ runId, live, onSelect }: Props) {
+  const { data, error } = useSWR(`/api/runs/${runId}/calls`, fetchCalls, { refreshInterval: live ? POLL_MS : 0 });
   const calls = data?.calls ?? [];
 
   return (

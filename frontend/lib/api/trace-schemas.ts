@@ -1,11 +1,11 @@
 import { z } from "zod";
 
+import { Stage } from "./runs-schemas";
+
 /**
  * Mirrors backend/src/contracts.ts; change both or neither. No transport here,
  * so a client component may import these to parse what it polls.
  */
-
-const Stage = z.enum(["ingested", "classifying", "classified", "comparing", "review", "done", "failed"]);
 
 /** The organisers' categories, value for value. */
 export const Category = z.enum(["BL_COMPARISON", "SI_REQUEST", "INVOICE_QUERY", "GENERAL", "SPAM"]);
@@ -40,7 +40,7 @@ export const RunEmailsPage = z.object({
 export type RunEmailsPage = z.infer<typeof RunEmailsPage>;
 
 export interface RunEmailsQuery {
-  stage?: string;
+  stage?: Stage;
   category?: Category;
   decidedBy?: DecidedBy;
   q?: string;
@@ -48,8 +48,8 @@ export interface RunEmailsQuery {
   pageSize?: number;
 }
 
-/** One attempt at one model call, exactly as it went out and came back. */
-export const LlmCall = z.object({
+/** One attempt at one model call, without its text: what the live feed shows. */
+export const LlmCallSummary = z.object({
   id: z.string(),
   emailId: z.string().nullable(),
   step: z.string(),
@@ -58,15 +58,22 @@ export const LlmCall = z.object({
   attempt: z.number(),
   ok: z.boolean(),
   error: z.string().nullable(),
+  parsed: z.unknown(),
+  latencyMs: z.number(),
+  createdAt: z.string(),
+});
+export type LlmCallSummary = z.infer<typeof LlmCallSummary>;
+
+export const LlmCallSummaryList = z.object({ calls: z.array(LlmCallSummary) });
+
+/** One attempt at one model call, exactly as it went out and came back. */
+export const LlmCall = LlmCallSummary.extend({
   system: z.string(),
   user: z.string(),
   responseText: z.string().nullable(),
-  parsed: z.unknown(),
   inputTokens: z.number().nullable(),
   outputTokens: z.number().nullable(),
   costUsd: z.number().nullable(),
-  latencyMs: z.number(),
-  createdAt: z.string(),
 });
 export type LlmCall = z.infer<typeof LlmCall>;
 

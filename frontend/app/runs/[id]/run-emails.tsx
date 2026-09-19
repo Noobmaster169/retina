@@ -15,12 +15,14 @@ const SELECT = "rounded-md border border-line bg-paper px-2 py-1.5 text-sm";
 
 interface Props {
   runId: string;
+  /** False once the run is finished: the list stops polling. */
+  live: boolean;
   selected: string | null;
   onSelect: (emailId: string) => void;
 }
 
 /** Every email of the run with what the pipeline decided about it. A row opens its model calls. */
-export function RunEmails({ runId, selected, onSelect }: Props) {
+export function RunEmails({ runId, live, selected, onSelect }: Props) {
   const [category, setCategory] = useState("");
   const [decidedBy, setDecidedBy] = useState("");
   const [page, setPage] = useState(1);
@@ -28,7 +30,11 @@ export function RunEmails({ runId, selected, onSelect }: Props) {
   const query = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
   if (category) query.set("category", category);
   if (decidedBy) query.set("decidedBy", decidedBy);
-  const { data, error } = useSWR(`/api/runs/${runId}/emails?${query.toString()}`, fetchPage, { refreshInterval: POLL_MS });
+  const { data, error } = useSWR(`/api/runs/${runId}/emails?${query.toString()}`, fetchPage, {
+    refreshInterval: live ? POLL_MS : 0,
+    // A filter or page change keeps the old rows until the new ones arrive, instead of blanking the table.
+    keepPreviousData: true,
+  });
   const pages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
 
   return (

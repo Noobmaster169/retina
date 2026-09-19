@@ -1,13 +1,8 @@
 "use client";
 
-import useSWR from "swr";
+import type { RunSummary, Stage } from "@/lib/api/runs-schemas";
 
-import { type RunSummary, RunSummary as RunSummarySchema, type Stage } from "@/lib/api/runs-schemas";
-import { parsedFetcher } from "@/lib/poll";
-
-const POLL_MS = 3000;
 const STAGES: Stage[] = ["ingested", "classifying", "classified", "comparing", "review", "done", "failed"];
-const fetchRun = parsedFetcher(RunSummarySchema);
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -22,14 +17,7 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
 const percent = (share: number) => `${(share * 100).toFixed(1)}%`;
 
 /** Where the run is, what its model calls cost, and how often the verifier had to step in. */
-export function RunOverview({ initialRun }: { initialRun: RunSummary }) {
-  const { data, error } = useSWR(`/api/runs/${initialRun.id}`, fetchRun, {
-    fallbackData: initialRun,
-    refreshInterval: POLL_MS,
-  });
-  const run = data ?? initialRun;
-  const settled = run.stageCounts.done + run.stageCounts.failed;
-  const total = run.totalEmails;
+export function RunOverview({ run, error }: { run: RunSummary; error: string | null }) {
   const prompts = Object.entries(run.promptSet);
 
   return (
@@ -43,14 +31,14 @@ export function RunOverview({ initialRun }: { initialRun: RunSummary }) {
           </span>
         )}
       </div>
-      {error instanceof Error && (
+      {error && (
         <p role="alert" className="mt-2 text-sm text-red-700">
-          {error.message}
+          {error}
         </p>
       )}
 
       <dl className="mt-4 flex flex-wrap gap-x-10 gap-y-4 border-y border-line py-4">
-        <Stat label="Finished" value={`${settled} / ${total ?? "?"}`} hint={run.stageCounts.failed ? `${run.stageCounts.failed} failed` : undefined} />
+        <Stat label="Finished" value={`${run.finishedEmails} / ${run.totalEmails ?? "?"}`} hint={run.stageCounts.failed ? `${run.stageCounts.failed} failed` : undefined} />
         <Stat label="Model calls" value={String(run.llm.calls)} hint={run.llm.failedCalls ? `${run.llm.failedCalls} failed` : undefined} />
         <Stat label="Verifier ran on" value={percent(run.llm.verifierShare)} hint="of classified emails" />
         <Stat label="Tokens" value={`${run.llm.inputTokens.toLocaleString()} in`} hint={`${run.llm.outputTokens.toLocaleString()} out`} />

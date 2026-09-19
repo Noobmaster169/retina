@@ -51,7 +51,8 @@ export const PromptStep = z.enum(["classify", "classify-verify"]);
 export type PromptStep = z.infer<typeof PromptStep>;
 
 /** What each LLM step of a run runs, fixed when the run was created. Empty for a run from before phase 4. */
-export const PromptSet = z.partialRecord(PromptStep, z.object({ version: z.string(), model: z.string() }));
+const PinnedPrompt = z.object({ version: z.string(), model: z.string() });
+export const PromptSet = z.object({ classify: PinnedPrompt.optional(), "classify-verify": PinnedPrompt.optional() });
 export type PromptSet = z.infer<typeof PromptSet>;
 
 export const RunSummary = z.object({
@@ -60,6 +61,10 @@ export const RunSummary = z.object({
   status: RunStatus,
   ratePerSecond: z.number(),
   totalEmails: z.number().nullable(),
+  /** Emails that will not move again: done or failed. */
+  finishedEmails: z.number(),
+  /** Nothing more will happen in this run, so a page watching it can stop polling. */
+  processingDone: z.boolean(),
   stageCounts: z.record(Stage, z.number()),
   /** Null when the backend cannot reach its queues. Everything else is still served. */
   queues: z.object({ classify: QueueCounts, compare: QueueCounts }).nullable(),

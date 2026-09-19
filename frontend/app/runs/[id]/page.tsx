@@ -2,13 +2,23 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { getRun } from "@/lib/api-client";
+import { getRun, type RunSummary } from "@/lib/api-client";
 
 import { RunDetail } from "./run-detail";
 
 export const dynamic = "force-dynamic";
 
 const RUN_ID = /^[0-9a-f-]{36}$/;
+
+/** A backend that cannot be reached is a message on the page, as on /runs, not the framework's error screen. */
+async function loadRun(id: string): Promise<{ run: RunSummary | null; backendError: string | null }> {
+  try {
+    return { run: await getRun(id), backendError: null };
+  } catch (error) {
+    console.error("[runs] backend call failed:", error);
+    return { run: null, backendError: "The backend is not reachable right now. Reload in a moment." };
+  }
+}
 
 export async function generateMetadata({ params }: PageProps<"/runs/[id]">): Promise<Metadata> {
   const { id } = await params;
@@ -18,8 +28,8 @@ export async function generateMetadata({ params }: PageProps<"/runs/[id]">): Pro
 export default async function RunPage({ params }: PageProps<"/runs/[id]">) {
   const { id } = await params;
   if (!RUN_ID.test(id)) notFound();
-  const run = await getRun(id);
-  if (!run) notFound();
+  const { run, backendError } = await loadRun(id);
+  if (!run && !backendError) notFound();
 
   return (
     <div className="flex min-h-dvh flex-col bg-surface">
@@ -33,7 +43,13 @@ export default async function RunPage({ params }: PageProps<"/runs/[id]">) {
         <span className="font-mono text-sm text-muted">{id.slice(0, 8)}</span>
       </header>
       <main className="mx-auto w-full max-w-7xl flex-1 px-5 py-6">
-        <RunDetail initialRun={run} />
+        {run ? (
+          <RunDetail initialRun={run} />
+        ) : (
+          <p role="alert" className="border-l-2 border-red-700 pl-3 text-sm text-red-700">
+            {backendError}
+          </p>
+        )}
       </main>
     </div>
   );
