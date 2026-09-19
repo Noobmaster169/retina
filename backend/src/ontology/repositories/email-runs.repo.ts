@@ -1,5 +1,6 @@
 import { type Category, type ComparisonStatus, type ReviewReason, Stage } from "../../contracts";
 import type { Queryable } from "../../db";
+import { DEFECT_FIELDS_SQL } from "./field-diffs.repo";
 
 export interface NewEmailRun {
   runId: string;
@@ -146,10 +147,6 @@ export interface SubmissionSource {
   /** The fields the judge found different, in field-name order. Validated against the enum on the way out. */
   defectFields: string[];
 }
-
-/** The differing fields of a comparison, in field-name order, as one array; empty where nothing differs. */
-export const DEFECT_FIELDS_SQL = `coalesce((select array_agg(fd.field order by fd.field) from core.field_diffs fd
-       where fd.comparison_id = cmp.id and not fd.same and not fd.missing), '{}'::text[])`;
 
 export async function listForSubmission(db: Queryable, runId: string): Promise<SubmissionSource[]> {
   const { rows } = await db.query<{

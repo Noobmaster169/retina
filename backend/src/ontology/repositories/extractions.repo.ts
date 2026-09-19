@@ -160,8 +160,11 @@ export async function forDocument(db: Queryable, documentId: string): Promise<St
     [documentId],
   );
   if (!rows[0]) return null;
-  const fields = await fieldsOf(db, [rows[0].id]);
-  return toStored(rows[0], fields.get(rows[0].id) ?? []);
+  const fields = (await fieldsOf(db, [rows[0].id])).get(rows[0].id) ?? [];
+  // The row and its seven fields are written one statement at a time. A crash
+  // between them leaves a reading with fields missing, which is no reading at all.
+  if (fields.length < ComparisonField.options.length) return null;
+  return toStored(rows[0], fields);
 }
 
 /** Every extraction of one email run, SI first. */

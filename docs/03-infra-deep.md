@@ -343,26 +343,30 @@ second rule of its own.
 `NEEDS_REVIEW` with the reason, and parks the email at `review` with `outcome = reason`. An email
 at `review` counts as finished for the run. A comparable pair goes on to the field check below
 (`queues/processors/compare-pair.ts`); its comparison detail carries `si`, `bl`, `extras` and
-`swapped` beside the decision. A scanned pair is escalated `unreadable` first and then compared
-on its OCR text, and the decision travels as `detail.provisional` for the reviewer.
+`swapped` beside the decision. A scanned pair is compared on its OCR text and then escalated
+`unreadable` with the decision as `detail.provisional` for the reviewer; a comparison that fails
+for good on garbled text leaves `provisional: null` and never changes that verdict. On every
+path the comparison row and its `field_diffs` are written before the email moves stage, so a
+retry after a failed write finds them missing and writes them again.
 
-**Extract** (`prompts/extract/v1.md`), one call per document. Input: document role, full text
-(or OCR text with per-page confidence), the label synonym table as guidance, and the note that
-labels may carry parenthetical Chinese glosses. Output:
+**Extract** (`prompts/extract/v1.md`, `agents/extract.ts`), one call per document. Input: which
+document it is (SI or BL), the file format, and the full text (OCR text for a scan; images never
+reach the model, see section 6). The prompt defines the seven fields in the domain's terms, says
+labels differ between the two documents and may carry a second language in brackets, and asks
+for every value verbatim with the exact line it came from. There is no label table in code.
+Output, per field:
 
 ```json
 {
-  "shipper":           { "value": "APRIL FINE PAPER TRADING PTE LTD", "source_quote": "Shipper: APRIL FINE PAPER TRADING PTE LTD", "confidence": 0.98 },
-  "consignee":         { "value": "...", "source_quote": "...", "confidence": 0.9 },
-  "notify_party":      { "value": null, "source_quote": null, "confidence": 0, "note": "no notify label found" },
-  "port_of_loading":   { "value": "NANTONG, CHINA (CNNTG)", "source_quote": "POL: NANTONG, CHINA (CNNTG)", "confidence": 0.97 },
-  "port_of_discharge": { ... },
-  "container_count":   { "value": "6 x 40'HC", "source_quote": "Total Containers: 6 x 40'HC", "confidence": 0.99 },
-  "gross_weight_kg":   { "value": "67,311 KG", "source_quote": "Gross Weight毛重(KGS): 67,311 KG", "confidence": 0.99 }
+  "shipper":           { "value": "APRIL FINE PAPER TRADING PTE LTD", "placeholder": null, "source_quote": "Shipper: APRIL FINE PAPER TRADING PTE LTD", "confidence": 0.98, "note": null },
+  "notify_party":      { "value": null, "placeholder": null, "source_quote": null, "confidence": 0.9, "note": "no notify party in the document" },
+  "gross_weight_kg":   { "value": null, "placeholder": "???", "source_quote": "Gross Weight毛重(KGS): ???", "confidence": 0.95, "note": null },
+  "port_of_loading":   { "value": "NANTONG, CHINA (CNNTG)", "placeholder": null, "source_quote": "POL: NANTONG, CHINA (CNNTG)", "confidence": 0.97, "note": null }
 }
 ```
 
-Values are returned raw. Normalisation is code, so the model is never asked to do arithmetic.
+Values are returned raw and stay raw: nothing in code reformats, converts or normalises them.
+Whether two raw values denote the same thing is the field judge's question below.
 
 **Evidence check** (`compare/evidence.ts`, pure): for each field, `source_quote` must appear in
 the document text and `value` inside the quote, both sides whitespace-collapsed and case-folded.
@@ -407,10 +411,10 @@ pair whatever the verdict.
 **Decide** (`compare/decide.ts`):
 
 ```
-if any escalation reason collected  -> NEEDS_REVIEW (first reason by precedence:
-                                        unreadable > wrong_doc_type > missing_attachment > missing_value)
-else if diff set empty              -> OK
-else                                -> MISMATCH, defect_fields = diff set
+unreadable, wrong_doc_type, missing_attachment  -> NEEDS_REVIEW, decided by checkStructure before any field is read
+else if any field missing                       -> NEEDS_REVIEW missing_value (defect fields carried as provisional)
+else if no field judged different               -> OK
+else                                            -> MISMATCH, defect_fields = the fields judged different
 ```
 
 The submission row is derived, never hand-written:
@@ -540,7 +544,7 @@ images, OCR text is used and the reviewer sees the PNG.
 - Few-shot examples live in `agents/prompts/<step>/examples.<version>.json`, filled into the
   prompt's `{{examples}}`. `pnpm eval:examples` writes them from the train split, never from the
   holdout or the dev sample.
-- Timeouts: classify 60 s, extract 120 s, chat 240 s. The SDK's own retries are off
+- Timeouts: one request timeout of 600 s for every step (`REQUEST_TIMEOUT_MS` in `llm.ts`); there is no per-step value. The SDK's own retries are off
   (`maxRetries: 0`): a hidden second call doubles a hung call's wall time, holds a worker slot and
   makes the ledger understate calls and cost. `proxyLlmClient` retries a transient failure twice,
   at about 1 s and 3 s with jitter, while `isTransient(error)` holds (the proxy's verdict, never a

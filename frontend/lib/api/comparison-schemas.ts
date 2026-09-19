@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { ComparisonField, ReviewReason } from "./runs-schemas";
+import { ComparisonStatus } from "./scoring-schemas";
 
 /**
  * What the compare stage read from each document and how it judged the pair.
@@ -45,7 +46,7 @@ export type FieldJudgementView = z.infer<typeof FieldJudgementView>;
 
 /** How the pair came out: status and reason, the differing fields, and every field's judgement. */
 export const ComparisonView = z.object({
-  status: z.enum(["OK", "MISMATCH", "NEEDS_REVIEW"]),
+  status: ComparisonStatus,
   reviewReason: ReviewReason.nullable(),
   defectFields: z.array(ComparisonField),
   fields: z.array(FieldJudgementView),

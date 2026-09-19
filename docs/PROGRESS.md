@@ -79,10 +79,12 @@ field-judge 24 at 10.7 s and 0.81 USD, doc-type 48 at 6.3 s, classify 24 at 7.0 
 verifier where a quote fails.
 
 Seen on this run and left as is: on the flattened xlsx and pdf documents (`055`, `059`) the
-extractor returned the shipper with the "on behalf of" line or the address cells attached; the
-judge still called the pair the same at 0.85 and 0.75. The extract prompt now says the name only,
-not the cells after a bar or an on-behalf-of line; the sentence describes our parser's output
-format (`03-infra-deep.md` section 6), not the dataset. Whether it helps is the holdout's to say.
+extractor returned the shipper with a second line or the address cells attached; the judge still
+called the pair the same at 0.85 and 0.75. The extract prompt now says the name only, not the
+cells after a bar; that sentence describes our parser's output format (`03-infra-deep.md`
+section 6), not the dataset. A sentence about the second line itself was written and then
+removed by the review pass below, because it came from the sample. Whether the pairs still read
+the same is the holdout's to say.
 
 ### Phase 5 (built 2026-09-20, local)
 Exit checklist from `docs/phases/phase-05-parsing-and-triage.md`, checked on run `cd96e1c0`
@@ -474,6 +476,49 @@ dev machine:
 - 2026-09-19, **the api may read `backend/eval/split.json` and `dev-sample.json`**, which hold
   ids only, to start a dev or holdout run. It still never reads `ground_truth.json`:
   `eval/id-lists.ts` is split from `eval/ground-truth.ts` so the api does not even import it.
+
+## Design decisions (phase 6 review pass, 2026-09-20)
+Found by a reviewer given only the branch, `CLAUDE.md`, the spec and the checklist, with none of
+the building session's context, and fixed on the same branch. The behaviour changes are the
+first four.
+- **The verdict is written before the courtesy.** A scanned pair's provisional comparison ran
+  before the `unreadable` escalation was written, so a judge answer that never fit its schema on
+  garbled OCR text failed an email whose verdict was already known, and the submission would have
+  sent it as `OK`. The comparison now runs first inside a `TerminalError` guard, the escalation is
+  written whatever it returns, and a failed comparison leaves `provisional: null`. Outages still
+  pause the queue. A test drives the failing case.
+- **Rows before the stage move, on every path.** The `missing_value` and scanned paths wrote
+  `field_diffs` after `escalate` had moved the email to `review`, so a failed write was never
+  retried: the retry hit the stage guard and the trace stayed empty. The comparison row and its
+  judgements are now written first on every path, and the stage moves last.
+- **The verifier replaces only the fields it was asked about.** Its answer replaced all seven,
+  so a proven field re-copied with a slightly different quote was nulled and the pair escalated
+  for a field the first reading had proved. The second reading is merged into the first on the
+  doubted fields alone; a test re-copies a proven field with a bad quote and expects it kept.
+- **A field given up on carries no evidence.** `evidence_ok` was computed after the unlocated
+  fields were nulled, and a null with no placeholder passes the check by definition, so a value
+  the verifier could not find was stored as proven and shown as "quote found". It is stored
+  `false` now; the checklist's "0 of 336 failed" line above was partly this and is restated.
+- **Two prompt phrases came from the sample, not the brief.** "A line saying on whose behalf the
+  party acts" named a rendering the generator makes 56 times and the organisers' text never
+  mentions; "TBC" and "N/A" are generator tokens where the brief lists `???`, underscores, `TBA`
+  and `TBD`. Both removed; "or another stand-in for a value not yet known" stays.
+- **A half-written extraction is no extraction.** The row and its seven fields are separate
+  statements; a crash between them left a reading with fields missing that a retry read back and
+  tripped over. `forDocument` now answers null for fewer than seven fields, and the retry reads
+  the document again.
+- **The judge's answer is reused on a retry**, as the handover said every step's should be:
+  `llmCalls.latestAccepted` under the run's prompt version, parsed against the schema for the
+  same fields, so a retry after a failed write costs no call.
+- Also: the SQL fragment that names a defect field lives in `field-diffs.repo.ts`, the
+  aggregate that owns the table, instead of one repository importing it from another; the seven
+  field names are ordered in code, not in a third SQL copy; the frontend reuses the scoring
+  schema's `ComparisonStatus` and shows an empty placeholder as such; the processor tests are two
+  files, the pair path and the structural escalations, with a shared harness; and the infra doc's
+  extract paragraph, decide pseudocode, timeouts line and write order now describe the code.
+- **Not changed, noted:** an absent field the extractor is unsure of still goes to the verifier
+  (`fieldsInDoubt` on low confidence); on this run the model gave absent fields high confidence
+  and 1 of 48 documents was verified, so the "under 20%" line holds. Watch it on the full run.
 
 ## Design decisions (phase 6)
 - 2026-09-20, **the model reads and the model judges; code assembles.** Extraction is one call

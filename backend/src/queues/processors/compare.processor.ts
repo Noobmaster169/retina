@@ -8,10 +8,10 @@ import { childLogger } from "../../lib/logger";
 import type { LiveCalls } from "../../live";
 import { attachments, comparisons, documents, emailRuns, emails, llmCalls, type Run, runs } from "../../ontology/repositories";
 import { buildClassifyInput } from "../../pipeline/classify";
-import { checkStructure, decisionDetail, type TriageRequest } from "../../pipeline/compare";
+import { checkStructure, type TriageRequest } from "../../pipeline/compare";
 import { keys, type ObjectStore } from "../../storage";
 import type { CompareJob } from "../names";
-import { compareDocuments, provisionalResult, storeProvisional } from "./compare-pair";
+import { compareDocuments, escalateScanned, provisionalResult } from "./compare-pair";
 import { escalate } from "./escalate";
 import type { EmailRunIds } from "./ids";
 import { type ParsedDocument, parseDocuments } from "./parse-documents";
@@ -81,7 +81,8 @@ async function renderPages(deps: CompareDeps, docs: ParsedDocument[], ids: Email
 /**
  * A structural escalation, with what the reviewer needs beside the reason: the
  * page images for anything unreadable, and for a scan the comparison run on
- * the OCR text as a suggested result. A scan is never silently trusted.
+ * the OCR text as a suggested result. A scan is never silently trusted, and
+ * the suggestion never changes the verdict.
  */
 async function escalateStructure(
   deps: CompareDeps,
@@ -91,11 +92,12 @@ async function escalateStructure(
   outcome: { reason: Parameters<typeof escalate>[2]; detail: Record<string, unknown> },
 ): Promise<void> {
   const pages = outcome.reason === "unreadable" ? await renderPages(deps, docs, ids) : [];
-  const scanned = outcome.reason === "unreadable" && outcome.detail.scanned === true;
-  const provisional = scanned ? await provisionalResult(deps, set, ids, docs) : null;
-  const detail = { ...outcome.detail, pages, ...(scanned ? { provisional: provisional ? decisionDetail(provisional.decision) : null } : {}) };
+  const detail = { ...outcome.detail, pages };
+  if (outcome.reason === "unreadable" && outcome.detail.scanned === true) {
+    await escalateScanned(deps, ids, detail, await provisionalResult(deps, set, ids, docs));
+    return;
+  }
   await escalate(deps.pool, ids, outcome.reason, detail);
-  if (provisional) await storeProvisional(deps, ids, provisional);
 }
 
 /** Parse, type, check the structure, then compare or record why not. Returns early when the run was cancelled meanwhile. */

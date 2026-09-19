@@ -21,7 +21,7 @@ void _shape;
 export type JudgeOutput = Partial<Record<ComparisonField, Judgement>>;
 
 /** Exactly the fields asked about, each required: the model cannot answer for a field it was not given, nor skip one. */
-function judgeSchema(fields: ComparisonField[]): z.ZodType<JudgeOutput> {
+export function judgeSchema(fields: ComparisonField[]): z.ZodType<JudgeOutput> {
   return z.object(Object.fromEntries(fields.map((field) => [field, JudgementOut])));
 }
 

@@ -25,7 +25,7 @@ function Value({ value, extracted }: { value: string | null; extracted: Extracti
         .filter(Boolean)
         .join("\n")
     : undefined;
-  const shown = value ?? (extracted?.placeholder ? `"${extracted.placeholder}"` : "(none)");
+  const shown = value ?? (extracted && extracted.placeholder !== null ? `"${extracted.placeholder}"` : "(none)");
   return (
     <span title={title} className={`${value === null ? "text-muted" : ""} ${extracted && !extracted.evidenceOk ? "underline decoration-dotted decoration-amber-700" : ""}`}>
       {shown}

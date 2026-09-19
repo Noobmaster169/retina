@@ -215,10 +215,12 @@ end-to-end component.
 **Exit checklist.**
 
 - [ ] End-to-end on holdout at or above 0.80; full-set final score at or above 0.85. Numbers in `PROGRESS.md`.
-- [ ] Zero self-inflicted `missing_value` escalations on `.txt`, `.docx`, `.xlsx`, `.pdf` pairs.
+- [ ] Zero self-inflicted `missing_value` escalations on `.txt`, `.docx`, `.xlsx`, `.pdf` pairs of the main 500.
 - [ ] The 5 `missing_value` reference cases escalate as `missing_value`, not `MISMATCH`.
-- [ ] The UN/LOCODE false alarms from the brief (516, 518) produce no diff.
+- [ ] Port mutations with stale codes are caught (spot-check two `port_of_discharge` defects in txt pairs).
 - [ ] Extraction verifier ran on under 20% of documents.
+- [ ] Scanned pairs (512 to 514) escalate `unreadable` with a `provisional` result attached.
+- [ ] Every judged field is in `field_diffs` and every extracted value in `extraction_fields` with its quote.
 
 ## Phase 7: Dashboard and email trace
 

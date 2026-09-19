@@ -1,6 +1,6 @@
 import { type Category, ComparisonField, type DecidedBy, type EmailListItem, type Stage } from "../../contracts";
 import type { Queryable } from "../../db";
-import { DEFECT_FIELDS_SQL } from "./email-runs.repo";
+import { DEFECT_FIELDS_SQL } from "./field-diffs.repo";
 
 export interface NewEmail {
   emailId: string;

@@ -6,7 +6,7 @@ import { z } from "zod";
  */
 
 const Category = z.enum(["BL_COMPARISON", "SI_REQUEST", "INVOICE_QUERY", "GENERAL", "SPAM"]);
-const ComparisonStatus = z.enum(["OK", "MISMATCH", "NEEDS_REVIEW"]);
+export const ComparisonStatus = z.enum(["OK", "MISMATCH", "NEEDS_REVIEW"]);
 const ReviewReason = z.enum(["wrong_doc_type", "missing_attachment", "unreadable", "missing_value"]);
 
 const Prf = z.object({ tp: z.number(), fp: z.number(), fn: z.number() });

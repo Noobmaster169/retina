@@ -13,18 +13,36 @@ const log = childLogger({ module: "extract-fields" });
 
 const TEXT_CUT = "\n[the text was cut here for length]";
 
-function evidenceOf(text: string, fields: ExtractedFields): Record<ComparisonField, boolean> {
-  return Object.fromEntries(ComparisonField.options.map((field) => [field, checkEvidence(text, fields[field]).ok])) as Record<ComparisonField, boolean>;
+/** The seven fields as they will be stored: the values, and per field whether the text bears each out. */
+interface Read {
+  fields: ExtractedFields;
+  evidenceOk: Record<ComparisonField, boolean>;
 }
 
-/** The fields still unproven after the verifier are treated as not given: a value that cannot be found is uncertainty. */
-function dropUnproven(text: string, fields: ExtractedFields, why: string): ExtractedFields {
-  const out = { ...fields };
+/** A field given up on carries no evidence, whatever its null value would pass on its own. */
+function withEvidence(fields: ExtractedFields, text: string, unproven: Set<ComparisonField>): Read {
+  const evidenceOk = Object.fromEntries(
+    ComparisonField.options.map((field) => [field, !unproven.has(field) && checkEvidence(text, fields[field]).ok]),
+  ) as Record<ComparisonField, boolean>;
+  return { fields, evidenceOk };
+}
+
+/**
+ * The verifier's word on the fields in doubt, and the first reading's on the
+ * rest: a proven field is never replaced by a re-copy of it. A field still
+ * unproven after the second reading is not given: a value that cannot be found
+ * is uncertainty, and the pair goes to a person.
+ */
+function merged(text: string, first: ExtractOutput, second: ExtractOutput, doubts: Doubt[]): Read {
+  const fields = { ...first };
+  for (const doubt of doubts) fields[doubt.field] = second[doubt.field];
+  const unproven = new Set<ComparisonField>();
   for (const doubt of fieldsInDoubt(text, fields)) {
     if (doubt.reason === "low_confidence") continue;
-    out[doubt.field] = unlocated(fields[doubt.field], why);
+    fields[doubt.field] = unlocated(fields[doubt.field], "the verifier could not locate this value in the document");
+    unproven.add(doubt.field);
   }
-  return out;
+  return withEvidence(fields, text, unproven);
 }
 
 /**
@@ -33,17 +51,17 @@ function dropUnproven(text: string, fields: ExtractedFields, why: string): Extra
  * about become unlocated and a person sees them. An outage is not caught here
  * and pauses the queue as everywhere.
  */
-async function verified(deps: CompareDeps, set: PromptSet, input: { role: ExtractionRole; doc: ParsedDocument; text: string }, first: ExtractOutput, doubts: Doubt[], ids: EmailRunIds): Promise<ExtractedFields> {
+async function verified(deps: CompareDeps, set: PromptSet, input: { role: ExtractionRole; doc: ParsedDocument; text: string }, first: ExtractOutput, doubts: Doubt[], ids: EmailRunIds): Promise<Read> {
   const prompt = promptFor("extract-verify", set);
   try {
     const second = await verifyExtraction(deps, prompt, { role: input.role, format: input.doc.format, text: input.text, first, doubts }, ids);
-    return dropUnproven(input.text, second.value, "the verifier could not locate this value in the document");
+    return merged(input.text, first, second.value, doubts);
   } catch (error) {
     if (!(error instanceof TerminalError)) throw error;
     log.warn({ ...ids, stage: "extract", filename: input.doc.filename, err: error.message }, "verifier failed for good; the fields in doubt stand as not given");
-    const out = { ...first };
-    for (const doubt of doubts) out[doubt.field] = unlocated(first[doubt.field], `the verifier failed: ${error.message}`);
-    return out;
+    const fields = { ...first };
+    for (const doubt of doubts) fields[doubt.field] = unlocated(first[doubt.field], `the verifier failed: ${error.message}`);
+    return withEvidence(fields, input.text, new Set(doubts.map((doubt) => doubt.field)));
   }
 }
 
@@ -62,7 +80,7 @@ export async function extractDocument(deps: CompareDeps, set: PromptSet, doc: Pa
   const text = doc.text.length > config.EXTRACT_TEXT_CHARS ? doc.text.slice(0, config.EXTRACT_TEXT_CHARS) + TEXT_CUT : doc.text;
   const first = await extractFields(deps, prompt, { role, format: doc.format, text }, ids);
   const doubts = fieldsInDoubt(text, first.value);
-  const fields = doubts.length > 0 ? await verified(deps, set, { role, doc, text }, first.value, doubts, ids) : first.value;
+  const read = doubts.length > 0 ? await verified(deps, set, { role, doc, text }, first.value, doubts, ids) : withEvidence(first.value, text, new Set());
 
   await extractions.replace(deps.pool, {
     documentId: doc.id,
@@ -71,9 +89,9 @@ export async function extractDocument(deps: CompareDeps, set: PromptSet, doc: Pa
     promptVersion: prompt.version,
     model: first.model,
     verified: doubts.length > 0,
-    fields,
-    evidenceOk: evidenceOf(text, fields),
+    fields: read.fields,
+    evidenceOk: read.evidenceOk,
   });
   log.info({ ...ids, stage: "extract", filename: doc.filename, role, verified: doubts.length > 0, doubts: doubts.length }, "extracted");
-  return fields;
+  return read.fields;
 }
