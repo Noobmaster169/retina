@@ -26,14 +26,20 @@ const workers = startWorkers(
 log.info({ classify: config.CLASSIFY_CONCURRENCY, compare: config.COMPARE_CONCURRENCY }, "worker started");
 
 let shuttingDown = false;
+/** Never rejects: a signal handler cannot await it, so a failure is logged here or nowhere. */
 async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   log.info({ signal }, "worker stopping");
-  await workers.stop();
-  await closeQueues();
-  await closeRedis();
-  await closePool();
+  try {
+    await workers.stop();
+    await closeQueues();
+    await closeRedis();
+    await closePool();
+  } catch (error) {
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "shutdown failed");
+    process.exit(1);
+  }
   process.exit(0);
 }
 

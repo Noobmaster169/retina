@@ -37,10 +37,16 @@ const server = app.listen(config.PORT, () => log.info({ port: config.PORT }, "ap
 server.requestTimeout = 660_000;
 server.headersTimeout = 665_000;
 
+/** Never rejects: a signal handler cannot await it, so a failure is logged here or nowhere. */
 async function shutdown(): Promise<void> {
-  await closeQueues();
-  await closeRedis();
-  await closePool();
+  try {
+    await closeQueues();
+    await closeRedis();
+    await closePool();
+  } catch (error) {
+    log.error({ err: error instanceof Error ? error.message : String(error) }, "shutdown failed");
+    process.exit(1);
+  }
   process.exit(0);
 }
 

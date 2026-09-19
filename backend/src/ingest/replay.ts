@@ -51,7 +51,10 @@ export async function replayRun(
   const run = await runs.get(deps.pool, runId);
   if (!run) throw new TerminalError(`no such run: ${runId}`);
   // Two loops on one run would double its rate, so only the newest job may ingest.
-  if (run.ingestEpoch !== epoch) return "superseded";
+  if (run.ingestEpoch !== epoch) {
+    log.info({ runId, epoch, current: run.ingestEpoch }, "replay superseded before it began");
+    return "superseded";
+  }
 
   const all = run.emailIds ?? (await deps.source.listEmailIds());
   const ids = run.emailLimit ? all.slice(0, run.emailLimit) : all;
