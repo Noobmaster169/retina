@@ -110,9 +110,9 @@ All routes except `/health` need `Authorization: Bearer <key>`. The key is
 | `GET /emails?q=&filter=attachments&page=&limit=` | `{ emails: [{ id, from, subject, snippet, attachmentCount }], total, page, limit, counts }` |
 | `GET /emails/:id` | `{ email_id, from, subject, body, attachments }` |
 | `GET /emails/attachments/:name` | the file |
-| `POST /runs` | `{ ratePerSecond?: 0-50, limit?, emailIds? }` → a run summary. `0` is a burst |
-| `GET /runs`, `GET /runs/:id` | `{ id, status, ratePerSecond, totalEmails, stageCounts, queues, createdAt, startedAt, finishedAt }` |
-| `POST /runs/:id/pause`, `/resume`, `/cancel` | the run summary, or 409 when the status does not allow it |
+| `POST /runs` | `{ ratePerSecond?: 0-50, limit?, emailIds? }` → a run summary. `0` is a burst. Repeated `emailIds` are dropped |
+| `GET /runs`, `GET /runs/:id` | `{ id, status, ratePerSecond, totalEmails, stageCounts, queues, createdAt, startedAt, finishedAt }`. `queues` is `null` when Redis cannot be reached |
+| `POST /runs/:id/pause`, `/resume`, `/cancel` | the run summary, or 409 when the status does not allow it. A resume that cannot queue its job answers 503 and leaves the run `paused` |
 | `GET /runs/:id/emails?stage=&q=&page=&pageSize=` | `{ emails: [{ emailId, from, subject, stage, attachmentCount, outcome }], total, page, pageSize }` |
 
 ```bash

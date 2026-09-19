@@ -210,9 +210,21 @@ Replay controller (`ingest/replay.ts`), driven by `core.runs`:
 - `POST /runs { source: "averis", ratePerSecond: 2, limit?: number, emailIds?: string[] }`
   creates a run and adds a single `ingest-run` repeatable-until-done job on a small internal
   queue `ingest`. The worker takes one email per tick, so pausing a run means pausing that job.
-- Per email: insert `core.emails` (upsert on `email_id`; content is identical across runs),
-  insert `core.email_runs`, copy attachments to MinIO under the run prefix, insert
-  `core.attachments`, then enqueue `classify`.
+  Repeated `emailIds` are dropped.
+- The `ingest-run` payload is `{ runId, epoch }`. A new run starts at epoch 0.
+  `POST /runs/:id/resume` raises `core.runs.ingest_epoch` and adds a job
+  `${runId}__resume__${epoch}` carrying the new value. A loop checks status and epoch before
+  every email and stands down as `superseded` when the epoch has moved on, so an older job that
+  was still waiting, or asleep between two emails, never ingests alongside the new one. If the
+  resume job cannot be queued the run goes back to `paused`.
+- Cancel commits `cancelled`, then removes the run's jobs that have not started. A failed
+  removal is logged, not returned. The classify and compare processors return at once for a
+  cancelled run, which covers a job that was already active or added a moment later. The run's
+  emails stay at the stage they had reached.
+- Per email: copy attachments to MinIO under the run prefix, then in one short transaction
+  insert `core.emails` (upsert on `email_id`; content is identical across runs),
+  `core.attachments` and `core.email_runs`, then enqueue `classify`. Downloads and uploads
+  happen before the transaction opens, so a slow inbox or MinIO never holds a pooled connection.
 - `ratePerSecond: 0` means burst: enqueue everything immediately.
 
 ### 5.2 Classify
@@ -435,6 +447,7 @@ Two schemas. `core` is normalised and written by the pipeline. `analytics` is de
 
 ```sql
 runs               (id uuid pk, source text, rate_per_second numeric, status text,
+                    ingest_epoch int default 0,   -- which ingest job owns the run; every resume raises it
                     prompt_set jsonb, started_at, finished_at, created_by text)
 clients            (domain text pk, name text, tier smallint default 3, kind text check (kind in ('customer','internal','forwarder','spam')), updated_at)
 emails             (email_id text pk, from_addr text, sender_domain text, subject text, body text,
@@ -533,7 +546,7 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 |---|---|
 | `GET /health` | `{ status: ok \| degraded, checks: { postgres, redis, minio, inbox } }`, 2 s per check. Degraded is still 200; only postgres down is 503, which is the signal auto-deploy rolls back on. The proxy is left out on purpose: a cold model would read as an outage. doc-extract joins in phase 5 |
 | `POST /runs` | start a run `{ source, ratePerSecond, limit?, emailIds?, promptSet? }` |
-| `GET /runs`, `GET /runs/:id` | list, detail with stage counts, queue depth, cost, score |
+| `GET /runs`, `GET /runs/:id` | list, detail with stage counts, queue depth, cost, score. `queues` is `null` when Redis cannot be reached; the rest comes from Postgres and is still served |
 | `POST /runs/:id/pause`, `/resume`, `/cancel` | control the replay |
 | `POST /runs/:id/submit` | build submission, post to averis, store scoreboard |
 | `GET /runs/:id/submission.json` | download the payload |
