@@ -1,7 +1,10 @@
 # Progress
 
-Current phase: 3, in progress on `phase-03-vps-deploy`. Phase 2 merged to `main` on
-2026-09-19 with its exit checklist green.
+Current phase: 3. The code is merged to `main`; the box is not deployed yet. Everything that
+could be built and tested without SSH access to the Monash box is done and green in
+`deploy/sim`. The one manual step left, and everything to check after it, is
+`docs/phases/phase-03-handover.md`, written for whoever has that access. Phase 2 merged to
+`main` on 2026-09-19 with its exit checklist green.
 
 ## Scores
 | Phase | Holdout final | Full final | Stage1 | Stage3 | E2E | Notes |
@@ -170,7 +173,10 @@ Deploy only. Nothing under `backend/src` changed except one header in the fronte
       fixed (see below).
 - [x] CI gates run on pull requests, `pnpm test` runs against a Postgres service container, and
       the frontend is built.
+Everything below needs SSH access to the box, which the machine that built this phase does not
+have. `docs/phases/phase-03-handover.md` is the runbook, including what to write back here.
 - [ ] `bootstrap-wizard.sh` run on the box; `https://<domain>/health` reports every check up.
+- [ ] `~/retina/auto-deploy.log` read, and which of the two defects above actually bit recorded.
 - [ ] A 20-email run started from the Vercel page completes on the box and scores through the
       box's inbox.
 - [ ] A push to `main` deploys within 5 minutes without manual steps.
