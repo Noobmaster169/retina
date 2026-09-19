@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+from types import SimpleNamespace
 
 import pytest
 
 from conftest import mock_config, sse_events
+from llm_proxy.api.messages import _complete
 from llm_proxy.config import Capability
+from llm_proxy.errors import ClientGone
 
 
 def message(**body):
@@ -278,3 +282,35 @@ async def test_unsupported_feature_is_a_400(client):
     assert body["error"]["type"] == "invalid_request_error"
     assert "cannot serve tool_use" in body["error"]["message"]
     assert body["error"]["detail"] == {"alias": "test", "route": "mock/echo"}
+
+
+async def test_abandoned_call_is_cancelled_rather_than_left_holding_a_slot():
+    """A caller that hung up must not keep a claudecli slot warm.
+
+    `claude -p` runs at max_concurrency 2. A backend whose own timeout fired has
+    already requeued its job, so an abandoned call that keeps running blocks the
+    retry behind an answer nobody will read. The providers reap their child on
+    cancellation; this proves something now triggers it.
+    """
+    started, cancelled = asyncio.Event(), asyncio.Event()
+
+    async def never_answers(_req):
+        started.set()
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    async def is_disconnected():
+        # Connected until the call is under way, gone immediately after.
+        return started.is_set()
+
+    with pytest.raises(ClientGone):
+        await _complete(
+            SimpleNamespace(complete=never_answers),
+            SimpleNamespace(model="test", model_id="mock/echo"),
+            SimpleNamespace(is_disconnected=is_disconnected),
+        )
+
+    await asyncio.wait_for(cancelled.wait(), timeout=1)

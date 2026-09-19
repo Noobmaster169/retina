@@ -36,9 +36,6 @@ which phase is current and what is left in it.
 ## Commands
 
 ```bash
-# email server + scorer, inside emails/
-docker compose up --build -d        # :8080, GET /emails, POST /submit
-
 # proxy, inside proxy/
 ./start.sh                          # :4000
 pytest
@@ -59,7 +56,10 @@ pnpm type-check
 uv run uvicorn app:app --port 8000
 uv run pytest && uv run ruff check .
 
-# local infra, from backend/ (postgres :5433, redis :6379, minio :9000, the inbox :8080)
+# local infra, from backend/ (postgres :5433, redis :6379, minio :9000, the inbox :8080).
+# This also starts the Averis inbox and scorer. Start it here and not from
+# emails/: both define the same service on 8080, and only this one binds it to
+# loopback.
 docker compose -f compose.local.yaml up -d
 ```
 
@@ -75,9 +75,11 @@ docker compose -f compose.local.yaml up -d
   source is the Averis server in `emails/`, reached at `EMAIL_SERVER_URL`.
 - `storage/` wraps MinIO. `queues/` wraps BullMQ. `llm.ts` wraps the proxy.
 - `services/doc-extract` is a separate Python service. The worker talks to it over HTTP only.
-- `frontend/lib/api-client.ts` is the only door from the frontend to the backend.
+- `frontend/lib/api-client.ts` is the only door from the frontend to the backend: a barrel over
+  `frontend/lib/api/`, one file per resource plus `transport.ts`.
 - Contracts (request and response types) live in `backend/src/contracts.ts` and are mirrored
-  by hand into `frontend/lib/api-client.ts`.
+  by hand as zod schemas in `frontend/lib/api/`. Every response is parsed, so a drift fails at
+  the boundary naming the field instead of reaching a component as undefined.
 
 ## Module rules
 
@@ -120,8 +122,9 @@ needed.
 - Zod schema at every boundary: HTTP bodies, job payloads, LLM outputs, env, doc-extract
   responses. Derive TS types from schemas, never the other way around.
 - Errors: throw `RetryableError` or `TerminalError` from `lib/errors.ts`. Workers decide retry
-  from the type (a `TerminalError` becomes BullMQ's `UnrecoverableError`). Never swallow an
-  error; never `catch {}`.
+  from the type (a `TerminalError` becomes BullMQ's `UnrecoverableError`). A dependency that
+  answered with a failure is one `UpstreamError` carrying its status and, where it states one,
+  its own `retryable` verdict. Never swallow an error; never `catch {}`.
 - Comments say why, never what. No banner comments, no commented-out code, no TODO without a
   `PROGRESS.md` entry.
 - No emoji in code, logs, or docs.
@@ -205,6 +208,8 @@ needed.
 - Tailwind; no CSS beyond `globals.css`. No component library beyond what the template ships.
 - The password gate is `lib/site-gate.ts` plus `proxy.ts`, keyed by `SITE_PASSWORD`. Extend its
   matcher; do not add a second gate.
+- Every backend response is parsed with zod in `lib/api/`. No `as` on a fetch result.
+- `eslint` enforces the 200-line rule for the frontend. Split rather than raise it.
 
 ## Python service rules
 

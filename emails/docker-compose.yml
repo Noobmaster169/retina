@@ -11,8 +11,12 @@ services:
   inbox:
     build: ./server
     ports:
-      # host 8080 -> container 8000 (8000 often taken locally; change freely)
-      - "8080:8000"
+      # host 8080 -> container 8000 (8000 often taken locally; change freely).
+      # Bound to loopback, which is a deviation from the organisers' kit: the
+      # unqualified "8080:8000" publishes the dataset and POST /submit on every
+      # interface, and a hackathon runs on shared wifi. backend/compose.local.yaml
+      # starts this same service and is the one the docs point at.
+      - "127.0.0.1:8080:8000"
     volumes:
       # dataset served to participants (inbox + attachments + sample_submission)
       - ./data_v2:/data:ro

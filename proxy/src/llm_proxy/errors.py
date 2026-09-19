@@ -99,6 +99,19 @@ class ProviderTimeout(ProviderError):
     code = "provider_timeout"
 
 
+class ClientGone(ProxyError):
+    """The caller hung up before the answer was ready, so the work was abandoned.
+
+    Nobody reads this body. It exists so the event is logged as itself rather
+    than as a mystery, and marked retryable because nothing about the request
+    was wrong.
+    """
+
+    status = 499
+    code = "client_gone"
+    retryable = True
+
+
 def render_error(err: ProxyError) -> tuple[int, dict[str, Any]]:
     """Render a ProxyError into the Anthropic error envelope.
 

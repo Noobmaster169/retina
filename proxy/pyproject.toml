@@ -21,6 +21,7 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
+    "ruff>=0.6",
 ]
 
 [tool.setuptools.packages.find]
@@ -29,3 +30,14 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 120
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# The `# noqa: BLE001` markers in providers/ were suppressing a rule that had
+# never run: there was no ruff config and no lint step. BLE is on so they mean
+# something again. Import sorting and pyupgrade are deliberately left off: on
+# inherited code they produce a wide diff of pure churn and catch no defects.
+select = ["E", "F", "W", "B", "BLE"]
