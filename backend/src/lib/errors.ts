@@ -30,3 +30,15 @@ export class TerminalError extends Error {
 export function isRetryable(error: unknown): boolean {
   return !(error instanceof TerminalError);
 }
+
+/** A proxy or gateway failure carrying the HTTP status the API should relay. */
+export class LlmProxyError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+    options?: { cause?: unknown },
+  ) {
+    super(message, options);
+    this.name = "LlmProxyError";
+  }
+}

@@ -5,7 +5,15 @@
 Phase 2 is done. Where the work items below disagree with this list, this list is what the code
 does.
 
-- **The prompt is at `v2`, and `v1` stays on disk with its score.** `v1` defined `SI_REQUEST` as
+- **The prompt is at `v3`; `v1` and `v2` stay on disk with their scores.** The registry serves the
+  highest version, so `v3` is what runs. It is `v2` with two changes, both made because the schema
+  became a provider constraint: the ending no longer says "reason briefly, then answer", since a
+  constrained answer has no room for prose before it, and `ClassifyOutput` now lists `rationale`
+  first, then `category`, then `confidence`, so the model still reasons before it commits. It also
+  drops `max_tokens`, which the registry now allows. On the holdout it scores **1.0000 macro-F1,
+  104 of 104**, against `v2`'s 0.9938: the one email `v2` missed (`email_504`, a `wrong_doc_type`
+  case read as SI_REQUEST) is now right.
+- **The prompt was at `v2` for the first measured run, and `v1` stays on disk with its score.** `v1` defined `SI_REQUEST` as
   "asks for a Shipping Instruction" and read every one of the holdout's 25 as `BL_COMPARISON`
   (stage 1 macro-F1 0.7098). The definition was wrong, not the model: in the organisers' generator
   (`emails/data_v2/emails.py`) an `SI_REQUEST` hands the instruction over and asks for the draft
@@ -25,7 +33,17 @@ does.
   shapes, to keep both files under 200 lines. `contracts.test.ts` reads `scoring.py` and the
   README and fails on any drift between them, the contracts and the check constraints.
 - **Config:** `LLM_MODEL_CLASSIFY` (unset: the prompt file's `sonnet`), `CLASSIFY_BODY_CHARS`
-  (4000), `EVAL_GROUND_TRUTH_PATH`. Locally the proxy runs on 4001 when another project holds 4000.
+  (4000), `EVAL_GROUND_TRUTH_PATH`, `CLASSIFY_CONCURRENCY` (2, matching what the proxy serves at
+  once). Locally the proxy runs on 4001 when another project holds 4000.
+- **The schema is a provider constraint, not only prompt text.** `structured.ts` sends it as
+  `outputSchema`, `llm.ts` as `output_config.format`, and the proxy as `claude -p --json-schema`
+  or an OpenAI `response_format`. Zod still validates: a provider may ignore the constraint, and
+  the JSON Schema subset carries no numeric or string bounds. `max_tokens` is optional everywhere
+  and a `max_tokens` stop is terminal, not retried.
+- **A model outage pauses the classify queue** instead of failing the run's emails
+  (`queues/failure-policy.ts`). Section 4.5 of `03-infra-deep.md` has the mechanism.
+- **`SubmitRefused` carries `forcible`**, so the UI can tell a refusal `?force=true` would get past
+  from one it would not (an earlier submission of the same run still being scored).
 - **Not done:** the Score column was checked over HTTP (server render, the submit and eval
   handlers, the error paths), not clicked in a browser: the browser tool failed to connect in the
   session that built it.
@@ -278,7 +296,7 @@ a missing email, and is listed in `incomplete`.
 
 | Route | Behaviour |
 |---|---|
-| `POST /runs/:id/submit?force=false` | build; if `incomplete` is non-empty and not forced, 409 `{ incomplete }`; else store the payload in MinIO at `submissions/{runId}/{ts}.json`, `POST {EMAIL_SERVER_URL}/submit`, store a `submissions` row with the scoreboard and `final_score`; return `{ submissionId, finalScore, scoreboard }` |
+| `POST /runs/:id/submit?force=false` | build; 409 `{ error, incomplete, forcible }` when the run holds fewer rows than `totalEmails` or `incomplete` is non-empty (both `forcible: true`) and when a submission for the run is already being scored (`forcible: false`); else store the payload in MinIO at `submissions/{runId}/{ts}.json`, insert the `submissions` row, `POST {EMAIL_SERVER_URL}/submit`, record the scoreboard and `final_score` on that row; return `{ submissionId, finalScore, scoreboard }`. A scorer that refuses is a 502 and one that cannot be reached a 503, both leaving the row unscored |
 | `GET /runs/:id/submission.json` | the current payload, built live |
 | `GET /runs/:id/submissions` | history with `final_score`, `created_at`, `forced` |
 | `GET /eval/runs/:id` | dev only, 404 when `EVAL_GROUND_TRUTH_PATH` is unset: `{ full, holdout, wrong: { stage1, stage3, e2e } }` |
@@ -343,17 +361,25 @@ curl -s -X POST localhost:8091/runs/<id>/submit -H "authorization: Bearer $TEAM_
 
 ## Exit checklist
 
-- [ ] `pnpm eval:parity` passes: the TS scorer and `score_cli.py` agree to four decimals.
-- [ ] No rule decides a category: nothing under `pipeline/classify/` or in the classify processor
+- [x] `pnpm eval:parity` passes: the TS scorer and `score_cli.py` agree to four decimals.
+      (7 cases, every number equal; see the phase 2 block in `PROGRESS.md`)
+- [x] No rule decides a category: nothing under `pipeline/classify/` or in the classify processor
       branches on sender, subject or body content, and the prompt names no sender, domain, subject
-      code or phrase from the dataset.
-- [ ] Every enum value in the database, the contracts, the frontend mirror and the submission is
+      code or phrase from the dataset. (`registry.test.ts` fails if the shipped prompt names one)
+- [x] Every enum value in the database, the contracts, the frontend mirror and the submission is
       one of the organisers'; the check constraints and `contracts.test.ts` hold it there.
-- [ ] Zero-shot stage 1 macro-F1 at or above 0.90 on the holdout, on `sonnet`.
-- [ ] Submit from the UI shows `final_score`; `pnpm eval:score` gives the same number on the full set.
-- [ ] The submission includes all 520 ids; one `llm_calls` row per attempt with tokens, cost and latency.
-- [ ] Holdout numbers for phase 2 recorded in the `PROGRESS.md` scores table.
-- [ ] `eval/split.json` committed; `eval/reports/` gitignored.
+- [x] Zero-shot stage 1 macro-F1 at or above 0.90 on the holdout, on `sonnet`.
+      (`v3`: 1.0000, 104 of 104, run `0a8ed5a5`. `v2`: 0.9938. `v1`: 0.7098)
+- [x] Submit from the UI shows `final_score`; `pnpm eval:score` gives the same number on the full set.
+      (the holdout run submitted through the frontend's own route: the organisers' scorer and
+      `eval/reports/0a8ed5a5-....json` both give 0.09475409836065575 over all 520)
+- [ ] **OPEN: the submission includes all 520 ids.** One `llm_calls` row per attempt with tokens,
+      cost and latency is verified (270 rows, 0 failed, 7.2 s average). The full run stopped at 150
+      of 520 classified so the remaining calls could be moved off this machine's Claude
+      subscription and onto the Monash box's, through an SSH tunnel to its proxy. Resume the
+      worker with the tunnel up: the 370 queued jobs drain and the run finishes.
+- [x] Holdout numbers for phase 2 recorded in the `PROGRESS.md` scores table.
+- [x] `eval/split.json` committed; `eval/reports/` gitignored.
 
 ## Hand-off notes for phase 3
 

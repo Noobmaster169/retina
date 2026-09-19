@@ -237,8 +237,9 @@ export interface Scoreboard {
 
 export type SubmitOutcome =
   | { ok: true; finalScore: number; scoreboard: Scoreboard }
-  /** `incomplete` is set on a 409: the run has unfinished emails, and `force` submits anyway. */
-  | { ok: false; status: number; message: string; incomplete?: string[] };
+  /** On a 409 `forcible` says whether `force` would get past this refusal: a run still ingesting or
+   * holding unfinished emails can be forced, one whose earlier submission is still being scored cannot. */
+  | { ok: false; status: number; message: string; incomplete?: string[]; forcible?: boolean };
 
 /** Dev only: a run scored by the backend against the answer key it holds locally. */
 export interface EvalReport {
@@ -331,6 +332,7 @@ export async function submitRun(id: string, force: boolean): Promise<SubmitOutco
     scoreboard?: Scoreboard;
     error?: string;
     incomplete?: string[];
+    forcible?: boolean;
   };
   if (!response.ok || body.finalScore === undefined || !body.scoreboard) {
     return {
@@ -338,6 +340,7 @@ export async function submitRun(id: string, force: boolean): Promise<SubmitOutco
       status: response.status,
       message: body.error ?? `Backend returned ${response.status}`,
       incomplete: body.incomplete,
+      forcible: body.forcible,
     };
   }
   return { ok: true, finalScore: body.finalScore, scoreboard: body.scoreboard };

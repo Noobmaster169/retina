@@ -48,6 +48,20 @@ python -m venv .venv && .venv/Scripts/python.exe -m pip install -e ".[dev]"
 PYTHON=.venv/Scripts/python.exe LLM_PROXY_PORT=4001 ./start.sh
 ```
 
+**Or use a proxy someone else is already running.** Where the proxy itself is not reachable (the
+Monash box keeps it on its Docker bridge, never public), point `LLM_PROXY_URL` at another Retina
+API's `/ai/chat`, which fronts one:
+
+```
+LLM_PROXY_URL=https://<host>/ai/chat
+TEAM_API_KEY=<that API's key>
+```
+
+A URL ending in `/ai/chat` selects that transport; anything else is a proxy and gets the Anthropic
+wire. The bearer sent is `TEAM_API_KEY`. The cost: `/ai/chat` has no structured output, so the
+answer schema reaches the model through the prompt only and the zod parse in `agents/structured.ts`
+is the whole guarantee. Every call then spends that host's Claude login, not yours.
+
 **2. Backend**
 
 ```bash
@@ -61,6 +75,9 @@ pnpm install && pnpm db:migrate && pnpm dev     # the api
 run is created and never moves. It classifies every email with an LLM call through the
 proxy, so the proxy must be up and `claude` logged in. The proxy serves 2 Claude calls at
 a time: set `CLASSIFY_CONCURRENCY=2`, and expect about 25 minutes for the full inbox.
+If the proxy goes down mid-run the worker does not fail the emails: it logs `model unavailable,
+pausing the classify queue`, stops taking classify jobs for 30 s and puts the job back with its
+attempts untouched, so the run carries on once the proxy is back.
 
 ```bash
 cd backend
@@ -126,7 +143,7 @@ All routes except `/health` need `Authorization: Bearer <key>`. The key is
 | `POST /runs` | `{ ratePerSecond?: 0-50, limit?, emailIds? }` → a run summary. `0` is a burst. Repeated `emailIds` are dropped |
 | `GET /runs`, `GET /runs/:id` | `{ id, status, ratePerSecond, totalEmails, stageCounts, queues, llm, lastSubmission, createdAt, startedAt, finishedAt }`. `queues` is `null` when Redis cannot be reached; `llm` is the model calls, tokens and cost of the run; `lastSubmission` carries the headline scores |
 | `POST /runs/:id/pause`, `/resume`, `/cancel` | the run summary, or 409 when the status does not allow it. A resume that cannot queue its job answers 503 and leaves the run `paused` |
-| `POST /runs/:id/submit?force=false` | sends the run to the organisers' scorer → `{ submissionId, finalScore, scoreboard }`. 409 `{ incomplete }` while emails are unfinished, unless forced. 502 when the scorer refuses |
+| `POST /runs/:id/submit?force=false` | sends the run to the organisers' scorer → `{ submissionId, finalScore, scoreboard }`. 409 while the run is still ingesting, and 409 `{ incomplete }` while emails are unfinished, both unless forced; 409 while an earlier submission of the same run is still being scored. 502 when the scorer refuses, which leaves an unscored submission row pointing at the stored payload |
 | `GET /runs/:id/submission.json` | the payload as it would be sent now: `{ email_id: { category, status, review_reason, has_defect, defect_fields, decided_by } }`, the organisers' enums only |
 | `GET /runs/:id/submissions` | `{ submissions: [{ id, finalScore, nEmails, forced, createdAt, scoreboard }] }` |
 | `GET /eval/runs/:id` | dev only, 404 unless `EVAL_GROUND_TRUTH_PATH` is set: the run scored locally, `{ full, holdout, run, wrong }` |

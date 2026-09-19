@@ -99,7 +99,12 @@ export const SubmitResult = z.object({ submissionId: z.string(), finalScore: z.n
 export type SubmitResult = z.infer<typeof SubmitResult>;
 
 /** 409: the run has not finished ingesting, or holds emails the pipeline has not finished with (`?force=true` submits anyway), or is being scored right now. */
-export const SubmitRefused = z.object({ error: z.string(), incomplete: z.array(z.string()) });
+/** `forcible` says whether `?force=true` would get past this refusal; a submission already being scored would not. */
+export const SubmitRefused = z.object({
+  error: z.string(),
+  incomplete: z.array(z.string()),
+  forcible: z.boolean(),
+});
 export type SubmitRefused = z.infer<typeof SubmitRefused>;
 
 /** Dev only: scored here against the answer key. `run` is the scoreboard over just the emails this run holds. */

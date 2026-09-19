@@ -8,9 +8,10 @@ Current phase: 2
 | 1 | n/a | n/a | n/a | n/a | n/a | No classification yet: every email ends `done` / `OK` |
 | 2, prompt v1 | 0.2129 | not run | 0.7098 holdout | 0 | 0 | Zero-shot sonnet. All 25 holdout SI_REQUEST read as BL_COMPARISON: the definition was wrong |
 | 2, prompt v2 | 0.2981 | incomplete, see below | 0.9938 holdout (103 of 104) | 0 | 0 | Zero-shot sonnet, categories defined by paperwork stage. Stage 3 and E2E are 0 until phases 5 and 6 read the documents |
+| 2, prompt v3 | 0.3000 | incomplete, see below | 1.0000 holdout (104 of 104) | 0 | 0 | `v2` with the schema as a provider constraint: no "reason briefly" ending, `rationale` first in the schema, no `max_tokens`. Run `0a8ed5a5`, 104 calls, 0 failed. Fixes `v2`'s only miss, `email_504` |
 
-Stage 1 carries 0.30 of the final score, so 0.2981 is what a perfect classifier with no document
-check would get (0.30). The holdout final cannot rise further until phase 5.
+Stage 1 carries 0.30 of the final score, so 0.3000 is exactly what a perfect classifier with no
+document check gets, and `v3` is there. The holdout final cannot rise further until phase 5.
 
 ## Phase checklists
 ### Phase 1 (done, 2026-09-19, local)
@@ -69,24 +70,72 @@ Ten findings, all fixed on `phase-01-skeleton` before the merge. How each was ch
 - [x] Zero-shot stage 1 macro-F1 at or above 0.90 on the holdout, on `sonnet`
       (`v2`: 0.9938, 103 of 104. The miss is `email_504`, a `wrong_doc_type` case read as SI_REQUEST
       at confidence 0.70. `v1` was 0.7098)
-- [ ] **OPEN: a clean run of all 520.** The full run classified 429 emails and then failed the
-      last 91 in four seconds with "classify/v3.md has bad frontmatter", before any model call.
-      Cause: a second session was editing this checkout at the same time and added a `v3.md` that
-      is valid under its edited registry and not under the code the running worker had loaded; the
-      worker reads the newest prompt file on every call. Not a model or pipeline failure. The 429
-      that ran are 429 of 429 correct, 341 of them train ids that played no part in writing `v2`.
-      Repeat the full run once that session's changes are committed, then tick this and the next.
-- [ ] **OPEN, same cause:** submission of all 520 ids from one complete run, and `final_score` from
-      the UI equal to `pnpm eval:score` on the full set. What was verified instead, on the 104-email
-      holdout run: the organisers' scorer answered 0.07280788387344309 and the local scorer gave
-      0.07280788387344309 for the same payload, and the payload was stored before it was sent.
+- [ ] **OPEN: a clean run of all 520.** Two attempts. The first, under `v2`, classified 429 and
+      then failed the last 91 in four seconds with "classify/v3.md has bad frontmatter": a second
+      session was editing this checkout and added a `v3.md` valid only under its edited registry,
+      and the worker reads the newest prompt file on every call. Not a model or pipeline failure;
+      those 429 are 429 of 429 correct. The second, under `v3` (run `044367f9`), reached 150 of 520
+      with 0 failures and was stopped on purpose: every call was spending this machine's Claude
+      subscription, and the remaining 370 are to run through the Monash box's proxy over an SSH
+      tunnel instead. The 370 jobs are waiting in Redis; starting the worker with the tunnel up
+      finishes the run, and the classify processor skips the 150 already classified.
+- [x] Submit from the UI shows `final_score` and `pnpm eval:score` gives the same number on the
+      full set, verified on the 104-email holdout run `0a8ed5a5` submitted through the frontend's
+      own route: the organisers' scorer answered 0.09475409836065575 and the local scorer gave
+      0.09475409836065575 over all 520. The payload was stored before it was sent.
+- [ ] **OPEN:** that submission over all 520 ids from one complete run. Needs the run above.
 - [x] One `llm_calls` row per attempt with tokens, cost and latency
       (holdout `v2`: 104 calls, 0 failed, 0 retries, 7.7 s average, 11.87 USD at API prices)
 - [x] `eval/split.json` committed (416 train, 104 holdout, 9 of the 46 defects held out);
       `eval/reports/` gitignored
-- [x] 152 backend tests, type-check clean in both packages, frontend lint clean; the production
+- [x] 169 backend tests, type-check clean in both packages, frontend lint clean; the production
       image builds and boots with no Redis, MinIO or answer key (`/health` 200 degraded, `/eval` 404,
-      submit 503)
+      submit 503). The image check was made when the suite stood at 152 tests and has not been
+      repeated since
+
+### Phase 2 review (2026-09-19)
+Twelve findings from the review of scope and classify concurrency, plus what the handover left
+open. How each was checked is in brackets.
+- [x] A short proxy outage permanently failed a run's emails. `LlmUnavailableError` pauses the
+      classify queue for 30 s and returns the job without spending an attempt
+      (`queues/failure-policy.ts`). (Live: the proxy was killed mid-run with 8 emails in flight.
+      8 pauses logged, 0 emails failed, 0 attempts spent, `max(attempt)` still 0, and all 8
+      finished `done` once the proxy was back. Also a table-driven unit test.)
+- [x] Two restarts mid-call left an email in `classifying` forever. `maxStalledCount: 10`, and a
+      job stalled past its allowance is treated as final. (Unit test.)
+- [x] A rerun of classify paid twice and could drag a finished email backwards. The processor
+      reads the stored classification first and every stage move names the stages it may start
+      from. (`processors.rerun.test.ts`.)
+- [x] Cancel was not honoured after the model call returned. The status is re-read after it.
+      (`processors.rerun.test.ts`.)
+- [x] A half-ingested run submitted without `force`. 409 naming how many of how many emails it
+      holds. (Route test.)
+- [x] The SDK's own retries hid calls and blocked worker slots. `maxRetries: 0`. (By reading.)
+- [x] Double submit left an orphan payload. One submission per run at a time, the row written
+      before the scorer is called, `recordScore` after, and only scored rows count as the run's
+      last submission. (Route tests, and live: with the inbox stopped the submit answered 503 and
+      left an unscored row while `lastSubmission` still showed the earlier 0.0947.)
+- [x] Truncated output looked like bad JSON. No cap by default, and a `max_tokens` stop is
+      terminal. (`structured.test.ts`.)
+- [x] Classify concurrency was 4 against a proxy that serves 2. Default and `.env.example` are 2.
+- [x] `SubmitResult` and `SubmitRefused` were unused. The route types its bodies with them, and
+      `SubmitRefused` gained `forcible` because the Score cell showed every refusal as
+      "0 unfinished, submit anyway" with a force button that could not help. (Route test, and live
+      through the frontend's own route: 409, "370 emails are not finished", `forcible: true`.)
+- [x] `EVAL_GROUND_TRUTH_PATH` was uncommented in `.env.example`. Commented out, so copying the
+      file cannot hand the api the answer key.
+- [x] The unused `classifications` columns (`ver_category`, `ver_confidence`, `human_category`,
+      `decided_by` values `verifier` and `human`) stay: they are the phase 4 verifier and phase 8
+      human review, `03-infra-deep.md` already specifies them, and dropping them would cost a
+      migration and a local database reset. Decided with the user on 2026-09-19.
+- [x] `GET /eval/runs/:id` stays dev-only, off unless `EVAL_GROUND_TRUTH_PATH` is set and 404 on
+      the VPS. Decided with the user on 2026-09-19.
+- [x] `buildSubmission` held SQL. The query is `emailRuns.listForSubmission`; `assembleSubmission`
+      is pure.
+
+The holdout was read a third time, to score `v3`: 1.0000, 104 of 104. `v3` changes only the
+prompt's ending and the field order of its schema, both forced by the schema becoming a provider
+constraint, and the change was not chosen by looking at holdout emails.
 
 How the holdout was used, stated plainly: it was read twice. The `v1` read is what showed the
 SI_REQUEST definition was wrong. The fix came from the organisers' generator, not from the holdout

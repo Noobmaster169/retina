@@ -1,12 +1,19 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-
 import { config } from "./config";
+import { LlmProxyError } from "./lib/errors";
+import { chatViaGateway, isGatewayUrl, listModelsViaGateway } from "./llm-gateway";
 
 /**
  * The llm-proxy client. The proxy speaks the Anthropic wire, owns every
  * provider (Claude Code subscription, local Ollama) and authenticates nobody
  * — the API's bearer check in auth.ts is the only thing in front of it.
+ *
+ * Where the proxy cannot be reached directly, `LLM_PROXY_URL` may instead name
+ * another Retina API's `/ai/chat`, which fronts a proxy on its own host. That
+ * door takes a bearer and speaks this project's chat shape rather than the
+ * Anthropic wire, so the transport is chosen from the URL. Everything above
+ * this module sees one `chat()` either way.
  */
 
 export interface ChatMessage {
@@ -58,20 +65,14 @@ const REQUEST_TIMEOUT_MS = 600_000;
  */
 const DEFAULT_MAX_TOKENS = 8000;
 
-/** An error carrying the HTTP status the API should relay. */
-export class LlmProxyError extends Error {
-  constructor(
-    public readonly status: number,
-    message: string,
-    options?: { cause?: unknown },
-  ) {
-    super(message, options);
-    this.name = "LlmProxyError";
-  }
-}
-
 function baseUrl(): string {
   return config.LLM_PROXY_URL.replace(/\/+$/, "");
+}
+
+/** The `/ai/chat` of another Retina API, or null when the URL is a proxy we speak the Anthropic wire to. */
+function gatewayUrl(): string | null {
+  const url = baseUrl();
+  return isGatewayUrl(url) ? url : null;
 }
 
 /**
@@ -85,6 +86,15 @@ function stripThinking(text: string): string {
 
 /** One non-streaming call, billed to `project` in the proxy. `temperature` is never sent: Claude 5 rejects it. */
 export async function chat(project: string, req: ChatRequest): Promise<ChatResult> {
+  const gateway = gatewayUrl();
+  if (gateway) {
+    const result = await chatViaGateway(gateway, req, {
+      defaultMaxTokens: DEFAULT_MAX_TOKENS,
+      timeoutMs: REQUEST_TIMEOUT_MS,
+    });
+    return { ...result, text: stripThinking(result.text) };
+  }
+
   const url = baseUrl();
   const anthropic = new Anthropic({
     baseURL: url,
@@ -138,6 +148,9 @@ export async function chat(project: string, req: ChatRequest): Promise<ChatResul
 
 /** The aliases the proxy is configured with. */
 export async function listModels(): Promise<ModelInfo[]> {
+  const gateway = gatewayUrl();
+  if (gateway) return listModelsViaGateway(gateway, 5000);
+
   const url = baseUrl();
   let response: Response;
   try {

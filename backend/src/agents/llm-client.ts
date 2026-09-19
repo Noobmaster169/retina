@@ -1,5 +1,6 @@
 import { LlmUnavailableError, TerminalError } from "../lib/errors";
-import { chat, LlmProxyError } from "../llm";
+import { LlmProxyError } from "../lib/errors";
+import { chat } from "../llm";
 
 export interface LlmRequest {
   /** A proxy alias from proxy/proxy.yaml, never a provider model id. */

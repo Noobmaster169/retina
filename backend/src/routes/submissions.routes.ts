@@ -55,7 +55,7 @@ export function submissionsRouter(deps: SubmissionsDeps): Router {
     const forced = query.data.force === "true";
 
     if (submitting.has(runId)) {
-      const busy: SubmitRefused = { error: "a submission for this run is already being scored", incomplete: [] };
+      const busy: SubmitRefused = { error: "a submission for this run is already being scored", incomplete: [], forcible: false };
       res.status(409).json(busy);
       return;
     }
@@ -79,7 +79,7 @@ export function submissionsRouter(deps: SubmissionsDeps): Router {
         notIngested === 0
           ? `${incomplete.length} emails are not finished`
           : `the run has not finished ingesting (status ${run?.status}, ${nEmails} of ${run?.totalEmails ?? "?"} emails)`;
-      const refused: SubmitRefused = { error, incomplete };
+      const refused: SubmitRefused = { error, incomplete, forcible: true };
       res.status(409).json(refused);
       return;
     }

@@ -106,6 +106,7 @@ describe("POST /runs/:id/submit", () => {
 
     expect(response.status).toBe(409);
     expect(response.body.incomplete).toEqual([emailIds[1]]);
+    expect(response.body.forcible).toBe(true);
     expect(scorer.received).toEqual([]);
   });
 
@@ -138,6 +139,7 @@ describe("POST /runs/:id/submit", () => {
     expect(refused.status).toBe(409);
     expect(refused.body.error).toContain("has not finished ingesting");
     expect(refused.body.error).toContain("2 of 520");
+    expect(refused.body.forcible).toBe(true);
     expect(scorer.received).toEqual([]);
 
     expect((await request(app()).post(`/runs/${paused.runId}/submit?force=true`).set(TEAM)).status).toBe(201);
@@ -155,6 +157,9 @@ describe("POST /runs/:id/submit", () => {
 
     expect(both.map((response) => response.status).sort()).toEqual([201, 409]);
     expect(scorer.received).toHaveLength(1);
+    // Forcing would not help: the refusal is the other submission, not the run's state.
+    const busy = both.find((response) => response.status === 409);
+    expect(busy?.body).toMatchObject({ forcible: false, incomplete: [] });
   });
 
   it("answers 503 where object storage is not configured", async () => {

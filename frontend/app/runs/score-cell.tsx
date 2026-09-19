@@ -35,10 +35,17 @@ export function ScoreCell({ run, onChanged }: Props) {
     setError(null);
     try {
       const response = await fetch(`/api/runs/${run.id}/submit?force=${force}`, { method: "POST" });
-      const body = (await response.json().catch(() => ({}))) as { error?: string; incomplete?: string[] };
-      if (response.status === 409 && body.incomplete) setUnfinished(body.incomplete.length);
-      else if (!response.ok) setError(body.error ?? `Request failed with ${response.status}`);
-      else setUnfinished(null);
+      const body = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        incomplete?: string[];
+        forcible?: boolean;
+      };
+      if (response.ok) setUnfinished(null);
+      else {
+        // The refusal says why; only some of them are worth offering a force button for.
+        setError(body.error ?? `Request failed with ${response.status}`);
+        setUnfinished(body.forcible ? (body.incomplete?.length ?? 0) : null);
+      }
       onChanged();
     } catch (cause) {
       console.error("[runs] submit failed:", cause);
@@ -114,7 +121,7 @@ export function ScoreCell({ run, onChanged }: Props) {
         </button>
         {unfinished !== null && (
           <button type="button" disabled={pending} onClick={() => void submit(true)} className={BUTTON}>
-            {unfinished} unfinished, submit anyway
+            {unfinished > 0 ? `${unfinished} unfinished, submit anyway` : "Submit anyway"}
           </button>
         )}
         {local !== "unavailable" && (

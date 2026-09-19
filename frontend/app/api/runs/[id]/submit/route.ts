@@ -12,7 +12,10 @@ export async function POST(request: Request, ctx: RouteContext<"/api/runs/[id]/s
   try {
     const outcome = await submitRun(id, force);
     if (!outcome.ok) {
-      return Response.json({ error: outcome.message, incomplete: outcome.incomplete }, { status: outcome.status });
+      return Response.json(
+        { error: outcome.message, incomplete: outcome.incomplete, forcible: outcome.forcible },
+        { status: outcome.status },
+      );
     }
     return Response.json({ finalScore: outcome.finalScore }, { status: 201 });
   } catch (error) {

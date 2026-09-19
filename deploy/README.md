@@ -46,7 +46,12 @@ git clone git@github.com-retina:Noobmaster169/retina.git ~/projects/retina
 
 The proxy shells out to `claude`, which lives under nvm for the `student`
 user and is already logged in (`claude -p "say ok"` works in a shell). Ollama
-serves the Qwen tags on loopback. `proxy/proxy.yaml` is committed; on this box
+serves the Qwen tags on loopback.
+
+**Claude Code must be 2.1.274 or newer on this box.** Every pipeline step asks the
+proxy for structured output, which it serves with `claude -p --json-schema`; an older
+CLI does not have the flag and the proxy answers 502 rather than pass prose on. Check
+with `claude --version`, and after an upgrade re-run the smoke call below with a schema. `proxy/proxy.yaml` is committed; on this box
 the two Qwen tags are the `-ctx16k` profiles, so check `docker exec
 monash-ollama ollama list` matches what the config names.
 
@@ -142,5 +147,7 @@ tail -f ~/retina/ngrok.log
 
 - **503 "llm-proxy unreachable"** — `pgrep -af "port 4001"`; if gone, `setsid nohup ~/retina/run-proxy.sh >/dev/null 2>&1 </dev/null &` and read `~/retina/llm-proxy.log`.
 - **`sonnet`/`opus`/`haiku` fail, qwen works** — the Claude login expired: run `claude` interactively as student.
+- **502 "claude returned no structured_output"** — the CLI is older than 2.1.274 or the push that
+  added `--json-schema` has not reached the box. `claude --version`, then `tail ~/retina/auto-deploy.log`.
 - **Frontend says "Backend unreachable"** — `tail ~/retina/ngrok.log`, then `curl https://<domain>/health` from anywhere.
 - **Inbox says "not reachable"** (API answers 503 on `/emails`) — `docker compose ps inbox`, `docker compose logs inbox`; `docker compose up -d --build inbox` rebuilds it.

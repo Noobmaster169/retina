@@ -46,6 +46,22 @@ gives SSE. `x-api-key` is a label, not a key; it comes back as
 Errors use the Anthropic error shape: 404 unknown alias, 400 unsupported
 request, 502/503/504 upstream failure.
 
+## Structured output
+
+`output_config: { format: { type: "json_schema", schema } }` on a request makes the
+schema a constraint on the provider, not a request in the prompt:
+
+- `claudecli` passes it to `claude -p --json-schema` and reads the answer from the
+  envelope's `structured_output`. This needs Claude Code **2.1.274 or newer** (that is
+  where `--json-schema` was checked; 2.1.276 was used for the phase 2 live run). An older
+  CLI returns no `structured_output`, and the provider answers 502 rather than pass prose
+  on as if it were JSON. Streaming falls back to the blocking path while a schema is set.
+- `ollama` and other OpenAI-compatible servers get
+  `response_format: { type: "json_schema", json_schema: { name, schema, strict } }`.
+
+The schema subset does not carry numeric or string bounds (`minimum`, `maxLength`);
+those are advisory and the caller still validates the answer.
+
 ## What the config does
 
 - `capabilities` strips parameters a model rejects. `temperature` never reaches
@@ -53,3 +69,5 @@ request, 502/503/504 upstream failure.
 - `extra_body: { reasoning_effort: none }` on the Ollama provider turns Qwen's
   thinking off. `/no_think` in the prompt does not work.
 - `max_tokens: 8000` on Qwen aliases. Prompt and answer share one context window.
+  A request without `max_tokens` is fine: `claude -p` has no cap of its own and
+  Ollama gets the 8000 ceiling.

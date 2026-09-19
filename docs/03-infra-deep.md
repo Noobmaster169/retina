@@ -101,7 +101,7 @@ Backend (`deploy/.env`, mirrored in `backend/.env.example`):
 | `LLM_PROXY_URL` | `http://172.17.0.1:4000` | api, worker |
 | `LLM_MODEL_CLASSIFY`, `LLM_MODEL_VERIFY`, `LLM_MODEL_EXTRACT`, `LLM_MODEL_CHAT` | `sonnet` for every step. Must be a proxy alias from `proxy/proxy.yaml` | worker, api |
 | `LLM_MAX_CONCURRENCY` | `8` | worker (global semaphore) |
-| `CLASSIFY_CONCURRENCY`, `COMPARE_CONCURRENCY` | `4`, `4` | worker |
+| `CLASSIFY_CONCURRENCY`, `COMPARE_CONCURRENCY` | `2`, `4`. Classify is 2 because the `claudecli` provider serves two calls at a time; more workers only queue inside the proxy with their request timeout already running | worker |
 | `API_SHARED_SECRET`, `TEAM_API_KEY` | hex | api |
 | `SITE_PASSWORD` | string | frontend middleware (Vercel env) |
 | `EVAL_GROUND_TRUTH_PATH` | local path only, unset on the VPS containers | eval CLI |
@@ -140,7 +140,11 @@ Job options, both queues:
 ```
 
 Worker options: `concurrency` from env, `lockDuration: 120000` (LLM calls can be slow),
-`stalledInterval: 30000`. A job that stalls (worker died) is retried automatically.
+`stalledInterval: 30000`, `maxStalledCount: 10`. A job that stalls (worker died) is retried
+automatically. The count is 10, not BullMQ's default of 1, because every worker restart that
+catches a job mid-call stalls it once and a deploy is a restart: with the default, two restarts
+would fail an email that did nothing wrong. Past the count BullMQ fails the job with "job stalled
+more than allowable limit" and never retries it, which the worker treats as final.
 
 ### 4.3 Priority
 
@@ -178,6 +182,13 @@ there is one worker replica.
   `TerminalError` (schema validation failed twice, unsupported file type). Terminal errors skip
   remaining attempts: the worker rethrows them as BullMQ's `UnrecoverableError` (`job.discard()`
   no longer exists in BullMQ 6).
+- A model outage is not the email's fault. `LlmUnavailableError` (a `RetryableError`: the proxy
+  answered 429 or 5xx, or could not be reached) does not spend an attempt. `queues/failure-policy.ts`
+  calls `classify.rateLimit(30_000)` and throws BullMQ's `Worker.RateLimitError()`, which returns
+  the job to waiting and stops every worker taking classify jobs for 30 s. Without it a short
+  outage burns all three attempts of every in-flight email within seconds and fails them for good.
+  BullMQ honours a manual rate limit only on a worker that has a `limiter`, so the classify worker
+  carries one of 10000 per second that is never reached.
 
 ### 4.6 Stage state machine
 
@@ -260,6 +271,18 @@ proposal and is told to argue for the strongest alternative before deciding. Out
 
 **Decision**: the verifier's category if it ran, else the generator's. `classifications.decided_by`
 is `llm`, `verifier` or `human`. The submission's `decided_by` is always `llm`.
+
+**A second pass over the same email costs nothing and undoes nothing.** The processor reads the
+stored classification first and skips the model call when one is already there, so a retry, a
+stalled job reclaimed while its first copy finishes, or a rerun of the stage does not pay for the
+email twice. Every stage move names the stages it may start from (`emailRuns.moveStage`), so a
+late second pass cannot drag an email that compare already finished back to `classified`. A run
+cancelled while the model call is in flight is honoured: the status is read again after the call
+returns, before anything is written. No lock table and no Redis lock is needed for either.
+
+`ver_category`, `ver_confidence`, `human_category` and the `decided_by` values `verifier` and
+`human` exist in the schema from phase 2 and stay empty until the verifier (phase 4) and human
+review (phase 8) fill them.
 
 ### 5.3 Compare
 
@@ -415,15 +438,33 @@ images, OCR text is used and the reviewer sees the PNG.
 ## 7. LLM layer
 
 - Client: existing `src/llm.ts` against `LLM_PROXY_URL/v1/messages` (Anthropic wire; the Anthropic SDK with `baseURL` set to the proxy).
-- Structured output: `agents/structured.ts` sends the JSON schema in the system prompt, parses
-  with zod, retries once with the validation error appended, then throws `TerminalError`.
+- Second transport, `src/llm-gateway.ts`: where the proxy is not reachable, `LLM_PROXY_URL` may name
+  another Retina API's `/ai/chat`, which fronts a proxy on its own host. A URL ending in `/ai/chat`
+  selects it, the bearer is `TEAM_API_KEY`, and the reply is validated with zod like any other
+  boundary. `chat()` hides the choice, so nothing above `llm.ts` knows which ran. That route has no
+  structured output, so on it the schema reaches the model through the prompt only and the zod parse
+  in `structured.ts` is the whole guarantee.
+- Structured output: the schema is a provider constraint, not a request. `agents/structured.ts`
+  derives JSON Schema from the zod schema and sends it as `LlmRequest.outputSchema`, which
+  `llm.ts` puts on the wire as `output_config: { format: { type: "json_schema", schema } }`. The
+  proxy turns that into `claude -p --json-schema` (answer read from the envelope's
+  `structured_output`) or, for an OpenAI-compatible server, `response_format`. The same schema is
+  still printed into the system prompt so the model knows what the fields mean, and zod still
+  validates the answer, because a provider may ignore the constraint and zod holds rules the
+  JSON Schema subset cannot (structured output ignores `minimum` and `maxLength`). On a zod
+  failure it retries once with the validation issues appended, then throws `TerminalError`.
+- `max_tokens` is optional, in prompt frontmatter and in `LlmRequest`. The default of 8000 is a
+  ceiling, not a budget. A `max_tokens` stop reason is a `TerminalError` straight away: a retry
+  under the same cap truncates the same way.
 - Prompt registry: `agents/prompts/<step>/<version>.md` with frontmatter
   `{ step, version, model_default, schema }`. Active version per step comes from
   `core.prompt_versions.active`. Every call stores `prompt_version`.
 - Few-shot examples live in `agents/prompts/<step>/examples.json`, generated by
   `eval/split.ts` from the training split only.
-- Timeouts: classify 60 s, extract 120 s, chat 240 s. Retries on 429/503 with jitter, inside
-  the BullMQ attempt.
+- Timeouts: classify 60 s, extract 120 s, chat 240 s. The SDK's own retries are off
+  (`maxRetries: 0`): a hidden second call doubles a hung call's wall time, holds a worker slot and
+  makes the ledger understate calls and cost. Retrying is BullMQ's job, and an outage pauses the
+  queue instead (4.5).
 - Every call inserts `core.llm_calls` with step, model, prompt_version, request, response,
   input_tokens, output_tokens, cost_usd (from the proxy's usage block), latency_ms, email_run_id.
 - Models: `sonnet` for every step (decided 2026-09-19). Values must be proxy aliases. Env vars allow swapping per role for experiments; Qwen aliases go in
@@ -538,7 +579,7 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 | `POST /runs` | start a run `{ source, ratePerSecond, limit?, emailIds?, promptSet? }` |
 | `GET /runs`, `GET /runs/:id` | list, detail with stage counts, queue depth, cost, score. `queues` is `null` when Redis cannot be reached; the rest comes from Postgres and is still served |
 | `POST /runs/:id/pause`, `/resume`, `/cancel` | control the replay |
-| `POST /runs/:id/submit` | build submission, post to averis, store scoreboard |
+| `POST /runs/:id/submit?force=false` | build submission, post to averis, store scoreboard. 409 when the run holds fewer rows than `totalEmails` (still ingesting) or holds unfinished emails, both overridden by `?force=true`; 409 while another submission for the same run is being scored. The `core.submissions` row is written before the scorer is called and updated with the scoreboard after, so a scorer failure leaves an unscored row (null `scoreboard`, null `final_score`) pointing at the stored payload rather than an orphan payload. Only scored rows count as a run's last submission |
 | `GET /runs/:id/submission.json` | download the payload |
 | `GET /runs/:id/emails?stage=&category=&status=&q=` | paginated list |
 | `GET /emails/:runId/:emailId` | full trace: email, attachments, classification, extractions with fields, comparison, diffs, review case, llm_calls summary |

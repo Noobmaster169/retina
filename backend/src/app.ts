@@ -6,7 +6,7 @@ import type { HealthReport } from "./contracts";
 import { EmailServerError } from "./emails";
 import { RetryableError } from "./lib/errors";
 import { childLogger } from "./lib/logger";
-import { LlmProxyError } from "./llm";
+import { LlmProxyError } from "./lib/errors";
 import type { Scorer } from "./scorer/scorer";
 import { ScorerRefused } from "./scorer/scorer";
 import type { ObjectStore } from "./storage";
