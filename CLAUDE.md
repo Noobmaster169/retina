@@ -140,6 +140,10 @@ needed.
   unless the user asked or approved first.
 - Migrations are forward-only SQL in `backend/db/migrations/NNN_name.sql`, applied by the
   existing `db/migrate.mjs`. Never edit an applied one.
+- Migrations are expand/contract. A rollback restores the previous image and leaves the schema
+  where the failed deploy put it, so every migration must still be readable by the code it rolls
+  back to: add, do not rename or drop, and no `NOT NULL` without a default. Contract in a later
+  commit. See `deploy/README.md`.
 - Hand-written SQL with `pg`, parameterised. No ORM. One repository module per aggregate.
 - Write to Postgres before enqueueing. Job payloads carry ids only.
 - Job id is `${runId}__${emailId}` (BullMQ rejects a custom id containing `:`). Re-running a

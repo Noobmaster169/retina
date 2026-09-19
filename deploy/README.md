@@ -149,7 +149,17 @@ refuses a dirty clone, fast-forwards only, refreshes `~/retina/compose.yaml`
 and itself from the clone, builds from `backend/` (or pulls with
 `USE_REGISTRY=1`), recreates `api` and `worker`, polls `/health` for two
 minutes and rolls back the image, and the compose file it replaced, on
-failure. It never touches Postgres. `tail -20 ~/retina/auto-deploy.log`.
+failure. It never touches Postgres.
+
+Which makes migrations expand/contract, not optional style. A rollback restores
+the previous image and the previous compose.yaml; the schema stays where the
+failed deploy's migration left it. So a migration that a health check failure
+would strand must still be readable by the code it rolls back to: add columns
+and tables, do not rename or drop them, and do not add a NOT NULL without a
+default. Drop the old shape in a later commit, once the code that used it is
+gone from the box. A deploy that rolls back on an incompatible migration reports
+success and serves broken, because Postgres itself is still up and the health
+gate only asks whether it answers. `tail -20 ~/retina/auto-deploy.log`.
 
 The health gate is `postgres` and `redis` up, not `"status":"ok"`. The report
 is `degraded` whenever any dependency is down, so gating on `ok` rolls back
