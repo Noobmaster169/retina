@@ -40,6 +40,14 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 ./start.sh
 ```
 
+On Windows (Git Bash) the interpreter is elsewhere, and if another project already holds port
+4000, take 4001 and point `LLM_PROXY_URL` in `backend/.env` at it:
+
+```bash
+python -m venv .venv && .venv/Scripts/python.exe -m pip install -e ".[dev]"
+PYTHON=.venv/Scripts/python.exe LLM_PROXY_PORT=4001 ./start.sh
+```
+
 **2. Backend**
 
 ```bash
@@ -50,7 +58,9 @@ pnpm install && pnpm db:migrate && pnpm dev     # the api
 ```
 
 **3. Worker**, a second terminal in `backend/`. It consumes the queues; without it a
-run is created and never moves.
+run is created and never moves. It classifies every email with an LLM call through the
+proxy, so the proxy must be up and `claude` logged in. The proxy serves 2 Claude calls at
+a time: set `CLASSIFY_CONCURRENCY=2`, and expect about 25 minutes for the full inbox.
 
 ```bash
 cd backend
@@ -93,6 +103,9 @@ Aliases are model names. They live in `proxy/proxy.yaml`.
 | `qwen3:14b`, `qwen3:4b`, `qwen3.8:27b` | Ollama | model pulled |
 | `test` | nothing | nothing |
 
+Every LLM step in the pipeline runs `sonnet`. There are no hand-written classification
+rules: the model reads the email, and the eval harness measures it (see `CLAUDE.md`).
+
 Use `qwen3:14b`, not `qwen3:4b`. The 4B model writes its reasoning into the
 answer. `costUsd` on Claude calls is what the API would have charged. Nothing
 is billed.
@@ -111,8 +124,12 @@ All routes except `/health` need `Authorization: Bearer <key>`. The key is
 | `GET /emails/:id` | `{ email_id, from, subject, body, attachments }` |
 | `GET /emails/attachments/:name` | the file |
 | `POST /runs` | `{ ratePerSecond?: 0-50, limit?, emailIds? }` → a run summary. `0` is a burst. Repeated `emailIds` are dropped |
-| `GET /runs`, `GET /runs/:id` | `{ id, status, ratePerSecond, totalEmails, stageCounts, queues, createdAt, startedAt, finishedAt }`. `queues` is `null` when Redis cannot be reached |
+| `GET /runs`, `GET /runs/:id` | `{ id, status, ratePerSecond, totalEmails, stageCounts, queues, llm, lastSubmission, createdAt, startedAt, finishedAt }`. `queues` is `null` when Redis cannot be reached; `llm` is the model calls, tokens and cost of the run; `lastSubmission` carries the headline scores |
 | `POST /runs/:id/pause`, `/resume`, `/cancel` | the run summary, or 409 when the status does not allow it. A resume that cannot queue its job answers 503 and leaves the run `paused` |
+| `POST /runs/:id/submit?force=false` | sends the run to the organisers' scorer → `{ submissionId, finalScore, scoreboard }`. 409 `{ incomplete }` while emails are unfinished, unless forced. 502 when the scorer refuses |
+| `GET /runs/:id/submission.json` | the payload as it would be sent now: `{ email_id: { category, status, review_reason, has_defect, defect_fields, decided_by } }`, the organisers' enums only |
+| `GET /runs/:id/submissions` | `{ submissions: [{ id, finalScore, nEmails, forced, createdAt, scoreboard }] }` |
+| `GET /eval/runs/:id` | dev only, 404 unless `EVAL_GROUND_TRUTH_PATH` is set: the run scored locally, `{ full, holdout, run, wrong }` |
 | `GET /runs/:id/emails?stage=&q=&page=&pageSize=` | `{ emails: [{ emailId, from, subject, stage, attachmentCount, outcome }], total, page, pageSize }` |
 
 ```bash
@@ -129,6 +146,9 @@ curl -s 127.0.0.1:8091/ai/chat -H "authorization: Bearer $TEAM_API_KEY" \
 | Add a table | new file in `backend/db/migrations/`, then `pnpm db:migrate` |
 | Add a backend route | a router in `backend/src/routes/`, mounted in `backend/src/app.ts`; its shapes in `backend/src/contracts.ts`; then call it from `frontend/lib/api-client.ts` |
 | Add an env var | `backend/src/config.ts` (the only reader) and `backend/.env.example` |
+| Score a run locally | `pnpm eval:score --run <id> [--holdout]` in `backend/`. Needs `EVAL_GROUND_TRUTH_PATH` |
+| Prove the scorer port | `pnpm eval:parity` in `backend/`: `src/eval/score.ts` against the organisers' `score_cli.py` |
+| Change how emails are classified | a new version file in `backend/src/agents/prompts/classify/`. Never a rule in code. Check it on train ids, read the holdout last |
 | Run the backend tests | `pnpm test` in `backend/`, with `compose.local.yaml` up. They use the database `retina_test` |
 | Add a page | `frontend/app/`. `/` is the inbox, `/mail/[id]` a message, `/chat` the model page, `/runs` the pipeline runs |
 | Regenerate the emails | `emails/data_v2/README.md` |

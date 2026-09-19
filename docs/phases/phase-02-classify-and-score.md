@@ -1,5 +1,35 @@
 # Phase 2: LLM classification, submission, first score
 
+## As built
+
+Phase 2 is done. Where the work items below disagree with this list, this list is what the code
+does.
+
+- **The prompt is at `v2`, and `v1` stays on disk with its score.** `v1` defined `SI_REQUEST` as
+  "asks for a Shipping Instruction" and read every one of the holdout's 25 as `BL_COMPARISON`
+  (stage 1 macro-F1 0.7098). The definition was wrong, not the model: in the organisers' generator
+  (`emails/data_v2/emails.py`) an `SI_REQUEST` hands the instruction over and asks for the draft
+  BL to come back. `v2` defines the categories by the stage of the paperwork (the SI, the draft,
+  the check) and names no phrase from the inbox. It was checked on 60 train emails first (60 of
+  60), then the holdout was read once: 0.9938, 103 of 104.
+- **No parity fixture is committed.** `pnpm eval:parity` builds its noisy submissions in memory:
+  a fixture derived from the answer key would be a copy of it.
+- **The split also stratifies on `has_defect`**, so the holdout keeps 9 of the 46 planted defects.
+- **`GET /eval/runs/:id` and `pnpm eval:score` report three scopes**, not two: `run` (the emails
+  the run holds), `holdout`, and `full` (all 520, as the organisers' scorer sees it). A run over
+  a subset scores low on `full` because the scorer defaults every absent email to `GENERAL`.
+- **Run summaries carry `llm` and `lastSubmission`** with the headline scores, so the list poll
+  does not ship whole scoreboards.
+- **The scorer is a seam** (`src/scorer/`, `Scorer` with a fake), like every other external system.
+- **`contracts.ts` re-exports `contracts.scoring.ts`**, which holds the organisers' enums and
+  shapes, to keep both files under 200 lines. `contracts.test.ts` reads `scoring.py` and the
+  README and fails on any drift between them, the contracts and the check constraints.
+- **Config:** `LLM_MODEL_CLASSIFY` (unset: the prompt file's `sonnet`), `CLASSIFY_BODY_CHARS`
+  (4000), `EVAL_GROUND_TRUTH_PATH`. Locally the proxy runs on 4001 when another project holds 4000.
+- **Not done:** the Score column was checked over HTTP (server render, the submit and eval
+  handlers, the error paths), not clicked in a browser: the browser tool failed to connect in the
+  session that built it.
+
 ## Goal
 
 A real number from the organisers' scorer, with every email classified by the LLM, plus a local
