@@ -19,13 +19,16 @@ Setup, ports, aliases and the current API are in `README.md`. The server is in
 Design docs: `docs/SDOC_BRIEF.md` (the problem and the data, every number verified),
 `docs/01-product.md` (what), `docs/02-infra-overview.md` (how, high level),
 `docs/03-infra-deep.md` (contracts, schema, routes), `docs/04-phases.md` (what to build now),
-`docs/phases/phase-NN-*.md` (the authoritative work list per phase). `docs/PROGRESS.md` says
-which phase is current and what is left in it.
+`docs/phases/phase-NN-*.md` (the authoritative work list per phase, plus a `-handover.md` where
+one phase left the next something to know). `docs/PROGRESS.md` says which phase is current and
+what is left in it.
 
 ## Session protocol
 
 1. Read `docs/PROGRESS.md`, then the current phase section in `docs/04-phases.md`, then the
-   phase spec in `docs/phases/`.
+   phase spec in `docs/phases/`. Where a `phase-NN-handover.md` exists, read it before the spec:
+   it says what a previous phase or review changed under this one, and the spec may still be
+   catching up.
 2. Work only inside that phase's scope. If something outside it blocks you, write it under
    "Deferred" in `PROGRESS.md` and stub it, do not build it.
 3. Every phase ends with its exit checklist green, `PROGRESS.md` updated, and a commit on `main`.
@@ -184,7 +187,11 @@ needed.
   values mean the same thing are LLM calls. Code assembles the answer (the set of fields the
   model judged different) and validates it against the enums. No hand-written normalisers,
   label tables or title matching: those are rules fitted to one sample, like the email ones.
-- Every LLM step runs `sonnet`. `LLM_MODEL_<STEP>` exists for experiments, not as a default.
+- Every LLM step runs `sonnet`. `LLM_MODEL_<STEP>` exists for experiments, not as a default. A
+  wrong alias must fail fast: the proxy answers 500 with `retryable: false`, and anything that
+  decides retry from the status instead requeues it forever without spending an attempt.
+- Retry is the dependency's call, not the caller's guess. Branch on `isTransient(error)` from
+  `lib/errors.ts`, never on a list of status codes.
 - Extracted values carry `source_quote`; the evidence check runs before any verifier.
 - Store every call in `llm_calls` with `prompt_version`, tokens, cost, latency.
 - Few-shot examples come from `eval/split.json` train ids only, and ship only when a holdout

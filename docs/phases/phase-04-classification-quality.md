@@ -13,6 +13,10 @@ are no rules" in `phase-02-classify-and-score.md`. The enums stay exactly the or
 
 ## Prerequisites
 
+**Read `phase-04-handover.md` first.** The phase 3 review changed the LLM client's error contract,
+the frontend's contract mirroring and the deploy's migration constraint, and this spec has been
+corrected for it in places.
+
 Phase 3 live. Day-one checks recorded in `PROGRESS.md`: the alias list from the proxy, the image
 passthrough result, behaviour under parallel calls.
 
@@ -42,6 +46,9 @@ create unique index prompt_versions_one_active on core.prompt_versions (step) wh
 Seed rows `('classify','v1',true)` and `('classify-verify','v1',true)`. `core.llm_calls` already
 exists from phase 2.
 
+Expand/contract, like every migration here: rollback restores the previous image and never touches
+Postgres, so this must stay readable by the code it would roll back to. See `CLAUDE.md` Data rules.
+
 ### 2. Prompt registry, final form
 
 `registry.resolve(step, promptSet?)`: `promptSet[step]` if the run names one, else the `active`
@@ -52,8 +59,12 @@ model from the frontmatter is overridden by `LLM_MODEL_<STEP>`. Models are proxy
 
 ### 3. LLM client hardening
 
-- Retries 429, 502, 503, 504 and timeouts twice with jitter (1 s, 3 s) inside `complete`, then
-  throws `RetryableError`. 400 and schema errors stay `TerminalError`.
+- Retries twice with jitter (1 s, 3 s) inside `complete` while `isTransient(error)` holds, then
+  throws `RetryableError`. Schema errors stay `TerminalError`.
+  **Loop on the verdict, never on a status list.** `UpstreamError` carries the proxy's own
+  `retryable`, because an unknown provider and a dead upstream are both 500 and only one is worth
+  another attempt. A status list reintroduces the phase 3 bug where a typo in `LLM_MODEL_*` was
+  requeued forever without ever spending an attempt. See `phase-04-handover.md` section 1.
 - `withLlmSlot(fn)`: an in-process semaphore of `LLM_MAX_CONCURRENCY` around every call. One
   worker process, one cap. Size it to what the proxy serves at once.
 - `RecordingLlmClient`: wraps a real client; the key is the sha256 of `(model, system, user)`; in
@@ -118,14 +129,22 @@ The rest is unchanged: `BL_COMPARISON` goes to the compare queue, anything else 
 aggregate over `llm_calls` and `classifications`. The email list gains `category` and `decidedBy`
 columns and a category filter.
 
+The frontend mirror is a zod schema in `frontend/lib/api/runs-client.ts`, not an interface: every
+response is parsed there now. `getRun` and `listRunEmails` were deleted as unused in the phase 3
+review and come back with this page; restore them from `git show d68ed1b^:frontend/lib/api-client.ts`
+as schemas. See `phase-04-handover.md` sections 3 and 4.
+
 ### 10. Tests
 
 - `agents/prompts/registry.test.ts`: `promptSet` override, active row, env model override.
 - `pipeline/classify/decide.test.ts`: the verifier trigger table and the `decided_by` mapping.
 - `queues/processors.test.ts` with `FakeLlmClient`: a confident generator (no verifier call), an
-  unsure one (the verifier is called and its category wins), and a proxy 503 (`RetryableError`
-  propagates, `llm_calls.ok = false`).
-- `agents/llm-client.test.ts`: retry on 503 then success, `TerminalError` on 400 (mock fetch).
+  unsure one (the verifier is called and its category wins), a proxy 503 (`RetryableError`
+  propagates, `llm_calls.ok = false`), and an unknown provider (a 500 the proxy marks
+  `retryable: false`, which must fail the email rather than requeue it).
+- `agents/llm-client.test.ts`: extend the existing table (it already pins six status/verdict
+  combinations, including an unknown provider's permanent 500) with retry-then-success and the
+  jitter timing. Do not replace it.
 - `eval/examples.test.ts`: no holdout id among the examples.
 
 ### 11. Manual verification

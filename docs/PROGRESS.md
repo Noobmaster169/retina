@@ -1,10 +1,26 @@
 # Progress
 
-Current phase: 3. The code is merged to `main`; the box is not deployed yet. Everything that
-could be built and tested without SSH access to the Monash box is done and green in
-`deploy/sim`. The one manual step left, and everything to check after it, is
+Current phase: 3, closed. The code is merged to `main`; the box is not deployed yet. Everything
+that could be built and tested without SSH access to the Monash box is done and green in
+`deploy/sim` (18 checks). The one manual step left, and everything to check after it, is
 `docs/phases/phase-03-handover.md`, written for whoever has that access. Phase 2 merged to
 `main` on 2026-09-19 with its exit checklist green.
+
+A full-codebase review closed phase 3, merged on 2026-09-19. Its findings and how each was
+checked are under "Phase 3 code review" below.
+
+**Starting phase 4: read `docs/phases/phase-04-handover.md` before the phase 4 spec.** The review
+changed three things phase 4 builds directly on, and `phase-04-classification-quality.md` has been
+corrected where it described the old behaviour:
+
+- Retry is decided by the proxy's own `retryable` verdict, never by a status code. The spec's
+  original "retries 429, 502, 503, 504" rule is what caused the bug the review found; written that
+  way again it requeues a wrong `LLM_MODEL_*` alias forever without spending an attempt.
+- `LlmProxyError`, `EmailServerError` and `ScorerRefused` are one `UpstreamError`. `isRetryable`
+  is gone.
+- The frontend parses every response with zod under `lib/api/`. A new contract field is a schema
+  there, not an interface, and `getRun` / `listRunEmails` / the four organisers' enums were
+  deleted as unused: the run page brings them back from `git show d68ed1b^`.
 
 ## Scores
 | Phase | Holdout final | Full final | Stage1 | Stage3 | E2E | Notes |

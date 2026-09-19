@@ -148,7 +148,8 @@ says so, and a model comparison. Still no hand-written rules.
 - `eval/examples.ts`: few-shot examples from the train split for a new prompt version, shipped
   only if its holdout run beats the zero-shot one. Both numbers recorded either way.
 - Model comparison: one holdout run per proxy alias; accuracy, cost and latency recorded.
-- `llm-client`: retries with jitter, `withLlmSlot` semaphore for `LLM_MAX_CONCURRENCY`,
+- `llm-client`: retries with jitter while `isTransient(error)` holds (never a status list, see
+  `phases/phase-04-handover.md`), `withLlmSlot` semaphore for `LLM_MAX_CONCURRENCY`,
   `RecordingLlmClient`.
 - Frontend: `/runs/[id]` shows verifier share and LLM cost.
 
