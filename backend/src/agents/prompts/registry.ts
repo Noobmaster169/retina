@@ -13,14 +13,15 @@ const Frontmatter = z.object({
   version: z.string().regex(/^v\d+$/),
   /** A proxy alias. Every step runs sonnet; the env override is for experiments. */
   model: z.string().min(1),
-  max_tokens: z.coerce.number().int().positive(),
+  /** Only for a step with a reason to cap its answer. Without it the client's generous default applies. */
+  max_tokens: z.coerce.number().int().positive().optional(),
 });
 
 export interface Prompt {
   step: string;
   version: string;
   model: string;
-  maxTokens: number;
+  maxTokens?: number;
   /** The system text, with `{{schema}}` still in place. */
   text: string;
 }

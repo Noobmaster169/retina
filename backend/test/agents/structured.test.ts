@@ -43,6 +43,9 @@ describe("callStructured", () => {
 
       expect(result).toEqual({ value: { colour: "red", confidence: 0.8 }, model: "fake/sonnet", promptVersion: "v3" });
       expect(llm.requests[0].system).toContain('"enum"');
+      // The same schema goes to the provider as a constraint, not only into the prompt as a request.
+      expect(llm.requests[0].outputSchema).toMatchObject({ type: "object", additionalProperties: false });
+      expect(llm.requests[0].outputSchema).not.toHaveProperty("$schema");
       expect(llm.requests[0].system).not.toContain("{{schema}}");
       expect(llm.requests[0].user).toBe("## subject\nA thing\n\n## attachments\n- a.txt\n- b.txt\n\n## empty\n(none)");
     });
@@ -68,6 +71,18 @@ describe("callStructured", () => {
         expect.objectContaining({ attempt: 2, ok: true, error: null, cost_usd: "0.001" }),
       ]);
       expect(rows[0].error).toContain("colour");
+    });
+  });
+
+  it("does not ask again when the answer was cut off: the same cap would cut it off again", async () => {
+    await inRollback(async (tx) => {
+      const run = await seedRun(tx);
+      const llm = new FakeLlmClient({ text: '{"colour":"re', stopReason: "max_tokens" });
+
+      await expect(
+        callStructured({ llm, pool: tx }, { prompt, input: { subject: "x" }, schema: Answer, project: "worker", runId: run.id }),
+      ).rejects.toThrow(/ran out of tokens/);
+      expect(llm.requests).toHaveLength(1);
     });
   });
 

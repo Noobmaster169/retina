@@ -6,11 +6,16 @@ import type { ClassifyInput } from "../pipeline/classify";
 import { resolvePrompt } from "./prompts/registry";
 import { callStructured, type StructuredDeps, type StructuredResult } from "./structured";
 
-/** The category is the organisers' enum, so the model cannot answer with one that does not exist. */
+/**
+ * The category is the organisers' enum, so the model cannot answer with one
+ * that does not exist. The order is the order the model writes in: a
+ * schema-bound answer has no room for prose before it, so the rationale comes
+ * first and the category is decided after the reasoning, not before it.
+ */
 export const ClassifyOutput = z.object({
+  rationale: z.string().max(600),
   category: Category,
   confidence: z.number().min(0).max(1),
-  rationale: z.string().max(600),
 });
 export type ClassifyOutput = z.infer<typeof ClassifyOutput>;
 

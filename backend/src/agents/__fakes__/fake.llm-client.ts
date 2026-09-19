@@ -1,6 +1,7 @@
 import type { LlmClient, LlmRequest, LlmResponse } from "../llm-client";
 
-type Reply = string | Error | ((request: LlmRequest) => string);
+/** `{ text, stopReason }` is an answer that stopped for a reason other than being finished. */
+type Reply = string | Error | { text: string; stopReason: string } | ((request: LlmRequest) => string);
 
 /**
  * Answers from a queue of replies, or from one function for every call. A
@@ -20,9 +21,11 @@ export class FakeLlmClient implements LlmClient {
     const reply = this.queue.length > 1 ? this.queue.shift() : this.queue[0];
     if (reply === undefined) throw new Error("FakeLlmClient has no reply");
     if (reply instanceof Error) throw reply;
+    const text = typeof reply === "function" ? reply(request) : typeof reply === "string" ? reply : reply.text;
     return {
-      text: typeof reply === "function" ? reply(request) : reply,
+      text,
       model: `fake/${request.model}`,
+      stopReason: typeof reply === "object" ? reply.stopReason : "end_turn",
       usage: { inputTokens: 100, outputTokens: 20 },
       costUsd: 0.001,
       latencyMs: 5,

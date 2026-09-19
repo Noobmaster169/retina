@@ -79,23 +79,41 @@ function parseOrUndefined(text: string): unknown {
   }
 }
 
+/** The schema as the provider takes it: plain JSON Schema, without the `$schema` dialect marker some reject. */
+function toOutputSchema(schema: z.ZodType): Record<string, unknown> {
+  const { $schema: _dialect, ...rest } = z.toJSONSchema(schema);
+  return rest;
+}
+
 function describe(error: z.ZodError): string {
   return error.issues.map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`).join("; ");
 }
 
 /**
- * One model call whose answer must match `schema`. An answer that does not
- * parse gets one more call that shows the model its mistake. Every attempt is
- * a row in the ledger, ok or not.
+ * One model call whose answer must match `schema`. The schema goes to the
+ * provider as its structured-output constraint, so the answer is that JSON
+ * object by construction and not by request; the prompt shows the same schema
+ * so the model knows what each field means. Zod still checks the result: it
+ * holds constraints a JSON Schema constraint cannot, and a provider may ignore
+ * the constraint. An answer that does not parse gets one more call that shows
+ * the model its mistake. Every attempt is a row in the ledger, ok or not.
  */
 export async function callStructured<T>(deps: StructuredDeps, call: StructuredCall<T>): Promise<StructuredResult<T>> {
   const { prompt } = call;
-  const system = prompt.text.replace("{{schema}}", JSON.stringify(z.toJSONSchema(call.schema), null, 2));
+  const outputSchema = toOutputSchema(call.schema);
+  const system = prompt.text.replace("{{schema}}", JSON.stringify(outputSchema, null, 2));
   let user = renderInput(call.input);
   let problem = "no attempt made";
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const request: LlmRequest = { model: prompt.model, system, user, maxTokens: prompt.maxTokens, project: call.project };
+    const request: LlmRequest = {
+      model: prompt.model,
+      system,
+      user,
+      maxTokens: prompt.maxTokens,
+      outputSchema,
+      project: call.project,
+    };
     const row = {
       runId: call.runId,
       emailRunId: call.emailRunId ?? null,
@@ -119,7 +137,7 @@ export async function callStructured<T>(deps: StructuredDeps, call: StructuredCa
     const parsed = call.schema.safeParse(extractJson(response.text));
     await llmCalls.insert(deps.pool, {
       ...row,
-      response: { text: response.text, model: response.model },
+      response: { text: response.text, model: response.model, stopReason: response.stopReason },
       parsed: parsed.success ? parsed.data : null,
       inputTokens: response.usage.inputTokens,
       outputTokens: response.usage.outputTokens,
@@ -131,6 +149,10 @@ export async function callStructured<T>(deps: StructuredDeps, call: StructuredCa
     if (parsed.success) return { value: parsed.data, model: response.model ?? prompt.model, promptVersion: prompt.version };
 
     problem = describe(parsed.error);
+    // Asking again under the same cap would be cut off at the same place.
+    if (response.stopReason === "max_tokens") {
+      throw new TerminalError(`step ${prompt.step} ran out of tokens before finishing its answer: raise max_tokens`);
+    }
     user = `${renderInput(call.input)}\n\n## your previous answer\n${response.text}\n\n## what was wrong with it\n${problem}\n\nReturn only the corrected JSON object.`;
   }
 

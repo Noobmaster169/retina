@@ -19,6 +19,7 @@ file("demo", "v1.md", prompt("demo", "v1", "First."));
 file("demo", "v2.md", prompt("demo", "v2", "Second.\n{{schema}}"));
 file("demo", "v10.md", prompt("demo", "v10", "Tenth."));
 file("demo", "notes.md", "not a prompt");
+file("uncapped", "v1.md", "---\nstep: uncapped\nversion: v1\nmodel: sonnet\n---\nNo cap.");
 file("mislabelled", "v1.md", prompt("other", "v1", "Wrong step."));
 file("broken", "v1.md", "no frontmatter here");
 file("badmeta", "v1.md", "---\nstep: badmeta\nversion: one\nmodel: sonnet\nmax_tokens: 300\n---\nBody.");
@@ -34,6 +35,14 @@ describe("resolvePrompt", () => {
       maxTokens: 300,
       text: "Tenth.",
     });
+  });
+
+  it("leaves the token cap to the client when the file names none", () => {
+    expect(resolvePrompt("uncapped", undefined, dir).maxTokens).toBeUndefined();
+  });
+
+  it("ships a classify prompt with no cap of its own", () => {
+    expect(resolvePrompt("classify").maxTokens).toBeUndefined();
   });
 
   it("lets an experiment replace the model", () => {

@@ -6,6 +6,18 @@ export class RetryableError extends Error {
   }
 }
 
+/**
+ * The model could not be reached or is rate limited. Nothing is wrong with the
+ * email, so the worker pauses the queue and puts the job back without spending
+ * one of its attempts: an outage must not fail a run's emails for good.
+ */
+export class LlmUnavailableError extends RetryableError {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "LlmUnavailableError";
+  }
+}
+
 /** Will fail the same way every time: bad input, a 404, a schema that does not parse. */
 export class TerminalError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
