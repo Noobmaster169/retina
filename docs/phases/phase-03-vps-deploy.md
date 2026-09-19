@@ -46,7 +46,9 @@ Both come before adding services, or the same thing eats this phase's deploy.
 Services: `postgres`, `redis`, `minio`, `minio-init`, `inbox`, `api`, `worker`. Only `api`
 publishes a port, `127.0.0.1:8091`. `api` and `worker` share one YAML anchor for their
 environment so the two cannot drift. `worker` runs `node --import tsx src/worker.ts` (the image
-has no build step) and waits for `api` healthy, so only one container ever migrates.
+has no build step) and depends on `api` only as `service_started`: the api's CMD is the only
+thing that migrates, so there is no race to order around, and waiting on its health made an
+unhealthy api abort the whole `up` and leave the worker down.
 
 The answer key is not placed on the box by hand. `emails/data_v2/ground_truth.json` is
 committed as part of the organiser kit, and compose mounts it read-only into `inbox` and
@@ -94,11 +96,15 @@ are copies, and the copy on the box cannot update itself until it is the version
 how to. Run on the box, safe to re-run:
 
 ```bash
-cd ~/projects/retina && git pull
+cd ~/projects/retina && git pull      # only the first time, to get the script
 bash deploy/bootstrap-wizard.sh
 ```
 
-Six stages: prerequisites, the two stack files, secrets (generated only when missing; it
+If that first `git pull` refuses, the clone is dirty: see "What was already wrong",
+`git restore proxy/src/retina_proxy.egg-info` and pull again. Every later run the wizard
+handles that itself, and fast-forwards the clone.
+
+Six stages: prerequisites and the clone's state, the two stack files, secrets (generated only when missing; it
 refuses to invent a `PG_PASSWORD` when the Postgres volume already exists, which would lock
 the data away), the stack up and `/health` polled, the four cron lines including the nightly
 `pg_dump`, and the day-one checks phase 4 needs, printed ready for `PROGRESS.md`.
@@ -108,12 +114,13 @@ the data away), the stack up and `/health` polled, the four cron lines including
 A Docker-in-Docker replica of the box layout: `/srv/origin.git` stands in for GitHub,
 `~/projects/retina` is the clone, `~/retina` is the stack, so the relative paths in
 `compose.yaml` resolve exactly as they do on the box. `./sim.sh test` runs the real scripts
-through bootstrap, a quiet tick, a new commit, a commit that changes `compose.yaml` and
-`auto-deploy.sh` together, a commit whose `/health` reports Postgres down, and a dirty clone.
+through bootstrap by the wizard, a quiet tick, a new commit, a commit that changes
+`compose.yaml` and `auto-deploy.sh` together, a commit whose `/health` reports Postgres down,
+and a dirty clone. 15 assertions.
 
 Not in the original plan. It is here because the dev machine cannot SSH into the box, so a
-wrong script costs a manual recovery, and because the bug in "What was already wrong" is
-exactly the kind a test like this catches.
+wrong script costs a manual recovery, and because the defects in "What was already wrong" are
+exactly the kind a test like this catches. It went on to catch three more.
 
 ### 7. Vercel
 
