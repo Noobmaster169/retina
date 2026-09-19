@@ -143,7 +143,13 @@ export interface SubmissionSource {
   humanCategory: Category | null;
   status: ComparisonStatus | null;
   reviewReason: ReviewReason | null;
+  /** The fields the judge found different, in field-name order. Validated against the enum on the way out. */
+  defectFields: string[];
 }
+
+/** The differing fields of a comparison, in field-name order, as one array; empty where nothing differs. */
+export const DEFECT_FIELDS_SQL = `coalesce((select array_agg(fd.field order by fd.field) from core.field_diffs fd
+       where fd.comparison_id = cmp.id and not fd.same and not fd.missing), '{}'::text[])`;
 
 export async function listForSubmission(db: Queryable, runId: string): Promise<SubmissionSource[]> {
   const { rows } = await db.query<{
@@ -153,8 +159,10 @@ export async function listForSubmission(db: Queryable, runId: string): Promise<S
     human_category: Category | null;
     status: ComparisonStatus | null;
     review_reason: ReviewReason | null;
+    defect_fields: string[];
   }>(
-    `select er.email_id, er.stage, c.final_category, c.human_category, cmp.status, cmp.review_reason
+    `select er.email_id, er.stage, c.final_category, c.human_category, cmp.status, cmp.review_reason,
+            ${DEFECT_FIELDS_SQL} as defect_fields
        from core.email_runs er
        left join core.classifications c on c.email_run_id = er.id
        left join core.comparisons cmp on cmp.email_run_id = er.id
@@ -169,6 +177,7 @@ export async function listForSubmission(db: Queryable, runId: string): Promise<S
     humanCategory: row.human_category,
     status: row.status,
     reviewReason: row.review_reason,
+    defectFields: row.defect_fields,
   }));
 }
 

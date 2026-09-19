@@ -9,6 +9,9 @@ const ENV_MODELS: Record<PromptStep, string | undefined> = {
   "classify-verify": config.LLM_MODEL_VERIFY,
   triage: config.LLM_MODEL_TRIAGE,
   "doc-type": config.LLM_MODEL_DOC_TYPE,
+  extract: config.LLM_MODEL_EXTRACT,
+  "extract-verify": config.LLM_MODEL_EXTRACT_VERIFY,
+  "field-judge": config.LLM_MODEL_FIELD_JUDGE,
 };
 
 export function envModel(step: PromptStep): string | undefined {

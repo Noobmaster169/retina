@@ -50,6 +50,9 @@ describe("POST /runs, choosing what and how", () => {
       "classify-verify": { version: "v1", model: "sonnet" },
       triage: { version: "v1", model: "sonnet" },
       "doc-type": { version: "v1", model: "sonnet" },
+      extract: { version: "v1", model: "sonnet" },
+      "extract-verify": { version: "v1", model: "sonnet" },
+      "field-judge": { version: "v1", model: "sonnet" },
     });
     expect((await runs.get(getPool(), response.body.id))?.promptSet).toEqual(response.body.promptSet);
   });
@@ -64,6 +67,9 @@ describe("POST /runs, choosing what and how", () => {
       "classify-verify": { version: "v1", model: "haiku" },
       triage: { version: "v1", model: "sonnet" },
       "doc-type": { version: "v1", model: "sonnet" },
+      extract: { version: "v1", model: "sonnet" },
+      "extract-verify": { version: "v1", model: "sonnet" },
+      "field-judge": { version: "v1", model: "sonnet" },
     });
   });
 

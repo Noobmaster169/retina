@@ -33,6 +33,11 @@ const counts = (done: number, failed: number, classifying = 0, inReview = 0) => 
 });
 const usage = { calls: 0, failedCalls: 0, inputTokens: 0, outputTokens: 0, costUsd: 0, verifierShare: 0 };
 const review = { open: 0, byReason: { wrong_doc_type: 0, missing_attachment: 0, unreadable: 0, missing_value: 0 } };
+const outcomes = {
+  ok: 0,
+  mismatch: 0,
+  byField: { shipper: 0, consignee: 0, notify_party: 0, port_of_loading: 0, port_of_discharge: 0, container_count: 0, gross_weight_kg: 0 },
+};
 
 describe("toSummary: when a run is finished", () => {
   it.each([
@@ -44,7 +49,7 @@ describe("toSummary: when a run is finished", () => {
     ["cancelled with emails left where they stopped", "cancelled", 3, counts(1, 0, 1), 1, true],
     ["failed before ingesting everything", "failed", null, counts(0, 0), 0, true],
   ] as const)("%s", (_name, status, total, stageCounts, finishedEmails, processingDone) => {
-    const summary = toSummary(run(status, total), { stageCounts, queues: null, llm: usage, review, lastSubmission: undefined, lastFinishedAt: null, now: 0 });
+    const summary = toSummary(run(status, total), { stageCounts, queues: null, llm: usage, review, outcomes, lastSubmission: undefined, lastFinishedAt: null, now: 0 });
     expect(summary).toMatchObject({ finishedEmails, processingDone });
   });
 });
@@ -55,6 +60,7 @@ describe("toSummary: how long the run took", () => {
     queues: null,
     llm: usage,
     review,
+    outcomes,
     lastSubmission: undefined,
     lastFinishedAt,
     now,

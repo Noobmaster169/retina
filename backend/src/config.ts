@@ -52,6 +52,9 @@ const Env = z.object({
   LLM_MODEL_VERIFY: optionalString,
   LLM_MODEL_TRIAGE: optionalString,
   LLM_MODEL_DOC_TYPE: optionalString,
+  LLM_MODEL_EXTRACT: optionalString,
+  LLM_MODEL_EXTRACT_VERIFY: optionalString,
+  LLM_MODEL_FIELD_JUDGE: optionalString,
   // How many model calls the worker has in flight at once, across every queue. Unset, it follows
   // CLASSIFY_CONCURRENCY, so one number sets how parallel a run is. Keep both at or under what the
   // proxy serves at once (max_concurrency in proxy/proxy.yaml): more only wait inside the proxy
@@ -63,6 +66,8 @@ const Env = z.object({
   CLASSIFY_ATTACHMENT_CHARS: z.coerce.number().int().positive().default(2000),
   // How much of a document the doc-type step reads. A shipping document is a page or two; this is the same kind of guard.
   DOC_TYPE_TEXT_CHARS: z.coerce.number().int().positive().default(12_000),
+  // How much of a document the extractor and its verifier read. The same guard; no generated document comes near it.
+  EXTRACT_TEXT_CHARS: z.coerce.number().int().positive().default(12_000),
 
   // The proxy serves eight `claude -p` calls at a time (max_concurrency in proxy/proxy.yaml). More
   // workers than that only queue inside the proxy with their request timeout already running.

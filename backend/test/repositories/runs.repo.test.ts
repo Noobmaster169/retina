@@ -89,7 +89,7 @@ describe("runs repository", () => {
   it("still reads a run whose prompt set names a step this code does not know, as after a rollback", async () => {
     await inRollback(async (tx) => {
       const run = await seedRun(tx);
-      const later = { classify: { version: "v3", model: "sonnet" }, extract: { version: "v1", model: "sonnet" } };
+      const later = { classify: { version: "v3", model: "sonnet" }, "review-summary": { version: "v1", model: "sonnet" } };
       await tx.query("update core.runs set prompt_set = $2 where id = $1", [run.id, JSON.stringify(later)]);
 
       expect((await runs.get(tx, run.id))?.promptSet).toEqual({ classify: { version: "v3", model: "sonnet" } });

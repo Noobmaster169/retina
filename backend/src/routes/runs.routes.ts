@@ -6,7 +6,7 @@ import { CreateRunBody, type RunList, type RunStatus, type RunSummary } from "..
 import { RetryableError } from "../lib/errors";
 import { newRunId, resumeJobId } from "../lib/ids";
 import { childLogger } from "../lib/logger";
-import { classifications, emailRuns, llmCalls, reviewCases, type Run, runs, submissions } from "../ontology/repositories";
+import { classifications, comparisons, emailRuns, llmCalls, reviewCases, type Run, runs, submissions } from "../ontology/repositories";
 import type { RunQueues } from "../queues/run-queues";
 import { runIdParam } from "./params";
 import { planRun } from "./run-plan";
@@ -37,12 +37,13 @@ export function runsRouter(deps: RunsDeps): Router {
   /** Every run's summary from one round of reads. The repositories answer for every id asked for. */
   async function summariesOf(all: Run[]): Promise<RunSummary[]> {
     const ids = all.map((run) => run.id);
-    const [stageCounts, queues, usage, verifierShare, review, latest, lastFinished] = await Promise.all([
+    const [stageCounts, queues, usage, verifierShare, review, outcomes, latest, lastFinished] = await Promise.all([
       emailRuns.stageCountsForRuns(pool, ids),
       queueSnapshot(),
       llmCalls.usageForRuns(pool, ids),
       classifications.verifierShareForRuns(pool, ids),
       reviewCases.openCountsForRuns(pool, ids),
+      comparisons.outcomesForRuns(pool, ids),
       submissions.latestForRuns(pool, ids),
       emailRuns.lastFinishedForRuns(pool, ids),
     ]);
@@ -53,6 +54,7 @@ export function runsRouter(deps: RunsDeps): Router {
         queues,
         llm: { ...usage(run.id), verifierShare: verifierShare(run.id) },
         review: review(run.id),
+        outcomes: outcomes(run.id),
         lastSubmission: latest.get(run.id),
         lastFinishedAt: lastFinished(run.id),
         now,

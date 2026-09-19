@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { DecidedBy, Stage } from "./contracts.enums";
+import { ComparisonView, ExtractionView } from "./contracts.extraction";
 import { DocumentView, ReviewCaseView } from "./contracts.review";
 import { Category } from "./contracts.scoring";
 
@@ -98,6 +99,10 @@ export const EmailTrace = z.object({
   documents: z.array(DocumentView),
   /** Why the email is waiting for a person, when it is. */
   review: ReviewCaseView.nullable(),
+  /** What the extractor read from the SI and the BL. Empty until the pair is extracted. */
+  extractions: z.array(ExtractionView),
+  /** How the pair was judged. Null until it was, and for an email that never reached a comparison. */
+  comparison: ComparisonView.nullable(),
   /** The call running right now, if one is. */
   live: LiveCallView.nullable(),
   calls: z.array(LlmCall),

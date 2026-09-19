@@ -1,5 +1,6 @@
-import type { Category, DecidedBy, EmailListItem, Stage } from "../../contracts";
+import { type Category, ComparisonField, type DecidedBy, type EmailListItem, type Stage } from "../../contracts";
 import type { Queryable } from "../../db";
+import { DEFECT_FIELDS_SQL } from "./email-runs.repo";
 
 export interface NewEmail {
   emailId: string;
@@ -44,6 +45,7 @@ interface ListRow {
   decided_by: DecidedBy | null;
   gen_confidence: string | null;
   ver_category: Category | null;
+  defect_fields: string[];
 }
 
 function toEmail(row: EmailRow): StoredEmail {
@@ -70,6 +72,8 @@ function toListItem(row: ListRow): EmailListItem {
     decidedBy: row.decided_by,
     confidence: row.gen_confidence === null ? null : Number(row.gen_confidence),
     verifierCategory: row.ver_category,
+    // A name the enum does not know cannot come from field_diffs, whose check constraint holds the same seven.
+    defectFields: row.defect_fields.flatMap((field) => ComparisonField.options.filter((known) => known === field)),
     error: row.error,
   };
 }
@@ -122,7 +126,8 @@ export async function listForRun(
   page: { page: number; pageSize: number },
 ): Promise<{ emails: EmailListItem[]; total: number }> {
   const from = `core.email_runs er join core.emails e using (email_id)
-     left join core.classifications c on c.email_run_id = er.id`;
+     left join core.classifications c on c.email_run_id = er.id
+     left join core.comparisons cmp on cmp.email_run_id = er.id`;
   const where = `er.run_id = $1
      and ($2::text is null or er.stage = $2)
      and ($3::text is null or e.subject ilike $3 or e.from_addr ilike $3)
@@ -142,7 +147,8 @@ export async function listForRun(
   const { rows } = await db.query<ListRow>(
     `select e.email_id, e.from_addr, e.subject, er.stage, er.outcome, er.error,
             cardinality(e.attachment_paths) as attachment_count,
-            c.final_category, c.decided_by, c.gen_confidence, c.ver_category
+            c.final_category, c.decided_by, c.gen_confidence, c.ver_category,
+            ${DEFECT_FIELDS_SQL} as defect_fields
        from ${from}
       where ${where}
       order by e.email_id

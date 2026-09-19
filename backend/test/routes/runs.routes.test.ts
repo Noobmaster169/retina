@@ -198,6 +198,7 @@ describe("GET /runs/:id and /runs/:id/emails", () => {
           decidedBy: null,
           confidence: null,
           verifierCategory: null,
+          defectFields: [],
           error: null,
         },
       ],

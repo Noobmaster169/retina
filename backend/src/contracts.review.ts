@@ -25,8 +25,8 @@ export type DocumentFormat = z.infer<typeof DocumentFormat>;
 export const TypeVerdict = z.enum(["unknown", "ok", "crossed", "wrong_type"]);
 export type TypeVerdict = z.infer<typeof TypeVerdict>;
 
-/** How an email ended: never sent to compare, compared, or parked with one of the organisers' reasons. */
-export const Outcome = z.enum(["not_comparable", "OK", ...ReviewReason.options]);
+/** How an email ended: never sent to compare, compared clean or with a defect, or parked with one of the organisers' reasons. */
+export const Outcome = z.enum(["not_comparable", "OK", "MISMATCH", ...ReviewReason.options]);
 export type Outcome = z.infer<typeof Outcome>;
 
 /** One attachment of one email run, as the parser saw it and as the model typed it. */

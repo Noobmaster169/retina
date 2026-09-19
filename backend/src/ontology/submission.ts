@@ -30,8 +30,8 @@ export function assembleSubmission(sources: SubmissionSource[]): BuiltSubmission
       status,
       review_reason: status === "NEEDS_REVIEW" ? row.reviewReason : null,
       has_defect: status === "MISMATCH",
-      // Phase 6 fills this from field_diffs. Until then nothing is compared, so nothing differs.
-      defect_fields: [],
+      // Only a MISMATCH carries its fields: a pair sent to review has none to submit, whatever the judge saw.
+      defect_fields: status === "MISMATCH" ? row.defectFields : [],
       decided_by: "llm",
     });
     if (!parsed.success) {

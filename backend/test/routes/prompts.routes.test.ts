@@ -26,7 +26,15 @@ describe("GET /prompts", () => {
     expect(classify.versions.filter((v: { active: boolean }) => v.active).map((v: { version: string }) => v.version)).toEqual(["v3"]);
     expect(classify.versions[2]).toMatchObject({ model: "sonnet", notes: expect.stringContaining("Phase 2 final") });
     expect(classify.versions[0]).toMatchObject({ active: false, notes: expect.stringContaining("attachments") });
-    expect(response.body.steps.map((s: { step: string }) => s.step)).toEqual(["classify", "classify-verify", "triage", "doc-type"]);
+    expect(response.body.steps.map((s: { step: string }) => s.step)).toEqual([
+      "classify",
+      "classify-verify",
+      "triage",
+      "doc-type",
+      "extract",
+      "extract-verify",
+      "field-judge",
+    ]);
   });
 
   it("needs a key", async () => {

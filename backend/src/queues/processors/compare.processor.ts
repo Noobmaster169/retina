@@ -8,9 +8,10 @@ import { childLogger } from "../../lib/logger";
 import type { LiveCalls } from "../../live";
 import { attachments, comparisons, documents, emailRuns, emails, llmCalls, type Run, runs } from "../../ontology/repositories";
 import { buildClassifyInput } from "../../pipeline/classify";
-import { checkStructure, type TriageRequest } from "../../pipeline/compare";
+import { checkStructure, decisionDetail, type TriageRequest } from "../../pipeline/compare";
 import { keys, type ObjectStore } from "../../storage";
 import type { CompareJob } from "../names";
+import { compareDocuments, provisionalResult, storeProvisional } from "./compare-pair";
 import { escalate } from "./escalate";
 import type { EmailRunIds } from "./ids";
 import { type ParsedDocument, parseDocuments } from "./parse-documents";
@@ -77,7 +78,27 @@ async function renderPages(deps: CompareDeps, docs: ParsedDocument[], ids: Email
   return pages;
 }
 
-/** Parse, type, check the structure, then record what it found. Returns early when the run was cancelled meanwhile. */
+/**
+ * A structural escalation, with what the reviewer needs beside the reason: the
+ * page images for anything unreadable, and for a scan the comparison run on
+ * the OCR text as a suggested result. A scan is never silently trusted.
+ */
+async function escalateStructure(
+  deps: CompareDeps,
+  set: PromptSet,
+  ids: EmailRunIds,
+  docs: ParsedDocument[],
+  outcome: { reason: Parameters<typeof escalate>[2]; detail: Record<string, unknown> },
+): Promise<void> {
+  const pages = outcome.reason === "unreadable" ? await renderPages(deps, docs, ids) : [];
+  const scanned = outcome.reason === "unreadable" && outcome.detail.scanned === true;
+  const provisional = scanned ? await provisionalResult(deps, set, ids, docs) : null;
+  const detail = { ...outcome.detail, pages, ...(scanned ? { provisional: provisional ? decisionDetail(provisional.decision) : null } : {}) };
+  await escalate(deps.pool, ids, outcome.reason, detail);
+  if (provisional) await storeProvisional(deps, ids, provisional);
+}
+
+/** Parse, type, check the structure, then compare or record why not. Returns early when the run was cancelled meanwhile. */
 async function compareOnce(deps: CompareDeps, run: Run, ids: EmailRunIds): Promise<void> {
   const set = await promptSetOf(deps.pool, run);
   const files = await attachments.listForEmail(deps.pool, run.id, ids.emailId);
@@ -87,30 +108,29 @@ async function compareOnce(deps: CompareDeps, run: Run, ids: EmailRunIds): Promi
 
   const outcome = checkStructure(docs, request);
   if (outcome.kind === "review") {
-    const pages = outcome.reason === "unreadable" ? await renderPages(deps, docs, ids) : [];
-    await escalate(deps.pool, ids, outcome.reason, { ...outcome.detail, pages });
+    await escalateStructure(deps, set, ids, docs, outcome);
     return;
   }
-  if (outcome.kind === "compare" && outcome.swapped) {
+  if (outcome.kind === "awaiting_draft") {
+    await comparisons.upsert(deps.pool, { emailRunId: ids.emailRunId, status: "OK", reviewReason: null, detail: outcome.detail });
+    await emailRuns.moveStage(deps.pool, ids.runId, ids.emailId, ["comparing"], "done", { outcome: "OK", finished: true });
+    log.info({ runId: ids.runId, emailId: ids.emailId, stage: "compare", outcome: outcome.kind }, "compared");
+    return;
+  }
+  if (outcome.swapped) {
     log.warn(
       { runId: ids.runId, emailId: ids.emailId, stage: "compare", si: outcome.si, bl: outcome.bl },
       "the file names had the pair the other way round; the model's reading decided",
     );
   }
-  const detail =
-    outcome.kind === "awaiting_draft"
-      ? outcome.detail
-      : { placeholder: true, si: outcome.si, bl: outcome.bl, extras: outcome.extras, swapped: outcome.swapped };
-  await comparisons.upsert(deps.pool, { emailRunId: ids.emailRunId, status: "OK", reviewReason: null, detail });
-  await emailRuns.moveStage(deps.pool, ids.runId, ids.emailId, ["comparing"], "done", { outcome: "OK", finished: true });
-  log.info({ runId: ids.runId, emailId: ids.emailId, stage: "compare", outcome: outcome.kind }, "compared");
+  await compareDocuments(deps, set, ids, docs, outcome);
 }
 
 /**
- * The compare stage in its phase 5 form: every attachment parsed and typed,
- * the three structural escalations, and a placeholder OK for a pair that could
- * be compared. Field extraction is phase 6. A job can run twice; every write
- * here is idempotent and every stage move names the stages it may start from.
+ * The compare stage: every attachment parsed and typed, the three structural
+ * escalations, and for a pair that can be compared the field extraction, the
+ * judge and the verdict. A job can run twice; every write here is idempotent
+ * and every stage move names the stages it may start from.
  */
 export async function processCompare(deps: CompareDeps, data: CompareJob): Promise<void> {
   const { runId, emailId } = data;
