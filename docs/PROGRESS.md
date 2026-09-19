@@ -180,6 +180,13 @@ train ids in the interrupted full run are the cleaner evidence: none was looked 
   paths), not clicked in a browser: the browser tool failed to connect in the building session.
 - A full run is 520 sonnet calls at 2 at a time: about 40 minutes, and about 59 USD at API prices
   (nothing is billed on the subscription rail, but it uses the subscription's limits).
+- The box's proxy still runs the code on `main`, which parses `output_config` but never passes it
+  to `claude -p`. `auto-deploy.sh` reinstalls and restarts it on any push touching `proxy/`, so the
+  merge of this branch is what makes structured output real there. Its `claude` must be 2.1.274 or
+  newer; check with `claude --version` before the phase 3 smoke test. There is no proxy image to
+  rebuild: the box runs it from the clone, not a container.
+- The Score cell was exercised through the frontend's own `/api/runs/:id/submit` route, not clicked
+  in a browser: no browser tool in the session that did it, as in the phase 2 build.
 - Worker, Redis and MinIO on the VPS, phase 3. After this merges the box still runs only the api,
   which boots without them and reports `redis` and `minio` as `down` in `/health` (HTTP 200).
   There `GET /runs` lists runs with `queues: null`, and `POST /runs` answers 503, until phase 3.
@@ -188,6 +195,11 @@ train ids in the interrupted full run are the cleaner evidence: none was looked 
   test only. Windows cannot deliver SIGTERM to the node process, so it was not exercised live.
   Exercise it on the box in phase 3. The hard-kill path was exercised live and works.
 - Attachments are copied per run (250 objects each). Dedupe by sha256 later if disk matters.
+- Structured output is not exercised on the gateway transport. `/ai/chat` has no `output_config`,
+  so where `LLM_PROXY_URL` names one, the answer schema reaches the model through the prompt only
+  and `structured.ts`'s zod parse is the whole guarantee. The provider constraint is exercised only
+  against a proxy we speak the Anthropic wire to. If the box ever exposes `/v1/messages`, delete the
+  gateway transport rather than keep two.
 - A cancelled run's emails stay at the stage they reached; there is no `cancelled` stage. Add one
   if a later dashboard needs to tell them from emails still in flight.
 - One `emailIds` entry that is not in the inbox fails the whole run with a terminal error naming
@@ -214,6 +226,16 @@ train ids in the interrupted full run are the cleaner evidence: none was looked 
   lines: a long-running worker picked up the other session's new prompt file mid-run.
 - On Windows the proxy venv is `.venv/Scripts/python.exe`, and port 4000 may belong to another
   project's proxy with different aliases. This repo's proxy runs on 4001 locally.
+- The deployed box does not expose its proxy. Probing the ngrok host found `/v1/messages`,
+  `/healthz`, `/v1/models` and every guessed path a 404, and the proxy reachable only behind the
+  API's `/ai/chat` with a bearer. An unauthenticated probe answers 401 for a path that does not
+  exist, because the bearer check runs ahead of routing: read 401 as "not authenticated", never as
+  "the route is there".
+- Nothing in the backend sends an outbound credential by default. The SDK's `apiKey` goes out as
+  `x-api-key` and is a spend label the proxy reads as the project name, not a key.
+- A dev machine can lose everything that is gitignored. This one came back with no `backend/.env`,
+  no `node_modules`, no proxy `.venv` and empty Docker volumes, so the local database and the
+  previous session's runs were gone before this session started.
 - BullMQ 6 rejects a custom job id containing `:`, and `job.discard()` no longer exists.
 - `minio/minio` is gone from Docker Hub; `quay.io/minio/minio` and `quay.io/minio/mc` work.
 - A BullMQ job with a priority waits in `prioritized`, not `waiting`. Count and cancel both.
