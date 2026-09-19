@@ -43,9 +43,10 @@ export function NewRunForm({ onCreated }: Props) {
     const out: Record<string, unknown> = { ratePerSecond: Number(pace) };
     if (scope === "dev" || scope === "holdout") out.subset = scope;
     if (scope === "first") out.limit = Number(count);
+    // Only a version other than the active one is pinned; the active one is what a run gets anyway.
     const promptSet = {
-      ...(classifyPrompt ? { classify: classifyPrompt } : {}),
-      ...(verifyPrompt ? { "classify-verify": verifyPrompt } : {}),
+      ...(classifyPrompt && classifyPrompt !== options.active("classify") ? { classify: classifyPrompt } : {}),
+      ...(verifyPrompt && verifyPrompt !== options.active("classify-verify") ? { "classify-verify": verifyPrompt } : {}),
     };
     if (Object.keys(promptSet).length) out.promptSet = promptSet;
     if (model) out.models = { classify: model, "classify-verify": model };
@@ -83,8 +84,8 @@ export function NewRunForm({ onCreated }: Props) {
       <LabelledSelect name="scope" label="Emails" choices={SCOPES} value={scope} onChange={(v) => setScope(v as Scope)} />
       {scope === "first" && <LabelledSelect name="count" label="How many" choices={COUNTS} value={count} onChange={setCount} />}
       <LabelledSelect name="pace" label="Pace" choices={PACES} value={pace} onChange={setPace} />
-      <LabelledSelect name="classify" label="Classify prompt" choices={options.prompts("classify")} value={classifyPrompt} onChange={setClassifyPrompt} />
-      <LabelledSelect name="verify" label="Verifier prompt" choices={options.prompts("classify-verify")} value={verifyPrompt} onChange={setVerifyPrompt} />
+      <LabelledSelect name="classify" label="Classify prompt" choices={options.prompts("classify")} value={classifyPrompt || options.active("classify")} onChange={setClassifyPrompt} />
+      <LabelledSelect name="verify" label="Verifier prompt" choices={options.prompts("classify-verify")} value={verifyPrompt || options.active("classify-verify")} onChange={setVerifyPrompt} />
       <LabelledSelect name="model" label="Model" choices={options.models} value={model} onChange={setModel} />
       <button
         type="submit"

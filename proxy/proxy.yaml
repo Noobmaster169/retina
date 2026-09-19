@@ -27,7 +27,7 @@ providers:
   claudecli:
     type: claudecli
     binary: claude
-    max_concurrency: 2      # `claude -p` spawns a full agent session per call
+    max_concurrency: 8      # `claude -p` spawns a full agent session per call; matches CLASSIFY_CONCURRENCY
     timeout_s: 1200
     stream_mode: native
     neutralise_anthropic_key: true
@@ -41,7 +41,7 @@ providers:
   # claudecli_web:
   #   type: claudecli
   #   binary: claude
-  #   max_concurrency: 2
+  #   max_concurrency: 8
   #   timeout_s: 1200
   #   stream_mode: native
   #   neutralise_anthropic_key: true

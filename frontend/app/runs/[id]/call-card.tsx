@@ -34,13 +34,9 @@ export function CallCard({ call }: { call: LlmCall }) {
         </span>
       </header>
       {call.error && <p className="mt-2 text-sm text-red-700">{call.error}</p>}
-      <Block title="Input: the email as the model saw it" text={call.user} />
-      {structured && <Block title="Final JSON: the structured answer the schema accepted" text={structured} open />}
-      <Block
-        title="Output: the model's answer, as returned"
-        text={call.responseText ?? "(no answer: the call failed)"}
-        open={!structured}
-      />
+      <Block title="Input: the email as the model saw it" text={call.user} open />
+      {structured && <Block title="Output: the structured answer the schema accepted" text={structured} open />}
+      {!structured && <Block title="Output: the model's answer, as returned" text={call.responseText ?? "(no answer: the call failed)"} open />}
       <Block title="System prompt" text={call.system} />
     </article>
   );

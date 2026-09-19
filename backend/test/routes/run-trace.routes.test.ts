@@ -53,12 +53,12 @@ describe("POST /runs, choosing what and how", () => {
   });
 
   it("pins the version and model a run asks for", async () => {
-    const body = { limit: 1, promptSet: { classify: "v2" }, models: { "classify-verify": "haiku" } };
+    const body = { limit: 1, promptSet: { classify: "v4" }, models: { "classify-verify": "haiku" } };
     const response = await request(app()).post("/runs").set(TEAM).send(body);
 
     expect(response.status).toBe(201);
     expect(response.body.promptSet).toEqual({
-      classify: { version: "v2", model: "sonnet" },
+      classify: { version: "v4", model: "sonnet" },
       "classify-verify": { version: "v1", model: "haiku" },
     });
   });
@@ -94,7 +94,7 @@ describe("POST /runs, choosing what and how", () => {
 describe("GET /runs", () => {
   it("says how parallel a run is, from the env", async () => {
     const response = await request(app()).get("/runs").set(TEAM);
-    expect(response.body.concurrency).toEqual({ classify: 2, llm: 2 });
+    expect(response.body.concurrency).toEqual({ classify: 8, llm: 8 });
   });
 });
 

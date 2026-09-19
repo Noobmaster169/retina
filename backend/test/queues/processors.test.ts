@@ -161,7 +161,7 @@ describe("classify processor", () => {
   it("runs the prompt versions and models the run pinned", async () => {
     await inRollback(async (tx) => {
       const run = await seedRun(tx, {
-        promptSet: { classify: { version: "v2", model: "haiku" }, "classify-verify": { version: "v1", model: "opus" } },
+        promptSet: { classify: { version: "v4", model: "haiku" }, "classify-verify": { version: "v1", model: "opus" } },
       });
       const emailId = await seedEmail(tx);
       await emailRuns.insert(tx, { runId: run.id, emailId, stage: "ingested", priority: 600 });
@@ -171,7 +171,7 @@ describe("classify processor", () => {
 
       expect(llm.requests[0].model).toBe("haiku");
       const [call] = await llmCalls.listForEmail(tx, run.id, emailId);
-      expect(call).toMatchObject({ promptVersion: "v2", model: "haiku" });
+      expect(call).toMatchObject({ promptVersion: "v4", model: "haiku" });
     });
   });
 

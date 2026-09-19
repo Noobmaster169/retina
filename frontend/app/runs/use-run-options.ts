@@ -18,6 +18,8 @@ export const DEFAULT = "";
 
 export interface RunOptions {
   prompts(step: string): Choice[];
+  /** The version a run gets when it names none. */
+  active(step: string): string;
   models: Choice[];
   error: string | null;
 }
@@ -31,24 +33,24 @@ export function useRunOptions(): RunOptions {
   const prompts = useSWR("/api/prompts", fetchPrompts, { revalidateOnFocus: false });
   const models = useSWR("/api/models", fetchModels, { revalidateOnFocus: false });
 
+  const versionsOf = (step: string) => prompts.data?.steps.find((s) => s.step === step)?.versions ?? [];
+
   function promptChoices(step: string): Choice[] {
-    const versions = prompts.data?.steps.find((s) => s.step === step)?.versions ?? [];
-    const active = versions.find((v) => v.active);
-    return [
-      { value: DEFAULT, label: active ? `Active (${active.version})` : "Active" },
-      ...versions.map((v) => ({
-        value: v.version,
-        label: `${v.version}${v.active ? " (active)" : ""}`,
-        hint: v.notes ?? undefined,
-      })),
-    ];
+    return versionsOf(step).map((v) => ({
+      value: v.version,
+      label: `${v.version}${v.active ? " (active)" : ""}`,
+      hint: v.notes ?? undefined,
+    }));
   }
+
+  const activeOf = (step: string) => versionsOf(step).find((v) => v.active)?.version ?? DEFAULT;
 
   // The mock echoes its prompt back; it cannot answer a schema, so a run on it only fails.
   const aliases = (models.data?.models ?? []).filter((m) => m.provider !== "mock");
   const failure = prompts.error ?? models.error;
   return {
     prompts: promptChoices,
+    active: activeOf,
     models: [{ value: DEFAULT, label: "Each prompt's own (sonnet)" }, ...aliases.map((m) => ({ value: m.id, label: m.id }))],
     error: failure instanceof Error ? failure.message : null,
   };
