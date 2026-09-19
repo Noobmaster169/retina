@@ -341,9 +341,10 @@ second rule of its own.
 
 `escalate.ts` opens one review case per email run, writes the comparison row as
 `NEEDS_REVIEW` with the reason, and parks the email at `review` with `outcome = reason`. An email
-at `review` counts as finished for the run. In phase 5 a comparable pair ends `OK` with
-`detail.placeholder = true`, plus `si`, `bl`, `extras` and `swapped`; the rest of this section is
-phase 6.
+at `review` counts as finished for the run. A comparable pair goes on to the field check below
+(`queues/processors/compare-pair.ts`); its comparison detail carries `si`, `bl`, `extras` and
+`swapped` beside the decision. A scanned pair is escalated `unreadable` first and then compared
+on its OCR text, and the decision travels as `detail.provisional` for the reviewer.
 
 **Extract** (`prompts/extract/v1.md`), one call per document. Input: document role, full text
 (or OCR text with per-page confidence), the label synonym table as guidance, and the note that
@@ -363,28 +364,45 @@ labels may carry parenthetical Chinese glosses. Output:
 
 Values are returned raw. Normalisation is code, so the model is never asked to do arithmetic.
 
-**Evidence check** (`compare/evidence.ts`): for each field with a value, `source_quote` must
-appear in the document text after whitespace normalisation. Fails → field marked
-`evidence_failed`. If any field fails or has confidence below 0.7, run the extraction verifier
-(`prompts/extract-verify/v1.md`) on that document with the failing fields highlighted; it
-returns the same shape and replaces those fields. Still failing → treat the field as missing
-with `note = "verifier could not locate"`.
+**Evidence check** (`compare/evidence.ts`, pure): for each field, `source_quote` must appear in
+the document text and `value` inside the quote, both sides whitespace-collapsed and case-folded.
+A placeholder needs only its line found; a field the extractor says the document does not carry
+has nothing to prove. `fieldsInDoubt` lists every field whose evidence fails or whose confidence
+is under `EXTRACT_TRUST_FROM` (0.7); if any, the extraction verifier
+(`prompts/extract-verify/v1.md`) reads that document again with the first answer and the doubts
+in front of it and returns all seven. A field still failing evidence after that becomes
+`value: null` with the note that the verifier could not locate it: a value that cannot be found is
+uncertainty, and so a `missing_value`. A verifier whose answer never fits its schema degrades the
+same way for the fields it was asked about; an outage pauses the queue. `extractions.verified`
+records whether it ran, and every field's `evidence_ok` is stored.
 
-**Field judge** (`prompts/field-judge/v1.md`). For each of the seven fields the model receives
-the raw SI value and the raw BL value with their source quotes and answers
-`{ same: boolean, missing: boolean, confidence, rationale }`. `same` means the two values denote the
-same thing in a shipping document: `131,058 KG` and `131058`, a port with and without its
-UN/LOCODE, a company name with and without its address lines. `missing` means either side is
-blank or a placeholder, which is uncertainty and never a difference. The prompt states those
-principles from the organisers' text; it lists no normalisation rules and no values from the
-dataset.
+The extraction is one call per document (`prompts/extract/v1.md`, `queues/processors/extract-fields.ts`),
+keyed on the `extractions` row by document: a job that runs twice reads its extractions back
+under the run's prompt version instead of paying for them again, with `human_value` in place of
+the model's value where a person set one.
+
+**Field judge** (`prompts/field-judge/v1.md`, `agents/field-judge.ts`), one call per pair. The
+model receives, one section per field, the SI value and the BL value with the line each was
+quoted from, and answers for each `{ rationale, same: boolean, missing: boolean, confidence }`.
+`same` means the two values denote the same thing in a shipping document: a weight with and
+without its thousands separator or unit, a port with and without a code beside it, a company
+name with its legal form spelt differently. `missing` means one value is blank, a placeholder or
+a note that nothing was found, which is uncertainty and never a difference. The prompt states
+those principles in the organisers' terms; it lists no normalisation rules and no values from
+the dataset. The schema is built per call from exactly the fields asked about, so the model can
+neither skip one nor answer for one it was not given. Only fields with a value on both sides are
+asked about (`judgeable`): a side the extractor found nothing on is missing by the extractor's
+own word, and there is nothing to compare.
 
 There are no normalisers in code: no unit tables, no suffix lists, no code stripping. Code does
-one thing (`compare/assemble.ts`, pure): collect the fields judged `same: false` into
-`defect_fields`, collect the fields judged `missing` into a `missing_value` escalation, and validate
-every name against the `ComparisonField` enum. That keeps the submitted set exact without the
-model ever writing the final list free-hand. The judge always decides; an unsure judgement is not
-an escalation, and its confidence is stored for the reviewer.
+one thing (`compare/assemble.ts`, pure): one `FieldJudgement` per field in the enum's order, the
+fields judged `same: false` and not missing as `defectFields`, the fields missing on either side
+as `missing`, and every name validated against the `ComparisonField` enum, a name outside it a
+`TerminalError`. That keeps the submitted set exact without the model ever writing the final
+list free-hand. The judge always decides; an unsure judgement is not an escalation, and its
+confidence is stored for the reviewer. All seven judgements land in `field_diffs`, on a
+`missing_value` escalation and on a scan's provisional result too, so the trace shows the whole
+pair whatever the verdict.
 
 **Decide** (`compare/decide.ts`):
 
@@ -573,14 +591,16 @@ documents          (id bigserial pk, email_run_id fk, attachment_id fk, role tex
 classifications    (id bigserial pk, email_run_id fk unique,
                     gen_category text, gen_confidence numeric, ver_category text, ver_confidence numeric,
                     final_category text, human_category text, decided_by text, rationale jsonb, prompt_version text)
-extractions        (id bigserial pk, document_id fk, email_run_id fk, prompt_version text, verified bool, created_at)
-extraction_fields  (id bigserial pk, extraction_id fk, field text, value text, normalised text,
+extractions        (id bigserial pk, document_id fk unique, email_run_id fk, role text check (role in ('SI','BL')),
+                    prompt_version text, model text, verified bool, created_at)
+extraction_fields  (id bigserial pk, extraction_id fk, field text (the seven), value text, placeholder text,
                     source_quote text, confidence numeric, evidence_ok bool, human_value text, note text,
                     unique(extraction_id, field))
 comparisons        (id bigserial pk, email_run_id fk unique, status text, review_reason text,
                     has_defect bool, decided_by text, created_at)
-field_diffs        (id bigserial pk, comparison_id fk, field text, si_value text, bl_value text,
-                    si_normalised text, bl_normalised text, judge_used bool, judge_confidence numeric)
+field_diffs        (id bigserial pk, comparison_id fk, field text (the seven), si_value text, bl_value text,
+                    same bool, missing bool, confidence numeric, rationale text, unique(comparison_id, field);
+                    every field's judgement, not only the differing ones: defect_fields is where same and missing are both false)
 review_cases       (id bigserial pk, email_run_id fk, kind text check (kind in ('review','failure')),
                     reason text (the organisers' four; set exactly when kind = 'review'), stage text, detail jsonb,
                     status text check (status in ('open','resolved')), opened_at, resolved_at, resolved_by text;
@@ -660,14 +680,14 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 |---|---|
 | `GET /health` | `{ status: ok \| degraded, checks: { postgres, redis, minio, inbox, docExtract } }`, 2 s per check. Degraded is still 200; only postgres down is 503, which is the signal auto-deploy rolls back on. The proxy is left out on purpose: a cold model would read as an outage |
 | `POST /runs` | start a run `{ source, ratePerSecond, limit?, emailIds?, subset?: dev \| holdout, promptSet?: { step: vN }, models?: { step: alias } }`. `subset` reads the id lists in `backend/eval/` (ids only). 400 for an unknown prompt version or a model that is not a proxy alias, before anything is queued |
-| `GET /runs`, `GET /runs/:id` | list, detail with stage counts, `finishedEmails` (done, failed and review), `processingDone`, `elapsedMs` (start to the last email finishing, or to now), queue depth, `promptSet`, `llm` usage with `verifierShare`, `review: { open, byReason }`, score. The list also carries `concurrency: { classify, llm }` from the env. `queues` is `null` when Redis cannot be reached; the rest comes from Postgres and is still served |
+| `GET /runs`, `GET /runs/:id` | list, detail with stage counts, `finishedEmails` (done, failed and review), `processingDone`, `elapsedMs` (start to the last email finishing, or to now), queue depth, `promptSet`, `llm` usage with `verifierShare`, `review: { open, byReason }`, `outcomes: { ok, mismatch, byField }` over the compared pairs, score. The list also carries `concurrency: { classify, llm }` from the env. `queues` is `null` when Redis cannot be reached; the rest comes from Postgres and is still served |
 | `POST /runs/:id/pause`, `/resume`, `/cancel` | control the replay |
 | `POST /runs/:id/submit?force=false` | build submission, post to averis, store scoreboard. 409 when the run holds fewer rows than `totalEmails` (still ingesting) or holds unfinished emails, both overridden by `?force=true`; 409 while another submission for the same run is being scored. The `core.submissions` row is written before the scorer is called and updated with the scoreboard after, so a scorer failure leaves an unscored row (null `scoreboard`, null `final_score`) pointing at the stored payload rather than an orphan payload. Only scored rows count as a run's last submission |
 | `GET /runs/:id/submission.json` | download the payload |
-| `GET /runs/:id/emails?stage=&category=&decidedBy=&outcome=&q=` | paginated list with `category`, `decidedBy`, `confidence`, `verifierCategory`, `outcome`, `error` |
+| `GET /runs/:id/emails?stage=&category=&decidedBy=&outcome=&q=` | paginated list with `category`, `decidedBy`, `confidence`, `verifierCategory`, `outcome` (`not_comparable`, `OK`, `MISMATCH` or a review reason), `defectFields`, `error` |
 | `GET /runs/:id/calls?after=&limit=` | the run's newest `llm_calls` as summaries (no prompt or email text), newest first, for a live feed; `after` returns only newer ids |
 | `GET /runs/:id/live` | the run's model calls running now, each with the answer written so far (`LiveCallView`) |
-| `GET /runs/:id/emails/:emailId/trace` | one email: stage, error, how its category was settled (each reader's category, confidence, reasoning, counter-cases, verifier error), its documents (the role the filename claims, the model's type with confidence and rationale, format, pages, scanned, unreadable, warnings), its open review case, the call running now, and every finished call oldest first with system prompt, input, answer text, parsed answer, tokens, cost, latency |
+| `GET /runs/:id/emails/:emailId/trace` | one email: stage, error, how its category was settled (each reader's category, confidence, reasoning, counter-cases, verifier error), its documents (the role the filename claims, the model's type with confidence and rationale, format, pages, scanned, unreadable, warnings), its open review case, its `extractions` (per document: the place it filled, whether the verifier ran, the seven fields with value, placeholder, quote, confidence, evidence and any human value), its `comparison` (status, reason, defect fields, every field's judgement), the call running now, and every finished call oldest first with system prompt, input, answer text, parsed answer, tokens, cost, latency |
 | `GET /prompts` | each prompt step's versions on disk, newest first, with the active one, the model the file names and any notes; the runs page offers exactly these |
 | `GET /emails/:runId/:emailId` | full trace: email, attachments, classification, extractions with fields, comparison, diffs, review case, llm_calls summary |
 | `GET /review?status=open` | review inbox |
