@@ -57,3 +57,21 @@ def test_an_image_only_pdf_is_read_by_ocr():
     assert page.source == "ocr"
     assert page.ocr_confidence is not None and page.ocr_confidence > 40
     assert "Shipper" in page.text
+
+
+def _word(text: str, baseline: float, x0: float = 20.0):
+    """A PyMuPDF word box: (x0, y0, x1, y1, word, block, line, word_no)."""
+    return (x0, baseline - 10.0, x0 + 30.0, baseline, text, 0, 0, 0)
+
+
+def test_a_label_and_its_value_on_one_baseline_stay_on_one_line():
+    out = lines_from_words([_word("Shipper:", 100.0), _word("ACME", 100.0, x0=60.0)])
+    assert out.splitlines() == ["Shipper: ACME"]
+
+
+def test_baselines_that_step_by_less_than_the_tolerance_do_not_chain_into_one_line():
+    # Each word sits 1.9 pt below the last, inside the 2 pt tolerance, but 7.6 pt
+    # separates the first from the last: measured against the word that opened the
+    # line, these are four lines and not one.
+    steps = [_word(f"L{i}", 100.0 + i * 1.9) for i in range(5)]
+    assert len(lines_from_words(steps).splitlines()) > 1

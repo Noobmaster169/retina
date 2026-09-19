@@ -3,10 +3,10 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from extractors.base import Extracted
+from extractors.base import Extracted, ExtractedPage
 from extractors.ocr import installed_langs, tesseract_version
 from extractors.pdf import render_pdf
-from models import ExtractRequest, ExtractResponse, Health, Page, RenderedPage, RenderRequest, RenderResponse
+from models import ErrorBody, ExtractRequest, ExtractResponse, Health, Page, RenderedPage, RenderRequest, RenderResponse
 from registry import extractor_for, format_of
 from settings import settings
 from storage import MinioStorage, NoSuchObject, Storage, StorageError
@@ -26,11 +26,13 @@ def create_app(storage: Storage | None = None) -> FastAPI:
     @app.exception_handler(StorageError)
     async def storage_failed(_request: Request, error: StorageError) -> JSONResponse:
         # The one 5xx this service answers: the store did not answer, so the caller should try again.
-        return JSONResponse(status_code=503, content={"error": f"object store: {error}", "retryable": True})
+        body = ErrorBody(error=f"object store: {error}", retryable=True)
+        return JSONResponse(status_code=503, content=body.model_dump())
 
     @app.exception_handler(NoSuchObject)
     async def no_such_object(_request: Request, error: NoSuchObject) -> JSONResponse:
-        return JSONResponse(status_code=404, content={"error": f"no such object: {error}", "retryable": False})
+        body = ErrorBody(error=f"no such object: {error}", retryable=False)
+        return JSONResponse(status_code=404, content=body.model_dump())
 
     @app.get("/healthz", response_model=Health)
     def healthz() -> Health:
@@ -57,18 +59,25 @@ def create_app(storage: Storage | None = None) -> FastAPI:
     return app
 
 
+def page_is_readable(page: ExtractedPage) -> bool:
+    """Whether anything on this page can be worked from: it yielded text, and where
+    that text came from OCR the recogniser was confident enough to be believed."""
+    if page.source == "none":
+        return False
+    if page.source == "ocr":
+        return (page.ocr_confidence or 0.0) >= MIN_OCR_CONFIDENCE
+    return True
+
+
 def is_unreadable(size: int, extracted: Extracted) -> bool:
+    """A fact about the file, never a judgement: empty, would not open, or no page
+    it could recover text from. Judged per page and then over the document, so a
+    page with no text beside a page OCR could not read counts as neither."""
     if size == 0 or not extracted.opened or not extracted.pages:
         return True
-    if all(page.source == "none" for page in extracted.pages):
+    if not any(page_is_readable(page) for page in extracted.pages):
         return True
-    total = sum(len(page.text.strip()) for page in extracted.pages)
-    if total < MIN_TOTAL_CHARS:
-        return True
-    ocr_pages = [page for page in extracted.pages if page.source == "ocr"]
-    if ocr_pages and len(ocr_pages) == len(extracted.pages):
-        return all((page.ocr_confidence or 0.0) < MIN_OCR_CONFIDENCE for page in ocr_pages)
-    return False
+    return sum(len(page.text.strip()) for page in extracted.pages) < MIN_TOTAL_CHARS
 
 
 def extract_bytes(data: bytes, filename: str, content_type: str | None) -> ExtractResponse:

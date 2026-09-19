@@ -53,3 +53,15 @@ class Health(BaseModel):
     ok: bool
     tesseract: str | None
     langs: list[str]
+
+
+class ErrorBody(BaseModel):
+    """The failure envelope, mirrored by hand in backend/src/doc-extract/http.client.ts.
+
+    `retryable` is this service's own verdict, as the proxy's envelope states its
+    own: the caller must not read it off the status, because the store being
+    unreachable and a key that is not there are both its failures to report.
+    """
+
+    error: str
+    retryable: bool

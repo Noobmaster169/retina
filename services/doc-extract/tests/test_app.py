@@ -2,7 +2,8 @@ import pytest
 from conftest import fixture_bytes
 from fastapi.testclient import TestClient
 
-from app import create_app
+from app import create_app, is_unreadable, page_is_readable
+from extractors.base import Extracted, ExtractedPage
 from storage import MemoryStorage, StorageError
 
 
@@ -107,3 +108,27 @@ def test_render_writes_a_png_per_page_and_nothing_for_a_non_pdf(stack):
 
     response = client.post("/render", json={"key": "a/x.txt", "filename": "x.txt", "out_prefix": "a/pages/x.txt"})
     assert response.json() == {"pages": []}
+
+
+def test_a_page_ocr_could_not_read_is_not_something_to_work_from():
+    assert page_is_readable(ExtractedPage(1, "clean text", "text_layer", None)) is True
+    assert page_is_readable(ExtractedPage(1, "recognised well", "ocr", 88.0)) is True
+    assert page_is_readable(ExtractedPage(1, "rn1 vvorn noise", "ocr", 8.0)) is False
+    assert page_is_readable(ExtractedPage(1, "", "ocr", None)) is False
+    assert page_is_readable(ExtractedPage(1, "", "none", None)) is False
+
+
+def test_a_document_no_page_could_be_read_from_is_unreadable():
+    long_enough = "Shipper: ACME PAPER MILLS LIMITED, SHANGHAI CHINA. " * 3
+
+    # Every page OCR, none of it trusted.
+    both_bad = Extracted(pages=[ExtractedPage(1, long_enough, "ocr", 12.0), ExtractedPage(2, long_enough, "ocr", 9.0)])
+    assert is_unreadable(5000, both_bad) is True
+
+    # A blank page beside one OCR could not read: neither yielded anything usable.
+    blank_and_bad = Extracted(pages=[ExtractedPage(1, "", "none", None), ExtractedPage(2, long_enough, "ocr", 8.0)])
+    assert is_unreadable(5000, blank_and_bad) is True
+
+    # One page the recogniser stands behind is enough to work from.
+    one_good = Extracted(pages=[ExtractedPage(1, long_enough, "ocr", 88.0), ExtractedPage(2, "noise", "ocr", 5.0)])
+    assert is_unreadable(5000, one_good) is False

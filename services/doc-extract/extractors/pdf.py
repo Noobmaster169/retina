@@ -1,4 +1,5 @@
 from io import BytesIO
+from typing import NamedTuple
 
 import fitz
 from PIL import Image
@@ -12,21 +13,40 @@ MIN_TEXT_LAYER_CHARS = 20
 BASELINE_TOLERANCE_PT = 2.0
 
 
+class Word(NamedTuple):
+    """One word box as PyMuPDF's `get_text("words")` yields it, named rather than indexed."""
+
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+    text: str
+    block: int
+    line: int
+    number: int
+
+
 def lines_from_words(words: list[tuple]) -> str:
     """Rebuilds lines from word boxes so a label and the value drawn beside it stay on one line.
 
     PyMuPDF's default reading order follows the drawing order, which for a form
     put down label by label and value by value can separate the two. Grouping by
     baseline puts them back together.
+
+    Each line is measured against the baseline of the word that opened it, never
+    against the word last added: a page whose baselines step by less than the
+    tolerance would otherwise chain every one of them into a single line.
     """
-    ordered = sorted(words, key=lambda w: (round(w[3], 1), w[0]))
-    lines: list[list[tuple]] = []
+    ordered = sorted((Word._make(word[:8]) for word in words), key=lambda w: (round(w.y1, 1), w.x0))
+    lines: list[list[Word]] = []
+    baselines: list[float] = []
     for word in ordered:
-        if lines and abs(word[3] - lines[-1][-1][3]) <= BASELINE_TOLERANCE_PT:
+        if lines and abs(word.y1 - baselines[-1]) <= BASELINE_TOLERANCE_PT:
             lines[-1].append(word)
-        else:
-            lines.append([word])
-    return "\n".join(" ".join(w[4] for w in sorted(line, key=lambda w: w[0])) for line in lines)
+            continue
+        lines.append([word])
+        baselines.append(word.y1)
+    return "\n".join(" ".join(w.text for w in sorted(line, key=lambda w: w.x0)) for line in lines)
 
 
 def _ocr_page(page: fitz.Page, index: int, dpi: int, langs: str, out: Extracted) -> ExtractedPage:
