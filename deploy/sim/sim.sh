@@ -216,6 +216,9 @@ cmd_test() {
   check "nothing but the api is published, on loopback" only_api_published
   check "the llm-proxy answers inside the stack" sx "cd /home/student/retina && docker compose exec -T llm-proxy curl -fsS http://127.0.0.1:4000/healthz | grep -q claudecli"
   check "the api reaches the llm-proxy by its service name" sx "cd /home/student/retina && docker compose exec -T api wget -qO- http://llm-proxy:4000/v1/models | grep -q sonnet"
+  check "doc-extract answers inside the stack, with tesseract" sx "cd /home/student/retina && docker compose exec -T doc-extract curl -fsS http://127.0.0.1:8000/healthz | grep -q '\"tesseract\":\"5'"
+  check "the worker reaches doc-extract by its service name" sx "cd /home/student/retina && docker compose exec -T worker wget -qO- http://doc-extract:8000/healthz | grep -q chi_sim"
+  check "/health reports doc-extract up" health_has '"docExtract":"up"'
 
   say "B. a tick with nothing new"
   mark "B no-op"

@@ -16,6 +16,7 @@ What runs here for retina, next to the yt-engine stack that was there first:
 | retina worker | compose service, same image, `node --import tsx src/worker.ts` | — |
 | inbox (email server) | compose service, built from `emails/server` in the clone, serving `emails/data_v2` | private network, `inbox:8000` |
 | llm-proxy | compose service, built from `proxy/` in the clone, with the Claude Code CLI inside. Logged in by `CLAUDE_CODE_OAUTH_TOKEN` in `~/retina/.env` | private network, `llm-proxy:4000` |
+| doc-extract | compose service, built from `services/doc-extract` in the clone, tesseract inside. Reads attachments from MinIO by key and writes page images back | private network, `doc-extract:8000` |
 | ngrok | `~/retina/run-ngrok.sh` | outbound only |
 
 Directories: `~/projects/retina` is the git clone (code); `~/retina` is the

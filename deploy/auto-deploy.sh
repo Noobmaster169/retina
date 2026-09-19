@@ -185,6 +185,12 @@ if [[ -n "$(git -C "$REPO" diff --name-only "$LOCAL" "$REMOTE" -- proxy/)" ]]; t
   docker compose up -d --build llm-proxy >>"$LOG" 2>&1 || log "  llm-proxy rebuild failed; the api deploy continues"
 fi
 
+# doc-extract is built from services/doc-extract in this checkout, the same way.
+if [[ -n "$(git -C "$REPO" diff --name-only "$LOCAL" "$REMOTE" -- services/doc-extract/)" ]]; then
+  log "services/doc-extract changed — rebuilding doc-extract"
+  docker compose up -d --build doc-extract >>"$LOG" 2>&1 || log "  doc-extract rebuild failed; the api deploy continues"
+fi
+
 # --no-deps normally, so a deploy never bounces Postgres under a running queue.
 # But a compose change is how a new service first appears, and --no-deps would
 # skip creating it: the api would then come up against a dependency that is not

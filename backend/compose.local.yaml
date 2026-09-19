@@ -91,6 +91,25 @@ services:
     environment:
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
 
+  # Retina's doc-extract (../services/doc-extract): every attachment becomes
+  # text here, tesseract included. It reads and writes the bucket by key, so
+  # bytes never pass through the worker. Published on host loopback 8000 for
+  # the worker running under `pnpm dev:worker` (DOC_EXTRACT_URL). Rebuild
+  # after changing services/doc-extract/:
+  #   docker compose -f compose.local.yaml up -d --build doc-extract
+  doc-extract:
+    build: ../services/doc-extract
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: retina
+      MINIO_SECRET_KEY: retinaretina
+      MINIO_BUCKET: retina
+    depends_on:
+      minio:
+        condition: service_healthy
+
 volumes:
   pgdata:
   redisdata:
