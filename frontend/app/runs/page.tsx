@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { listRuns, type RunSummary } from "@/lib/api-client";
+import { listRuns, type RunList } from "@/lib/api-client";
 
 import { RunsTable } from "./runs-table";
 
@@ -10,17 +10,17 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = { title: "Runs · Retina" };
 
-async function loadRuns(): Promise<{ runs: RunSummary[]; backendError: string | null }> {
+async function loadRuns(): Promise<{ list: RunList | null; backendError: string | null }> {
   try {
-    return { runs: await listRuns(), backendError: null };
+    return { list: await listRuns(), backendError: null };
   } catch (error) {
     console.error("[runs] backend call failed:", error);
-    return { runs: [], backendError: "The backend is not reachable right now." };
+    return { list: null, backendError: "The backend is not reachable right now." };
   }
 }
 
 export default async function RunsPage() {
-  const { runs, backendError } = await loadRuns();
+  const { list, backendError } = await loadRuns();
 
   return (
     <div className="flex min-h-dvh flex-col bg-surface">
@@ -36,7 +36,7 @@ export default async function RunsPage() {
           A run replays the inbox through the pipeline. Each one keeps its own results, so two can be compared on the
           same emails.
         </p>
-        <RunsTable initialRuns={runs} initialError={backendError} />
+        <RunsTable initialList={list} initialError={backendError} />
       </main>
     </div>
   );

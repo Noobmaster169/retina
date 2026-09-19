@@ -9,7 +9,7 @@ function refused(status: number, error: string): Response {
 export async function GET() {
   if (!(await hasSiteAccess())) return refused(401, "Signed out. Reload the page to sign in.");
   try {
-    return Response.json({ runs: await listRuns() });
+    return Response.json(await listRuns());
   } catch (error) {
     console.error("[api/runs] list failed:", error);
     return refused(503, "Could not reach the backend.");

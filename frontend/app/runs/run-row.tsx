@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 import type { RunAction, RunStatus, RunSummary, Stage } from "@/lib/api-client";
@@ -69,7 +70,9 @@ export function RunRow({ run, onChanged }: Props) {
   return (
     <tr className="border-b border-line align-top">
       <td className="py-3 pr-4 whitespace-nowrap">
-        <div>{startedLabel(run)}</div>
+        <Link href={`/runs/${run.id}`} className="hover:text-accent-ink hover:underline">
+          {startedLabel(run)}
+        </Link>
         <div className="font-mono text-xs text-muted">{run.id.slice(0, 8)}</div>
       </td>
       <td className={`py-3 pr-4 font-medium ${STATUS_TONE[run.status]}`}>{run.status}</td>
