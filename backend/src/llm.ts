@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-import type { Caller } from "./auth";
+
 import { config } from "./config";
 
 /**
@@ -71,14 +71,14 @@ function stripThinking(text: string): string {
   return text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
 }
 
-/** One non-streaming call. `temperature` is never sent: Claude 5 rejects it. */
-export async function chat(caller: Caller, req: ChatRequest): Promise<ChatResult> {
+/** One non-streaming call, billed to `project` in the proxy. `temperature` is never sent: Claude 5 rejects it. */
+export async function chat(project: string, req: ChatRequest): Promise<ChatResult> {
   const url = baseUrl();
   const anthropic = new Anthropic({
     baseURL: url,
     // Not a credential: the proxy reads this as the project name that spend
     // is attributed and budgeted against, so callers show up separately.
-    apiKey: `retina-${caller}`,
+    apiKey: `retina-${project}`,
     maxRetries: 1,
     timeout: REQUEST_TIMEOUT_MS,
   });
