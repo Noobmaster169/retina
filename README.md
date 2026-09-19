@@ -180,10 +180,16 @@ Push to `main`.
   `SITE_PASSWORD` in the Vercel project. The inbox is public. `SITE_PASSWORD`
   is the one shared password for `/chat` and `/runs`; without it those pages are
   public too.
-- GitHub Actions type-checks everything and publishes the backend image.
-- The Monash server pulls it every 3 minutes, runs the proxy from the same
-  checkout and builds the email server from `emails/`. See
+- GitHub Actions type-checks both packages, runs the backend suite against a
+  Postgres service container, builds the frontend, runs the proxy's tests and
+  publishes the backend image. The same gates run on a pull request.
+- The Monash server pulls every 3 minutes, builds the api image from the same
+  checkout, runs `api` and `worker` beside postgres, redis, minio and the email
+  server, and rolls back if `/health` does not come up. See
   [deploy/README.md](./deploy/README.md).
+- Changing a deploy script? Run it first: `cd deploy/sim && ./sim.sh up && ./sim.sh test`
+  puts `auto-deploy.sh` and `bootstrap-wizard.sh` through a replica of the box,
+  rollback included.
 
 ## Rules
 

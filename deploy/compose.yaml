@@ -1,12 +1,34 @@
 # The retina backend on the Monash server (student@118.139.133.14).
 #
-# Postgres is private to this compose network. The API publishes 8091 on host
-# loopback only — the ngrok tunnel is the single door in. Models go through
-# retina's own llm-proxy (proxy/ in this repo), run on the host by
-# run-proxy.sh on the Docker bridge address, port 4001, which
+# Postgres, Redis and MinIO are private to this compose network. The API
+# publishes 8091 on host loopback only: the ngrok tunnel is the single door in.
+# Models go through retina's own llm-proxy (proxy/ in this repo), run on the
+# host by run-proxy.sh on the Docker bridge address, port 4001, which
 # `host.docker.internal` resolves to from here. yt-engine's proxy is on 4000.
 #
+# auto-deploy.sh copies this file to ~/retina/compose.yaml on every deploy, so
+# a service added here reaches the box on the next cron tick. What it never
+# copies is ~/retina/.env: a new secret has to be added there by hand, which
+# deploy/bootstrap-wizard.sh does.
+#
 # Setup and day-to-day commands: README.md next to this file.
+
+# api and worker run the same image against the same dependencies. One block so
+# the two cannot drift; only what differs from config.ts's defaults is listed.
+x-backend-env: &backend-env
+  PG_HOST: postgres
+  PG_PORT: "5432"
+  PG_DATABASE: retina_prod
+  PG_USER: retina
+  PG_PASSWORD: ${PG_PASSWORD:?set PG_PASSWORD in .env}
+  API_SHARED_SECRET: ${API_SHARED_SECRET:?set API_SHARED_SECRET in .env}
+  TEAM_API_KEY: ${TEAM_API_KEY:?set TEAM_API_KEY in .env}
+  REDIS_URL: redis://redis:6379
+  MINIO_ENDPOINT: minio:9000
+  MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?set MINIO_ACCESS_KEY in .env}
+  MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?set MINIO_SECRET_KEY in .env}
+  LLM_PROXY_URL: http://host.docker.internal:4001
+  EMAIL_SERVER_URL: http://inbox:8000
 
 services:
   postgres:
@@ -24,8 +46,51 @@ services:
       timeout: 5s
       retries: 10
 
+  # AOF so queued jobs survive a restart. noeviction because BullMQ requires
+  # it: under memory pressure Redis must refuse writes, not drop job keys.
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction", "--maxmemory", "512mb"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Attachment bytes, one copy per run. No published port: the console is
+  # reachable only through an SSH tunnel, see README.md.
+  minio:
+    image: quay.io/minio/minio
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?set MINIO_ACCESS_KEY in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?set MINIO_SECRET_KEY in .env}
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Runs once per `up` and exits. The worker also ensures the bucket at boot;
+  # this is what makes it exist for the api, which only reads.
+  minio-init:
+    image: quay.io/minio/mc
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "mc alias set local http://minio:9000 ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY} &&
+                  mc mb --ignore-existing local/retina"
+
   # The email server: emails/server from the clone, serving emails/data_v2.
-  # Private to this network; the API is the only thing that reads it.
+  # Private to this network; the API is the only thing that reads it. The
+  # answer key is mounted here and into nothing else.
   inbox:
     build: ../projects/retina/emails/server
     restart: unless-stopped
@@ -44,26 +109,50 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
+      <<: *backend-env
       PORT: "8091"
-      PG_HOST: postgres
-      PG_PORT: "5432"
-      PG_DATABASE: retina_prod
-      PG_USER: retina
-      PG_PASSWORD: ${PG_PASSWORD:?set PG_PASSWORD in .env}
-      API_SHARED_SECRET: ${API_SHARED_SECRET:?set API_SHARED_SECRET in .env}
-      TEAM_API_KEY: ${TEAM_API_KEY:?set TEAM_API_KEY in .env}
-      LLM_PROXY_URL: http://host.docker.internal:4001
-      EMAIL_SERVER_URL: http://inbox:8000
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
       inbox:
         condition: service_started
     healthcheck:
+      # /health is 200 when Postgres is reachable, whatever else is degraded,
+      # and 503 when it is not. start_period covers the migrations, which run
+      # before the process listens: without it a slow migration is read as a
+      # dead container.
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8091/health || exit 1"]
-      interval: 30s
+      interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 6
+      start_period: 45s
+
+  # Queue consumers. The image has no build step, so it runs TypeScript through
+  # tsx exactly as `pnpm start:worker` does.
+  #
+  # service_started, not service_healthy. Only the api migrates (its CMD does;
+  # this command replaces it), so there is no race to order around, and the
+  # worker touches Postgres when a job arrives rather than at boot. Waiting on
+  # the api's health instead couples the two: a deploy whose api is unhealthy
+  # aborts the whole `up` and leaves the worker down, which is what the
+  # simulator caught.
+  worker:
+    image: ghcr.io/noobmaster169/retina-api:main
+    restart: unless-stopped
+    command: ["node", "--import", "tsx", "src/worker.ts"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      <<: *backend-env
+    depends_on:
+      api:
+        condition: service_started
 
 volumes:
   pgdata:
+  redisdata:
+  miniodata:

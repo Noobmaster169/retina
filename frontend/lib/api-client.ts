@@ -81,7 +81,14 @@ async function request(path: string, init: RequestInit & { timeoutMs?: number } 
   const { timeoutMs = 15_000, ...rest } = init;
   return fetch(`${baseUrl}${path}`, {
     ...rest,
-    headers: { authorization: `Bearer ${secret}`, "content-type": "application/json" },
+    headers: {
+      authorization: `Bearer ${secret}`,
+      "content-type": "application/json",
+      // The backend is behind a free ngrok tunnel, which answers an HTML
+      // interstitial instead of the API when it thinks a browser is calling.
+      // This header turns that off; without it a JSON parse fails with markup.
+      "ngrok-skip-browser-warning": "1",
+    },
     signal: AbortSignal.timeout(timeoutMs),
     cache: "no-store",
   });

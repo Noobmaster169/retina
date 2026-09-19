@@ -1,0 +1,9 @@
+# Shell scripts run on Linux (the Monash box, the deploy simulator, CI) but are
+# edited on Windows, where core.autocrlf hands the working tree CRLF. A CRLF
+# heredoc terminator or shebang is a syntax error there, so keep them LF on
+# every platform.
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+.env.example text eol=lf

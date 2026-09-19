@@ -72,11 +72,12 @@ frontend/
 | api | ghcr.io/noobmaster169/retina-api:main | `127.0.0.1:8091:8091` | none | runs migrations then listens; depends on postgres, redis, minio healthy |
 | worker | same image | none | none | `command: node --import tsx src/worker.ts` (no build step; the image runs TypeScript through tsx); depends on api healthy (migrations done) |
 | doc-extract | built from `services/doc-extract` | none | none | `:8000` inside network; healthcheck `/healthz`; 1 GB memory limit |
-| averis | built from `emails/server` | `127.0.0.1:8080:8000` | `emails/data_v2:/data:ro`, answer key mounted at `/secrets:ro` | organiser image, unchanged code |
+| inbox | built from `emails/server` in the clone | none (private to the network) | `emails/data_v2:/data:ro`, `emails/data_v2/ground_truth.json:/secrets/ground_truth.json:ro` | organiser image, unchanged code |
 
-Averis is kept in the same compose file, as the service `inbox`, so `api` and `worker` reach it
-as `http://inbox:8000`.
-The answer key volume is attached to `averis` only. `api` and `worker` never mount it.
+The organiser kit is kept in the same compose file, as the service `inbox`, so `api` and
+`worker` reach it as `http://inbox:8000`. It publishes no port: `POST /submit` is called from
+inside the network.
+The answer key volume is attached to `inbox` only. `api` and `worker` never mount it.
 
 Redis settings explained:
 
@@ -106,7 +107,9 @@ Backend (`deploy/.env`, mirrored in `backend/.env.example`):
 | `SITE_PASSWORD` | string | frontend middleware (Vercel env) |
 | `EVAL_GROUND_TRUTH_PATH` | local path only, unset on the VPS containers | eval CLI |
 
-Frontend (Vercel): `BACKEND_URL`, `API_SHARED_SECRET`, `SITE_PASSWORD`, `SESSION_SECRET`.
+Frontend (Vercel): `BACKEND_URL`, `API_SHARED_SECRET`, `SITE_PASSWORD`. There is no separate
+session secret: `lib/site-gate.ts` derives the cookie as an HMAC of `SITE_PASSWORD`, so changing
+the password signs everyone out.
 
 ## 4. Queues
 
@@ -632,7 +635,8 @@ tool implementations are shared modules, not duplicated.
 - The lesson gate calls `eval:score --holdout` before and after applying a candidate; a drop
   in `final_score` or in any single component blocks it.
 
-On the VPS, `ground_truth.json` exists only inside the averis container's `/secrets` mount.
+On the VPS, `ground_truth.json` reaches only the `inbox` container, which mounts it read-only
+from the clone. `api` and `worker` never see it, and `EVAL_GROUND_TRUTH_PATH` is unset there.
 `api` and `worker` cannot read it, so `/eval/*` routes are disabled there and scoring goes
 through `POST /submit`.
 
@@ -656,13 +660,14 @@ it; client components never hold the secret. Polling uses SWR with `refreshInter
 
 ## 14. Deployment changes
 
-- `deploy/compose.yaml`: add redis, minio, minio-init, worker, doc-extract, averis.
+- `deploy/compose.yaml`: redis, minio, minio-init, worker and inbox are there as of phase 3;
+  doc-extract joins in phase 5. `api` and `worker` share one env block so they cannot drift.
 - `auto-deploy.sh`: after pulling or building the api image, also `docker compose build
   doc-extract` and `docker compose up -d api worker doc-extract`; health poll covers
   `/health` including the new dependency checks; rollback restores both api and worker images.
-- Averis: copy the organiser kit into `emails/` with `ground_truth.json` excluded from
-  git (`.gitignore`) and placed on the box by hand at `~/retina/secrets/ground_truth.json`,
-  mounted only into the averis service.
+- The organiser kit lives in `emails/` and `ground_truth.json` is committed with it, as the
+  organisers shipped it. Nothing places it on the box by hand: the clone has it, and compose
+  mounts it into `inbox` and nothing else. `eval/` is the only code that may read it.
 - GitHub Actions: type-check `services/doc-extract` with `ruff` and run its unit tests;
   publish the api image as today.
 - Cron on the box stays as it is (ngrok `@reboot`, auto-deploy every 3 minutes). Scheduled
@@ -677,8 +682,8 @@ it; client components never hold the secret. Polling uses SWR with `refreshInter
 - Password gate on every frontend route except `/login`.
 - `retina_ro` role for anything that executes model-written SQL; statement timeout; column
   grant excludes raw prompts.
-- No public ports except `127.0.0.1:8091` (api) and `127.0.0.1:8080` (averis, for box-local
-  curl only). MinIO console reachable only through an SSH tunnel.
+- One published port, `127.0.0.1:8091` (api). The inbox, Postgres, Redis and MinIO are private
+  to the compose network; the MinIO console is reachable only through an SSH tunnel.
 - Uploaded files: size cap 20 MB, extension allow-list, stored under a case-scoped key, parsed
   by doc-extract in the same sandbox as everything else.
 - Secrets in `~/retina/.env`, never in the repo. Ground truth never in the repo.
