@@ -99,7 +99,7 @@ schema a constraint on the provider, not a request in the prompt:
   envelope's `structured_output`. This needs Claude Code **2.1.274 or newer** (that is
   where `--json-schema` was checked; 2.1.276 was used for the phase 2 live run). An older
   CLI returns no `structured_output`, and the provider answers 502 rather than pass prose
-  on as if it were JSON. Streaming falls back to the blocking path while a schema is set.
+  on as if it were JSON. Streamed, the JSON is a preview and the validated object comes last.
 - An `openai_compatible` provider, where one is configured, gets
   `response_format: { type: "json_schema", json_schema: { name, schema, strict } }`.
 
