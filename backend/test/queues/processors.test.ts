@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { emailRuns } from "../../src/ontology/repositories";
+import { emailRuns, runs } from "../../src/ontology/repositories";
 import { RecordingAdder } from "../../src/queues/__fakes__/recording.adder";
 import type { CompareJob } from "../../src/queues/names";
 import { processClassify } from "../../src/queues/processors/classify.processor";
@@ -39,6 +39,24 @@ describe("classify processor (phase 1 pass-through)", () => {
       await processClassify({ pool: tx, compare }, { runId: run.id, emailId }, 600);
 
       expect(compare.added).toHaveLength(1);
+    });
+  });
+});
+
+describe("a cancelled run", () => {
+  it("is left alone by both processors: no stage moves, no compare job", async () => {
+    await inRollback(async (tx) => {
+      const run = await seedRun(tx);
+      const emailId = await seedEmail(tx);
+      await emailRuns.insert(tx, { runId: run.id, emailId, stage: "ingested", priority: 600 });
+      await runs.setStatus(tx, run.id, "cancelled", ["created"]);
+      const compare = new RecordingAdder<CompareJob>();
+
+      await processClassify({ pool: tx, compare }, { runId: run.id, emailId }, 600);
+      await processCompare({ pool: tx }, { runId: run.id, emailId });
+
+      expect(await emailRuns.stageCounts(tx, run.id)).toMatchObject({ ingested: 1, classified: 0, done: 0 });
+      expect(compare.added).toEqual([]);
     });
   });
 });
