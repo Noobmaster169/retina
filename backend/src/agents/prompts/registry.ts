@@ -29,8 +29,17 @@ export interface Prompt {
   text: string;
 }
 
+function readJson(path: string): unknown {
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    if (error instanceof SyntaxError) throw new TerminalError(`${path} is not JSON`, { cause: error });
+    throw error;
+  }
+}
+
 function renderExamples(path: string): string {
-  const parsed = Examples.safeParse(JSON.parse(readFileSync(path, "utf8")));
+  const parsed = Examples.safeParse(readJson(path));
   if (!parsed.success) throw new TerminalError(`${path} is not an examples file`, { cause: parsed.error });
   return parsed.data.map((example) => `<example category="${example.category}">\n${example.email}\n</example>`).join("\n\n");
 }

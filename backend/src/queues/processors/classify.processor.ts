@@ -1,11 +1,20 @@
-import { classifyEmail, type LlmClient, promptFor, verifyClassification } from "../../agents";
+import { ClassifyOutput, classifyEmail, completePromptSet, type LlmClient, promptFor, verifyClassification } from "../../agents";
 import { config } from "../../config";
-import type { Category } from "../../contracts";
+import type { Category, PromptSet } from "../../contracts";
 import type { Queryable } from "../../db";
 import { TerminalError } from "../../lib/errors";
 import { childLogger } from "../../lib/logger";
-import { attachments, classifications, emailRuns, emails, type Run, runs } from "../../ontology/repositories";
-import { buildClassifyInput, decide, needsVerifier } from "../../pipeline/classify";
+import {
+  attachments,
+  classifications,
+  emailRuns,
+  emails,
+  llmCalls,
+  promptVersions,
+  type Run,
+  runs,
+} from "../../ontology/repositories";
+import { buildClassifyInput, type ClassifyInput, decide, needsVerifier } from "../../pipeline/classify";
 import { type ClassifyJob, type CompareJob, JOB_NAMES, type JobAdder, jobOptions } from "../names";
 
 const log = childLogger({ module: "classify.processor" });
@@ -16,52 +25,89 @@ export interface ClassifyDeps {
   compare: JobAdder<CompareJob>;
 }
 
+interface Ids {
+  runId: string;
+  emailId: string;
+  emailRunId: string;
+}
+
+/** A run created before prompts were pinned gets the active versions, looked up only for such a run. */
+async function promptSetOf(pool: Queryable, run: Run): Promise<PromptSet> {
+  if (run.promptSet.classify && run.promptSet["classify-verify"]) return run.promptSet;
+  return completePromptSet(run.promptSet, await promptVersions.activeVersions(pool));
+}
+
 /**
- * Generator, then the verifier when the generator says it is unsure, then the
- * decision. Null when the run was cancelled while the model was answering.
+ * The generator's answer. When an earlier attempt of this job already got one
+ * under the same prompt and then failed later (a verifier outage), that answer
+ * is reused rather than paid for again.
  */
-async function classifyOnce(deps: ClassifyDeps, run: Run, emailId: string, emailRunId: string): Promise<Category | null> {
-  const email = await emails.get(deps.pool, emailId);
-  if (!email) throw new TerminalError(`email ${emailId} is not stored`);
-  const files = await attachments.listForEmail(deps.pool, run.id, emailId);
+async function generate(deps: ClassifyDeps, set: PromptSet, input: ClassifyInput, ids: Ids): Promise<ClassifyOutput> {
+  const prompt = promptFor("classify", set);
+  const earlier = ClassifyOutput.safeParse(await llmCalls.latestAccepted(deps.pool, ids.emailRunId, "classify", prompt.version));
+  if (earlier.success) return earlier.data;
+  return (await classifyEmail(deps, prompt, input, ids)).value;
+}
+
+/**
+ * The verifier's answer, or null. A verifier that fails for good (an answer
+ * that never fits its schema) must not throw away a valid generator answer:
+ * the email keeps the generator's category and the failure is recorded. A
+ * transient failure still propagates, and the retry reuses the generator.
+ */
+async function verify(deps: ClassifyDeps, set: PromptSet, input: ClassifyInput, gen: ClassifyOutput, ids: Ids) {
+  try {
+    return { value: (await verifyClassification(deps, promptFor("classify-verify", set), input, gen, ids)).value, error: null };
+  } catch (error) {
+    if (!(error instanceof TerminalError)) throw error;
+    log.warn({ ...ids, stage: "classify", err: error.message }, "verifier failed, keeping the generator's category");
+    return { value: null, error: error.message };
+  }
+}
+
+/** Generator, the verifier when the generator is unsure, then the decision. Null when the run was cancelled meanwhile. */
+async function classifyOnce(deps: ClassifyDeps, run: Run, ids: Ids): Promise<Category | null> {
+  const email = await emails.get(deps.pool, ids.emailId);
+  if (!email) throw new TerminalError(`email ${ids.emailId} is not stored`);
+  const files = await attachments.listForEmail(deps.pool, run.id, ids.emailId);
   const input = buildClassifyInput(
     email,
     files.map((file) => file.filename),
     config.CLASSIFY_BODY_CHARS,
   );
-  const ids = { runId: run.id, emailRunId };
+  const set = await promptSetOf(deps.pool, run);
+  const classify = promptFor("classify", set);
 
-  const gen = await classifyEmail(deps, promptFor("classify", run.promptSet), input, ids);
-  const ver = needsVerifier(gen.value)
-    ? await verifyClassification(deps, promptFor("classify-verify", run.promptSet), input, gen.value, ids)
-    : null;
+  const gen = await generate(deps, set, input, ids);
+  const ver = needsVerifier(gen) ? await verify(deps, set, input, gen, ids) : null;
   if ((await runs.status(deps.pool, run.id)) === "cancelled") return null;
 
-  const { finalCategory, decidedBy } = decide(gen.value, ver?.value ?? null);
+  const { finalCategory, decidedBy } = decide(gen, ver?.value ?? null);
   await classifications.upsert(deps.pool, {
-    emailRunId,
-    genCategory: gen.value.category,
-    genConfidence: gen.value.confidence,
-    verCategory: ver?.value.category ?? null,
-    verConfidence: ver?.value.confidence ?? null,
+    emailRunId: ids.emailRunId,
+    genCategory: gen.category,
+    genConfidence: gen.confidence,
+    verCategory: ver?.value?.category ?? null,
+    verConfidence: ver?.value?.confidence ?? null,
     finalCategory,
     decidedBy,
     rationale: {
-      generator: gen.value.rationale,
-      ...(ver ? { verifier: ver.value.rationale, counterCases: ver.value.counter_cases } : {}),
+      generator: gen.rationale,
+      ...(ver?.value ? { verifier: ver.value.rationale, counterCases: ver.value.counter_cases } : {}),
+      ...(ver?.error ? { verifierError: ver.error } : {}),
     },
-    model: gen.model,
-    promptVersion: gen.promptVersion,
+    model: classify.model,
+    promptVersion: classify.version,
   });
   log.info(
     {
       runId: run.id,
-      emailId,
+      emailId: ids.emailId,
       stage: "classify",
       category: finalCategory,
-      confidence: gen.value.confidence,
+      confidence: gen.confidence,
       decidedBy,
-      overruled: ver ? ver.value.category !== gen.value.category : false,
+      overruled: ver?.value ? ver.value.category !== gen.category : false,
     },
     "classified",
   );
@@ -93,7 +139,7 @@ export async function processClassify(deps: ClassifyDeps, data: ClassifyJob, pri
   let category = (await classifications.get(deps.pool, emailRunId))?.finalCategory ?? null;
   if (!category) {
     await emailRuns.moveStage(deps.pool, runId, emailId, ["ingested", "classifying"], "classifying");
-    category = await classifyOnce(deps, run, emailId, emailRunId);
+    category = await classifyOnce(deps, run, { runId, emailId, emailRunId });
     if (!category) return;
   }
   await emailRuns.moveStage(deps.pool, runId, emailId, ["ingested", "classifying"], "classified");

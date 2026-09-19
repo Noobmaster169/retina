@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { proxyLlmClient } from "../../src/agents/llm-client";
 import { llmSlots } from "../../src/agents/llm-slot";
-import { LlmUnavailableError, TerminalError, UpstreamError } from "../../src/lib/errors";
+import { LlmTimeoutError, LlmUnavailableError, TerminalError, UpstreamError } from "../../src/lib/errors";
 
 const chat = vi.hoisted(() => vi.fn());
 vi.mock("../../src/llm", () => ({ chat }));
@@ -100,6 +100,18 @@ describe("proxyLlmClient retries", () => {
 
     await expect(llm.complete(REQUEST)).rejects.toBeInstanceOf(LlmUnavailableError);
     expect(waits).toEqual(expected);
+  });
+
+  it("does not retry a timeout: each try already cost the whole timeout, so the queue decides", async () => {
+    const hung = new LlmTimeoutError("no answer within 600 s");
+    chat.mockImplementation(async () => {
+      throw hung;
+    });
+    const { llm, waits } = client();
+
+    await expect(llm.complete(REQUEST)).rejects.toBe(hung);
+    expect(chat).toHaveBeenCalledTimes(1);
+    expect(waits).toEqual([]);
   });
 
   it("does not wait at all before giving up on a permanent failure", async () => {

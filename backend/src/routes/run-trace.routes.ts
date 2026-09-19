@@ -2,7 +2,7 @@ import { Router } from "express";
 import type { Pool } from "pg";
 import { z } from "zod";
 
-import { type LlmCallList, RunCallsQuery, RunEmailsQuery } from "../contracts";
+import { type LlmCallList, type LlmCallSummaryList, RunCallsQuery, RunEmailsQuery } from "../contracts";
 import { emails, llmCalls } from "../ontology/repositories";
 import { runIdParam } from "./params";
 
@@ -34,7 +34,7 @@ export function runTraceRouter(deps: { pool: Pool }): Router {
       res.status(400).json({ error: "invalid query", issues: query.error.issues });
       return;
     }
-    const body: LlmCallList = { calls: await llmCalls.listRecent(pool, id, query.data) };
+    const body: LlmCallSummaryList = { calls: await llmCalls.listRecent(pool, id, query.data) };
     res.json(body);
   });
 

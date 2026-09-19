@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { UpstreamError } from "../src/lib/errors";
+import { LlmTimeoutError, UpstreamError } from "../src/lib/errors";
 import { chatViaGateway, isGatewayUrl, listModelsViaGateway } from "../src/llm-gateway";
 
 const URL = "https://box.example/ai/chat";
@@ -73,6 +73,12 @@ describe("chatViaGateway", () => {
   it("is a 503 when the gateway cannot be reached", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("fetch failed"); }));
     await expect(chatViaGateway(URL, { model: "sonnet", messages: [] }, LIMITS)).rejects.toMatchObject({ status: 503 });
+  });
+
+  it("is a timeout, not an outage, when the gateway does not answer in time", async () => {
+    const timedOut = new DOMException("The operation was aborted due to timeout", "TimeoutError");
+    vi.stubGlobal("fetch", vi.fn(async () => { throw timedOut; }));
+    await expect(chatViaGateway(URL, { model: "sonnet", messages: [] }, LIMITS)).rejects.toBeInstanceOf(LlmTimeoutError);
   });
 
   it("refuses an answer outside the chat contract rather than passing it on", async () => {

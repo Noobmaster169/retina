@@ -18,6 +18,19 @@ export class LlmUnavailableError extends RetryableError {
   }
 }
 
+/**
+ * The model did not answer within the request timeout. Retryable, but not an
+ * outage: the queue spends an attempt on it, so a call that hangs every time
+ * ends as a failed email instead of being put back forever. Not retried inside
+ * the client either, because each try already costs the full timeout.
+ */
+export class LlmTimeoutError extends RetryableError {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "LlmTimeoutError";
+  }
+}
+
 /** Will fail the same way every time: bad input, a 404, a schema that does not parse. */
 export class TerminalError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {

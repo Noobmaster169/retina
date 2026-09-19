@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 
 import { config } from "./config";
-import { relayStatus, UpstreamError } from "./lib/errors";
+import { LlmTimeoutError, relayStatus, UpstreamError } from "./lib/errors";
 import type { ChatRequest, ChatResult, ModelInfo } from "./llm-contract";
 import { chatViaGateway, isGatewayUrl, listModelsViaGateway } from "./llm-gateway";
 
@@ -113,6 +113,10 @@ export async function chat(project: string, req: ChatRequest): Promise<ChatResul
   try {
     ({ data, response } = await anthropic.messages.create(params).withResponse());
   } catch (error) {
+    // Before the connection check: the SDK's timeout error is a subclass of it.
+    if (error instanceof Anthropic.APIConnectionTimeoutError) {
+      throw new LlmTimeoutError(`llm-proxy gave no answer within ${REQUEST_TIMEOUT_MS / 1000} s`, { cause: error });
+    }
     if (error instanceof Anthropic.APIConnectionError) {
       throw new UpstreamError(503, `llm-proxy unreachable at ${url}`, { cause: error, retryable: true });
     }

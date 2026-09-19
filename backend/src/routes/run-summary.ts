@@ -13,11 +13,15 @@ export interface SummaryParts {
 /** One run as the API reports it: its row, where its emails are, what it cost, how it scored. */
 export function toSummary(run: Run, parts: SummaryParts): RunSummary {
   const { stageCounts, queues, llm, lastSubmission: last } = parts;
+  const finishedEmails = stageCounts.done + stageCounts.failed;
+  const stopped = run.status === "cancelled" || run.status === "failed";
   return {
     id: run.id,
     status: run.status,
     ratePerSecond: run.ratePerSecond,
     totalEmails: run.totalEmails,
+    finishedEmails,
+    processingDone: stopped || (run.totalEmails !== null && finishedEmails >= run.totalEmails),
     stageCounts,
     queues,
     createdAt: run.createdAt,

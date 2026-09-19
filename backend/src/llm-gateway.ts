@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { config } from "./config";
-import { relayStatus, TerminalError, UpstreamError } from "./lib/errors";
+import { LlmTimeoutError, relayStatus, TerminalError, UpstreamError } from "./lib/errors";
 import type { ChatRequest, ChatResult, ModelInfo } from "./llm-contract";
 
 /**
@@ -66,6 +66,9 @@ async function send(url: string, init: RequestInit, timeoutMs: number): Promise<
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError") {
+      throw new LlmTimeoutError(`llm gateway gave no answer within ${timeoutMs / 1000} s`, { cause: error });
+    }
     throw new UpstreamError(503, `llm gateway unreachable at ${url}`, { cause: error, retryable: true });
   }
   if (response.ok) return response;

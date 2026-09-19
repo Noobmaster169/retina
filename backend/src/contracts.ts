@@ -23,8 +23,13 @@ export type PromptStep = z.infer<typeof PromptStep>;
 export const PinnedPrompt = z.object({ version: z.string(), model: z.string() });
 export type PinnedPrompt = z.infer<typeof PinnedPrompt>;
 
-/** Empty for a run created before phase 4; the worker then reads the newest prompt on disk. */
-export const PromptSet = z.partialRecord(PromptStep, PinnedPrompt);
+/**
+ * Empty for a run created before phase 4; the worker then uses the active
+ * versions. An object, not a record, on purpose: it drops a step it does not
+ * know instead of refusing it, so rolling back to this code after a later
+ * phase added a step still reads that phase's runs.
+ */
+export const PromptSet = z.object({ classify: PinnedPrompt.optional(), "classify-verify": PinnedPrompt.optional() });
 export type PromptSet = z.infer<typeof PromptSet>;
 
 /**
@@ -72,10 +77,14 @@ export type LlmUsage = z.infer<typeof LlmUsage>;
 
 export const RunSummary = z.object({
   id: z.string(),
-  /** `completed` means ingestion finished. Processing is finished when done + failed = totalEmails. */
+  /** `completed` means ingestion finished, not processing; `processingDone` says that. */
   status: RunStatus,
   ratePerSecond: z.number(),
   totalEmails: z.number().nullable(),
+  /** Emails that will not move again: done or failed. */
+  finishedEmails: z.number(),
+  /** Nothing more will happen in this run: every email finished, or it was cancelled or failed. */
+  processingDone: z.boolean(),
   stageCounts: z.record(Stage, z.number()),
   /** Null when the queues cannot be reached. Everything else comes from Postgres and is still served. */
   queues: z.object({ classify: QueueCounts, compare: QueueCounts }).nullable(),
@@ -157,45 +166,6 @@ export const RunEmailsPage = z.object({
 });
 export type RunEmailsPage = z.infer<typeof RunEmailsPage>;
 
-/**
- * One attempt at one model call, exactly as it went out and came back. The
- * ledger is append-only, so a retry is a second entry, not an edit.
- */
-export const LlmCall = z.object({
-  id: z.string(),
-  emailId: z.string().nullable(),
-  step: z.string(),
-  model: z.string(),
-  promptVersion: z.string(),
-  attempt: z.number(),
-  ok: z.boolean(),
-  error: z.string().nullable(),
-  /** The system prompt as sent, schema included. */
-  system: z.string(),
-  /** The email as the model saw it. */
-  user: z.string(),
-  /** The model's text, before any parsing. Null when the call itself failed. */
-  responseText: z.string().nullable(),
-  /** What the schema accepted, when it did. */
-  parsed: z.unknown(),
-  inputTokens: z.number().nullable(),
-  outputTokens: z.number().nullable(),
-  costUsd: z.number().nullable(),
-  latencyMs: z.number(),
-  createdAt: z.string(),
-});
-export type LlmCall = z.infer<typeof LlmCall>;
-
-export const LlmCallList = z.object({ calls: z.array(LlmCall) });
-export type LlmCallList = z.infer<typeof LlmCallList>;
-
-/** `after` is the id of the newest call the caller already has, so a live view fetches only what is new. */
-export const RunCallsQuery = z.object({
-  after: z.coerce.number().int().nonnegative().optional(),
-  limit: z.coerce.number().int().positive().max(100).default(25),
-});
-export type RunCallsQuery = z.infer<typeof RunCallsQuery>;
-
 export const CheckStatus = z.enum(["up", "down"]);
 export type CheckStatus = z.infer<typeof CheckStatus>;
 
@@ -206,3 +176,4 @@ export const HealthReport = z.object({
 export type HealthReport = z.infer<typeof HealthReport>;
 
 export * from "./contracts.scoring";
+export * from "./contracts.trace";

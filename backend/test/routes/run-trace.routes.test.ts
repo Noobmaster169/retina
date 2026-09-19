@@ -171,6 +171,8 @@ describe("a run's emails and calls", () => {
     const { runId } = await classifiedRun();
     const summary = await request(app()).get(`/runs/${runId}`).set(TEAM);
     expect(summary.body.llm).toMatchObject({ calls: 2, verifierShare: 0.5 });
+    // Both emails are done, but the run never recorded a size, so it cannot call itself finished.
+    expect(summary.body).toMatchObject({ finishedEmails: 2, processingDone: false });
   });
 
   it("shows one email's calls exactly as they went out and came back", async () => {
@@ -199,6 +201,10 @@ describe("a run's emails and calls", () => {
 
     const feed = await request(app()).get(`/runs/${runId}/calls`).set(TEAM);
     expect(feed.body.calls.map((c: { emailId: string }) => c.emailId)).toEqual([si, spam]);
+    // A summary: a live view polls this, so no prompt or email text rides along.
+    expect(Object.keys(feed.body.calls[0])).not.toContain("system");
+    expect(Object.keys(feed.body.calls[0])).not.toContain("user");
+    expect(feed.body.calls[0].parsed).toEqual({ category: "GENERAL" });
 
     const newest = feed.body.calls[0].id;
     const after = await request(app()).get(`/runs/${runId}/calls?after=${newest}`).set(TEAM);

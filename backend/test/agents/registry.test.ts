@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterAll, describe, expect, it, vi } from "vitest";
 
-import { pinPromptSet, promptFor } from "../../src/agents/prompts/prompt-set";
+import { completePromptSet, pinPromptSet, promptFor } from "../../src/agents/prompts/prompt-set";
 import { latestVersion, loadPrompt } from "../../src/agents/prompts/registry";
 import { TerminalError } from "../../src/lib/errors";
 
@@ -34,6 +34,8 @@ file("badmeta", "v1.md", "---\nstep: badmeta\nversion: one\nmodel: sonnet\nmax_t
 file("shots", "v1.md", prompt("shots", "v1", "Examples:\n{{examples}}"));
 file("shots", "examples.v1.json", JSON.stringify([{ category: "SPAM", email: "Win a prize" }]));
 file("shots", "v2.md", prompt("shots", "v2", "Examples:\n{{examples}}"));
+file("shots", "v3.md", prompt("shots", "v3", "Examples:\n{{examples}}"));
+file("shots", "examples.v3.json", "[{ not json");
 file("classify", "v1.md", prompt("classify", "v1", "Classify one."));
 file("classify", "v2.md", prompt("classify", "v2", "Classify two."));
 file("classify", "v3.md", prompt("classify", "v3", "Classify three."));
@@ -82,6 +84,7 @@ describe("loadPrompt", () => {
     ["a file with no frontmatter", "broken", "v1"],
     ["frontmatter with a bad version", "badmeta", "v1"],
     ["a prompt that reads examples it does not have", "shots", "v2"],
+    ["an examples file that is not JSON", "shots", "v3"],
   ])("refuses %s", (_name, step, version) => {
     expect(() => loadPrompt(step, version, undefined, dir)).toThrow(TerminalError);
   });
@@ -119,8 +122,28 @@ describe("promptFor", () => {
     expect(prompt).toMatchObject({ version: "v1", model: "haiku", text: "Classify one." });
   });
 
-  it("gives a run from before pinning the newest file, as it always got", () => {
-    expect(promptFor("classify", {}, dir)).toMatchObject({ version: "v3", model: "sonnet" });
+  it("refuses a step the run did not pin, rather than guess the newest file", () => {
+    expect(() => promptFor("classify", {}, dir)).toThrow(TerminalError);
+  });
+});
+
+describe("completePromptSet", () => {
+  it("gives a run from before pinning the active versions, not the newest file", () => {
+    // v3 is the newest file here; the active row names v2, and v2 is what the run must get.
+    expect(completePromptSet({}, { classify: "v2", "classify-verify": "v1" }, dir)).toEqual({
+      classify: { version: "v2", model: "sonnet" },
+      "classify-verify": { version: "v1", model: "opus" },
+    });
+  });
+
+  it("keeps whatever the run did pin", () => {
+    const pinned = { classify: { version: "v1", model: "haiku" } };
+    expect(completePromptSet(pinned, { classify: "v2" }, dir).classify).toEqual({ version: "v1", model: "haiku" });
+  });
+
+  it("leaves a fully pinned set alone", () => {
+    const full = { classify: { version: "v1", model: "haiku" }, "classify-verify": { version: "v1", model: "haiku" } };
+    expect(completePromptSet(full, {}, dir)).toBe(full);
   });
 });
 
