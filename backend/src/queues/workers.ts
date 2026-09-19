@@ -5,19 +5,15 @@ import type { z } from "zod";
 import type { LlmClient } from "../agents";
 import { config } from "../config";
 import { type IngestDeps, replayRun } from "../ingest";
-import { LlmUnavailableError, TerminalError } from "../lib/errors";
+import { TerminalError } from "../lib/errors";
 import { childLogger } from "../lib/logger";
 import { emailRuns, runs } from "../ontology/repositories";
+import { isFinalFailure, pausingOnLlmOutage, type QueuePauser } from "./failure-policy";
 import { ClassifyJob, CompareJob, DEFAULT_PRIORITY, IngestJob, type JobAdder, QUEUES } from "./names";
 import { processClassify } from "./processors/classify.processor";
 import { processCompare } from "./processors/compare.processor";
 
 const log = childLogger({ module: "workers" });
-
-/** The slice of a BullMQ queue that stops every worker taking jobs from it for a while. */
-export interface QueuePauser {
-  rateLimit(expireTimeMs: number): Promise<void>;
-}
 
 export interface WorkerDeps extends IngestDeps {
   llm: LlmClient;
@@ -32,7 +28,6 @@ const EMAIL_LOCK = { lockDuration: 120_000, stalledInterval: 30_000, maxStalledC
 // BullMQ honours a manual rate limit only on a worker that has a limiter. This
 // one is never reached; it exists so `rateLimit` below takes effect.
 const NEVER_REACHED_LIMITER = { max: 10_000, duration: 1000 };
-const LLM_OUTAGE_PAUSE_MS = 30_000;
 // An ingest job is only ever waiting on the inbox, and a run sits idle until a
 // dead worker's job is declared stalled, so that is noticed quickly. It may
 // stall once per worker restart, hence the generous count.
@@ -54,30 +49,6 @@ async function noRetryOnTerminal<T>(work: () => Promise<T>): Promise<T> {
     if (error instanceof TerminalError) throw new UnrecoverableError(error.message);
     throw error;
   }
-}
-
-/**
- * With the model unreachable or rate limited, every job would burn its three
- * attempts within seconds and the run's emails would fail for good. Instead the
- * queue pauses and the job goes back to wait with its attempts untouched.
- */
-async function pausingOnLlmOutage<T>(queue: QueuePauser, work: () => Promise<T>): Promise<T> {
-  try {
-    return await work();
-  } catch (error) {
-    if (!(error instanceof LlmUnavailableError)) throw error;
-    log.warn({ err: error.message, pauseMs: LLM_OUTAGE_PAUSE_MS }, "model unavailable, pausing the classify queue");
-    await queue.rateLimit(LLM_OUTAGE_PAUSE_MS);
-    throw Worker.RateLimitError();
-  }
-}
-
-// BullMQ's own failure for a job whose worker died more often than maxStalledCount allows. It is never retried.
-const STALLED_OUT = "job stalled more than allowable limit";
-
-function isFinalFailure(job: Job, error: Error): boolean {
-  if (error instanceof UnrecoverableError || error.message.includes(STALLED_OUT)) return true;
-  return job.attemptsMade >= (job.opts.attempts ?? 1);
 }
 
 type FailedListener = (job: Job | undefined, error: Error) => Promise<void>;

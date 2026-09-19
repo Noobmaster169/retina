@@ -1,4 +1,4 @@
-import { Stage } from "../../contracts";
+import { type Category, type ComparisonStatus, type ReviewReason, Stage } from "../../contracts";
 import type { Queryable } from "../../db";
 
 export interface NewEmailRun {
@@ -128,4 +128,41 @@ export async function idOf(db: Queryable, runId: string, emailId: string): Promi
     [runId, emailId],
   );
   return rows[0]?.id ?? null;
+}
+
+/** Everything the scorer's payload is built from, one row per email of the run. */
+export interface SubmissionSource {
+  emailId: string;
+  stage: Stage;
+  finalCategory: Category | null;
+  humanCategory: Category | null;
+  status: ComparisonStatus | null;
+  reviewReason: ReviewReason | null;
+}
+
+export async function listForSubmission(db: Queryable, runId: string): Promise<SubmissionSource[]> {
+  const { rows } = await db.query<{
+    email_id: string;
+    stage: Stage;
+    final_category: Category | null;
+    human_category: Category | null;
+    status: ComparisonStatus | null;
+    review_reason: ReviewReason | null;
+  }>(
+    `select er.email_id, er.stage, c.final_category, c.human_category, cmp.status, cmp.review_reason
+       from core.email_runs er
+       left join core.classifications c on c.email_run_id = er.id
+       left join core.comparisons cmp on cmp.email_run_id = er.id
+      where er.run_id = $1
+      order by er.email_id`,
+    [runId],
+  );
+  return rows.map((row) => ({
+    emailId: row.email_id,
+    stage: row.stage,
+    finalCategory: row.final_category,
+    humanCategory: row.human_category,
+    status: row.status,
+    reviewReason: row.review_reason,
+  }));
 }
