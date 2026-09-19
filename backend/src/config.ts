@@ -43,6 +43,12 @@ const Env = z.object({
   // Every LLM step runs the model its prompt file names, which is sonnet. This
   // replaces it for an experiment; it must be an alias from proxy/proxy.yaml.
   LLM_MODEL_CLASSIFY: optionalString,
+  LLM_MODEL_VERIFY: optionalString,
+  // How many model calls the worker has in flight at once, across every queue. Unset, it follows
+  // CLASSIFY_CONCURRENCY, so one number sets how parallel a run is. Keep both at or under what the
+  // proxy serves at once (max_concurrency in proxy/proxy.yaml): more only wait inside the proxy
+  // with their request timeout already running.
+  LLM_MAX_CONCURRENCY: z.coerce.number().int().positive().optional(),
   // How much of a body the classifier reads. A cost guard, not a judgement.
   CLASSIFY_BODY_CHARS: z.coerce.number().int().positive().default(4000),
 
@@ -63,7 +69,8 @@ const Env = z.object({
       message: "required when LLM_PROXY_URL names an /ai/chat gateway",
     });
   }
-});
+})
+  .transform((env) => ({ ...env, LLM_MAX_CONCURRENCY: env.LLM_MAX_CONCURRENCY ?? env.CLASSIFY_CONCURRENCY }));
 
 export type Config = z.infer<typeof Env>;
 

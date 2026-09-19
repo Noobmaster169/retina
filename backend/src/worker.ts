@@ -19,13 +19,16 @@ const workers = startWorkers(
     pool: getPool(),
     source: new AverisSource(config.EMAIL_SERVER_URL),
     store,
-    llm: proxyLlmClient(),
+    llm: proxyLlmClient({ maxConcurrency: config.LLM_MAX_CONCURRENCY }),
     classify: queues.classify,
     compare: queues.compare,
   },
   getRedis(),
 );
-log.info({ classify: config.CLASSIFY_CONCURRENCY, compare: config.COMPARE_CONCURRENCY }, "worker started");
+log.info(
+  { classify: config.CLASSIFY_CONCURRENCY, compare: config.COMPARE_CONCURRENCY, llm: config.LLM_MAX_CONCURRENCY },
+  "worker started",
+);
 
 let shuttingDown = false;
 /** Never rejects: a signal handler cannot await it, so a failure is logged here or nowhere. */
