@@ -102,7 +102,7 @@ Backend (`deploy/.env`, mirrored in `backend/.env.example`):
 | `EMAIL_SERVER_URL` | `http://inbox:8000` (already set in `deploy/compose.yaml`) | api, worker |
 | `LLM_PROXY_URL` | `http://host.docker.internal:4001` | api, worker |
 | `LLM_MODEL_CLASSIFY`, `LLM_MODEL_VERIFY`, `LLM_MODEL_EXTRACT`, `LLM_MODEL_CHAT` | `sonnet` for every step. Must be a proxy alias from `proxy/proxy.yaml` | worker, api |
-| `LLM_MAX_CONCURRENCY` | `8` | worker (global semaphore) |
+| `LLM_MAX_CONCURRENCY` | follows `CLASSIFY_CONCURRENCY` when unset, so one number sets how parallel every run is. Model calls in flight per worker process | worker (in-process semaphore) |
 | `CLASSIFY_CONCURRENCY`, `COMPARE_CONCURRENCY` | `2`, `4`. Classify is 2 because the `claudecli` provider serves two calls at a time; more workers only queue inside the proxy with their request timeout already running | worker |
 | `API_SHARED_SECRET`, `TEAM_API_KEY` | hex | api |
 | `SITE_PASSWORD` | string | frontend gate in `proxy.ts` (Vercel env) |
@@ -170,9 +170,11 @@ the dataset). A repeatable job every hour writes the table into the `client:prio
 
 ### 4.4 LLM concurrency cap
 
-An in-process semaphore of size `LLM_MAX_CONCURRENCY` wraps every proxy call (default 8 in
-the worker, 2 in the api for chat). One process, one cap; no Redis coordination is needed while
-there is one worker replica.
+An in-process semaphore of size `LLM_MAX_CONCURRENCY` (`agents/llm-slot.ts`) wraps every proxy
+call the worker makes. Unset, it equals `CLASSIFY_CONCURRENCY`, so a run of 30, 104 or 520 emails
+runs exactly that many emails and that many calls at once. A retry waits outside the slot. One
+process, one cap; no Redis coordination is needed while there is one worker replica. The api's
+chat is not capped by it.
 
 ### 4.5 Failure handling
 
@@ -252,25 +254,28 @@ about the next draw. The model classifies, and the eval harness measures it.
 and the body, cut at `CLASSIFY_BODY_CHARS` with a marker when cut. The cap is a cost guard.
 Nothing is stripped, reordered or normalised.
 
-**Generator** (`prompts/classify/v1.md`). Defines the five categories in the organisers' words
+**Generator** (`prompts/classify/v3.md`, the active version; v1 and v2 are kept for comparison). Defines the five categories in the organisers' words
 (the brief and `emails/data_v2/README.md`), says that a body may carry a forwarded thread, a
 signature and a warning banner and that the category follows what the sender is asking for now.
-It names no sender, domain, subject code or phrase from the dataset. Zero-shot in phase 2; phase
-4 adds few-shot examples from the train split only if a holdout run shows they help. Output (JSON
-schema enforced, category restricted to the enum):
+It names no sender, domain, subject code or phrase from the dataset. Zero-shot. `v4` is `v3` plus
+ten train examples and is not active: it ships only if a holdout run shows it helps. Output (JSON
+schema enforced, category restricted to the enum, rationale first because a schema-bound answer
+has no room for reasoning before it):
 
 ```json
-{ "category": "BL_COMPARISON", "confidence": 0.93, "rationale": "The sender asks for the draft BL to be checked against the SI; two attachments are named as an SI and a BL." }
+{ "rationale": "The sender asks for the draft BL to be checked against the SI; two attachments are named as an SI and a BL.", "category": "BL_COMPARISON", "confidence": 0.93 }
 ```
 
-**Verifier trigger** (phase 4): `gen.confidence < VERIFY_BELOW`, a constant chosen on the train
-split. The model's own confidence is the only input; there is no branch on email content.
+**Verifier trigger** (`pipeline/classify/decide.ts`): `gen.confidence < VERIFY_BELOW`, `0.9`, chosen
+on the train split (24 of 401 train emails below it under v2; every recorded miss at 0.70 or
+lower). The model's own confidence is the only input; there is no branch on email content.
 
 **Verifier** (`prompts/classify-verify/v1.md`) receives the same input plus the generator's
-proposal and is told to argue for the strongest alternative before deciding. Output:
+proposal and is told to make the strongest case for every other category before deciding. The
+case comes first in the schema, for the same reason as the generator's rationale. Output:
 
 ```json
-{ "category": "GENERAL", "agrees": false, "confidence": 0.88, "rationale": "..." }
+{ "counter_cases": "...", "rationale": "...", "category": "GENERAL", "agrees": false, "confidence": 0.88 }
 ```
 
 **Decision**: the verifier's category if it ran, else the generator's. `classifications.decided_by`
@@ -284,9 +289,9 @@ late second pass cannot drag an email that compare already finished back to `cla
 cancelled while the model call is in flight is honoured: the status is read again after the call
 returns, before anything is written. No lock table and no Redis lock is needed for either.
 
-`ver_category`, `ver_confidence`, `human_category` and the `decided_by` values `verifier` and
-`human` exist in the schema from phase 2 and stay empty until the verifier (phase 4) and human
-review (phase 8) fill them.
+`ver_category` and `ver_confidence` hold the verifier's answer when it ran, and `rationale` holds
+`{ generator, verifier?, counterCases? }`. `human_category` and `decided_by = human` stay empty
+until human review (phase 8).
 
 ### 5.3 Compare
 
@@ -468,14 +473,23 @@ images, OCR text is used and the reviewer sees the PNG.
   ceiling, not a budget. A `max_tokens` stop reason is a `TerminalError` straight away: a retry
   under the same cap truncates the same way.
 - Prompt registry: `agents/prompts/<step>/<version>.md` with frontmatter
-  `{ step, version, model_default, schema }`. Active version per step comes from
-  `core.prompt_versions.active`. Every call stores `prompt_version`.
-- Few-shot examples live in `agents/prompts/<step>/examples.json`, generated by
-  `eval/split.ts` from the training split only.
+  `{ step, version, model, max_tokens? }`. `POST /runs` pins a version and a model per step in
+  `runs.prompt_set` (`agents/prompts/prompt-set.ts`): the run's `promptSet`/`models`, else the
+  `core.prompt_versions` active row and `LLM_MODEL_<STEP>`, else the newest file and its
+  frontmatter model. The worker loads exactly what the run pinned, so a file added mid-run cannot
+  change it. A run from before pinning (`prompt_set = {}`) gets the newest file. Every call stores
+  `prompt_version`.
+- Few-shot examples live in `agents/prompts/<step>/examples.<version>.json`, filled into the
+  prompt's `{{examples}}`. `pnpm eval:examples` writes them from the train split, never from the
+  holdout or the dev sample.
 - Timeouts: classify 60 s, extract 120 s, chat 240 s. The SDK's own retries are off
   (`maxRetries: 0`): a hidden second call doubles a hung call's wall time, holds a worker slot and
-  makes the ledger understate calls and cost. Retrying is BullMQ's job, and an outage pauses the
-  queue instead (4.5).
+  makes the ledger understate calls and cost. `proxyLlmClient` retries a transient failure twice,
+  at about 1 s and 3 s with jitter, while `isTransient(error)` holds (the proxy's verdict, never a
+  status list), then throws `LlmUnavailableError` and the queue pauses (4.5). A permanent failure
+  is a `TerminalError` at once.
+- Every call logs one line (`structured` module, info) with step, model, attempt, latency and
+  tokens; `LOG_LEVEL=debug` logs the full system prompt, input and answer.
 - Every call inserts `core.llm_calls` with step, model, prompt_version, request, response,
   input_tokens, output_tokens, cost_usd (from the proxy's usage block), latency_ms, email_run_id.
 - Models: `sonnet` for every step (decided 2026-09-19). Values must be proxy aliases. Env vars allow swapping per role for experiments; Qwen aliases go in
@@ -587,12 +601,14 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 | Method, path | Purpose |
 |---|---|
 | `GET /health` | `{ status: ok \| degraded, checks: { postgres, redis, minio, inbox } }`, 2 s per check. Degraded is still 200; only postgres down is 503, which is the signal auto-deploy rolls back on. The proxy is left out on purpose: a cold model would read as an outage. doc-extract joins in phase 5 |
-| `POST /runs` | start a run `{ source, ratePerSecond, limit?, emailIds?, promptSet? }` |
-| `GET /runs`, `GET /runs/:id` | list, detail with stage counts, queue depth, cost, score. `queues` is `null` when Redis cannot be reached; the rest comes from Postgres and is still served |
+| `POST /runs` | start a run `{ source, ratePerSecond, limit?, emailIds?, subset?: dev \| holdout, promptSet?: { step: vN }, models?: { step: alias } }`. `subset` reads the id lists in `backend/eval/` (ids only). 400 for an unknown prompt version or a model that is not a proxy alias, before anything is queued |
+| `GET /runs`, `GET /runs/:id` | list, detail with stage counts, queue depth, `promptSet`, `llm` usage with `verifierShare`, score. The list also carries `concurrency: { classify, llm }` from the env. `queues` is `null` when Redis cannot be reached; the rest comes from Postgres and is still served |
 | `POST /runs/:id/pause`, `/resume`, `/cancel` | control the replay |
 | `POST /runs/:id/submit?force=false` | build submission, post to averis, store scoreboard. 409 when the run holds fewer rows than `totalEmails` (still ingesting) or holds unfinished emails, both overridden by `?force=true`; 409 while another submission for the same run is being scored. The `core.submissions` row is written before the scorer is called and updated with the scoreboard after, so a scorer failure leaves an unscored row (null `scoreboard`, null `final_score`) pointing at the stored payload rather than an orphan payload. Only scored rows count as a run's last submission |
 | `GET /runs/:id/submission.json` | download the payload |
-| `GET /runs/:id/emails?stage=&category=&status=&q=` | paginated list |
+| `GET /runs/:id/emails?stage=&category=&decidedBy=&q=` | paginated list with `category`, `decidedBy`, `confidence`, `verifierCategory`, `error` |
+| `GET /runs/:id/calls?after=&limit=` | the run's newest `llm_calls`, newest first, for a live feed; `after` returns only newer ids |
+| `GET /runs/:id/emails/:emailId/calls` | one email's calls oldest first: system prompt, input, answer text, parsed answer, tokens, cost, latency |
 | `GET /emails/:runId/:emailId` | full trace: email, attachments, classification, extractions with fields, comparison, diffs, review case, llm_calls summary |
 | `GET /review?status=open` | review inbox |
 | `POST /review/:id/actions` | `{ kind, field?, value?, note? }` |
@@ -633,7 +649,10 @@ tool implementations are shared modules, not duplicated.
 - `pnpm eval:split`: reads `ground_truth.json` (local path from `EVAL_GROUND_TRUTH_PATH`),
   stratifies by `(category, review_reason)`, writes `eval/split.json` with `train` and `holdout`
   id lists. Committed once and never regenerated unless the dataset changes.
-- `pnpm eval:examples`: builds `examples.json` per step from the `train` split.
+- `pnpm eval:sample`: writes `eval/dev-sample.json`, 30 train ids (six per category). The subset a
+  change is tried on before the holdout is read. Committed once.
+- `pnpm eval:examples`: writes `agents/prompts/classify/examples.v4.json` from the `train` split,
+  excluding the dev sample, and refuses any holdout id.
 - `pnpm eval:score --run <id> [--holdout]`: builds the submission for the run from Postgres,
   scores it with `eval/score.ts` (port of `scoring.py`: stage1 macro-F1, stage3 defect-F1,
   end-to-end with exact set equality, reliability diagnostics), prints the scoreboard and a
@@ -655,8 +674,8 @@ Pages (all behind the `proxy.ts` password gate; the cookie is an HMAC of `SITE_P
 | Route | Content | Polling |
 |---|---|---|
 | `/login` | password form | |
-| `/runs` | table of runs with score, start-run form (rate, limit) | 5 s |
-| `/runs/[id]` | stage funnel, queue depth, category mix, verifier share, cost, live email feed, submit button, score card | 2 s |
+| `/runs` | table of runs with score, the env concurrency, start-run form (dev sample, holdout, all 520 or first N; rate; optional prompt version and model) | 3 s |
+| `/runs/[id]` | progress, model calls, verifier share, tokens, cost, pinned prompts; a live feed of the newest calls; the emails with category, confidence and decider, filterable; for a chosen email every call with its exact input and output | 2 to 4 s |
 | `/emails/[runId]/[emailId]` | trace: email, attachments with viewer, classification panel (generator, verifier), extraction table with quotes highlighted in the document text, comparison table, review panel | on demand |
 | `/review` | open cases grouped by reason, plus Failures tab; case detail with actions and upload | 3 s |
 | `/chat` | conversations, messages, SQL shown in a collapsible block, result tables | on send |

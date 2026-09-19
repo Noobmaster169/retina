@@ -1,6 +1,10 @@
 # Progress
 
-Current phase: 3, closed. The code is merged to `main`; the box is not deployed yet. Everything
+Current phase: 4, in progress on `phase-04-classification-quality`. Everything is built and
+tested; what is left is measurement on the holdout, which the user runs (see "Phase 4" below for
+the exact runs and commands). Development runs stay at the 30-email dev sample.
+
+Phase 3: closed. The code is merged to `main`; the box is not deployed yet. Everything
 that could be built and tested without SSH access to the Monash box is done and green in
 `deploy/sim` (18 checks). The one manual step left, and everything to check after it, is
 `docs/phases/phase-03-handover.md`, written for whoever has that access. Phase 2 merged to
@@ -28,6 +32,7 @@ corrected where it described the old behaviour:
 | 1 | n/a | n/a | n/a | n/a | n/a | No classification yet: every email ends `done` / `OK` |
 | 2, prompt v1 | 0.2129 | not run | 0.7098 holdout | 0 | 0 | Zero-shot sonnet. All 25 holdout SI_REQUEST read as BL_COMPARISON: the definition was wrong |
 | 2, prompt v2 | 0.2981 | incomplete, see below | 0.9938 holdout (103 of 104) | 0 | 0 | Zero-shot sonnet, categories defined by paperwork stage. Stage 3 and E2E are 0 until phases 5 and 6 read the documents |
+| 4, v3 + verifier, dev sample | not run | not run | 1.0000 dev (30 of 30) | 0 | 0 | Run `0d09d887`, 30 train emails, 37 calls, 0 failed, verifier on 7 (23.3%), agreed every time. Not a holdout number |
 | 2, prompt v3 | 0.3000 | 0.2992 | 1.0000 holdout (104 of 104) | 0 | 0 | `v2` with the schema as a provider constraint: no "reason briefly" ending, `rationale` first in the schema, no `max_tokens`. Holdout run `0a8ed5a5`, 104 calls. Full run `044367f9`, 520 calls, 0 failed, stage 1 macro-F1 0.9975 (518 of 520). Fixes `v2`'s only miss, `email_504` |
 
 Stage 1 carries 0.30 of the final score, so 0.3000 is exactly what a perfect classifier with no
@@ -264,6 +269,50 @@ A full-codebase review, fixed on `review-fixes-phase-03`. How each was checked i
       and every later run hit the wizard's refusal to generate a `PG_PASSWORD` over an existing
       database. Found by running it. It removes by compose project label first now.
 
+### Phase 4 (in progress, 2026-09-19)
+Built: the verifier (`classify-verify/v1`), `decide.ts`, `core.prompt_versions` (migration 004),
+prompts pinned per run in `runs.prompt_set`, client retries on the proxy's verdict, the
+`LLM_MAX_CONCURRENCY` cap, the dev sample and holdout presets, few-shot `v4` (not active), and
+`/runs/[id]` with a live call feed and every call's exact input and output.
+
+The user asked (2026-09-19) that development runs stay at 20 to 30 emails and that anything
+larger be theirs to start: from the runs page, or with the commands below. So the holdout items
+are open, not failed.
+
+- [ ] Stage 1 macro-F1 on the holdout at or above 0.95, with the verifier. Phase 2's `v3` was
+      1.0000 without it. **To run**: runs page, Emails = Holdout, New run; then
+      `cd backend && pnpm eval:score --run <id> --holdout`.
+- [ ] The full-set confusion matrix. **To run**: Emails = Whole inbox (520). About 40 minutes at
+      2 in parallel.
+- [ ] The verifier ran on under 25% of emails. Dev sample: 7 of 30 (23.3%), but the sample is six
+      of each category and over-weights the categories the generator is least sure of (all 7
+      were GENERAL or INVOICE_QUERY, at 0.62 to 0.88). On 401 train emails under `v2`, 24 (6.0%)
+      were below 0.9. The holdout run above settles it.
+- [ ] The few-shot experiment, with both holdout numbers. `v4` = `v3` + ten train examples, two
+      per category, none from the holdout or the dev sample. **To run**: Emails = Holdout,
+      Classify prompt = v4. It must beat the `v3` holdout run to ship (activate it with
+      `update core.prompt_versions set active = (version = 'v4') where step = 'classify'`).
+      Since `v3` already scored 1.0000 there, it can at best tie; if it does not beat `v3`,
+      delete `v4.md` and `examples.v4.json` and record both numbers here.
+- [ ] The model comparison: one holdout run per alias under `v3`, Model = haiku, opus,
+      qwen3:14b. Record macro-F1, the confusion matrix, cost per email and latency per email:
+      `select step, model, count(*), sum(cost_usd), avg(latency_ms) from core.llm_calls where run_id = '<id>' group by 1, 2`.
+      The default stays sonnet unless the user changes it.
+- [x] Still no rule decides a category; every enum is the organisers'. `needsVerifier` reads the
+      generator's confidence and nothing else, and `registry.test.ts` checks the verifier
+      prompt and `v4`'s instructions for inbox phrases too.
+- [x] Processor tests with `FakeLlmClient` and no network: confident (no verifier), unsure (the
+      verifier's category wins), a pinned prompt set, a 503 (retryable, on the ledger), an unknown
+      provider (a `TerminalError`, not requeued). 247 backend tests.
+- [x] A run at `LLM_MAX_CONCURRENCY` completed with no 429: the dev run, 2 at a time, 37 calls,
+      none failed.
+- [ ] Image passthrough on the box: needs SSH access, which this machine does not have.
+
+Parallelism, as the user asked: every run, dev, holdout or all 520, runs `CLASSIFY_CONCURRENCY`
+emails at once, and `LLM_MAX_CONCURRENCY` (which follows it when unset) caps the model calls in
+flight. Both are read from `backend/.env`, and the runs page shows the values in force. Raise
+them together with the proxy's `max_concurrency`, or the extra calls only queue in the proxy.
+
 ### What the simulator found (2026-09-19)
 `deploy/sim` runs the real deploy scripts against a Docker-in-Docker replica of the box layout.
 Three bugs that would each have cost a manual recovery on a box nobody can SSH into from the
@@ -308,7 +357,27 @@ dev machine:
   field judge, chat. `LLM_MODEL_<STEP>` stays for experiments; the default does not move without
   the user saying so.
 
+## Design decisions (phase 4)
+- 2026-09-19, **`VERIFY_BELOW = 0.9`**, chosen on train: under `v2`, 24 of 401 train emails
+  (6.0%) fell below it, and every miss phase 2 recorded sat at 0.70 or lower.
+- 2026-09-19, **`classify v3` is the active row, not `v1`** as the spec's seed said: `v3` is what
+  scored 1.0000, and rule 5 says the repo wins for what is built.
+- 2026-09-19, **a run pins its prompts when it is created**, in `runs.prompt_set`, which closes
+  the Deferred item about a prompt file added mid-run. A run can also name a model per step; it
+  must be a proxy alias, checked against `/v1/models` before anything is queued.
+- 2026-09-19, **few-shot examples are `examples.<version>.json`**, not `examples.json`, so a
+  version and its examples are deleted together if the experiment fails.
+- 2026-09-19, **the api may read `backend/eval/split.json` and `dev-sample.json`**, which hold
+  ids only, to start a dev or holdout run. It still never reads `ground_truth.json`:
+  `eval/id-lists.ts` is split from `eval/ground-truth.ts` so the api does not even import it.
+
 ## Deferred
+- `deploy/compose.yaml` does not pass `CLASSIFY_CONCURRENCY` or `LLM_MAX_CONCURRENCY`, so the box
+  runs the defaults (2 and 2). Add them to the env anchor when the box's proxy serves more, and
+  run `deploy/sim` then, since it is the only gate on `deploy/`.
+- The verifier agreed on all 7 dev-sample emails it saw. If the holdout shows the same, it is
+  costing about one call in five on those categories for nothing; the threshold could come down.
+  Decide on the holdout numbers, not on this sample.
 - The backend's LLM request timeout (600 s) is still shorter than the proxy's worst case for
   `claudecli` (a 1200 s per-attempt ceiling plus a 1320 s backoff ladder). The zombie this used to
   cost is gone, since the proxy now cancels an abandoned call, but the two budgets are still set
@@ -320,9 +389,8 @@ dev machine:
 - `deploy/sim` still is not in CI: it needs privileged Docker-in-Docker, which GitHub-hosted runners
   do not give. It runs locally (`./sim.sh test <branch>`) and is the only gate on the deploy
   scripts, so anything touching `deploy/` still needs someone to run it by hand.
-- A run does not pin its prompt version: the worker resolves the newest file on every call, so a
-  prompt added mid-run changes the run halfway, and it is how the full run above was broken.
-  Phase 4's `promptSet` fixes it by resolving the version once, when the run is created.
+- ~~A run does not pin its prompt version.~~ Fixed in phase 4: `POST /runs` pins every step's
+  version and model in `runs.prompt_set`, and the worker loads exactly that.
 - The Score column was checked over HTTP (server render, the submit and eval handlers, error
   paths), not clicked in a browser: the browser tool failed to connect in the building session.
 - A full run is 520 sonnet calls at 2 at a time: about 40 minutes, and about 59 USD at API prices
@@ -366,6 +434,10 @@ dev machine:
 - BullMQ job.changePriority available: unknown (installed BullMQ is 6.3.6; `Job.changePriority` is in its types)
 
 ## Found while building
+- vitest 5 treats a function returned from `beforeEach` as a cleanup hook and calls it. So
+  `beforeEach(() => mock.mockReset())` calls the mock after every test, because `mockReset`
+  returns it. The old client test only passed because its one-shot rejection was already spent.
+  Use a braced body.
 - A deploy that is rolled back looks exactly like a deploy that never happened, from outside. The
   box had been serving pre-phase-1 code for two phases; the tell was `GET /runs` answering 404
   with a valid bearer, not anything in a log.
