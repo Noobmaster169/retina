@@ -91,13 +91,16 @@ export function ontologyRouter(deps: OntologyRouteDeps): Router {
       res.status(404).json({ error: "no such thing" });
       return;
     }
-    const [values, links, names, appearances] = await Promise.all([
+    const [values, links, names, appearances, appearanceCount] = await Promise.all([
       entityDetail.values(pool, req.params.id),
       entityDetail.around(pool, req.params.id),
       entityDetail.names(pool, req.params.id),
       entityDetail.appearances(pool, req.params.id, APPEARANCES),
+      entityDetail.appearanceCount(pool, req.params.id),
     ]);
-    const body: EntityDetail = { row, values, links, names, appearances, appearanceCount: row.mentions };
+    // Counted on the list's own grain. `row.mentions` counts mentions, which is
+    // a bigger number, and "last 3 of 24" beside a list of 6 was that mismatch.
+    const body: EntityDetail = { row, values, links, names, appearances, appearanceCount };
     res.json(body);
   });
 

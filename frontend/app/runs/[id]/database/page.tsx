@@ -32,6 +32,11 @@ function one(value: string | string[] | undefined): string | null {
 /**
  * One page, two ways in, and the record underneath.
  *
+ * Hidden from the rail: browsing raw tables is a flow nobody needs beside the
+ * ontology, which answers the same questions in the model's own words. It is
+ * kept and reachable by URL because `As rows` is the page that proves the
+ * ontology is not a mock-up, and a demo may still want to open it.
+ *
  * Which half you are reading, which table or type, and which row is open are
  * all in the URL. That makes every view shareable, back work, and a reload
  * land where you were, and it is why this whole page is a server component
@@ -126,8 +131,8 @@ async function Things({
           rows={list.entities}
           openId={openId}
           detail={detail}
-          runId={runId}
           hrefFor={(value) => (value ? `${base}&id=${encodeURIComponent(value)}` : base)}
+          recordHrefFor={(value) => `/runs/${runId}/ontology?type=${kind}&id=${encodeURIComponent(value)}&tab=record`}
         />
       </div>
     </AppShell>

@@ -14,7 +14,7 @@ export function WhereItSits({ detail }: { detail: EntityDetail }) {
   const last = links.length - 1;
 
   return (
-    <aside aria-label="Where it sits" className="flex w-[340px] shrink-0 flex-col overflow-hidden bg-surface">
+    <aside aria-label="Where it sits" className="flex w-[300px] shrink-0 flex-col overflow-hidden bg-surface">
       <h2 className="flex h-[42px] shrink-0 items-center px-5 text-heading font-semibold tracking-[-0.01em]">
         Where it sits
       </h2>

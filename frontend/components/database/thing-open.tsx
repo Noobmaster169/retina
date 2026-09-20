@@ -16,7 +16,7 @@ import { WrittenTheseWays } from "./written-these-ways";
  * The button at the foot is for when it stops being that question.
  */
 
-export function ThingOpen({ detail, runId }: { detail: EntityDetail; runId: string }) {
+export function ThingOpen({ detail, recordHref }: { detail: EntityDetail; recordHref: string }) {
   const { row } = detail;
   return (
     <div className="border-b border-hairline bg-surface shadow-[inset_2px_0_0_0_var(--ink)]">
@@ -73,7 +73,7 @@ export function ThingOpen({ detail, runId }: { detail: EntityDetail; runId: stri
           </span>
           <span className="grow" />
           <Link
-            href={`/runs/${runId}/database/${row.type}/${row.id}`}
+            href={recordHref}
             className="flex h-[30px] items-center gap-2 rounded-md bg-ink px-[11px] text-small font-medium text-ink-inverse"
           >
             Open the full record
@@ -82,7 +82,7 @@ export function ThingOpen({ detail, runId }: { detail: EntityDetail; runId: stri
         </div>
         <ul>
           {detail.appearances.slice(0, 3).map((appearance) => (
-            <li key={`${appearance.emailId}-${appearance.field}-${appearance.seenAt}`}>
+            <li key={`${appearance.emailId}-${appearance.field}`}>
               <Link
                 href={`/runs/${appearance.runId}/emails/${appearance.emailId}`}
                 className="flex h-[34px] items-center gap-3 border-t border-hairline-faint hover:bg-active"

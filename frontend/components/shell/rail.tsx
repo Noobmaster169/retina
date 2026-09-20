@@ -8,7 +8,7 @@ import { checkDetail, DEPENDENCIES, DEPENDENCY_LABELS, type HealthReport } from 
 import type { RunSummary } from "@/lib/api/runs-schemas";
 import { panel, quick, spring } from "@/lib/motion";
 
-import { DESTINATIONS, hrefFor, type NavCounts } from "./nav";
+import { hrefFor, type NavCounts, RAIL_DESTINATIONS } from "./nav";
 import { RunSwitcher } from "./run-switcher";
 
 /**
@@ -65,7 +65,7 @@ export function Rail({ open, onToggle, active, counts, current, runs, health }: 
       <div className={`h-px bg-hairline ${open ? "mx-[18px] mt-2" : "mx-3"}`} />
 
       <div className={open ? "px-3 pt-2" : "flex flex-col items-center pt-2"}>
-        {DESTINATIONS.map((destination) => {
+        {RAIL_DESTINATIONS.map((destination) => {
           const here = destination.key === active;
           return (
             <Link

@@ -19,12 +19,13 @@ interface ThingListProps {
   rows: EntityRow[];
   openId: string | null;
   detail: EntityDetail | null;
-  runId: string;
   /** Where opening a row leads, and where closing it leads back to. */
   hrefFor(id: string | null): string;
+  /** Where the opened row's own page is. Passed in, because two pages host this list. */
+  recordHrefFor(id: string): string;
 }
 
-export function ThingList({ rows, openId, detail, runId, hrefFor }: ThingListProps) {
+export function ThingList({ rows, openId, detail, hrefFor, recordHrefFor }: ThingListProps) {
   return (
     <div className="flex min-h-0 grow flex-col">
       <div className="flex h-[34px] shrink-0 items-center gap-[22px] border-b border-hairline px-7">
@@ -70,7 +71,7 @@ export function ThingList({ rows, openId, detail, runId, hrefFor }: ThingListPro
                 </span>
                 <Icon name="chevron" size={14} className={`shrink-0 text-ink-faint ${open ? "-rotate-90" : "rotate-90"}`} />
               </Link>
-              {open && detail ? <ThingOpen detail={detail} runId={runId} /> : null}
+              {open && detail ? <ThingOpen detail={detail} recordHref={recordHrefFor(row.id)} /> : null}
               {open && !detail ? (
                 <p className="border-b border-hairline bg-surface px-7 py-4 text-small text-ink-faint">
                   Nothing more is stored about this one.

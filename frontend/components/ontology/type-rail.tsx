@@ -25,7 +25,7 @@ interface TypeRailProps {
 
 export function TypeRail({ types, active, hrefFor, heading, footnote }: TypeRailProps) {
   return (
-    <nav aria-label={heading} className="flex w-[232px] shrink-0 flex-col border-r border-hairline bg-surface">
+    <nav aria-label={heading} className="flex w-[200px] shrink-0 flex-col border-r border-hairline bg-surface">
       <div className="flex h-[26px] items-center px-[18px] pt-1.5 text-caption font-medium text-ink-tertiary">
         {heading}
       </div>

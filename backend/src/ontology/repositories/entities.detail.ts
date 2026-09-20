@@ -45,7 +45,14 @@ export async function names(db: Queryable, entityId: string): Promise<EntityName
 }
 
 /**
- * Every time this thing was read, newest first, with how that email ended.
+ * Every email this thing was read out of, newest first, with how that email
+ * ended.
+ *
+ * One row per email and field. A port read from both documents of one email is
+ * one appearance read twice, and the same email replayed in three runs is
+ * still one appearance: `distinct on` keeps the newest run's, whose comparison
+ * is the outcome worth showing. Before this the list repeated one subject
+ * three times and React refused the duplicate keys.
  *
  * The outcome is joined rather than stored: copying a comparison's status onto
  * a mention would let this page and the email page disagree the moment someone
@@ -58,27 +65,33 @@ export async function appearances(db: Queryable, entityId: string, limit = 50): 
     subject: string;
     field: string;
     value: string;
-    side: "SI" | "BL";
+    sides: ("SI" | "BL")[];
     seen_at: Date;
     outcome: string | null;
   }>(
-    `select er.email_id,
-            er.run_id::text as run_id,
-            em.subject,
-            m.field,
-            m.value,
-            ex.role as side,
-            em.first_seen_at as seen_at,
-            cmp.status as outcome
-       from core.entity_mentions m
-       join core.email_runs er on er.id = m.email_run_id
-       join core.emails em on em.email_id = er.email_id
-       join core.extraction_fields ef on ef.id = m.extraction_field_id
-       join core.extractions ex on ex.id = ef.extraction_id
-       left join core.comparisons cmp on cmp.email_run_id = er.id
-      where m.entity_id = $1::bigint
-      order by em.first_seen_at desc, er.email_id desc
-      limit $2`,
+    `select * from (
+       select distinct on (er.email_id, m.field)
+              er.email_id,
+              er.run_id::text as run_id,
+              em.subject,
+              m.field,
+              m.value,
+              em.first_seen_at as seen_at,
+              cmp.status as outcome,
+              (select coalesce(array_agg(distinct ex2.role order by ex2.role), '{}')
+                 from core.entity_mentions m2
+                 join core.extraction_fields ef2 on ef2.id = m2.extraction_field_id
+                 join core.extractions ex2 on ex2.id = ef2.extraction_id
+                where m2.entity_id = m.entity_id and m2.email_run_id = er.id and m2.field = m.field) as sides
+         from core.entity_mentions m
+         join core.email_runs er on er.id = m.email_run_id
+         join core.emails em on em.email_id = er.email_id
+         left join core.comparisons cmp on cmp.email_run_id = er.id
+        where m.entity_id = $1::bigint
+        order by er.email_id, m.field, er.started_at desc
+     ) newest
+     order by seen_at desc, email_id desc
+     limit $2`,
     [entityId, limit],
   );
   return rows.map((row) => ({
@@ -87,10 +100,23 @@ export async function appearances(db: Queryable, entityId: string, limit = 50): 
     subject: row.subject,
     field: row.field,
     value: row.value,
-    side: row.side,
+    sides: row.sides,
     seenAt: row.seen_at.toISOString(),
     outcome: row.outcome,
   }));
+}
+
+/** How many appearances there are, on the same grain the list uses. */
+export async function appearanceCount(db: Queryable, entityId: string): Promise<number> {
+  const { rows } = await db.query<{ n: string }>(
+    `select count(*)::text as n
+       from (select distinct er.email_id, m.field
+               from core.entity_mentions m
+               join core.email_runs er on er.id = m.email_run_id
+              where m.entity_id = $1::bigint) distinct_appearances`,
+    [entityId],
+  );
+  return Number(rows[0].n);
 }
 
 /** What is stored about a thing. Nobody typed any of it in, and the last line says so. */

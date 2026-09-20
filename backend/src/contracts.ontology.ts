@@ -165,14 +165,24 @@ export const EntityName = z.object({
 });
 export type EntityName = z.infer<typeof EntityName>;
 
-/** One time a resolved thing was read out of a document, and how that email ended. */
+/**
+ * One email a resolved thing was read out of, and how that email ended.
+ *
+ * One row per email and field, not per mention. A port read from both the
+ * instruction and the draft of one email is one appearance read twice, and the
+ * same email replayed in three runs is still one appearance; listing each
+ * mention put the same subject on screen three times over and told a reader
+ * nothing the `sides` and the count do not.
+ */
 export const EntityAppearance = z.object({
   emailId: z.string(),
+  /** The most recent run that saw it. Its comparison is the outcome shown. */
   runId: z.string(),
   subject: z.string(),
   field: z.string(),
   value: z.string(),
-  side: z.enum(["SI", "BL"]),
+  /** Which documents of that email it was read from. Both, for a value that agreed. */
+  sides: z.array(z.enum(["SI", "BL"])),
   seenAt: z.string(),
   /** The comparison's status, or null where the email never reached one. */
   outcome: z.string().nullable(),

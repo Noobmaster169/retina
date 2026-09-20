@@ -110,13 +110,14 @@ export const EntityName = z.object({
 });
 export type EntityName = z.infer<typeof EntityName>;
 
+/** One email, not one mention: both documents of one email are one appearance read twice. */
 export const EntityAppearance = z.object({
   emailId: z.string(),
   runId: z.string(),
   subject: z.string(),
   field: z.string(),
   value: z.string(),
-  side: z.enum(["SI", "BL"]),
+  sides: z.array(z.enum(["SI", "BL"])),
   seenAt: z.string(),
   outcome: z.string().nullable(),
 });

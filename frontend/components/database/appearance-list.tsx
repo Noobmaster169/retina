@@ -26,7 +26,7 @@ export function AppearanceList({ appearances, total }: { appearances: EntityAppe
       </h2>
       <ul className="min-h-0 grow overflow-y-auto">
         {appearances.map((appearance) => (
-          <li key={`${appearance.emailId}-${appearance.field}-${appearance.seenAt}`}>
+          <li key={`${appearance.emailId}-${appearance.field}`}>
             <Link
               href={`/runs/${appearance.runId}/emails/${appearance.emailId}`}
               className="flex h-[54px] items-center gap-3 border-t border-hairline-faint px-[22px] hover:bg-surface"
@@ -59,7 +59,8 @@ export function AppearanceList({ appearances, total }: { appearances: EntityAppe
                     {appearance.field}
                   </span>
                   <span className="min-w-0 truncate text-caption text-ink-faint">
-                    read from the {appearance.side} as {appearance.value}
+                    read from {appearance.sides.length === 0 ? "a document" : appearance.sides.join(" and ")} as{" "}
+                    {appearance.value}
                   </span>
                 </span>
               </span>

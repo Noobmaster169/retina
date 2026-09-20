@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 import { ObjectCanvas } from "@/components/graph/object-canvas";
 import type { ObjectGraph, ObjectRecord } from "@/lib/api/ontology-schemas";
 
@@ -8,34 +10,29 @@ import { GraphInspector } from "./graph-inspector";
 /**
  * The Links tab: the canvas, and whichever node the reader is on.
  *
- * The inspector is only filled for the focal node. Every other node on the
- * canvas is a thing whose own record this page has not loaded, and showing an
- * empty `What it holds` under its name would read as "nothing is stored about
- * this", which is a claim rather than a gap.
+ * It owns its own selection and its own `Fit`, because neither belongs in the
+ * URL: which node you last clicked is not a place, and asking the server to
+ * re-render a frozen canvas to move a focus ring would be the drift this page
+ * promises not to have.
+ *
+ * The inspector is only filled for the focal node. Every other node is a thing
+ * whose own record this page has not loaded, and an empty `What it holds`
+ * under its name would read as "nothing is stored about this", which is a
+ * claim rather than a gap.
  */
+
 export function LinksTab({
   runId,
   graph,
   record,
-  selected,
-  selectedId,
-  onSelect,
-  fitSignal,
 }: {
   runId: string;
   graph: ObjectGraph | null;
   record: ObjectRecord;
-  /** What the inspector shows, which is the focal node until someone picks another. */
-  selected: ObjectGraph["nodes"][number] | null;
-  /**
-   * What a person actually chose, which is nothing to begin with. The focus
-   * ring is drawn from this and not from `selected`, so it means "you picked
-   * this" rather than sitting on the focal node from the moment the tab opens.
-   */
-  selectedId: string | null;
-  onSelect(id: string): void;
-  fitSignal: number;
 }) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [fitSignal, setFitSignal] = useState(0);
+
   if (!graph || graph.nodes.length === 0) {
     return (
       <div className="flex min-h-0 grow items-center justify-center bg-surface">
@@ -45,14 +42,24 @@ export function LinksTab({
       </div>
     );
   }
+
+  const selected = graph.nodes.find((node) => node.id === selectedId) ?? graph.nodes.find((node) => node.focal) ?? null;
+
   return (
     <div className="flex min-h-0 grow">
-      <div className="min-w-0 grow">
+      <div className="relative min-w-0 grow">
+        <button
+          type="button"
+          onClick={() => setFitSignal((was) => was + 1)}
+          className="absolute top-3 right-3 z-10 flex h-8 items-center rounded-md border border-hairline-strong bg-canvas px-3 text-strong text-ink-secondary hover:border-ink-faint"
+        >
+          Fit
+        </button>
         <ObjectCanvas
           graph={graph}
           runId={runId}
           selectedId={selectedId}
-          onSelect={onSelect}
+          onSelect={setSelectedId}
           fitSignal={fitSignal}
         />
       </div>
