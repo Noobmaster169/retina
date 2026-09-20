@@ -68,11 +68,18 @@ const Env = z.object({
   LLM_MODEL_EXTRACT_VERIFY: optionalString,
   LLM_MODEL_FIELD_JUDGE: optionalString,
   LLM_MODEL_CHAT: optionalString,
+  LLM_MODEL_SHIPMENT_READ: optionalString,
+  LLM_MODEL_ENTITY_RESOLVE: optionalString,
+  LLM_MODEL_ENTITY_PROFILE: optionalString,
+  LLM_MODEL_CONCEPT_DEFINE: optionalString,
+  LLM_MODEL_CONCEPT_JUDGE: optionalString,
   // How many model calls the worker has in flight at once, across every queue.
   //
   // Unset, it is CLASSIFY_CONCURRENCY plus COMPARE_CONCURRENCY, because that
-  // is how many jobs BullMQ actually runs at once and all of them contend for
-  // these slots. It used to follow CLASSIFY_CONCURRENCY alone, which meant
+  // is how many scored jobs BullMQ runs at once and all of them contend for
+  // these slots. The ontology queue is deliberately left out of the sum: its
+  // jobs take the same semaphore and so wait behind scored work, which is the
+  // whole point of a queue that must never slow an email down. It used to follow CLASSIFY_CONCURRENCY alone, which meant
   // eight classify jobs could hold every slot while four compare jobs sat
   // blocked in the semaphore: on the run page, sorting unaffected and checking
   // paused, with nothing anywhere saying why.
@@ -89,12 +96,50 @@ const Env = z.object({
   DOC_TYPE_TEXT_CHARS: z.coerce.number().int().positive().default(12_000),
   // How much of a document the extractor and its verifier read. The same guard; no generated document comes near it.
   EXTRACT_TEXT_CHARS: z.coerce.number().int().positive().default(12_000),
+  // How much of an email and its documents the shipment reader sees. The same kind of guard.
+  SHIPMENT_TEXT_CHARS: z.coerce.number().int().positive().default(14_000),
+
+  /**
+   * Whether an entity profile may carry what the model knows from training.
+   *
+   * `mail+model` writes a `general` section beside the `observed` one, marked
+   * unverified with a confidence of its own, and it is what makes "ports in
+   * Asia" answerable without the word Asia appearing in any email. It does not
+   * contradict CHAT.md's rule that the agent may relate and never report: a
+   * profile's `general` is a claim about the world, carries that label
+   * wherever it is shown, and is never a fact about this mailbox.
+   *
+   * `mail` leaves it null everywhere. A person's profile has no `general`
+   * under either setting: what a model believes about a named individual is
+   * not something this system stores.
+   */
+  ONTOLOGY_KNOWLEDGE: z.enum(["mail", "mail+model"]).default("mail+model"),
+
+  /**
+   * Starting values, all of them. Measure before moving one: the ontology
+   * question set is what says whether a change helped.
+   *
+   * JUDGE_BUDGET is how many profiles one question may have judged in its own
+   * turn, JUDGE_BATCH how many go in one call, CANDIDATE_CAP how many ids a
+   * narrowing query may return, PROFILE_BATCH how many stale things one
+   * scheduler tick rewrites, and PROFILE_FLOOR_HOURS how long a profile is
+   * left alone after being written.
+   */
+  JUDGE_BUDGET: z.coerce.number().int().positive().default(400),
+  JUDGE_BATCH: z.coerce.number().int().positive().default(40),
+  CANDIDATE_CAP: z.coerce.number().int().positive().default(5000),
+  PROFILE_BATCH: z.coerce.number().int().positive().default(50),
+  PROFILE_FLOOR_HOURS: z.coerce.number().int().nonnegative().default(24),
 
   // The proxy serves twelve `claude -p` calls at a time (max_concurrency in proxy/proxy.yaml),
-  // which is these two added up, because that is how many jobs run at once. More workers than
-  // that only queue inside the proxy with their request timeout already running.
+  // which is these two added up, because that is how many scored jobs run at once. More workers
+  // than that only queue inside the proxy with their request timeout already running.
   CLASSIFY_CONCURRENCY: z.coerce.number().int().positive().default(8),
   COMPARE_CONCURRENCY: z.coerce.number().int().positive().default(4),
+  // The semantic layer's own queue. Small on purpose: it runs after an email's
+  // verdict is written, it must never slow a scored email, and it takes the
+  // LLM semaphore at the lowest priority.
+  ONTOLOGY_CONCURRENCY: z.coerce.number().int().positive().default(2),
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"]).default("info"),
 
   // The commit this image was built from, passed as a build arg by the
