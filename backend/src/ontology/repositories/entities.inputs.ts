@@ -1,6 +1,15 @@
 import type { ComparisonField } from "../../contracts";
 import type { Queryable } from "../../db";
-import { type EntityKind, type ExistingEntity, kindOfRole, type Mention, type Sighting, type SightingRole, type Verdict } from "../../pipeline/ontology";
+import {
+  type EntityKind,
+  type ExistingEntity,
+  kindOfRole,
+  type Mention,
+  type NameHit,
+  type Sighting,
+  type SightingRole,
+  type Verdict,
+} from "../../pipeline/ontology";
 
 /**
  * Everything a resolution pass reads: the values a model read, the verdicts
@@ -121,4 +130,24 @@ export async function loadExisting(db: Queryable): Promise<ExistingEntity[]> {
     mentionCount: row.mention_count,
     names: row.names.map((name) => ({ value: name.value, seenCount: name.seen_count })),
   }));
+}
+
+/**
+ * Which live things already hold any of these spellings.
+ *
+ * One query for a whole email's worth of sightings rather than one per name:
+ * the planner only needs to know whether a judge has answered for a spelling
+ * already, and that is a lookup, not a search.
+ */
+export async function loadNameHits(db: Queryable, surfaces: string[]): Promise<NameHit[]> {
+  if (surfaces.length === 0) return [];
+  const { rows } = await db.query<{ entity_id: string; kind: EntityKind; value: string }>(
+    `select n.entity_id::text as entity_id, e.kind, n.value
+       from core.entity_names n
+       join core.entities e on e.id = n.entity_id
+      where e.merged_into is null
+        and lower(n.value) = any(select lower(wanted) from unnest($1::text[]) as wanted)`,
+    [surfaces],
+  );
+  return rows.map((row) => ({ entityId: Number(row.entity_id), kind: row.kind, value: row.value }));
 }

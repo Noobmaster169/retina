@@ -32,6 +32,7 @@ const workers = startWorkers(
     live,
     classify: queues.classify,
     compare: queues.compare,
+    ontology: queues.ontology,
     priority,
   },
   redis,
@@ -41,7 +42,12 @@ const workers = startWorkers(
 // worker is alive when it is not.
 const schedulers = await startSchedulers({ pool, redis, priority, aging: [queues.classify, queues.compare] });
 log.info(
-  { classify: config.CLASSIFY_CONCURRENCY, compare: config.COMPARE_CONCURRENCY, llm: config.LLM_MAX_CONCURRENCY },
+  {
+    classify: config.CLASSIFY_CONCURRENCY,
+    compare: config.COMPARE_CONCURRENCY,
+    ontology: config.ONTOLOGY_CONCURRENCY,
+    llm: config.LLM_MAX_CONCURRENCY,
+  },
   "worker started",
 );
 

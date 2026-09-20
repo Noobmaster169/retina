@@ -112,3 +112,44 @@ export async function applyResolution(tx: Queryable, plan: ReconcilePlan): Promi
 
   return plan.keep.length + plan.insert.length;
 }
+
+/**
+ * A thing nothing in the database denoted yet, from one sighting.
+ *
+ * Stale from the moment it exists, so the profile job writes it something to
+ * be; its first spelling joined `kept`, because nothing judged it against
+ * anything. The next full resolution pass rebuilds it from the sighting and
+ * keeps this id.
+ */
+export async function insertFromSighting(tx: Queryable, kind: string, surface: string, seenAt: Date): Promise<number> {
+  const { rows } = await tx.query<{ id: string }>(
+    `insert into core.entities (kind, canonical, mention_count, name_count, sighting_count, first_seen_at, last_seen_at)
+     values ($1::text, $2::text, 0, 1, 1, $3::timestamptz, $3::timestamptz)
+     on conflict (kind, canonical) where merged_into is null do update set sighting_count = core.entities.sighting_count + 1, stale = true
+     returning id::text as id`,
+    [kind, surface, seenAt],
+  );
+  const id = Number(rows[0].id);
+  await tx.query(
+    `insert into core.entity_names (entity_id, value, seen_count, joined_by)
+     values ($1::bigint, $2::text, 1, 'kept') on conflict (entity_id, value) do nothing`,
+    [id, surface],
+  );
+  return id;
+}
+
+/**
+ * A spelling the `entity-resolve` step said denotes a thing we already hold.
+ *
+ * `joined_step` is what the next resolution pass reads back as a verdict, so
+ * the two judges cannot disagree about which cluster a spelling is in.
+ */
+export async function addJudgedName(tx: Queryable, entityId: number, value: string, confidence: number): Promise<void> {
+  await tx.query(
+    `insert into core.entity_names (entity_id, value, seen_count, joined_by, confidence, joined_step)
+     values ($1::bigint, $2::text, 1, 'judge', $3::numeric, 'entity-resolve')
+     on conflict (entity_id, value) do update set joined_step = coalesce(core.entity_names.joined_step, 'entity-resolve')`,
+    [entityId, value, confidence],
+  );
+  await tx.query("update core.entities set sighting_count = sighting_count + 1, stale = true where id = $1::bigint", [entityId]);
+}

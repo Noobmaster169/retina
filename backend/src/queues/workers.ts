@@ -4,17 +4,19 @@ import type { z } from "zod";
 
 import type { LlmClient } from "../agents";
 import { config } from "../config";
+import { transactor } from "../db";
 import type { DocExtractClient } from "../doc-extract";
 import { type IngestDeps, replayRun } from "../ingest";
 import { TerminalError } from "../lib/errors";
 import { childLogger } from "../lib/logger";
 import type { LiveCalls } from "../live";
-import { runs } from "../ontology/repositories";
+import { emailRuns, runs } from "../ontology/repositories";
 import { isFinalFailure, type PausedAt, pausingOnOutage, type QueuePauser } from "./failure-policy";
 import { recordJobFailure } from "./record-failure";
-import { ClassifyJob, CompareJob, DEFAULT_PRIORITY, IngestJob, type JobAdder, QUEUES } from "./names";
+import { ClassifyJob, CompareJob, DEFAULT_PRIORITY, IngestJob, type JobAdder, JOB_NAMES, OntologyJob, ontologyJobOptions, QUEUES } from "./names";
 import { processClassify } from "./processors/classify.processor";
 import { processCompare } from "./processors/compare.processor";
+import { processOntology } from "./processors/ontology.processor";
 
 const log = childLogger({ module: "workers" });
 
@@ -24,6 +26,8 @@ export interface WorkerDeps extends IngestDeps {
   live?: LiveCalls;
   classify: JobAdder<ClassifyJob> & QueuePauser;
   compare: JobAdder<CompareJob> & QueuePauser;
+  /** The semantic layer's own queue. Absent, the compare leg simply never enqueues one. */
+  ontology?: JobAdder<OntologyJob> & QueuePauser;
 }
 
 // LLM calls are slow, so an email job may hold its lock for a while. A job
@@ -101,6 +105,28 @@ export interface RunningWorkers {
   stop(): Promise<void>;
 }
 
+/**
+ * The semantic layer picks an email up once its verdict is written.
+ *
+ * Here and not inside the compare processor because the processor writes
+ * `done` and `review` from four different branches, and one place that reads
+ * the stage the email actually reached cannot miss one of them. A queue that
+ * will not take the job is logged and dropped: the reading is worth having and
+ * never worth failing a compared email over.
+ */
+async function queueOntology(deps: WorkerDeps, data: CompareJob): Promise<void> {
+  if (!deps.ontology) return;
+  try {
+    const emailRunId = await emailRuns.idOf(deps.pool, data.runId, data.emailId);
+    if (!emailRunId) return;
+    const context = await emailRuns.context(deps.pool, emailRunId);
+    if (context?.stage !== "done" && context?.stage !== "review") return;
+    await deps.ontology.add(JOB_NAMES.ontology, { emailId: data.emailId, emailRunId: Number(emailRunId) }, ontologyJobOptions(data.emailId));
+  } catch (error) {
+    log.warn({ ...data, err: error instanceof Error ? error.message : String(error) }, "could not queue the semantic reading");
+  }
+}
+
 export function startWorkers(deps: WorkerDeps, connection: Redis): RunningWorkers {
   let stopping = false;
 
@@ -140,18 +166,37 @@ export function startWorkers(deps: WorkerDeps, connection: Redis): RunningWorker
 
   const compare = new Worker(
     QUEUES.compare,
-    (job) => {
+    async (job) => {
       const data = parse(CompareJob, job);
-      return noRetryOnTerminal(() => pausingOnOutage(deps.compare, at("compare", job, data), () => processCompare(deps, data)));
+      await noRetryOnTerminal(() => pausingOnOutage(deps.compare, at("compare", job, data), () => processCompare(deps, data)));
+      await queueOntology(deps, data);
     },
     { connection, concurrency: config.COMPARE_CONCURRENCY, limiter: NEVER_REACHED_LIMITER, ...EMAIL_LOCK },
+  );
+
+  // Its own queue, at the lowest priority, so a reading can never slow or fail
+  // a scored email. An outage pauses it exactly as it pauses the other two.
+  const ontology = new Worker(
+    QUEUES.ontology,
+    (job) => {
+      const data = parse(OntologyJob, job);
+      const pauser = deps.ontology;
+      const read = () => processOntology({ ...deps, tx: transactor(deps.pool) }, data);
+      return noRetryOnTerminal(() =>
+        pauser ? pausingOnOutage(pauser, { stage: "ontology", jobId: job.id, runId: "", emailId: data.emailId }, read) : read(),
+      );
+    },
+    { connection, concurrency: config.ONTOLOGY_CONCURRENCY, limiter: NEVER_REACHED_LIMITER, ...EMAIL_LOCK },
   );
 
   ingest.on("failed", guarded(QUEUES.ingest, onIngestJobFailed(deps)));
   classify.on("failed", guarded(QUEUES.classify, onEmailJobFailed(deps, "classify")));
   compare.on("failed", guarded(QUEUES.compare, onEmailJobFailed(deps, "compare")));
+  // No review case and no stage change: a reading that failed leaves the
+  // email's verdict exactly where it was, which is the point of this queue.
+  ontology.on("failed", (job, error) => log.warn({ jobId: job?.id, err: error.message }, "a semantic reading failed"));
 
-  const workers = [ingest, classify, compare];
+  const workers = [ingest, classify, compare, ontology];
   for (const worker of workers) {
     worker.on("error", (error) => log.warn({ queue: worker.name, err: error.message }, "worker error"));
   }

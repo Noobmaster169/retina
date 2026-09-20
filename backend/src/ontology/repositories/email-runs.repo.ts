@@ -1,4 +1,4 @@
-import { Stage } from "../../contracts";
+import { type Category, Stage } from "../../contracts";
 import type { Queryable } from "../../db";
 
 export interface NewEmailRun {
@@ -168,4 +168,31 @@ export async function priorityOf(db: Queryable, runId: string, emailId: string):
     [runId, emailId],
   );
   return rows[0]?.priority ?? null;
+}
+
+/**
+ * The run, the email and the settled category behind one `email_runs` id.
+ *
+ * What a job carrying only that id needs to do its work. The category is the
+ * correction where a person made one, which is the precedence every screen
+ * uses, and null where the email was never classified.
+ */
+export interface EmailRunContext {
+  runId: string;
+  emailId: string;
+  stage: Stage;
+  category: Category | null;
+}
+
+export async function context(db: Queryable, emailRunId: string): Promise<EmailRunContext | null> {
+  const { rows } = await db.query<{ run_id: string; email_id: string; stage: Stage; category: Category | null }>(
+    `select er.run_id::text as run_id, er.email_id, er.stage,
+            coalesce(c.human_category, c.final_category) as category
+       from core.email_runs er
+       left join core.classifications c on c.email_run_id = er.id
+      where er.id = $1::bigint`,
+    [emailRunId],
+  );
+  const row = rows[0];
+  return row ? { runId: row.run_id, emailId: row.email_id, stage: row.stage, category: row.category } : null;
 }

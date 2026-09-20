@@ -3,12 +3,13 @@ import { z } from "zod";
 
 import { jobId } from "../lib/ids";
 
-export const QUEUES = { ingest: "ingest", classify: "classify", compare: "compare", scheduler: "scheduler" } as const;
+export const QUEUES = { ingest: "ingest", classify: "classify", compare: "compare", ontology: "ontology", scheduler: "scheduler" } as const;
 
 export const JOB_NAMES = {
   ingest: "ingest-run",
   classify: "classify-email",
   compare: "compare-email",
+  ontology: "read-shipment",
 } as const;
 
 /** `epoch` is the run's ingest epoch when the job was added. A job from before it existed holds 0. */
@@ -33,6 +34,17 @@ export type ClassifyJob = z.infer<typeof ClassifyJob>;
 /** The same ids as a classify job. Phase 8's partial rerun is the reason this has its own name. */
 export const CompareJob = ClassifyJob;
 export type CompareJob = z.infer<typeof CompareJob>;
+
+/**
+ * One email's semantic reading: what the mail states, and the things it names.
+ *
+ * Ids only, like every other payload. The job id is the email id and not
+ * `runId__emailId`: a sighting belongs to the email and not to a run, so a
+ * second enqueue while one waits is the same work and BullMQ's refusal of a
+ * duplicate id is exactly the behaviour wanted.
+ */
+export const OntologyJob = z.object({ emailId: z.string().min(1), emailRunId: z.number().int().positive() });
+export type OntologyJob = z.infer<typeof OntologyJob>;
 
 /**
  * What a job is worth when nothing said. Every email job is added with a real
@@ -61,6 +73,29 @@ export function jobOptions(runId: string, emailId: string, priority: number): Jo
  */
 export function rerunJobOptions(runId: string, emailId: string, rerun: number, priority: number): JobsOptions {
   return { ...RETRY, jobId: `${jobId(runId, emailId)}__r${rerun}`, priority };
+}
+
+/**
+ * Lower than any email job, which top out at 1000 (tier 5 with no tonnage).
+ * BullMQ serves the smallest number first and reads 0 as no priority at all,
+ * so this is a number and not a zero.
+ */
+export const ONTOLOGY_PRIORITY = 2000;
+
+export function ontologyJobOptions(emailId: string): JobsOptions {
+  return {
+    attempts: 3,
+    backoff: { type: "exponential", delay: 5000 },
+    // Removed on completion, unlike every other queue's, because the job id is
+    // the email id: a finished job kept for a day would hold that id and
+    // silently refuse the re-reading a reviewer's correction asks for. A
+    // failure is kept an hour, which is long enough to read and short enough
+    // not to block the correction that fixes it.
+    removeOnComplete: true,
+    removeOnFail: { age: 3600 },
+    jobId: emailId,
+    priority: ONTOLOGY_PRIORITY,
+  };
 }
 
 export function ingestJobOptions(id: string): JobsOptions {
