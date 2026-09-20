@@ -93,6 +93,11 @@ disputed, `disputed_fields` on the shipment names `port_of_discharge`, and `emai
 points at Mombasa. Ten appearances across the 25 emails are marked disputed and 359 are not, so a
 question about where cargo actually went can filter them out.
 
+**A second job for one email replaces only that email's rows.** `email_007` was re-queued and
+read again: its three sightings and its shipment were rewritten, the other twenty-four shipments
+and the other hundred sightings were untouched. That is the rule a reviewer's correction depends
+on, and it is what makes the ontology queue's job id the email id.
+
 **`find_entities` has been put to a live model once**, `pnpm eval:chat --set ontology --ids
 c-gulf-consignees`, five steps and 73 seconds. It is the shape the phase was built for: the agent
 narrowed to actual consignees with a recipe first, then asked for the meaning, and the answer put
