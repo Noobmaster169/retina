@@ -1,7 +1,8 @@
 import { z } from "zod";
 
-import type { ChatToolCall, ChatToolName } from "../../contracts";
+import { ChatNextMove, ChatOutcome, type ChatToolCall, type ChatToolName, ClarifyingQuestion } from "../../contracts";
 import type { TouchedCall } from "./graph";
+import { MAX_MOVES } from "./next-moves";
 import { TOOL_NAMES, type ToolOutcome } from "./tools";
 
 /**
@@ -37,6 +38,17 @@ export const Step = z.object({
   /** On a final step. */
   answer: z.string().default(""),
   sql_used: z.array(z.string()).default([]),
+  /** How the answer ended. `none_found` obliges `checked`; `needs_input` obliges `clarify`. */
+  outcome: ChatOutcome.default("answered"),
+  /** The places looked, in the reader's words: resolved ports, subject lines, bodies, sender domains. */
+  checked: z.array(z.string()).default([]),
+  /**
+   * Up to four chips under the prose. Every alternative is checked against what
+   * the tools returned before it is stored, so one invented here is removed and
+   * the answer still stands.
+   */
+  next: z.array(ChatNextMove).max(MAX_MOVES).default([]),
+  clarify: ClarifyingQuestion.nullable().default(null),
 });
 export type Step = z.infer<typeof Step>;
 

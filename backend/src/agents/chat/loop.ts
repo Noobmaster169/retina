@@ -1,15 +1,17 @@
-import type { ChatGraph, ChatToolCall } from "../../contracts";
 import { config } from "../../config";
 import { childLogger } from "../../lib/logger";
 import { loadPrompt } from "../prompts/registry";
 import { callStructured, type StructuredDeps } from "../structured";
-import { buildGraph } from "./graph";
 import { type How, skillsToInject } from "./inject";
 import { type Scope, scopeText, stepInput } from "./loop.input";
-import { finish, type FinishedCall, forWire, Step } from "./loop.steps";
-import { skills, skillText, skillVersions } from "./skills/registry";
+import { assemble, type FinalStep, type TurnResult } from "./loop.result";
+import { finish, type FinishedCall, Step } from "./loop.steps";
+import { problemWith } from "./next-moves";
+import { skills, skillText } from "./skills/registry";
 import { standing, standingText } from "./standing";
 import { callTool, type ToolContext } from "./tools";
+
+export type { TurnResult } from "./loop.result";
 
 const log = childLogger({ module: "chat.loop" });
 
@@ -46,20 +48,6 @@ export interface TurnInput {
   pickedSkills: string[];
 }
 
-export interface TurnResult {
-  answer: string;
-  /** One sentence on how the question was read, from the first step. */
-  reading: string;
-  sqlUsed: string[];
-  toolCalls: ChatToolCall[];
-  graph: ChatGraph;
-  skillsUsed: { name: string; version: number; how: How }[];
-  /** True when the turn needed SQL the agent wrote itself: a question no recipe covers yet. */
-  adhoc: boolean;
-  /** True when the step budget ran out: the answer is what it had, and the page says so. */
-  exhausted: boolean;
-}
-
 export interface LoopDeps extends StructuredDeps {
   tools: ToolContext;
 }
@@ -80,20 +68,13 @@ export async function runTurn(deps: LoopDeps, input: TurnInput): Promise<TurnRes
   // earlier turn is a stored spelling, and the guard asks the database for those.
   const shownBefore = [standingText(held), input.orientation, scopeText(input.scope)].join("\n\n");
 
-  const result = (answer: string, sqlFromModel: string[], exhausted: boolean): TurnResult => {
-    const sqlUsed = calls.flatMap((call) => (call.sql ? [call.sql] : []));
-    return {
-      answer,
-      reading,
-      // What the tools actually ran beats what the model remembers running.
-      sqlUsed: sqlUsed.length > 0 ? sqlUsed : sqlFromModel,
-      toolCalls: calls.map(forWire),
-      graph: buildGraph(input.question, calls),
-      skillsUsed: skillVersions([...used.keys()]).map((skill) => ({ ...skill, how: used.get(skill.name) ?? "injected" })),
-      adhoc: calls.some((call) => call.tool === "run_sql" && call.ok),
-      exhausted,
-    };
-  };
+  /** Whether a final step that broke its own shape has already been handed back. Once is teaching; twice is a loop. */
+  let toldOnce = false;
+  const result = (final: Partial<FinalStep> & { answer: string }): TurnResult =>
+    assemble(
+      { question: input.question, calls, used, reading },
+      { sqlUsed: [], outcome: "answered", checked: [], next: [], clarify: null, exhausted: false, ...final },
+    );
 
   for (let step = 1; step <= MAX_STEPS; step++) {
     const injected = skillsToInject(
@@ -134,11 +115,31 @@ export async function runTurn(deps: LoopDeps, input: TurnInput): Promise<TurnRes
     });
 
     if (step === 1 || reading === "") reading = value.reading || reading;
-    if (value.action === "final" && value.answer.trim() !== "") return result(value.answer, value.sql_used, false);
     if (value.action === "final") {
-      notes.push("### you gave a final step with no answer\nWrite the answer in `answer`, or make the calls you still need.");
-      log.warn({ step }, "a chat step was final and said nothing");
-      continue;
+      if (value.answer.trim() === "") {
+        notes.push("### you gave a final step with no answer\nWrite the answer in `answer`, or make the calls you still need.");
+        log.warn({ step }, "a chat step was final and said nothing");
+        continue;
+      }
+      // A claim the answer cannot support is worth one correction: the agent
+      // knows where it looked and which candidates it found, and saying so is
+      // cheaper than a second turn. Twice would be the loop arguing with
+      // itself, so the second one is settled in code and stored without it.
+      const problem = problemWith(value);
+      if (problem !== null && !toldOnce) {
+        toldOnce = true;
+        notes.push(`### your answer claimed something it did not carry\n${problem}`);
+        log.info({ step, outcome: value.outcome }, "a chat final step was handed back");
+        continue;
+      }
+      return result({
+        answer: value.answer,
+        sqlUsed: value.sql_used,
+        outcome: value.outcome,
+        checked: value.checked,
+        next: value.next,
+        clarify: value.clarify,
+      });
     }
 
     // A tool step that carries no call is the one shape the flat schema lets
@@ -169,11 +170,11 @@ export async function runTurn(deps: LoopDeps, input: TurnInput): Promise<TurnRes
   // The budget is spent. Saying so with what was found beats a made-up answer,
   // and beats an error: the tool results are on the page either way.
   log.warn({ steps: MAX_STEPS, question: input.question.slice(0, 120) }, "the chat loop ran out of steps");
-  return result(
-    `I could not finish this within ${MAX_STEPS} steps. What I found is under "Tools used": ` +
+  return result({
+    answer:
+      `I could not finish this within ${MAX_STEPS} steps. What I found is under "Tools used": ` +
       `${calls.map((call) => `${call.tool} (${call.preview})`).join(", ")}. ` +
       "Ask it again more narrowly, or name the run you mean.",
-    [],
-    true,
-  );
+    exhausted: true,
+  });
 }

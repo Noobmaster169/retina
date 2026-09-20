@@ -1,4 +1,13 @@
-import type { ChatGraph, ChatSkillUse, ChatToolCall, ChatTurn, ProposedAction } from "../../contracts";
+import type {
+  ChatGraph,
+  ChatNextMove,
+  ChatOutcome,
+  ChatSkillUse,
+  ChatToolCall,
+  ChatTurn,
+  ClarifyingQuestion,
+  ProposedAction,
+} from "../../contracts";
 import type { Queryable } from "../../db";
 
 /**
@@ -30,9 +39,27 @@ interface AssistantExtras {
   reading: string;
   skillsUsed: ChatSkillUse[];
   adhoc: boolean;
+  outcome: ChatOutcome;
+  checked: string[];
+  next: ChatNextMove[];
+  clarify: ClarifyingQuestion | null;
+  /** CHAT.md's version on the turn that ran, beside the skills'. */
+  standingVersion: number;
 }
 
-const NO_EXTRAS: AssistantExtras = { toolCalls: [], graph: null, proposal: null, reading: "", skillsUsed: [], adhoc: false };
+const NO_EXTRAS: AssistantExtras = {
+  toolCalls: [],
+  graph: null,
+  proposal: null,
+  reading: "",
+  skillsUsed: [],
+  adhoc: false,
+  outcome: "answered",
+  checked: [],
+  next: [],
+  clarify: null,
+  standingVersion: 0,
+};
 
 function extrasOf(row: TurnRow): AssistantExtras {
   const held = row.tool_result as Partial<AssistantExtras> | null;
@@ -53,6 +80,10 @@ function toTurn(row: TurnRow): ChatTurn {
     reading: extras.reading,
     skillsUsed: extras.skillsUsed,
     adhoc: extras.adhoc,
+    outcome: extras.outcome,
+    checked: extras.checked,
+    next: extras.next,
+    clarify: extras.clarify,
     createdAt: row.created_at.toISOString(),
   };
 }
@@ -111,6 +142,11 @@ export interface NewAssistantTurn {
   reading: string;
   skillsUsed: ChatSkillUse[];
   adhoc: boolean;
+  outcome: ChatOutcome;
+  checked: string[];
+  next: ChatNextMove[];
+  clarify: ClarifyingQuestion | null;
+  standingVersion: number;
 }
 
 export async function addAssistantTurn(

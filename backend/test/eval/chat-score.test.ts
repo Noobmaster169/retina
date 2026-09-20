@@ -15,7 +15,8 @@ function call(tool: Call["tool"], args: Record<string, unknown> = {}, extra: Par
 function turn(answer: string, toolCalls: Call[], extra: Partial<TurnResult> = {}): TurnResult {
   return {
     answer, reading: "", sqlUsed: [], toolCalls, graph: { nodes: [], edges: [] }, skillsUsed: [],
-    adhoc: toolCalls.some((item) => item.tool === "run_sql" && item.ok), exhausted: false, ...extra,
+    adhoc: toolCalls.some((item) => item.tool === "run_sql" && item.ok), exhausted: false,
+    outcome: "answered", checked: [], next: [], clarify: null, ...extra,
   };
 }
 

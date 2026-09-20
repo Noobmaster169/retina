@@ -117,6 +117,46 @@ export const ProposedAction = z.object({
 });
 export type ProposedAction = z.infer<typeof ProposedAction>;
 
+/**
+ * How an answer ended: it answered, it found nothing, it found part of it, or
+ * it needs the person to choose between readings.
+ *
+ * Not an error state. `none_found` is a correct answer to a question about
+ * something that is not in the data, and the page draws it in the same tone as
+ * any other: what was checked, and what is there instead.
+ */
+export const ChatOutcome = z.enum(["answered", "none_found", "partial", "needs_input"]);
+export type ChatOutcome = z.infer<typeof ChatOutcome>;
+
+/**
+ * One thing the reader can do next, written as a question the chat can answer.
+ *
+ * A chip's `prompt` is a full question rather than a label, so clicking it is
+ * the same as typing it and needs no route of its own. An `alternative` names
+ * a thing that is in the data with the number that was read beside it, and
+ * `next-moves.ts` drops any whose thing and number did not come back from a
+ * tool on that turn. `basis` says whether the model's own knowledge chose it,
+ * which the chip marks: relating Jakarta to the ports that are there is
+ * geography, not a fact about this mailbox.
+ */
+export const ChatNextMove = z.object({
+  kind: z.enum(["alternative", "follow_up"]),
+  label: z.string().max(60),
+  prompt: z.string().max(300),
+  /** The value or name it is about, exactly as the data spells it. Null on a follow-up. */
+  thing: z.string().nullable().default(null),
+  count: z.number().int().nullable().default(null),
+  basis: z.enum(["data", "general_knowledge"]),
+});
+export type ChatNextMove = z.infer<typeof ChatNextMove>;
+
+/** What the agent asks back when the data makes an ambiguity real. The options are candidates its tools returned. */
+export const ClarifyingQuestion = z.object({
+  question: z.string(),
+  options: z.array(z.string()).min(2).max(5),
+});
+export type ClarifyingQuestion = z.infer<typeof ClarifyingQuestion>;
+
 /** A skill that was in front of the agent on a turn, at which version, and how it got there. */
 export const ChatSkillUse = z.object({
   name: z.string(),
@@ -142,6 +182,11 @@ export const ChatTurn = z.object({
   skillsUsed: z.array(ChatSkillUse).default([]),
   /** The turn needed SQL the agent wrote itself: a question no recipe covers yet. */
   adhoc: z.boolean().default(false),
+  outcome: ChatOutcome.default("answered"),
+  /** Where it looked, in the reader's words. Set when the outcome is `none_found` or `partial`. */
+  checked: z.array(z.string()).default([]),
+  next: z.array(ChatNextMove).default([]),
+  clarify: ClarifyingQuestion.nullable().default(null),
   createdAt: z.string(),
 });
 export type ChatTurn = z.infer<typeof ChatTurn>;

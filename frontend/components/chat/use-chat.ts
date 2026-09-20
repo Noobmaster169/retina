@@ -92,6 +92,10 @@ export function useChat(options: {
         reading: "",
         skillsUsed: [],
         adhoc: false,
+        outcome: "answered",
+        checked: [],
+        next: [],
+        clarify: null,
         createdAt: new Date().toISOString(),
       },
     ]);

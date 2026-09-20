@@ -6,6 +6,7 @@ import type { ChatAnswer, ChatThread, ProposedAction } from "../contracts";
 import { NewConversation, NewMessage } from "../contracts";
 import { runTurn } from "../agents/chat/loop";
 import { orientationFor } from "../agents/chat/orientation";
+import { standing } from "../agents/chat/standing";
 import type { LlmClient } from "../agents/llm-client";
 import { childLogger } from "../lib/logger";
 import { chat, chatState } from "../ontology/repositories";
@@ -143,6 +144,11 @@ export function chatRouter(deps: ChatRouteDeps): Router {
       reading: result.reading,
       skillsUsed: result.skillsUsed,
       adhoc: result.adhoc,
+      outcome: result.outcome,
+      checked: result.checked,
+      next: result.next,
+      clarify: result.clarify,
+      standingVersion: standing().version,
       // Nothing in phase 10 proposes one yet; the field exists so the shape the
       // card reads is settled and phase 11 fills it rather than inventing it.
       proposal: null,

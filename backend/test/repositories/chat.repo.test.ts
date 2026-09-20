@@ -63,6 +63,11 @@ describe("a conversation's turns", () => {
         reading: "",
         skillsUsed: [],
         adhoc: false,
+        outcome: "answered",
+        checked: [],
+        next: [],
+        clarify: null,
+        standingVersion: 1,
       });
       const recent = await chat.recentTurns(tx, conversation.id, 20);
       expect(recent.map((turn) => turn.role)).toEqual(["user", "assistant"]);

@@ -177,6 +177,7 @@ describe("sticky skills", () => {
       const conversation = await chat.create(tx, { actor: "a test" });
       await chat.addAssistantTurn(tx, conversation.id, {
         answer: "an answer", sqlUsed: [], toolCalls: [], graph: null, proposal: null, reading: "", adhoc: false,
+        outcome: "answered", checked: [], next: [], clarify: null, standingVersion: 1,
         skillsUsed: [
           { name: "time-questions", version: 1, how: "loaded" },
           { name: "ground-names", version: 1, how: "injected" },
