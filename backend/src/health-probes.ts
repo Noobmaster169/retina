@@ -1,16 +1,44 @@
 import { z } from "zod";
 
 /**
- * One probe per dependency, and what each one is worth asking.
+ * One probe per dependency reached over HTTP, and what each one is worth
+ * asking.
  *
  * They live apart from health.ts because that file is about what a reading
  * means and this one is about how each service answers. Each returns the
  * detail worth reporting, or throws, and health.ts turns either into a check.
  *
+ * They are gathered behind `Probes` for the usual reason: a health test that
+ * dialled the real proxy and the real inbox would be a test of whoever is
+ * running on port 8000 today, and `CLAUDE.md` bans a test from reaching the
+ * proxy at all.
+ *
  * Every payload is parsed. A dependency whose health endpoint changed shape
  * should read as up with less detail, never as an exception in a route whose
  * whole job is to not have one.
  */
+
+/** The three checks that are an HTTP call. One interface, one real implementation, one fake per test. */
+export interface Probes {
+  inbox(): Promise<{ emails?: number; scoringAvailable?: boolean }>;
+  docExtract(): Promise<{ tesseract?: string | null }>;
+  llmProxy(): Promise<{ models?: number }>;
+}
+
+interface ProbeUrls {
+  EMAIL_SERVER_URL: string;
+  DOC_EXTRACT_URL: string;
+  LLM_PROXY_URL: string;
+}
+
+/** The real ones, against the urls config holds. */
+export function httpProbes(urls: ProbeUrls, timeoutMs: number): Probes {
+  return {
+    inbox: () => probeInbox(urls.EMAIL_SERVER_URL, timeoutMs),
+    docExtract: () => probeDocExtract(urls.DOC_EXTRACT_URL, timeoutMs),
+    llmProxy: () => probeLlmProxy(urls.LLM_PROXY_URL, timeoutMs),
+  };
+}
 
 async function readJson(url: string, timeoutMs: number, what: string): Promise<unknown> {
   const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });

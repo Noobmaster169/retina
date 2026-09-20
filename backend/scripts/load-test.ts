@@ -105,7 +105,14 @@ async function peakOverlap(runId: string): Promise<number> {
   return peak;
 }
 
-/** A 429 from the proxy means the burst outran what it serves. Zero of them is the exit checklist's line. */
+/**
+ * A 429 from the proxy means the burst outran what it serves. Zero of them is
+ * the exit checklist's line.
+ *
+ * Matched on the stored message, because `llm_calls` keeps the error as text
+ * and not as a status. If the proxy's wording ever changes this reads zero and
+ * says nothing, so `peakCallsInFlight` above is the reading to trust.
+ */
 async function rateLimited(runId: string): Promise<number> {
   const { rows } = await getPool().query<{ n: string }>(
     "select count(*) as n from core.llm_calls where run_id = $1 and error like '%429%'",
@@ -115,32 +122,45 @@ async function rateLimited(runId: string): Promise<number> {
 }
 
 const { limit } = options(process.argv.slice(2));
-const run = await api<RunView>("/runs", {
-  method: "POST",
-  body: JSON.stringify({ ratePerSecond: 0, ...(limit ? { limit } : {}) }),
-});
-log.info(
-  { runId: run.id, limit: limit ?? "every email", classify: config.CLASSIFY_CONCURRENCY, compare: config.COMPARE_CONCURRENCY, llm: config.LLM_MAX_CONCURRENCY },
-  "burst started",
-);
 
-const { elapsedMs, peakDepth } = await watch(run.id);
-const [peak, throttled] = await Promise.all([peakOverlap(run.id), rateLimited(run.id)]);
+/** Returns the exit code. Wrapped so the pool is closed whatever happens: a throw in `watch` used to leave the process hanging. */
+async function main(): Promise<number> {
+  const run = await api<RunView>("/runs", {
+    method: "POST",
+    body: JSON.stringify({ ratePerSecond: 0, ...(limit ? { limit } : {}) }),
+  });
+  log.info(
+    { runId: run.id, limit: limit ?? "every email", classify: config.CLASSIFY_CONCURRENCY, compare: config.COMPARE_CONCURRENCY, llm: config.LLM_MAX_CONCURRENCY },
+    "burst started",
+  );
 
-log.info(
-  {
-    runId: run.id,
-    elapsedS: Math.round(elapsedMs / 1000),
-    peakQueueDepth: peakDepth,
-    peakCallsInFlight: peak,
-    llmMaxConcurrency: config.LLM_MAX_CONCURRENCY,
-    withinCap: peak <= config.LLM_MAX_CONCURRENCY,
-    rateLimited: throttled,
-  },
-  "burst finished",
-);
+  const { elapsedMs, peakDepth } = await watch(run.id);
+  const [peak, throttled] = await Promise.all([peakOverlap(run.id), rateLimited(run.id)]);
 
-await closePool();
-// A peak above the cap is the one result worth failing on: it means the
-// semaphore is not the thing deciding how many calls are in flight.
-process.exit(peak <= config.LLM_MAX_CONCURRENCY && throttled === 0 ? 0 : 1);
+  log.info(
+    {
+      runId: run.id,
+      elapsedS: Math.round(elapsedMs / 1000),
+      peakQueueDepth: peakDepth,
+      peakCallsInFlight: peak,
+      llmMaxConcurrency: config.LLM_MAX_CONCURRENCY,
+      withinCap: peak <= config.LLM_MAX_CONCURRENCY,
+      rateLimited: throttled,
+    },
+    "burst finished",
+  );
+
+  // A peak above the cap is the one result worth failing on: it means the
+  // semaphore is not the thing deciding how many calls are in flight.
+  return peak <= config.LLM_MAX_CONCURRENCY && throttled === 0 ? 0 : 1;
+}
+
+let code = 1;
+try {
+  code = await main();
+} catch (error) {
+  log.error({ err: error instanceof Error ? error.message : String(error) }, "load test failed");
+} finally {
+  await closePool();
+}
+process.exit(code);

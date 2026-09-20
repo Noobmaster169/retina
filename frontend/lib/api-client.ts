@@ -14,9 +14,7 @@ export {
   type ClientOutcome,
   type ClientRow,
   type ClientUpdate,
-  KINDS,
   listClients,
-  TIERS,
   updateClient,
 } from "./api/clients-client";
 export { type ChatMessage, type ChatOutcome, type ChatRequest, type ChatResult, chat, listModels, type ModelInfo } from "./api/chat-client";

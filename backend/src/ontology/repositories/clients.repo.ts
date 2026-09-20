@@ -1,6 +1,9 @@
 import { type ClientKind, type ClientRow, type ClientUpdate, DEFAULT_TIER } from "../../contracts";
 import type { Queryable } from "../../db";
 
+/** What a write answers with: the row as it now stands, and none of the counts a write did not read. */
+export type StoredClient = Omit<ClientRow, "emails" | "mismatches">;
+
 /**
  * The senders, their tier, and what each one has sent us.
  *
@@ -16,10 +19,11 @@ interface ClientDbRow {
   name: string | null;
   tier: number | null;
   kind: ClientKind | null;
-  emails: string;
-  mismatches: string;
+  emails?: string;
+  mismatches?: string;
 }
 
+/** Counts default to 0 only where the caller did not ask for them; a write does not join the whole inbox to answer. */
 function toRow(row: ClientDbRow): ClientRow {
   return {
     domain: row.domain,
@@ -27,8 +31,8 @@ function toRow(row: ClientDbRow): ClientRow {
     tier: row.tier ?? DEFAULT_TIER,
     kind: row.kind ?? "customer",
     known: row.tier !== null,
-    emails: Number(row.emails),
-    mismatches: Number(row.mismatches),
+    emails: Number(row.emails ?? 0),
+    mismatches: Number(row.mismatches ?? 0),
   };
 }
 
@@ -76,7 +80,7 @@ export async function tiers(db: Queryable): Promise<Map<string, number>> {
  * one at the defaults, so ranking a sender the migration never seeded is the
  * same single call as ranking one it did.
  */
-export async function upsert(db: Queryable, domain: string, patch: ClientUpdate): Promise<ClientRow> {
+export async function upsert(db: Queryable, domain: string, patch: ClientUpdate): Promise<StoredClient> {
   // Every parameter is cast. Two untyped parameters inside one coalesce are
   // both inferred as text, and Postgres then refuses to write text into a
   // smallint column, which is a 500 on a route whose body validated fine.
@@ -88,8 +92,9 @@ export async function upsert(db: Queryable, domain: string, patch: ClientUpdate)
        tier = coalesce($3::smallint, core.clients.tier),
        kind = coalesce($4::text, core.clients.kind),
        updated_at = now()
-     returning domain, name, tier, kind, '0' as emails, '0' as mismatches`,
+     returning domain, name, tier, kind`,
     [domain, patch.name ?? null, patch.tier ?? null, patch.kind ?? null, DEFAULT_TIER, "name" in patch],
   );
-  return toRow(rows[0]);
+  const row = rows[0];
+  return { domain: row.domain, name: row.name, tier: row.tier ?? DEFAULT_TIER, kind: row.kind ?? "customer", known: true };
 }

@@ -26,7 +26,9 @@ let running: RunningSchedulers | undefined;
 let queue: Queue;
 
 async function start(priority = new MemoryPriorityCache()): Promise<RunningSchedulers> {
-  return startSchedulers({ pool: getPool(), redis: getRedis(), priority, queueName: QUEUE });
+  // `aging: []` as well as `queueName`: without it the registered aging pass
+  // walks the real classify and compare queues of a worker on this same Redis.
+  return startSchedulers({ pool: getPool(), redis: getRedis(), priority, queueName: QUEUE, aging: [] });
 }
 
 beforeEach(async () => {

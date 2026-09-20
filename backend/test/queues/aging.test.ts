@@ -32,6 +32,7 @@ afterAll(async () => {
   await closeRedis();
 });
 
+/** Returns the job, because every assertion below is measured from its own timestamp. */
 const waiting = (id: string, priority: number) => queue.add("email", { id }, { jobId: id, priority });
 
 const priorityOf = async (id: string) => (await queue.getJob(id))?.priority;
@@ -88,11 +89,42 @@ describe("ageWaitingJobs", () => {
     expect(await priorityOf("run__email__r1")).toBe(100);
   });
 
-  it("takes four passes to bring the least urgent email to the front, and then stops", async () => {
-    await waiting("last", 1000);
+  it("gains one step per threshold, however often the pass runs", async () => {
+    const added = await waiting("steady", 1000);
 
-    for (let pass = 0; pass < 12; pass++) await ageWaitingJobs(queue, LATER());
+    // Twelve passes inside one window. A pass that subtracted from the current
+    // priority would take this to 1; BullMQ never moves job.timestamp, so once
+    // past the threshold every pass would promote again and a job would climb
+    // a step a minute instead of a step per five.
+    for (let pass = 0; pass < 12; pass++) await ageWaitingJobs(queue, added.timestamp + AGE_AFTER_MS + 1000);
 
-    expect(await priorityOf("last")).toBe(1);
+    expect(await priorityOf("steady")).toBe(1000 - AGE_STEP);
+  });
+
+  it("climbs one step per window, and stops at the front", async () => {
+    const added = await waiting("climber", 1000);
+    const after = (windows: number) => added.timestamp + windows * AGE_AFTER_MS + 1000;
+
+    await ageWaitingJobs(queue, after(2));
+    expect(await priorityOf("climber")).toBe(800);
+
+    await ageWaitingJobs(queue, after(5));
+    expect(await priorityOf("climber")).toBe(500);
+
+    // Ten steps from 1000, and nothing past the floor.
+    await ageWaitingJobs(queue, after(40));
+    expect(await priorityOf("climber")).toBe(1);
+  });
+
+  it("never pushes a job past a fresher one it has already overtaken", async () => {
+    const added = await waiting("old", 600);
+
+    // Far enough out that the target is the floor, twice over.
+    await ageWaitingJobs(queue, added.timestamp + 20 * AGE_AFTER_MS);
+    const first = await priorityOf("old");
+    await ageWaitingJobs(queue, added.timestamp + 40 * AGE_AFTER_MS);
+
+    expect(first).toBe(1);
+    expect(await priorityOf("old")).toBe(1);
   });
 });

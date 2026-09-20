@@ -126,7 +126,12 @@ export function startWorkers(deps: WorkerDeps, connection: Redis): RunningWorker
       const data = parse(ClassifyJob, job);
       return noRetryOnTerminal(() =>
         pausingOnOutage(deps.classify, at("classify", job, data), () =>
-          processClassify(deps, data, job.opts.priority ?? DEFAULT_PRIORITY),
+          // `job.priority`, not `job.opts.priority`: the options hold what the
+          // job was added with and the aging pass does not touch them, so
+          // reading them would hand the compare job the priority this one had
+          // before it waited, and the compare leg would earn every promotion
+          // again from scratch.
+          processClassify(deps, data, job.priority ?? job.opts.priority ?? DEFAULT_PRIORITY),
         ),
       );
     },

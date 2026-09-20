@@ -3,7 +3,9 @@
 import { useState } from "react";
 
 import { useToast } from "@/components/ui/toast";
-import { type ClientKind, type ClientRow as Client, KINDS, TIERS } from "@/lib/api/clients-schemas";
+import type { ClientKind, ClientRow as Client } from "@/lib/api/clients-schemas";
+
+import { KINDS, TIERS } from "./tiers";
 
 /**
  * One sender, and the two things a person may decide about it.
@@ -34,14 +36,15 @@ export function ClientRow({ client, onSaved }: Props) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(patch),
       });
-      const body = await response.json();
+      const body = (await response.json().catch(() => null)) as { error?: string } | null;
       if (!response.ok) {
-        toast.refuse(body.error ?? "That could not be saved.");
+        toast.refuse(body?.error ?? "That could not be saved.");
         return;
       }
       toast.say(said, "Emails already queued keep the tier they came in at.");
       onSaved();
-    } catch {
+    } catch (error) {
+      console.error("[clients] saving a client failed:", error);
       toast.refuse("The backend is not reachable right now.");
     } finally {
       setPending(false);

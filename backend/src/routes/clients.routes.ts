@@ -49,9 +49,18 @@ export function clientsRouter(deps: ClientRouteDeps): Router {
     // Postgres first, then the cache: a cache holding a tier no row backs
     // would survive the next restart and order the queue by a number nobody
     // can see. The other way round costs at most one email at the old tier.
-    await deps.priority.set(domain, row.tier);
+    //
+    // And the cache write cannot fail the request. The row is committed by
+    // now, so answering 500 would tell a person their change was not saved
+    // when it was. The hourly refresh puts the hash right, and a miss is the
+    // default tier by design.
+    try {
+      await deps.priority.set(domain, row.tier);
+    } catch (error) {
+      log.warn({ domain, err: error instanceof Error ? error.message : String(error) }, "client saved, cache not written");
+    }
     log.info({ domain, tier: row.tier, kind: row.kind }, "a person changed a client");
-    res.json(row);
+    res.json({ ...row, emails: 0, mismatches: 0 });
   });
 
   return router;

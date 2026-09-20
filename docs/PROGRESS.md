@@ -97,6 +97,31 @@ A fifth, smaller: the spec's test table says tier 1 and 500 MT is 151. It is 150
 - **A test against the real `scheduler` queue wipes a running worker's registrations.**
   `startSchedulers` takes a queue name so the test has its own.
 
+**A standards review of the branch found two real bugs in phase 9's own new code**, both of them
+the same trap it had already written down.
+
+- **The aged priority was thrown away at the handoff.** `workers.ts` read `job.opts.priority` to
+  pass to the compare job, and the options hold what a job was added with. A classify job promoted
+  from 1000 to 200 handed its compare job 1000, so the compare leg earned every promotion again
+  from scratch. `aging.ts` carries a comment about exactly this, written two hours earlier.
+- **Aging promoted on every pass, not once per window.** The filter was
+  `now - job.timestamp > AGE_AFTER_MS`, and BullMQ never moves `job.timestamp`, so once a job
+  crossed five minutes every minute's pass promoted it again: a step a minute instead of a step per
+  five, the front reached nine minutes later, and a tier-5 email outranking every tier-1 one that
+  arrived after it. The tier would have stopped meaning what `/clients` says it means, quietly.
+  A pass now computes the target from elapsed time rather than subtracting from the current value,
+  which is idempotent and survives a restart. This is why the burst showed aging dominating tier so
+  completely; the handover's section 6 is written against the corrected behaviour.
+
+The review also found a health test that dialled the real llm-proxy, which `CLAUDE.md` bans
+outright, and asserted `emails === 520`, keying a unit test to one seed of one dataset. The three
+HTTP probes sit behind a `Probes` seam now with a fake beside them, which is what the rule was for.
+Eight smaller findings were fixed with them: a `multi().exec()` whose per-command errors were never
+inspected and logged a refresh that had not happened, a `PUT /clients/:domain` that answered
+fabricated counts, a cache write that failed a request whose row had already committed, unguarded
+boot work that could end the worker with jobs holding locks, a scheduler test that aged the real
+queues, and the `/health` comment that still claimed it revealed nothing but liveness.
+
 **Settled while building.**
 
 - **A rerun takes the priority the email already has**, read back from `email_runs.priority` rather

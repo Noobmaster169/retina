@@ -48,7 +48,13 @@ export function redisPriorityCache(redis: Redis): PriorityCache {
       if (tiers.size > 0) {
         pipeline.hset(PRIORITY_KEY, Object.fromEntries([...tiers].map(([domain, tier]) => [domain, String(tier)])));
       }
-      await pipeline.exec();
+      // A pipeline resolves with each command's own error inside the result
+      // array rather than throwing, so without this a DEL that succeeded and
+      // an HSET that failed would be logged as a refresh and leave the hash
+      // empty: every email queued at the default tier, and nothing saying so.
+      const results = (await pipeline.exec()) ?? [];
+      const failed = results.flatMap(([error]) => (error ? [error.message] : []));
+      if (failed.length > 0) throw new Error(`priority cache not written: ${failed.join("; ")}`);
       log.info({ domains: tiers.size }, "priority cache refreshed");
     },
     async set(domain, tier) {

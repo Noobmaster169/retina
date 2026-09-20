@@ -25,20 +25,12 @@ export type ClientRow = z.infer<typeof ClientRow>;
 export const ClientList = z.object({ clients: z.array(ClientRow) });
 export type ClientList = z.infer<typeof ClientList>;
 
-export const ClientUpdate = z.object({
-  name: z.string().max(200).nullable().optional(),
-  tier: ClientTier.optional(),
-  kind: ClientKind.optional(),
-});
+/** Mirrors the api's own refusal of an empty patch, so it fails here rather than coming back a 400. */
+export const ClientUpdate = z
+  .object({
+    name: z.string().max(200).nullable().optional(),
+    tier: ClientTier.optional(),
+    kind: ClientKind.optional(),
+  })
+  .refine((body) => Object.keys(body).length > 0, { message: "name, tier or kind" });
 export type ClientUpdate = z.infer<typeof ClientUpdate>;
-
-/** The five tiers, most important first, with what each one means in the queue. */
-export const TIERS: { tier: number; label: string }[] = [
-  { tier: 1, label: "First" },
-  { tier: 2, label: "High" },
-  { tier: 3, label: "Normal" },
-  { tier: 4, label: "Low" },
-  { tier: 5, label: "Last" },
-];
-
-export const KINDS: ClientKind[] = ["customer", "internal", "forwarder", "spam"];

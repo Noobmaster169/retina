@@ -51,6 +51,13 @@ export interface SchedulerDeps {
    * against the same Redis, which is exactly what a dev box has.
    */
   queueName?: string;
+  /**
+   * The queues the aging pass walks. Passed for the same reason as
+   * `queueName`: without it a test's own scheduler ages the real `classify`
+   * and `compare` of a worker sharing this Redis, and the isolation the name
+   * buys is only half of what it looks like.
+   */
+  aging?: Queue[];
 }
 
 /** Postgres is the truth; the hash is a copy the enqueue path can afford to read. */
@@ -58,16 +65,21 @@ async function refreshPriorityCache(deps: SchedulerDeps): Promise<void> {
   await deps.priority.replaceAll(await clients.tiers(deps.pool));
 }
 
-async function ageBothQueues(): Promise<void> {
-  const { classify, compare } = getQueues();
-  const results = await Promise.all([ageWaitingJobs(classify), ageWaitingJobs(compare)]);
+async function ageEmailQueues(deps: SchedulerDeps): Promise<void> {
+  const queues = deps.aging ?? Object.values(pick(getQueues()));
+  const results = await Promise.all(queues.map((queue) => ageWaitingJobs(queue)));
   const promoted = results.reduce((sum, result) => sum + result.promoted, 0);
   if (promoted > 0) log.info({ promoted }, "aged waiting jobs");
 }
 
+/** The two queues emails wait in. Ingest holds one job per run and has nothing to order. */
+function pick({ classify, compare }: ReturnType<typeof getQueues>) {
+  return { classify, compare };
+}
+
 async function runTask(deps: SchedulerDeps, name: string): Promise<void> {
   if (name === SCHEDULED.refreshPriorityCache) return refreshPriorityCache(deps);
-  if (name === SCHEDULED.ageWaitingJobs) return ageBothQueues();
+  if (name === SCHEDULED.ageWaitingJobs) return ageEmailQueues(deps);
   if (name === SCHEDULED.heartbeat) return beat(deps.redis);
   // A name from an older image whose scheduler this worker inherited. Logged
   // and dropped: failing it would retry a job no code here can ever do.
@@ -91,8 +103,13 @@ export interface RunningSchedulers {
  */
 export async function startSchedulers(deps: SchedulerDeps): Promise<RunningSchedulers> {
   const queue = new Queue(deps.queueName ?? QUEUES.scheduler, { connection: deps.redis });
-  await beat(deps.redis);
-  await refreshPriorityCache(deps);
+
+  // Neither is worth failing a boot over. The worker already has its queue
+  // consumers running and its shutdown handlers are not installed yet, so a
+  // throw here would end the process with jobs holding locks and no clean
+  // close. Both are repeatable jobs: the next cycle does them properly.
+  await beat(deps.redis).catch((error) => log.warn({ err: message(error) }, "could not write the first heartbeat"));
+  await refreshPriorityCache(deps).catch((error) => log.warn({ err: message(error) }, "could not fill the priority cache at boot"));
 
   for (const name of Object.values(SCHEDULED)) {
     await queue.upsertJobScheduler(name, { every: EVERY[name] }, { name });
@@ -113,4 +130,8 @@ export async function startSchedulers(deps: SchedulerDeps): Promise<RunningSched
       await queue.close();
     },
   };
+}
+
+function message(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

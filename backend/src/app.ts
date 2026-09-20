@@ -46,11 +46,18 @@ export function createApp(deps: AppDeps): express.Express {
   app.use(requestLog());
   app.use(express.json({ limit: "1mb" }));
 
-  // Unauthenticated: the compose healthcheck has no key, and it reveals
-  // nothing but liveness. Degraded is still 200, so a MinIO restart, a cold
-  // doc-extract or a worker one heartbeat late does not make auto-deploy roll
-  // back a good image. Only postgres or redis, which the api cannot serve a
-  // run without, are a 503. The report itself says which.
+  // Unauthenticated, because the compose healthcheck has no key and
+  // auto-deploy.sh reads it from the box before anything is signed in.
+  //
+  // It is not nothing, though: the report carries the build, the queue depths
+  // and each dependency's own detail, all readable by anyone who reaches the
+  // ngrok URL. That is operational shape, not data, and it is the trade the
+  // deploy gate needs. Nothing here may ever carry an email, a document or a
+  // key.
+  //
+  // Degraded is still 200, so a MinIO restart, a cold doc-extract or a worker
+  // one heartbeat late does not make auto-deploy roll back a good image. Only
+  // postgres or redis, which the api cannot serve a run without, are a 503.
   app.get("/health", async (_req, res) => {
     const report = await deps.health();
     res.status(report.status === "down" ? 503 : 200).json(report);
