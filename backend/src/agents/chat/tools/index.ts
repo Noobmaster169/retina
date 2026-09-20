@@ -1,5 +1,6 @@
 import type { ChatToolName } from "../../../contracts";
 import { childLogger } from "../../../lib/logger";
+import { argsSignature } from "./args-signature";
 import { describeSchema } from "./describe-schema";
 import { explainDecision } from "./explain-decision";
 import { findEntity } from "./find-entity";
@@ -45,9 +46,9 @@ export const TOOLS: Record<ChatToolName, ChatTool<any>> = {
 
 export const TOOL_NAMES = Object.keys(TOOLS) as ChatToolName[];
 
-/** The tool list as the prompt shows it: one line each, in the order they are usually reached for. */
+/** The tool list as the prompt shows it: what each does, then the exact arguments it takes, in the order they are usually reached for. */
 export function toolDescriptions(): string {
-  return TOOL_NAMES.map((name) => `- ${name}: ${TOOLS[name].description}`).join("\n");
+  return TOOL_NAMES.map((name) => `- ${name}: ${TOOLS[name].description}\n  args: ${argsSignature(TOOLS[name].schema)}`).join("\n");
 }
 
 /**
@@ -64,7 +65,8 @@ export async function callTool(name: ChatToolName, args: unknown, ctx: ToolConte
     const problems = parsed.error.issues.map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`);
     return {
       ok: false,
-      text: `Those arguments do not fit ${name}: ${problems.join("; ")}`,
+      // The shape is repeated here because a model that guessed a name once guesses it again unless shown the right one.
+      text: `Those arguments do not fit ${name}: ${problems.join("; ")}. It takes exactly: ${argsSignature(tool.schema)}`,
       preview: `bad arguments: ${problems[0]}`,
       touched: [{ relation: "nothing", count: 0 }],
       entities: [],

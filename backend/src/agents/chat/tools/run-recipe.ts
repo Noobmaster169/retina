@@ -16,11 +16,18 @@ import { type ChatTool, refused, type ToolContext, type ToolOutcome } from "./ty
  * answer. It runs on the read-only pool under the same row cap as `run_sql`.
  */
 
-const Input = z.object({
-  name: z.string().min(1).max(80),
-  params: z.record(z.string(), z.unknown()).default({}),
-});
+const Input = z
+  .looseObject({
+    name: z.string().min(1).max(80),
+    /** The recipe's parameters by name, as its signature lists them. */
+    params: z.record(z.string(), z.unknown()).default({}),
+  })
+  // A model often writes the parameters beside `name` rather than inside `params`. The meaning is
+  // plain, so they are taken as given; refusing would cost a step to teach a bracket.
+  .transform(({ name, params, ...flat }) => ({ name, params: { ...flat, ...params } }));
 type Input = z.infer<typeof Input>;
+
+const Shape = { name: z.string().min(1).max(80), params: z.record(z.string(), z.unknown()).default({}) };
 
 /** How the page and the turn's `sql_used` show it: the text that ran, then what each placeholder held. */
 function shownSql(sql: string, name: string, values: unknown[]): string {
@@ -34,7 +41,7 @@ export const runRecipe: ChatTool<Input> = {
     "Runs a named, tested query and returns its rows. Prefer this over run_sql: the recipes are listed with " +
     "their parameters under the skills. Leave run_id out to get this conversation's run, or else the latest.",
   schema: Input,
-  shape: Input.shape,
+  shape: Shape,
 
   async run(input, ctx: ToolContext): Promise<ToolOutcome> {
     if (!ctx.roPool) return refused("the read-only database connection is not configured, so no recipe can be run");
