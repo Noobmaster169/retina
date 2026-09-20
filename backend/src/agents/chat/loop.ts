@@ -28,20 +28,25 @@ const SCHEMA_DOCS = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "
 /** Eight is two or three queries, a schema lookup when one is wrong, and room to recover from a typo. */
 const MAX_STEPS = 8;
 
-const Step = z.discriminatedUnion("action", [
-  z.object({
-    action: z.literal("tool"),
-    tool: z.enum(TOOL_NAMES as [ChatToolName, ...ChatToolName[]]),
-    args: z.record(z.string(), z.unknown()),
-    /** One sentence, shown to the reader beside the call. */
-    thought: z.string().max(400),
-  }),
-  z.object({
-    action: z.literal("final"),
-    answer: z.string(),
-    sql_used: z.array(z.string()).default([]),
-  }),
-]);
+/**
+ * One flat object, not a discriminated union.
+ *
+ * The provider refuses `oneOf` at the top level of a tool schema, so the
+ * discriminant is a field and the narrowing happens in code below. Every field
+ * that belongs to only one of the two shapes carries a default, so a step that
+ * leaves the other one out still parses and the loop decides what it meant.
+ */
+const Step = z.object({
+  action: z.enum(["tool", "final"]),
+  /** On a tool step. Null on a final one. */
+  tool: z.enum(TOOL_NAMES as [ChatToolName, ...ChatToolName[]]).nullable().default(null),
+  args: z.record(z.string(), z.unknown()).default({}),
+  /** One sentence on why this tool, shown to the reader beside the call. */
+  thought: z.string().max(400).default(""),
+  /** On a final step. */
+  answer: z.string().default(""),
+  sql_used: z.array(z.string()).default([]),
+});
 
 export interface TurnInput {
   question: string;
@@ -116,6 +121,17 @@ export async function runTurn(deps: LoopDeps, input: TurnInput): Promise<TurnRes
         graph: buildGraph(input.question, toolCalls),
         exhausted: false,
       };
+    }
+
+    // A tool step that named no tool is the one shape the flat schema lets
+    // through and the union would not have. Handing the mistake back is the
+    // same thing the loop does with a bad query or bad arguments.
+    if (value.tool === null) {
+      transcript.push(
+        "### you asked for a tool and named none\nSay which of the four tools you mean, or answer with action: final.",
+      );
+      log.warn({ step }, "a chat step asked for a tool without naming one");
+      continue;
     }
 
     const started = Date.now();

@@ -87,9 +87,30 @@ function parseOrUndefined(text: string): unknown {
   }
 }
 
-/** The schema as the provider takes it: plain JSON Schema, without the `$schema` dialect marker some reject. */
-function toOutputSchema(schema: z.ZodType): Record<string, unknown> {
+/**
+ * The schema as the provider takes it: plain JSON Schema, without the
+ * `$schema` dialect marker some reject.
+ *
+ * A top-level union is refused here rather than by the provider. The Anthropic
+ * wire answers `input_schema does not support oneOf, allOf, or anyOf at the
+ * top level`, which arrives as a 502 from the proxy marked retryable, so the
+ * caller retries a call that can never succeed and the reason is three layers
+ * away from the schema that caused it. Failing at the seam turns that into one
+ * sentence naming the fix.
+ *
+ * The fix is always the same: one flat object with the discriminant as a
+ * field, narrowed in code after it parses.
+ */
+export function toOutputSchema(schema: z.ZodType): Record<string, unknown> {
   const { $schema: _dialect, ...rest } = z.toJSONSchema(schema);
+  for (const combinator of ["oneOf", "anyOf", "allOf"]) {
+    if (combinator in rest) {
+      throw new TerminalError(
+        `a structured output schema cannot be a union: the provider refuses \`${combinator}\` at the top level of a tool schema. ` +
+          "Use one object with the discriminant as a field and narrow it after it parses.",
+      );
+    }
+  }
   return rest;
 }
 
