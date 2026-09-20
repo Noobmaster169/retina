@@ -1,7 +1,8 @@
 # Progress
 
-Current phase: **10e, built on `phase-10e-interactive-chat`, not yet merged.** 10a to 10d are on
-`main`. Phase 7's two `[~]` items are still under "Deferred" below.
+Current phase: **10e, merged to `main`.** 10a to 10e are all on it. Two lines of 10e's exit
+checklist are open and both need real tokens, so both are the user's: the full `pnpm eval:chat`,
+and a live follow-up by pronoun. Phase 7's two `[~]` items are still under "Deferred" below.
 
 **Start at `docs/phases/phase-10f-handover.md`.** Sections 1 to 5 say what 10e built, what is
 left in it and the traps; **section 6 is the pickup doc for 10f**, including the two numbers in
@@ -637,7 +638,7 @@ corrected where it described the old behaviour:
   there, not an interface, and `getRun` / `listRunEmails` / the four organisers' enums were
   deleted as unused: the run page brings them back from `git show d68ed1b^`.
 
-### Phase 10e: an interactive chat (built 2026-09-20, local, on `phase-10e-interactive-chat`)
+### Phase 10e: an interactive chat (built and merged 2026-09-20)
 
 An answer that finds nothing now says where it looked and offers what is there; the agent asks back
 when the data made a fork real; a turn's steps are readable while it runs and can be stopped; and a
