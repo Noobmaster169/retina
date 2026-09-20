@@ -77,6 +77,23 @@ because a similarity threshold of 0.3 matched a tenth of the table. Migrations `
 the fixes, and the last one replaces the threshold with a nearest-neighbour search on a GiST
 index: a tool that shows eight candidates wants the nearest few, not everything over a line.
 
+**What a 25 email run through the layer showed.** `pnpm ontology:backfill --limit 25` with a
+worker: 25 shipments, 21 people, 4 vessels, 4 commodities and 1 carrier resolved out of subjects,
+bodies and headers, and **not one scored row moved** (the fingerprint of every
+`email_runs.outcome` and `comparisons.status` is identical before and after). The joins are the
+ones the phase exists for: `MOMBASA_KENYA` from a subject line joined to `MOMBASA, KENYA` at 0.97,
+`VITAL SOLUTIONS PTE LTD` from an SI request's prose joined to the stored
+`VITAL SOLUTIONS PTE. LTD.` at 0.95, and a person joined to their email address. Every stored
+value's quote was found in its text.
+
+**It also found a bug that only a real run could have found.** `refresh-profiles` did its model
+work on the scheduler queue, which runs at concurrency 1 and also writes the heartbeat. A pass of
+fifty profiles at tens of seconds each held that queue for half an hour, the heartbeat's key
+expired at sixty seconds, and `/health` would have reported a working worker as dead, which
+auto-deploy reads. Before the fix: `shipment-read` averaged 210 s with two calls hitting the
+proxy's 600 s timeout. After it, with both passes moved onto the ontology queue and bounded by
+`MAINTENANCE_BUDGET_MS`: 48 s average, worst 91 s, **no failures**.
+
 **Two decisions the user made, and how they are kept.** `ONTOLOGY_KNOWLEDGE` defaults to
 `mail+model`, so a profile carries a `general` section from the model's own knowledge. It is
 stored under the heading "General knowledge, unverified" with a confidence, `get_entity` says
@@ -1401,6 +1418,19 @@ the same branch. The behaviour changes are the first three.
   later, and nothing should without a way to check it against something.
 - **`ambiguous` on a sighting is stored and nothing reads it.** `entity-resolve` sets it when the
   candidates spanned more than one thing; the page does not draw it yet and no tool reports it.
+- **`entity-resolve`'s confidence is stored and nothing thresholds it.** The 25 email run joined
+  `Deswita` to `Deswita Elvyani` at 0.55 and `NHAVA SHEVA` to `NHAVA SHEVA, INDIA (INNSA)` at 0.50.
+  The first is the case the prompt warns against: two sightings of a person are one person only
+  where something ties them, and a first name alone does not. A floor is the obvious fix and it
+  would be another unmeasured number, which is the regret already recorded against
+  `DOC_TYPE_TRUST_FROM`. `pnpm eval:chat --set ontology` is what should decide it.
+- **`shipment-read` keeps a label it was given.** On the 25 email run one `oc_no` came back as
+  `OC 5ALT-01226` rather than `5ALT-01226`, and one `bl_no` as `058`. The prompt says to read a
+  value as written, which is right, and says nothing about a label in front of it. A `v2` is the
+  fix and the question set is what says whether it helped.
+- **`container_count` is null on every row of that run.** The extractor stores `1 x 40'HC`, which
+  is not a number, so the settled value falls through; the reader's own number was not set either.
+  Worth one trace read before touching the prompt.
 - **The `ontology` queue has no review case and no stage.** A failed reading is a warning in the
   log and nothing else, deliberately: it must never fail or slow a scored email. If a run's
   readings start failing quietly, that is the first thing to give a surface.
