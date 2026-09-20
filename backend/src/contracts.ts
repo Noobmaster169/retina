@@ -122,6 +122,8 @@ export const RunSummary = z.object({
           endToEndRate: z.number(),
           escalationRecall: z.number(),
           escalationPrecision: z.number(),
+          /** The scorer's own weights, so the page shows what each component is worth rather than assuming. */
+          weights: z.object({ stage1: z.number(), stage3: z.number(), endToEnd: z.number() }),
         })
         .nullable(),
     })
@@ -158,6 +160,7 @@ export * from "./contracts.emails";
 export * from "./contracts.enums";
 export * from "./contracts.extraction";
 export * from "./contracts.prompts";
+export * from "./contracts.queues";
 export * from "./contracts.review";
 export * from "./contracts.scoring";
 export * from "./contracts.trace";

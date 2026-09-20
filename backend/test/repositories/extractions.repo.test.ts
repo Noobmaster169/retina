@@ -52,6 +52,7 @@ async function documentRow(tx: PoolClient) {
     scanned: false,
     unreadable: false,
     warnings: [],
+    pageConfidence: [],
   });
   const doc = (await documents.listForEmailRun(tx, emailRunId))[0];
   return { runId: run.id, emailId, emailRunId, doc };

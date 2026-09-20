@@ -178,4 +178,4 @@ export async function listForSubmission(db: Queryable, runId: string): Promise<S
   }));
 }
 
-export { inFlight, lastFinishedForRuns, stateOf } from "./email-runs.trace";
+export { handoff, inFlight, lastFinishedForRuns, stateOf } from "./email-runs.trace";

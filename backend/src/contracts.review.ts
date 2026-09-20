@@ -45,6 +45,13 @@ export const DocumentView = z.object({
   scanned: z.boolean(),
   unreadable: z.boolean(),
   warnings: z.array(z.string()),
+  /**
+   * Mean OCR word confidence per page, 0 to 1, in page order. Empty for a
+   * document with a text layer, which is most of them. The review case shows
+   * which page failed and how badly, and one number for the whole file could
+   * not say that.
+   */
+  pageConfidence: z.array(z.number()),
 });
 export type DocumentView = z.infer<typeof DocumentView>;
 

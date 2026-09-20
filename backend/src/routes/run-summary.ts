@@ -54,6 +54,11 @@ export function toSummary(run: Run, parts: SummaryParts): RunSummary {
                 endToEndRate: last.scoreboard.end_to_end.rate,
                 escalationRecall: last.scoreboard.reliability.escalation_recall,
                 escalationPrecision: last.scoreboard.reliability.escalation_precision,
+                weights: {
+                  stage1: last.scoreboard.weights.stage1,
+                  stage3: last.scoreboard.weights.stage3,
+                  endToEnd: last.scoreboard.weights.end_to_end,
+                },
               }
             : null,
         }

@@ -85,3 +85,16 @@ export async function listForRun(db: Queryable, runId: string): Promise<StoredAt
   );
   return rows.map(toAttachment);
 }
+
+/** The filenames of a handful of emails, for the queued rows on the run page. Bounded by its caller. */
+export async function filenamesFor(db: Queryable, runId: string, emailIds: string[]): Promise<Map<string, string[]>> {
+  const found = new Map<string, string[]>();
+  if (emailIds.length === 0) return found;
+  const { rows } = await db.query<{ email_id: string; filename: string }>(
+    `select email_id, filename from core.attachments
+      where run_id = $1 and email_id = any($2::text[]) order by email_id, filename`,
+    [runId, emailIds],
+  );
+  for (const row of rows) found.set(row.email_id, [...(found.get(row.email_id) ?? []), row.filename]);
+  return found;
+}

@@ -13,6 +13,7 @@ import { promptsRouter } from "./routes/prompts.routes";
 import { emailsRouter } from "./routes/emails.routes";
 import { evalRouter } from "./routes/eval.routes";
 import type { LiveCalls } from "./live";
+import { runQueuesRouter } from "./routes/run-queues.routes";
 import { runTraceRouter } from "./routes/run-trace.routes";
 import { runsRouter } from "./routes/runs.routes";
 import { submissionsRouter } from "./routes/submissions.routes";
@@ -50,6 +51,7 @@ export function createApp(deps: AppDeps): express.Express {
   app.use("/prompts", promptsRouter(deps));
   app.use("/emails", emailsRouter());
   app.use("/runs", runsRouter(deps));
+  app.use("/runs", runQueuesRouter(deps));
   app.use("/runs", runTraceRouter(deps));
   app.use("/runs", submissionsRouter(deps));
   app.use("/eval", evalRouter(deps));
