@@ -28,6 +28,20 @@ async function idOf(tx: PoolClient, canonical: string): Promise<string> {
   return rows[0].id;
 }
 
+
+/** One resolved cluster with a single spelling, which is all the writer reads here. */
+function cluster(kind: "party" | "port", canonical: string) {
+  return {
+    kind,
+    canonical,
+    names: [{ value: canonical, seenCount: 1, joinedBy: "kept" as const, confidence: null, joinedStep: null }],
+    mentions: [],
+    sightingCount: 1,
+    firstSeenAt: new Date(0),
+    lastSeenAt: new Date(0),
+  };
+}
+
 describe("applying a resolution", () => {
   it("keeps every id, and the profile and the verdict written against it", async () => {
     await inRollback(async (tx) => {
@@ -103,6 +117,37 @@ describe("applying a resolution", () => {
       const first = await snapshot();
       await refresh(tx);
       expect(await snapshot()).toEqual(first);
+    });
+  });
+
+  it("survives two things swapping their canonical spellings in one pass", async () => {
+    await inRollback(async (tx) => {
+      await seedInbox(tx);
+      // `(kind, canonical)` is unique among the things that still denote
+      // something. A pass that hands one thing the spelling another is about
+      // to give up would break that halfway through the loop and abort the
+      // whole refresh, so the writer parks every changing spelling first.
+      const { rows } = await tx.query<{ id: string; canonical: string }>(
+        "insert into core.entities (kind, canonical, mention_count, name_count) values ('party', 'SWAP ONE', 1, 1), ('party', 'SWAP TWO', 1, 1) returning id::text as id, canonical",
+      );
+      const [one, two] = rows;
+
+      const plan = {
+        keep: [
+          { id: Number(one.id), cluster: cluster("party", "SWAP TWO") },
+          { id: Number(two.id), cluster: cluster("party", "SWAP ONE") },
+        ],
+        insert: [],
+        merge: [],
+        drop: [],
+      };
+      await entityResolution.applyResolution(tx, plan);
+
+      const after = await tx.query<{ id: string; canonical: string }>(
+        "select id::text as id, canonical from core.entities where id = any($1::bigint[]) order by id",
+        [[one.id, two.id]],
+      );
+      expect(after.rows.map((row) => row.canonical)).toEqual(["SWAP TWO", "SWAP ONE"]);
     });
   });
 
