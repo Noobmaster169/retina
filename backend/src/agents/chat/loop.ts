@@ -150,7 +150,12 @@ export async function runTurn(deps: LoopDeps, input: TurnInput): Promise<TurnRes
     });
 
     if (step === 1 || reading === "") reading = value.reading || reading;
-    if (value.action === "final") return result(value.answer, value.sql_used, false);
+    if (value.action === "final" && value.answer.trim() !== "") return result(value.answer, value.sql_used, false);
+    if (value.action === "final") {
+      notes.push("### you gave a final step with no answer\nWrite the answer in `answer`, or make the calls you still need.");
+      log.warn({ step }, "a chat step was final and said nothing");
+      continue;
+    }
 
     // A tool step that carries no call is the one shape the flat schema lets
     // through and a union would not have. Handing the mistake back is the same

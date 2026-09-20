@@ -101,6 +101,12 @@ describe("runTurn", () => {
     expect(requests[1].user).toContain("gave no calls");
   });
 
+  it("hands back a final step that says nothing", async () => {
+    const { result, requests } = await turn([step({ action: "final", answer: "  " }), final("There are three.")]);
+    expect(result.answer).toBe("There are three.");
+    expect(requests[1].user).toContain("a final step with no answer");
+  });
+
   it("gives up after the step budget and says what it found", async () => {
     // One reply repeats forever in the fake, so the model never answers.
     const { result } = await turn([calls(sql("select 3"))]);
