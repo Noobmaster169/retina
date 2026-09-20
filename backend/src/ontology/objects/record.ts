@@ -1,6 +1,6 @@
 import type { ObjectRecord, ObjectType } from "../../contracts";
 import type { Queryable } from "../../db";
-import { entityDetail, entities as entitiesRepo } from "../repositories";
+import { entityDetail, entityValues, entities as entitiesRepo } from "../repositories";
 import { emailRecord } from "./record.email";
 import { descriptorFor, isBuilt } from "./types";
 
@@ -18,7 +18,7 @@ async function entityRecord(db: Queryable, type: "port" | "party", id: string): 
   const row = await entitiesRepo.find(db, id);
   if (!row || row.type !== type) return null;
 
-  const [values, links] = await Promise.all([entityDetail.values(db, id), entityDetail.around(db, id)]);
+  const [values, links] = await Promise.all([entityValues.values(db, id), entityDetail.around(db, id)]);
   return {
     type,
     id,

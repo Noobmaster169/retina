@@ -21,19 +21,54 @@ import type { Candidate, JudgeSubject } from "../../pipeline/ontology";
  * which four hundred get judged when there are five thousand.
  */
 export async function ranked(db: Queryable, kind: EntityKind, terms: string[], ids: number[] | null, cap: number): Promise<Candidate[]> {
-  const query = terms.filter((term) => /\p{L}/u.test(term)).join(" OR ") || "x";
-  const { rows } = await db.query<{ id: string; profile_version: number }>(
-    `select e.id::text as id, e.profile_version
-       from core.entities e
-      where e.kind = $1::text and e.merged_into is null
-        and ($3::bigint[] is null or e.id = any($3::bigint[]))
-      order by ts_rank(e.search, websearch_to_tsquery('simple', $2::text)) desc,
-               e.mention_count + e.sighting_count desc,
-               e.id
-      limit $4::int`,
-    [kind, query, ids === null ? null : ids.map(String), cap],
-  );
-  return rows.map((row) => ({ entityId: Number(row.id), profileVersion: row.profile_version }));
+  const query = terms.filter((term) => /\p{L}/u.test(term)).join(" OR ");
+  const narrowed = ids === null ? null : ids.map(String);
+
+  // Two legs, because neither alone is both indexed and complete.
+  //
+  // The first takes the things whose profile actually matches the search
+  // terms, best first. The GIN index on `search` serves the filter, and
+  // ranking inside its result is cheap because that result is small.
+  //
+  // The second tops the list up with the most-seen things of the kind the
+  // terms did not reach, which is what keeps the candidate set complete rather
+  // than only what the terms happened to find. `entities_ranked` serves it.
+  // One `order by ts_rank` over the whole kind would have done both and was a
+  // sequential scan and a top-N sort at 200,000, which is what
+  // `pnpm ontology:bench` is for.
+  const matched =
+    query === ""
+      ? []
+      : (
+          await db.query<{ id: string; profile_version: number }>(
+            `select e.id::text as id, e.profile_version
+               from core.entities e
+              where e.kind = $1::text and e.merged_into is null
+                and e.search @@ websearch_to_tsquery('simple', $2::text)
+                and ($3::bigint[] is null or e.id = any($3::bigint[]))
+              order by ts_rank(e.search, websearch_to_tsquery('simple', $2::text)) desc, e.id
+              limit $4::int`,
+            [kind, query, narrowed, cap],
+          )
+        ).rows;
+
+  const rest =
+    matched.length >= cap
+      ? []
+      : (
+          await db.query<{ id: string; profile_version: number }>(
+            `select e.id::text as id, e.profile_version
+               from core.entities e
+              where e.kind = $1::text and e.merged_into is null
+                and ($2::bigint[] is null or e.id = any($2::bigint[]))
+                and not (e.id = any($3::bigint[]))
+              order by (e.mention_count + e.sighting_count) desc, e.id
+              limit $4::int`,
+            [kind, narrowed, matched.map((row) => row.id), cap - matched.length],
+          )
+        ).rows;
+
+  return [...matched, ...rest].map((row) => ({ entityId: Number(row.id), profileVersion: row.profile_version }));
 }
 
 /** Everything the judge reads about one thing. A thing with no profile yet is still judged, on its name alone. */

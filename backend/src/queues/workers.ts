@@ -17,6 +17,7 @@ import { ClassifyJob, CompareJob, DEFAULT_PRIORITY, IngestJob, type JobAdder, JO
 import { processClassify } from "./processors/classify.processor";
 import { processCompare } from "./processors/compare.processor";
 import { processOntology } from "./processors/ontology.processor";
+import { queueOntology } from "./queue-ontology";
 
 const log = childLogger({ module: "workers" });
 
@@ -103,28 +104,6 @@ function onIngestJobFailed(deps: WorkerDeps): FailedListener {
 export interface RunningWorkers {
   /** Lets running jobs finish, asks the ingest loop to hand its run back, then closes. */
   stop(): Promise<void>;
-}
-
-/**
- * The semantic layer picks an email up once its verdict is written.
- *
- * Here and not inside the compare processor because the processor writes
- * `done` and `review` from four different branches, and one place that reads
- * the stage the email actually reached cannot miss one of them. A queue that
- * will not take the job is logged and dropped: the reading is worth having and
- * never worth failing a compared email over.
- */
-async function queueOntology(deps: WorkerDeps, data: CompareJob): Promise<void> {
-  if (!deps.ontology) return;
-  try {
-    const emailRunId = await emailRuns.idOf(deps.pool, data.runId, data.emailId);
-    if (!emailRunId) return;
-    const context = await emailRuns.context(deps.pool, emailRunId);
-    if (context?.stage !== "done" && context?.stage !== "review") return;
-    await deps.ontology.add(JOB_NAMES.ontology, { emailId: data.emailId, emailRunId: Number(emailRunId) }, ontologyJobOptions(data.emailId));
-  } catch (error) {
-    log.warn({ ...data, err: error instanceof Error ? error.message : String(error) }, "could not queue the semantic reading");
-  }
 }
 
 export function startWorkers(deps: WorkerDeps, connection: Redis): RunningWorkers {

@@ -1,5 +1,5 @@
 import type { EntityKind } from "../../contracts";
-import type { ResolvedEntity } from "./resolve";
+import type { ResolvedEntity } from "./resolved";
 
 /**
  * Which id each resolved cluster should keep.

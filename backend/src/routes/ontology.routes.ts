@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { type EntityDetail, type EntityList, ObjectType } from "../contracts";
 import { emailGraph, isBuilt, listTypes, objectRecord } from "../ontology/objects";
-import { entityDetail, entityProfile, entities } from "../ontology/repositories";
+import { entityDetail, entityProfile, entityValues, entities } from "../ontology/repositories";
 
 /**
  * The model as a model: what types exist, what one object holds, what links
@@ -92,7 +92,7 @@ export function ontologyRouter(deps: OntologyRouteDeps): Router {
       return;
     }
     const [values, links, names, appearances, appearanceCount, profile] = await Promise.all([
-      entityDetail.values(pool, req.params.id),
+      entityValues.values(pool, req.params.id),
       entityDetail.around(pool, req.params.id),
       entityDetail.names(pool, req.params.id),
       entityDetail.appearances(pool, req.params.id, APPEARANCES),

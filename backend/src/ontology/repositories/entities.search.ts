@@ -17,6 +17,16 @@ import type { EntityKind } from "../../pipeline/ontology";
 /** Below this a spelling is not worth showing. It bounds the list; it decides nothing. */
 const SIMILAR_FROM = 0.3;
 
+/**
+ * How many nearest spellings each distance brings back before the score is
+ * applied.
+ *
+ * Generous against the eight a tool shows, because two spellings of one thing
+ * both land here and the list is then reduced to one row per thing. Small
+ * enough that the index scan stops early at any table size.
+ */
+const NEAREST = 50;
+
 export type MatchKind = "exact" | "same ignoring case" | "similar";
 
 export interface EntityCandidate {
@@ -55,15 +65,36 @@ export async function findCandidates(
   limit = 8,
 ): Promise<EntityCandidate[]> {
   const { rows } = await db.query<CandidateRow>(
-    `with scored as (
-       select n.entity_id,
-              n.value,
-              case when n.value = $1::text then 0
-                   when lower(n.value) = lower($1::text) then 1
+    `with reachable as (
+       -- Four ways in, each served by an index of its own: the exact spelling,
+       -- the same spelling in another case, and pg_trgm's two distances as a
+       -- nearest-neighbour search. Without them this read every name in the
+       -- table, which is fine at fifty things and was 760 ms at two hundred
+       -- thousand.
+       --
+       -- The nearest few and not everything over a threshold, because the tool
+       -- shows eight candidates: an ordered scan of the GiST index stops after
+       -- ${NEAREST} rows however large the table is, where a threshold matched
+       -- a tenth of it and Postgres correctly read the lot. Both
+       -- distances are asked, whole-string and word, so a long name matching a
+       -- short query and the reverse both reach an index. The score below is
+       -- still what decides; this only bounds what it is asked about.
+       select n.entity_id, n.value from core.entity_names n where n.value = $1::text
+       union
+       select n.entity_id, n.value from core.entity_names n where lower(n.value) = lower($1::text)
+       union
+       (select n.entity_id, n.value from core.entity_names n order by n.value OPERATOR(public.<->) $1::text limit ${NEAREST})
+       union
+       (select n.entity_id, n.value from core.entity_names n order by n.value OPERATOR(public.<->>) $1::text limit ${NEAREST})
+     ), scored as (
+       select r.entity_id,
+              r.value,
+              case when r.value = $1::text then 0
+                   when lower(r.value) = lower($1::text) then 1
                    else 2 end as rank,
-              greatest(public.word_similarity($1::text, n.value), public.similarity($1::text, n.value)) as score
-         from core.entity_names n
-         join core.entities e on e.id = n.entity_id
+              greatest(public.word_similarity($1::text, r.value), public.similarity($1::text, r.value)) as score
+         from reachable r
+         join core.entities e on e.id = r.entity_id
         where ($2::text is null or e.kind = $2::text) and e.merged_into is null
      ), best as (
        select distinct on (entity_id) entity_id, value, rank, score

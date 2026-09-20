@@ -1,9 +1,11 @@
 import { z } from "zod";
 
 import type { TurnResult } from "../agents/chat/loop";
+import { type EntitySetScore, matchedNames, scoreEntitySet } from "./chat-score.entities";
 import { Behaviour, type ChatQuestion } from "./chat-questions";
 
 export { Behaviour, ChatQuestion, ChatQuestionSet } from "./chat-questions";
+export type { EntitySetScore } from "./chat-score.entities";
 
 /**
  * Whether one chat turn did what its question expected of it.
@@ -31,51 +33,6 @@ export interface Scored {
   guardRefusals: number;
   /** Null where the question named no expected entity set. */
   entitySet: EntitySetScore | null;
-}
-
-/**
- * How well the things a turn matched line up with the ones a person listed.
- *
- * Measured against what `find_entities` returned and never against the prose:
- * an answer that names a company in a sentence has not necessarily put it in
- * the set, and the set is what a later query joins on.
- */
-export interface EntitySetScore {
-  expected: number;
-  matched: number;
-  /** Of what it matched, the share that was expected. */
-  precision: number;
-  /** Of what was expected, the share it matched. */
-  recall: number;
-  missed: string[];
-  extra: string[];
-}
-
-/** Every name a `find_entities` call put in its result, across the turn. */
-function matchedNames(calls: TurnResult["toolCalls"]): string[] {
-  const names = calls
-    .filter((call) => call.tool === "find_entities" && call.ok && call.result)
-    .flatMap((call) => {
-      const at = call.result?.columns.indexOf("name") ?? -1;
-      return at < 0 ? [] : (call.result?.rows.map((row) => row[at]) ?? []);
-    })
-    .filter((name): name is string => name !== null);
-  return [...new Set(names)];
-}
-
-function scoreEntitySet(expected: string[], got: string[]): EntitySetScore {
-  const has = (wanted: string) => got.some((name) => name.toLowerCase().includes(wanted.toLowerCase()));
-  const wanted = (name: string) => expected.some((one) => name.toLowerCase().includes(one.toLowerCase()));
-  const hit = expected.filter(has);
-  const right = got.filter(wanted);
-  return {
-    expected: expected.length,
-    matched: got.length,
-    precision: got.length === 0 ? 0 : right.length / got.length,
-    recall: expected.length === 0 ? 1 : hit.length / expected.length,
-    missed: expected.filter((one) => !has(one)),
-    extra: got.filter((name) => !wanted(name)),
-  };
 }
 
 const LOOKUPS = new Set(["find_entity", "list_entities", "get_entity", "search_emails", "profile_column"]);
@@ -211,48 +168,4 @@ export function scoreTurn(question: ChatQuestion, turn: TurnResult, context: Tur
   };
 }
 
-export interface Summary {
-  questions: number;
-  passed: number;
-  /** Turns that ran at least one recipe, none of their own SQL, and finished, as a share of the turns that queried at all. */
-  recipeOnlyShare: number;
-  /** Turns answered with no query, from the orientation. Not counted for or against the recipes. */
-  noQuery: number;
-  medianSteps: number;
-  guardRefusals: number;
-  adhoc: string[];
-  /** Over the questions that named an expected entity set. Null where none did. */
-  entitySets: { questions: number; meanPrecision: number; meanRecall: number; truthfulCompleteness: number } | null;
-}
-
-export function summarise(scored: Scored[]): Summary {
-  const steps = scored.map((item) => item.steps).sort((a, b) => a - b);
-  const middle = Math.floor(steps.length / 2);
-  // A turn that ran nothing says nothing about whether a recipe covered the question.
-  const queried = scored.filter((item) => item.recipes.length > 0 || item.adhoc || item.exhausted);
-  return {
-    questions: scored.length,
-    passed: scored.filter((item) => item.passed).length,
-    recipeOnlyShare: queried.length === 0 ? 0 : queried.filter((item) => item.recipes.length > 0 && !item.adhoc && !item.exhausted).length / queried.length,
-    noQuery: scored.length - queried.length,
-    medianSteps: steps.length === 0 ? 0 : steps.length % 2 === 1 ? steps[middle] : (steps[middle - 1] + steps[middle]) / 2,
-    guardRefusals: scored.reduce((sum, item) => sum + item.guardRefusals, 0),
-    adhoc: scored.filter((item) => item.adhoc).map((item) => item.id),
-    entitySets: entitySetSummary(scored),
-  };
-}
-
-/** The two numbers the ontology set exists to report, plus how often the completeness flag told the truth. */
-function entitySetSummary(scored: Scored[]): Summary["entitySets"] {
-  const withSets = scored.filter((item) => item.entitySet !== null);
-  if (withSets.length === 0) return null;
-  const mean = (of: (score: EntitySetScore) => number) =>
-    withSets.reduce((sum, item) => sum + of(item.entitySet as EntitySetScore), 0) / withSets.length;
-  const truthful = scored.filter((item) => item.checks.every((check) => check.name !== "completeness_is_truthful" || check.ok));
-  return {
-    questions: withSets.length,
-    meanPrecision: mean((score) => score.precision),
-    meanRecall: mean((score) => score.recall),
-    truthfulCompleteness: truthful.length / scored.length,
-  };
-}
+export { summarise, type Summary } from "./chat-score.summary";

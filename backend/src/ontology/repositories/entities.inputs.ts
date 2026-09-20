@@ -145,9 +145,12 @@ export async function loadNameHits(db: Queryable, surfaces: string[]): Promise<N
     `select n.entity_id::text as entity_id, e.kind, n.value
        from core.entity_names n
        join core.entities e on e.id = n.entity_id
-      where e.merged_into is null
-        and lower(n.value) = any(select lower(wanted) from unnest($1::text[]) as wanted)`,
-    [surfaces],
+      where e.merged_into is null and lower(n.value) = any($1::text[])`,
+    // Lowered here rather than in the query: `lower(n.value) = any(lower(...))`
+    // computes the array per row and cannot use the `lower(value)` index.
+    // `planSighting` still tells an exact hit from a same-case one, because
+    // what comes back is the stored spelling.
+    [surfaces.map((surface) => surface.toLowerCase())],
   );
   return rows.map((row) => ({ entityId: Number(row.entity_id), kind: row.kind, value: row.value }));
 }
