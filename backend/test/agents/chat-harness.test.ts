@@ -14,6 +14,7 @@ const NONE: TurnFacts = {
   guardRefused: false,
   cameUpEmpty: false,
   ambiguous: false,
+  gaveMeaning: false,
   loaded: [],
   sticky: [],
   picked: [],
@@ -102,11 +103,11 @@ describe("the skills that ship", () => {
   const all = loadSkills();
   const recipes = loadRecipes();
 
-  it("are the eleven that ship, each with a version and a sentence on when", () => {
+  it("are the twelve that ship, each with a version and a sentence on when", () => {
     expect([...all.keys()].sort()).toEqual([
       "ask-back", "counts-and-rates", "explain-an-email", "explore-values", "find-references",
-      "ground-names", "lanes-and-ports", "near-misses", "pick-the-run", "quality-and-review",
-      "time-questions",
+      "ground-names", "lanes-and-ports", "meaning-terms", "near-misses", "pick-the-run",
+      "quality-and-review", "time-questions",
     ]);
     for (const skill of all.values()) {
       expect(skill.version).toBeGreaterThanOrEqual(1);

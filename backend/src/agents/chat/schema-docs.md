@@ -36,13 +36,25 @@ Ours, not the organisers', and just as closed:
 
 - `core.comparisons.decided_by`: `llm`, `human`
 - `core.email_runs.outcome`: `not_comparable`, `OK`, `MISMATCH`, or one of the four review reasons
-- `core.entities.kind`: `port`, `party`
-- `core.entity_names.joined_by`: `kept` (the spelling seen most), `judge` (the field judge called it the same), `human`
+- `core.entities.kind`: `port`, `party`, `carrier`, `person`, `commodity`, `vessel`
+- `core.entity_sightings.role`: `shipper`, `on_behalf_of`, `consignee`, `notify_party`,
+  `port_of_loading`, `port_of_discharge`, `carrier`, `vessel`, `commodity`, `sender`, `signer`,
+  `addressee`, `mentioned`; `source`: `subject`, `body`, `header`, `document`
+- `core.concept_verdicts.verdict`: `yes`, `no`, `unknown`. `unknown` is "no basis either way",
+  never a soft `no`. `matched` is a stored column equal to `verdict = 'yes'`, so a join needs no
+  string literal
+- `attributes->>'region'`: `Africa`, `Americas`, `Asia`, `Europe`, `Oceania`, the UN geoscheme's
+  names. `subregion` is its next level down (`Western Asia`, `Northern Africa`, and so on)
+- `core.entity_names.joined_by`: `kept` (the spelling seen most), `judge` (a model called it the
+  same), `human`. `joined_step` says which judge: null for the field judge, `entity-resolve` for
+  a spelling it never saw
 - `core.extractions.role` and `core.documents.role`: `SI`, `BL`, `UNKNOWN`
 - `core.documents.doc_type`: `SI`, `BL`, `INVOICE`, `PACKING_LIST`, `COO`, `OTHER`
 - `core.review_cases.kind`: `review`, `failure`; `status`: `open`, `resolved`
 - `core.review_actions.kind`: `confirm`, `correct_field`, `reclassify`, `note`, `upload`, `retry`, `reopen`
-- `core.llm_calls.step`: `classify`, `classify-verify`, `triage`, `doc-type`, `extract`, `extract-verify`, `field-judge`, `chat`
+- `core.llm_calls.step`: `classify`, `classify-verify`, `triage`, `doc-type`, `extract`,
+  `extract-verify`, `field-judge`, `chat`, `shipment-read`, `entity-resolve`, `entity-profile`,
+  `concept-define`, `concept-judge`
 - `core.runs.status`: `created`, `running`, `paused`, `completed`, `cancelled`, `failed`
 - `core.documents.format`: `txt`, `pdf`, `docx`, `xlsx`, `unknown`
 - `core.clients.kind`: `customer`, `internal`, `forwarder`, `spam`
@@ -114,19 +126,47 @@ do not report them as decisions anyone made.
 `core.field_diffs`, `core.review_cases`, `core.review_actions`,
 `core.llm_calls` (no prompt or response text: you may read `step`, `model`,
 `prompt_version`, tokens, `cost_usd`, `latency_ms`, `ok`, `error`),
-`core.entities`, `core.entity_names`, `core.entity_mentions`.
+`core.entities`, `core.entity_names`, `core.entity_mentions`,
+`core.entity_sightings`, `core.email_shipments`, `core.concepts`,
+`core.concept_verdicts`, and the view `core.entity_appearances`.
 
-`core.entities` holds the ports and parties the extractor read out of
-documents. A spelling joins one only because the field judge said it denotes
-the same thing; `core.entity_names.joined_by` says which, and there is no
-lookup table anywhere in this system.
+`core.entities` holds the six kinds of thing that have been read: ports and
+parties out of the seven compared fields, and carriers, people, commodities and
+vessels out of the mail itself. A spelling joins one only because a model said
+it denotes the same thing; `core.entity_names.joined_by` and `joined_step` say
+which judge, and there is no lookup table anywhere in this system.
 
 `core.entity_mentions` has one row per extracted field per email run
 (`entity_id`, `extraction_field_id`, `email_run_id`, `field`, `value`). An
 email replayed in five runs has five sets, so an email count is
 `count(distinct email_id)` through `core.email_runs`, never a count of
-mentions. Entity ids are rebuilt when the things refresh: take them from a tool
-result on this turn.
+mentions. Prefer `core.entity_appearances`, which already counts one row per
+email. Entity ids survive a refresh, so an id a tool returned on an earlier
+turn is still that thing; a merged one keeps its row with `merged_into` set and
+`get_entity` follows it.
+
+## What the mail states, beyond the seven fields
+
+`core.email_shipments` is one row per email, written from the mail itself and never scored:
+`oc_no`, `bl_no`, `booking_ref`, `invoice_no`, `po_no`, `voyage`, `hs_code`, `container_count`,
+`container_type`, `gross_weight_kg`, `trade_term`, `payment_term`, `bl_type`, `freight`,
+`mail_date`, `disputed_fields`, `attributes`, and the entity ids `shipper_id`, `consignee_id`,
+`notify_party_id`, `pol_id`, `pod_id`, `carrier_id`, `vessel_id`, `commodity_id`.
+
+`mail_date` is the date the mail states in its own text and is null where it states none.
+`core.emails.first_seen_at` is when we ingested it. Say which you filtered on.
+
+`core.entity_sightings` is one row per thing per place it was read outside the seven fields
+(`entity_id`, `email_id`, `role`, `source`, `surface`, `address`, `source_quote`, `ambiguous`).
+`core.entity_appearances` unions it with `core.entity_mentions` under one name
+(`entity_id`, `email_id`, `email_run_id`, `role`, `source`, `surface`, `address`, `disputed`).
+`disputed` is true for the draft bill's side of a field the judge called different, so a question
+about where cargo actually went filters `not disputed`.
+
+`core.entities` also carries `attributes` and `attributes_source` (jsonb), `profile_md`,
+`profile_version`, `stale` and `merged_into`. **Every query over it filters
+`merged_into is null`**: a merged thing keeps its row so a stored verdict can follow it, and it
+denotes nothing.
 
 `core.emails.search` is a text-search column over subject and body. The
 `search_emails` tool reads it for you; in SQL it is
@@ -178,6 +218,61 @@ select s.emails, s.llm_calls, round(s.llm_cost_usd, 4) as usd,
  where s.run_id = 'X'
  group by s.emails, s.llm_calls, s.llm_cost_usd
 ```
+
+**Which ports did we ship to in Asia, and how many emails each? (class C)**
+
+```sql
+select p.canonical, p.attributes->>'country' as country, count(distinct s.email_id) as emails
+  from core.email_shipments s
+  join core.entities p on p.id = s.pod_id and p.merged_into is null
+ where p.attributes->>'region' = 'Asia'
+ group by p.canonical, p.attributes->>'country'
+ order by emails desc
+```
+
+**Which customers did find_entities call distributors? (class D)**
+
+```sql
+select e.canonical, count(distinct a.email_id) as emails
+  from core.entities e
+  join core.entity_appearances a on a.entity_id = e.id
+ where e.id in (select entity_id from core.concept_verdicts where concept_id = 12 and matched)
+ group by e.canonical order by emails desc
+```
+
+**SI requests since January, by the date the mail states (class H)**
+
+```sql
+select count(*) filter (where s.mail_date >= date '2026-01-01') as since_january,
+       count(*) filter (where s.mail_date is null) as no_date_stated
+  from core.email_shipments s
+  join core.email_runs er on er.email_id = s.email_id
+  join core.classifications c on c.email_run_id = er.id
+ where coalesce(c.human_category, c.final_category) = 'SI_REQUEST'
+```
+
+**Tonnage by month, over a concept (class K)**
+
+```sql
+select date_trunc('month', s.mail_date) as month, sum(s.gross_weight_kg) / 1000 as tonnes
+  from core.email_shipments s
+ where s.pod_id in (select entity_id from core.concept_verdicts where concept_id = 12 and matched)
+   and s.mail_date is not null
+ group by 1 order by 1
+```
+
+**Does anything here ship semiconductors? (class M)**
+
+```sql
+select e.canonical, v.verdict, v.rationale
+  from core.concept_verdicts v
+  join core.entities e on e.id = v.entity_id and e.merged_into is null
+ where v.concept_id = 13
+ order by v.verdict, e.canonical
+```
+
+The answer to that one is the counts: how many `yes`, how many `no`, and how many `unknown`. A
+`no` and an `unknown` are different sentences, and so are "none of these" and "we do not know".
 
 **Which spellings were judged to be the same port?**
 
