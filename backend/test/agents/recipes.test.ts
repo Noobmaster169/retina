@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { bind, loadRecipes, parseRecipe, recipes, signature, type ParamType } from "../../src/agents/chat/skills/recipes";
-import { inRollback } from "../db";
+import { getRoPool } from "../../src/db";
 
 const RUN = "00000000-0000-4000-8000-000000000000";
 
@@ -85,7 +85,8 @@ describe("the shipped recipes", () => {
     const bound = bind(recipe, Object.fromEntries(recipe.params.map((param) => [param.name, SAMPLE[param.type]])));
     expect(bound.ok).toBe(true);
     if (!bound.ok) return;
-    const result = await inRollback((tx) => tx.query(recipe.sql, bound.values));
+    // As retina_ro, the role the chat reads as: a recipe over a table it was never granted fails here.
+    const result = await getRoPool()!.query(recipe.sql, bound.values);
     expect(result.fields.map((field) => field.name)).toEqual(recipe.returns);
   });
 });

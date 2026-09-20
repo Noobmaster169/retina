@@ -5,6 +5,7 @@ import { orientationFor } from "../../src/agents/chat/orientation";
 import {
   chat, chatState, databaseProfile, emailSearch, entityOverview, entitySearch, orientation,
 } from "../../src/ontology/repositories";
+import { getRoPool } from "../../src/db";
 import { ACME_FE, ACME_ME, ALPHA, BETA, GAMMA, NORTHWIND, seedInbox } from "../chat-seed";
 import { inRollback } from "../db";
 
@@ -184,5 +185,28 @@ describe("sticky skills", () => {
       });
       expect(await chatState.stickySkills(tx, conversation.id)).toEqual(["lanes-and-ports", "time-questions"]);
     });
+  });
+});
+
+describe("as retina_ro, the role the chat reads as", () => {
+  // The other tests read through a superuser's transaction so they can see what they seeded. That
+  // hides a grant that is missing and a function that is off the role's search path, so every
+  // fixed query the tools run is also run here, against whatever the test database holds.
+  const ro = () => getRoPool()!;
+
+  it("can run every lookup the tools make", async () => {
+    await expect(entitySearch.findCandidates(ro(), "Acme Paper", null)).resolves.toBeInstanceOf(Array);
+    await expect(entitySearch.listing(ro(), "port", "land", 10)).resolves.toHaveProperty("total");
+    await expect(entitySearch.knownValues(ro(), ["x"])).resolves.toEqual([]);
+    await expect(entityOverview.overview(ro(), "0")).resolves.toBeNull();
+    await expect(emailSearch.searchEmails(ro(), "draft", null, 5)).resolves.toHaveProperty("total");
+    await expect(emailSearch.elsewhere(ro(), "Vital Solutions")).resolves.toHaveProperty("senderDomains");
+    await expect(databaseProfile.profileColumn(ro(), "core.emails", "sender_domain")).resolves.toHaveProperty("ok", true);
+    await expect(orientation.snapshot(ro(), null)).resolves.toHaveProperty("watermark");
+  });
+
+  it("cannot profile a column it was not granted", async () => {
+    const outcome = await databaseProfile.profileColumn(ro(), "core.llm_calls", "request");
+    expect(outcome.ok).toBe(false);
   });
 });

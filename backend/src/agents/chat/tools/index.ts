@@ -1,4 +1,5 @@
 import type { ChatToolName } from "../../../contracts";
+import { childLogger } from "../../../lib/logger";
 import { describeSchema } from "./describe-schema";
 import { explainDecision } from "./explain-decision";
 import { findEntity } from "./find-entity";
@@ -10,9 +11,11 @@ import { profileColumn } from "./profile-column";
 import { runRecipe } from "./run-recipe";
 import { runSql } from "./run-sql";
 import { searchEmails } from "./search-emails";
-import type { ChatTool, ToolContext, ToolOutcome } from "./types";
+import { type ChatTool, refused, type ToolContext, type ToolOutcome } from "./types";
 
-export { refused } from "./types";
+const log = childLogger({ module: "chat.tools" });
+
+export { refused };
 export type { ChatTool, ToolContext, ToolOutcome } from "./types";
 export { relationsIn } from "./run-sql";
 
@@ -67,5 +70,14 @@ export async function callTool(name: ChatToolName, args: unknown, ctx: ToolConte
       entities: [],
     };
   }
-  return tool.run(parsed.data, ctx);
+  try {
+    return await tool.run(parsed.data, ctx);
+  } catch (error) {
+    // A tool that throws (a query the role may not run, a timeout) must not take
+    // the turn with it: the agent is told, can try another way, and the page
+    // shows the failed call. Logged, because it is ours to fix and not the model's.
+    const reason = error instanceof Error ? error.message : String(error);
+    log.warn({ tool: name, err: reason }, "a chat tool failed");
+    return refused(`${name} failed: ${reason}`);
+  }
 }

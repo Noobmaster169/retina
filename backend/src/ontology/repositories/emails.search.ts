@@ -89,7 +89,7 @@ export async function elsewhere(db: Queryable, text: string): Promise<Elsewhere>
          from d, t
         where length(t.squashed) >= 3 and length(d.label) >= 3
           and (position(d.label in t.squashed) > 0 or position(t.squashed in d.label) > 0
-               or similarity(d.label, t.squashed) > 0.45)
+               or public.similarity(d.label, t.squashed) > 0.45)
         order by d.emails desc
         limit 5`,
       [text],

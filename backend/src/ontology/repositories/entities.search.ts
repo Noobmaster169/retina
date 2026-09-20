@@ -11,6 +11,9 @@ import type { EntityKind } from "../../pipeline/ontology";
  * whoever reads the list.
  */
 
+// pg_trgm lives in `public`, which is not on retina_ro's search path (analytics, core, pg_catalog),
+// so its functions are named in full. The chat reads as retina_ro; the tests do too.
+
 /** Below this a spelling is not worth showing. It bounds the list; it decides nothing. */
 const SIMILAR_FROM = 0.3;
 
@@ -55,7 +58,7 @@ export async function findCandidates(
               case when n.value = $1::text then 0
                    when lower(n.value) = lower($1::text) then 1
                    else 2 end as rank,
-              greatest(word_similarity($1::text, n.value), similarity($1::text, n.value)) as score
+              greatest(public.word_similarity($1::text, n.value), public.similarity($1::text, n.value)) as score
          from core.entity_names n
          join core.entities e on e.id = n.entity_id
         where ($2::text is null or e.kind = $2::text)
