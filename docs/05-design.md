@@ -3,11 +3,16 @@
 The visual and interaction system for every Retina surface. `01-product.md` says what the
 product does. This says what it looks like, why, and how to draw it.
 
-Status: target state. Written 2026-09-20 before phase 7, and revised the same day after four
-rounds of design review on the canvas. Nothing in `frontend/` follows it yet. Under the house rule
-in `CLAUDE.md`, the doc wins for anything not built, so phase 7 builds against this file and the
-current `globals.css` palette is replaced when it does. Section 12 maps the old tokens to the new
-ones.
+Status: built. Written 2026-09-20 before phase 7, revised the same day after four rounds of design
+review on the canvas, and corrected again where phase 7 had to depart from it. The Air token set in
+section 4 is `frontend/app/globals.css`; sections 5 to 9 are the Tailwind theme and
+`frontend/lib/motion.ts`; the components of section 8 are `frontend/components/ui/`,
+`components/shell/`, `components/run/` and `components/email/`. The phase 1 harbour palette is
+gone, and section 12's mapping is kept for reading old commits.
+
+What phase 7 did not build, and why, is under the phase 7 entry in `PROGRESS.md`: the database and
+ontology pages (phase 10b), every write path (phase 8), the chat's turns and its proposed action
+card (phase 10a), and the memory panel (phase 11, and not stubbed).
 
 **The canvas is the picture, this file is the rule.** Eleven artboards at 1440x900 were drawn,
 reviewed and signed off:
@@ -219,18 +224,27 @@ word**, on both sides, not by colouring one column:
 |---|---|---|
 | **marked** | `--verdict-differ` tint fill, 1px solid `--verdict-differ` underline, `#7A3E06` text | the words the judge said differ. The selected field |
 | **flagged** | 1px dashed `--verdict-differ` underline, `--verdict-differ` text, no fill | a field that also differs but is not the one being read |
-| **quiet** | 1px dotted `--hairline-strong` underline, `--ink` text | a value that was extracted and agreed. Present, proved, unremarkable |
+| **agreed** | `--verdict-match` tint fill, 1px solid `--verdict-match` underline | the two texts differ and the judge called them the same thing |
+| **quiet** | 1px dotted `--hairline-strong` underline, `--ink` text | a value that was extracted and agreed, written the same way. Present, proved, unremarkable |
 | **bare** | `--ink-tertiary`, nothing | document text that no field was read from |
 
 Only the span moves, never the line. A value is `pre` plus `hit` plus `post`, and only `hit`
 takes the mark, so the surrounding line stays readable as the document it came from.
 
-**Open, for the first implementer to settle with the user:** the earlier rule in this file was
-that the SI column stays neutral and only the BL takes amber, so the design never implies which
-document is right. The canvas marks both sides, because the person is comparing two documents and
-hiding the mark on one of them makes the eye work harder. The two readings conflict. Marking both
-is what was drawn and approved; the neutrality argument is not wrong. Decide it once, write it
-here, and do not let two screens differ.
+**Settled in phase 7, with the user: both sides take the mark.** The earlier rule in this file
+was that the SI column stays neutral and only the BL takes amber, so the design never implies which
+document is right. That argument is not wrong, and it is answered by the verdict rather than by the
+marking: the row says `differ`, never `wrong`, and there is no correct-value field anywhere in the
+product. What the neutral column cost was real: a person comparing two documents had to hunt for
+the second half of the pair. The canvas marks both, that is what was reviewed and approved, and
+`components/email/field-reading.ts` carries one `markOf` used by every screen, so the two cannot
+drift.
+
+**Also settled: green stays on a value the judge called the same.** `NANTONG, CHINA` against
+`NANTONG, CHINA (CNNTG)` is drawn `agreed` (4.5), which does spend a verdict hue on a non verdict.
+It is kept because it is the clearest evidence anywhere in the product that a model judged rather
+than a string matched, which is the whole claim the ontology rests on. A field that agreed and
+reads identically stays `quiet`; only a judged agreement across different text earns the green.
 
 ### 4.6 Hatch
 

@@ -1,18 +1,76 @@
 # Progress
 
-Current phase: 6, on `phase-06-extraction-and-comparison`. Built and tested; checked on a
-24-email run locally (see "Phase 6" below). Left for the user: the holdout run and the full 520
-run that decide the exit checklist's score lines (`pnpm eval:score --run <id> --holdout`), and
-phase 5's open items (the box check of doc-extract, the classify `v5` holdout). Phase 4's open
-items (the few-shot `v4` holdout, the model comparison) are still the user's.
+Current phase: 7, on `phase-07-design-system-and-screens`. The design system, the shell, the run
+page and the email page are built and checked in a browser against the canvas; see "Phase 7" below
+for what was built, what was substituted and what is deferred. Phase 6 is built and tested;
+left for the user there: the holdout run and the full 520 run that decide its exit checklist's
+score lines (`pnpm eval:score --run <id> --holdout`), and phase 5's open items (the box check of
+doc-extract, the classify `v5` holdout). Phase 4's open items (the few-shot `v4` holdout, the
+model comparison) are still the user's.
 
-**Next: phase 7.** The interface was designed on 2026-09-20 over four rounds of review, on a
-canvas of eleven artboards at `https://claude.ai/artifact/CSbrqYfTwzHpGFLVgKQpUZ`.
-`docs/05-design.md`, `docs/design/screen-blueprints.md` and `docs/design/ontology-patterns.md` were
-rewritten against it in the same session, and `docs/04-phases.md` phases 7, 8 and 10 with them.
-**Start at `docs/phases/phase-07-handover.md`**, which says how to read the canvas, what the API
-does not return yet, and which four components of the original phase 7 spec were cut. The design
-docs are not committed yet.
+## Phase 7
+
+The interface was designed on 2026-09-20 over four rounds of review, on a canvas of eleven
+artboards at `https://claude.ai/artifact/CSbrqYfTwzHpGFLVgKQpUZ`; `docs/phases/phase-07-handover.md`
+says how to read it. Phase 7 built rows one and two of that canvas.
+
+**Built.**
+
+- `frontend/app/globals.css` is the Air token set of `05-design.md` section 4, with the type scale
+  of 5.1 in the Tailwind theme. Newsreader, Inter and JetBrains Mono load through `next/font`. The
+  phase 1 harbour palette is gone from every file, including the pages phase 7 only re-skinned
+  (`/runs`, `/`, `/chat`, `/login`, `/runs/[id]/results`).
+- The shell: `components/shell/` is a 232px rail that collapses to 56px of glyphs, a 56px top bar
+  whose breadcrumb is the ontology path, and `AppShell`, which owns the one piece of shell state.
+  A pane can ask for the width (`wantsWidth`), and the person's own click on the rail control wins
+  over the request.
+- Primitives in `components/ui/`: the verdict chip with no dot, the marked span in its five states,
+  the hatch, the evidence well, the panel, the bar, the button, Radix-backed tabs with a shared
+  layout underline, and the canvas's own glyphs lifted path for path into `icons.tsx`.
+- The run page in its three states: running, a dependency down, finished. Two queues left to right,
+  one panel per queue with a row per email holding a slot, and the outcomes list in the enum's own
+  words. Checked in a browser on four real runs, including a genuinely held `classify` queue.
+- The email page: the message as a bordered card, the labelled seam, the reading in plain English,
+  then the seven fields. Tabs for `The check` (or `The case`), `Both documents` and `Model calls`.
+  The documents tab closes the rail and folds the message to one line.
+- The 340px chat column, present and inert, with its composer disabled and one sentence saying why.
+- Motion through `motion` (motion.dev), vocabulary in `lib/motion.ts`. Nothing loops.
+
+**New contracts**, each mirrored in `frontend/lib/api/` and in `03-infra-deep.md` section 10:
+
+- `GET /runs/:id/queues` (`contracts.queues.ts`): the slots, who is next, `heldUntil`, and the
+  handoff between the queues. The handoff is aggregated in the route, not in the page.
+- `DocumentView.pageConfidence`, from migration `007_document_page_confidence.sql`. doc-extract
+  already returned per page OCR confidence and nothing kept it; the review case needs it to say
+  which page failed.
+- `RunSummary.lastSubmission.scores.weights`, so the score panel reads the scorer's own weights
+  (0.30 / 0.20 / 0.50) instead of assuming the 0.30 / 0.40 / 0.30 the canvas drew.
+
+**Settled with the user**, and written into `05-design.md` section 4.5: both documents take the
+mark on a differing field, and a value the judge called the same across different text keeps its
+green. `components/email/field-reading.ts` holds the one `markOf` both screens use.
+
+**Substituted, and why.** The canvas gives the middle panel of a finished run to memory. `core.lessons`
+is phase 11 and the handover forbids faking a lesson or stubbing the table, so that rectangle holds
+`What it took` instead: the run's own machinery, which `05-design.md` section 11 allows on this page
+and nowhere else. Phase 11 takes the rectangle back.
+
+**Deferred.**
+
+- Rendered page images for an unreadable case. The exit checklist asks for them; the per page OCR
+  confidence is real and shown, but the page itself is drawn as a hatched page-shaped block rather
+  than a PNG. `docExtract.render`, a `/files/*key` streaming route and a `render` endpoint are the
+  work, and none of it changes what the case tells a reader. Phase 8 needs `/files/*key` anyway for
+  its upload path.
+- `/review`, `/database`, `/ontology` and `/chat` are rail destinations that phases 8 and 10 fill.
+  They are reachable and they are not built.
+- A fixed bug found while checking this phase: `documents.upsert` gained a column and not its
+  parameter, which failed every compare with `bind message supplies 9 parameters`. Caught on a
+  real run, not by a test, because the repository tests fake the insert.
+
+**Fixed under phase 7, outside its scope.** A run whose ingest finished read as `Completed` while
+its queues were still full: `status` is the ingest's and `processingDone` is the pipeline's. The
+chip now says Running until `processingDone`.
 
 Phase 5 merged to `main` on 2026-09-20. Every document's text is in MinIO under `text/`, typed
 on its `documents` row; phase 6 reads it from there.
