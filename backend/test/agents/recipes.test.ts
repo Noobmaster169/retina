@@ -17,6 +17,7 @@ const SAMPLE: Record<ParamType, unknown> = {
 
 const GOOD = [
   "-- name: things",
+  "-- version: 3",
   "-- about: Counts things.",
   "-- params: run_id uuid, ids bigint[]",
   "-- returns: n",
@@ -26,7 +27,7 @@ const GOOD = [
 describe("parseRecipe", () => {
   it("reads the header, strips it, and caps the rows", () => {
     const recipe = parseRecipe(GOOD, "a-skill", "things.sql");
-    expect(recipe).toMatchObject({ name: "things", skill: "a-skill", about: "Counts things.", returns: ["n"] });
+    expect(recipe).toMatchObject({ name: "things", version: 3, skill: "a-skill", about: "Counts things.", returns: ["n"] });
     expect(recipe.params).toEqual([{ name: "run_id", type: "uuid" }, { name: "ids", type: "bigint[]" }]);
     expect(recipe.sql).not.toContain("--");
     expect(recipe.sql.endsWith("limit 200")).toBe(true);
@@ -36,6 +37,8 @@ describe("parseRecipe", () => {
     { name: "no name", text: GOOD.replace("-- name: things\n", ""), error: /no "-- name:" line/ },
     { name: "a name that is not one", text: GOOD.replace("name: things", "name: Things!"), error: /not a recipe name/ },
     { name: "an unknown type", text: GOOD.replace("run_id uuid", "run_id guid"), error: /is not "name type"/ },
+    { name: "no version", text: GOOD.replace("-- version: 3\n", ""), error: /no "-- version:" line/ },
+    { name: "a version that is not a number", text: GOOD.replace("version: 3", "version: two"), error: /not a positive whole number/ },
     { name: "no columns", text: GOOD.replace("returns: n", "returns:"), error: /declares no columns/ },
     { name: "a write", text: GOOD.replace("select count(*) as n from", "delete from"), error: /may run/ },
     { name: "two statements", text: `${GOOD}; select 1`, error: /may run/ },

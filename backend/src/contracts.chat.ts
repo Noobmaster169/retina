@@ -56,7 +56,7 @@ export const ChatToolCall = z.object({
   durationMs: z.number().int(),
   /** Set for `run_recipe`: the standard query that ran, the skill it belongs to, and its arguments. */
   recipe: z
-    .object({ name: z.string(), skill: z.string(), params: z.record(z.string(), z.unknown()) })
+    .object({ name: z.string(), version: z.number().int().default(1), skill: z.string(), params: z.record(z.string(), z.unknown()) })
     .nullable()
     .default(null),
 });

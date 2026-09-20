@@ -1,4 +1,5 @@
 -- name: emails_for_lane
+-- version: 1
 -- about: The emails of one run whose shipping instruction loads at any of the first ports and discharges at any of the second.
 -- params: pol_ids bigint[], pod_ids bigint[], run_id uuid
 -- returns: email_id, subject, port_of_loading, port_of_discharge

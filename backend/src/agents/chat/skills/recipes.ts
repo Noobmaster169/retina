@@ -32,6 +32,8 @@ export interface RecipeParam {
 
 export interface Recipe {
   name: string;
+  /** Raised whenever the SQL changes, and stored on the turn, so the same question can be shown to have run the same query. */
+  version: number;
   skill: string;
   about: string;
   params: RecipeParam[];
@@ -73,6 +75,8 @@ export function parseRecipe(raw: string, skill: string, path: string): Recipe {
   const lines = raw.replace(/\r\n/g, "\n").split("\n");
   const name = header(lines, "name", path);
   if (!NAME.test(name)) throw new TerminalError(`${path} names itself "${name}", which is not a recipe name`);
+  const version = Number(header(lines, "version", path));
+  if (!Number.isInteger(version) || version < 1) throw new TerminalError(`${path} has a version that is not a positive whole number`);
   const params = parseParams(header(lines, "params", path), path);
   const returns = header(lines, "returns", path).split(",").map((column) => column.trim()).filter(Boolean);
   if (returns.length === 0) throw new TerminalError(`${path} declares no columns`);
@@ -85,7 +89,7 @@ export function parseRecipe(raw: string, skill: string, path: string): Recipe {
   }
   if (verdict.sql.includes(`$${params.length + 1}`)) throw new TerminalError(`${path} uses $${params.length + 1}, which it does not declare`);
 
-  return { name, skill, about: header(lines, "about", path), params, returns, sql: verdict.sql };
+  return { name, version, skill, about: header(lines, "about", path), params, returns, sql: verdict.sql };
 }
 
 export function loadRecipes(dir = SKILLS_DIR): Map<string, Recipe> {

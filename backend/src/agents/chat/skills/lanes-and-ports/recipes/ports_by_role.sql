@@ -1,4 +1,5 @@
 -- name: ports_by_role
+-- version: 1
 -- about: Every port in one run, and in how many distinct emails the shipping instruction names it as the loading port and as the discharge port.
 -- params: run_id uuid
 -- returns: entity_id, port, loading_emails, discharge_emails

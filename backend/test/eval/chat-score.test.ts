@@ -22,7 +22,7 @@ function turn(answer: string, toolCalls: Call[], extra: Partial<TurnResult> = {}
 const RUN = "0011eb39-2767-415a-bc2d-75617c4a0212";
 const question = (expectations: Record<string, unknown>) => ChatQuestion.parse({ id: "q", question: "?", expect: expectations });
 const recipeCall = (name: string, params: Record<string, unknown>) =>
-  call("run_recipe", { name, params }, { recipe: { name, skill: "a-skill", params } });
+  call("run_recipe", { name, params }, { recipe: { name, version: 1, skill: "a-skill", params } });
 
 describe("scoreTurn", () => {
   const cases: { name: string; expect: Record<string, unknown>; turn: TurnResult; passed: boolean }[] = [

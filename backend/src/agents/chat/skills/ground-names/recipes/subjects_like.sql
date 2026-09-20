@@ -1,4 +1,5 @@
 -- name: subjects_like
+-- version: 1
 -- about: The emails of one run whose subject matches a like pattern. Subjects carry customer names, ports, references and codes that are not columns.
 -- params: pattern pattern, run_id uuid
 -- returns: email_id, sender_domain, subject, category

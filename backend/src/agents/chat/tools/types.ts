@@ -62,7 +62,7 @@ export interface ToolOutcome {
   /** The things the answer is about, for the graph's rightmost column. */
   entities: string[];
   /** Set by `run_recipe`: which standard query ran, from which skill, with what. */
-  recipe?: { name: string; skill: string; params: Record<string, unknown> };
+  recipe?: { name: string; version: number; skill: string; params: Record<string, unknown> };
   /**
    * What the data returned, and nothing else: result cells, stored names, subjects, snippets.
    * The literal guard reads this, never `text`, because `text` also carries what was asked for

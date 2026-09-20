@@ -1,4 +1,5 @@
 -- name: entities_named_like
+-- version: 1
 -- about: Things of one kind with any spelling matching a like pattern, such as a country or a group word. The kind is port or party.
 -- params: kind text, pattern pattern
 -- returns: entity_id, kind, canonical, matched_spelling, emails

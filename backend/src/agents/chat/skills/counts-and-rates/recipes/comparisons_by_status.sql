@@ -1,4 +1,5 @@
 -- name: comparisons_by_status
+-- version: 1
 -- about: The comparison outcomes of one run by status and review reason.
 -- params: run_id uuid
 -- returns: status, review_reason, emails

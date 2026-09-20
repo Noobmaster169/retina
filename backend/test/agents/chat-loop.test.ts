@@ -231,9 +231,9 @@ describe("the harness around the loop", () => {
 
       const [call] = result.toolCalls;
       expect(call.ok).toBe(true);
-      expect(call.recipe).toMatchObject({ name: "emails_for_entities", skill: "ground-names", params: { run_id: seeded.runId } });
+      expect(call.recipe).toMatchObject({ name: "emails_for_entities", version: 1, skill: "ground-names", params: { run_id: seeded.runId } });
       expect(new Set(call.result?.rows.map((row) => row[0]))).toEqual(new Set(seeded.emailIds));
-      expect(result.sqlUsed[0]).toContain("-- recipe emails_for_entities with $1 =");
+      expect(result.sqlUsed[0]).toContain("-- recipe emails_for_entities v1 with $1 =");
       expect(result.adhoc).toBe(false);
       // A conversation opened about a run is given the skill for runs.
       expect(result.skillsUsed).toContainEqual({ name: "pick-the-run", version: 1, how: "injected" });

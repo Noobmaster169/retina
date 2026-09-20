@@ -1,4 +1,5 @@
 -- name: cost_by_step
+-- version: 1
 -- about: Model calls of one run by step and model: how many, how many failed, what they cost and how long they took.
 -- params: run_id uuid
 -- returns: step, model, model_calls, failed, cost_usd, avg_latency_ms

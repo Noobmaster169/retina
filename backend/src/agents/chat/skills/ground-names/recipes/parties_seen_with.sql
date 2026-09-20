@@ -1,5 +1,6 @@
 -- name: parties_seen_with
--- about: The other parties on the same documents as these things, in one run, and the field they filled.
+-- version: 1
+-- about: The other parties in the same emails as these things, in one run, and the field they filled.
 -- params: entity_ids bigint[], run_id uuid
 -- returns: other_entity_id, other_party, other_field, emails
 select o.entity_id as other_entity_id, en.canonical as other_party, o.field as other_field,

@@ -1,4 +1,5 @@
 -- name: senders_ranked
+-- version: 1
 -- about: Sender domains of one run by volume, with how many of their emails were comparisons and how many of those differed.
 -- params: run_id uuid
 -- returns: sender_domain, emails, comparisons, mismatches

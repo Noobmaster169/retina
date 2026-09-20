@@ -10,7 +10,7 @@ import type { ChatTurn } from "@/lib/api/chat-agent-schemas";
  */
 
 export function Reading({ turn }: { turn: ChatTurn }) {
-  const recipes = [...new Set(turn.toolCalls.flatMap((call) => (call.recipe ? [call.recipe.name] : [])))];
+  const recipes = [...new Set(turn.toolCalls.flatMap((call) => (call.recipe ? [`${call.recipe.name} v${call.recipe.version}`] : [])))];
   if (!turn.reading && turn.skillsUsed.length === 0 && recipes.length === 0) return null;
 
   return (

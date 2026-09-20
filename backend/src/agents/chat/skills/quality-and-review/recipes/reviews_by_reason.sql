@@ -1,4 +1,5 @@
 -- name: reviews_by_reason
+-- version: 1
 -- about: The cases of one run that went to a person, by kind, reason and whether they are still open.
 -- params: run_id uuid
 -- returns: kind, reason, status, cases

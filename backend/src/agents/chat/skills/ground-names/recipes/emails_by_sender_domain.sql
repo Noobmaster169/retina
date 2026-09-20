@@ -1,4 +1,5 @@
 -- name: emails_by_sender_domain
+-- version: 1
 -- about: The emails of one run sent from one domain, with the category each was sorted into.
 -- params: domain text, run_id uuid
 -- returns: email_id, from_addr, subject, category

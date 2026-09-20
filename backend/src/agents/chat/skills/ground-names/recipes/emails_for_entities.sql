@@ -1,4 +1,5 @@
 -- name: emails_for_entities
+-- version: 1
 -- about: The distinct emails of one run in which any of these resolved things appears, and the field each appeared in.
 -- params: entity_ids bigint[], run_id uuid
 -- returns: email_id, subject, sender_domain, field, value

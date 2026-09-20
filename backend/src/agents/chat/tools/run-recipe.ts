@@ -30,9 +30,9 @@ type Input = z.infer<typeof Input>;
 const Shape = { name: z.string().min(1).max(80), params: z.record(z.string(), z.unknown()).default({}) };
 
 /** How the page and the turn's `sql_used` show it: the text that ran, then what each placeholder held. */
-function shownSql(sql: string, name: string, values: unknown[]): string {
+function shownSql(sql: string, name: string, version: number, values: unknown[]): string {
   const bound = values.map((value, index) => `$${index + 1} = ${JSON.stringify(value)}`).join(", ");
-  return `${sql}\n-- recipe ${name}${bound ? ` with ${bound}` : ""}`;
+  return `${sql}\n-- recipe ${name} v${version}${bound ? ` with ${bound}` : ""}`;
 }
 
 export const runRecipe: ChatTool<Input> = {
@@ -74,7 +74,7 @@ export const runRecipe: ChatTool<Input> = {
       // A tested recipe fails on its arguments or on the five second limit, and
       // either is the agent's to act on rather than the caller's to retry.
       const reason = error instanceof Error ? error.message : String(error);
-      return { ...refused(`Postgres rejected ${recipe.name}: ${reason}`), sql: shownSql(recipe.sql, recipe.name, bound.values) };
+      return { ...refused(`Postgres rejected ${recipe.name}: ${reason}`), sql: shownSql(recipe.sql, recipe.name, recipe.version, bound.values) };
     }
     const result = toResult(answer.rows, answer.fields, Date.now() - started);
     const relations = relationsIn(recipe.sql);
@@ -82,14 +82,14 @@ export const runRecipe: ChatTool<Input> = {
     return {
       ok: true,
       text: `${runNote}${asText(result, `${recipe.name}: ${recipe.about}`)}`,
-      preview: `${recipe.name}: ${result.rowCount} ${result.rowCount === 1 ? "row" : "rows"} in ${result.durationMs} ms`,
-      sql: shownSql(recipe.sql, recipe.name, bound.values),
+      preview: `${recipe.name} v${recipe.version}: ${result.rowCount} ${result.rowCount === 1 ? "row" : "rows"} in ${result.durationMs} ms`,
+      sql: shownSql(recipe.sql, recipe.name, recipe.version, bound.values),
       result,
       touched: relations.map((relation) => ({ relation, count: result.rowCount })),
       entities: firstColumn(result),
       grounds: cellsOf(result),
       empty: result.rowCount === 0,
-      recipe: { name: recipe.name, skill: recipe.skill, params },
+      recipe: { name: recipe.name, version: recipe.version, skill: recipe.skill, params },
     };
   },
 };

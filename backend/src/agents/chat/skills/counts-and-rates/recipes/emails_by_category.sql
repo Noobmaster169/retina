@@ -1,4 +1,5 @@
 -- name: emails_by_category
+-- version: 1
 -- about: How many emails of one run were sorted into each category, a person's correction winning over the model.
 -- params: run_id uuid
 -- returns: category, emails, corrected_by_a_person

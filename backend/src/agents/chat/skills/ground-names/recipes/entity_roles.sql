@@ -1,4 +1,5 @@
 -- name: entity_roles
+-- version: 1
 -- about: For each of these things, the fields it appears in, across every run, counted in distinct emails.
 -- params: entity_ids bigint[]
 -- returns: entity_id, canonical, field, mentions, emails

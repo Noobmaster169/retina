@@ -1,4 +1,5 @@
 -- name: latest_run
+-- version: 1
 -- about: The newest run, and how far it has got. Use it when the question names no run and the conversation is not scoped to one.
 -- params: none
 -- returns: run_id, status, total_emails, finished_emails, created_at
