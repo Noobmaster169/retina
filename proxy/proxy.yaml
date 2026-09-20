@@ -27,7 +27,8 @@ providers:
   claudecli:
     type: claudecli
     binary: claude
-    max_concurrency: 8      # `claude -p` spawns a full agent session per call; matches CLASSIFY_CONCURRENCY
+    max_concurrency: 12     # `claude -p` spawns a full agent session per call; matches CLASSIFY_CONCURRENCY + COMPARE_CONCURRENCY,
+                            # which is how many worker jobs run at once. Well under the ~64 sockets ngrok survives.
     timeout_s: 1200
     stream_mode: native
     neutralise_anthropic_key: true

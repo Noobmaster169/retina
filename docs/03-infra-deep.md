@@ -120,10 +120,14 @@ the password signs everyone out.
 
 | Key | Type | Purpose |
 |---|---|---|
-| `bull:classify:*`, `bull:compare:*` | BullMQ | the two queues |
-| `client:priority` | hash `domain -> tier(1..5)` | enqueue-time priority lookup |
-| `run:{runId}:counters` | hash | cheap live counters for the dashboard (ingested, classified, compared, review) |
+| `bull:classify:*`, `bull:compare:*`, `bull:scheduler:*` | BullMQ | the two email queues and the clock |
+| `client:priority` | hash `domain -> tier(1..5)` | enqueue-time priority lookup, refreshed hourly and written through on every `PUT /clients/:domain` |
+| `live:call:*` | string, 900 s TTL | one model call in flight, for the run page's preview |
 | `worker:heartbeat` | string, 60 s TTL | worker liveness for `/health` |
+
+`run:{runId}:counters` was planned and never built: phase 7's dashboard reads its counters from
+Postgres, which is one query and cannot drift from the rows it counts. Nothing writes the key,
+so nothing expires it either.
 
 ### 4.2 Queue definitions
 
@@ -131,6 +135,7 @@ the password signs everyone out.
 |---|---|---|---|---|
 | `classify` | `classify-email` | `{ runId, emailId }` | replay controller, review "reclassify" | classify.worker |
 | `compare` | `compare-email` | `{ runId, emailId }` today; phase 8 adds `rerunFrom?: "triage" \| "extract" \| "compare"` when something reads it | classify.worker, review actions | compare.worker |
+| `scheduler` | the task's own name | none; the name is the job | `queues/schedulers.ts` at worker boot | the scheduler worker, concurrency 1 |
 
 Job options, both queues:
 
@@ -163,20 +168,44 @@ tonnageBonus= min(floor(tonnage / 10), 99)
 priority    = tier * 200 - tonnageBonus          // tier 1 & 500 MT -> 150; tier 5 & 0 MT -> 1000
 ```
 
-Aging: a repeatable job every 60 s lists `waiting` jobs older than 5 minutes and calls
-`job.changePriority({ priority: max(1, current - 100) })`. Prevents starvation during bursts.
+The bonus caps at 99 so it can never cross the 200 between two tiers: without the cap a large
+shipment from a tier-3 forwarder would overtake a tier-1 client, and the tier would stop meaning
+what `/clients` says it means. Never 0: BullMQ reads 0 as "no explicit priority" and serves those
+**ahead** of every prioritised job.
 
-Client tiers come from `core.clients` (manual `tier` column, seeded from the sender domains in
-the dataset). A repeatable job every hour writes the table into the `client:priority` hash. A
-`PUT /clients/:domain` route updates both immediately.
+The number is stored on `core.email_runs.priority` and read back wherever a job is added again,
+rather than recomputed. A rerun a person asked for therefore keeps the tier the email already
+had, instead of joining a burst at a default because the cache changed in between. The classify
+processor forwards `job.opts.priority` to the compare job for the same reason.
+
+Aging: a repeatable job every 60 s lists `waiting` and `prioritized` jobs older than 5 minutes
+and calls `job.changePriority({ priority: max(1, current - 100) })`. It promotes, so a rerun is
+not exempt. `changePriority` updates `job.priority` and leaves `job.opts.priority` at whatever
+the job was added with, so a pass that reads the options recomputes the same first step forever.
+
+Client tiers come from `core.clients` (manual `tier` column, seeded with the domains the
+organisers' kit names, and only those). A repeatable job every hour writes the table into the
+`client:priority` hash, and `PUT /clients/:domain` writes Postgres then the hash. Postgres first:
+a cache holding a tier no row backs would survive a restart and order the queue by a number
+nobody can see.
 
 ### 4.4 LLM concurrency cap
 
 An in-process semaphore of size `LLM_MAX_CONCURRENCY` (`agents/llm-slot.ts`) wraps every proxy
-call the worker makes. Unset, it equals `CLASSIFY_CONCURRENCY`, so a run of 30, 104 or 520 emails
-runs exactly that many emails and that many calls at once. A retry waits outside the slot. One
-process, one cap; no Redis coordination is needed while there is one worker replica. The api's
-chat is not capped by it.
+call the worker makes. A retry waits outside the slot. One process, one cap; no Redis
+coordination is needed while there is one worker replica. The api's chat is not capped by it.
+
+Unset, it is `CLASSIFY_CONCURRENCY + COMPARE_CONCURRENCY`, because that is how many jobs BullMQ
+runs at once and all of them contend for these slots. It used to be `CLASSIFY_CONCURRENCY` alone:
+eight classify jobs could hold every slot while four compare jobs sat blocked in the semaphore,
+which the run page drew as sorting unaffected and checking paused, with nothing saying why.
+`proxy.yaml`'s `max_concurrency` is 12 to match. Both sit well under the measured ceilings: the
+`claudecli` provider serves about 0.5 requests a second, and ngrok falls over above roughly 64
+sockets.
+
+The semaphore reports `peak()`, the most calls it ever had in flight, and logs it whenever it
+rises. `scripts/load-test.ts` computes the same number independently by sweeping `llm_calls`
+start and end times, because a semaphore cannot report a violation of its own cap.
 
 ### 4.5 Failure handling
 
@@ -731,7 +760,8 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 
 | Method, path | Purpose |
 |---|---|
-| `GET /health` | `{ status: ok \| degraded, checks: { postgres, redis, minio, inbox, docExtract } }`, 2 s per check. Degraded is still 200; only postgres down is 503, which is the signal auto-deploy rolls back on. The proxy is left out on purpose: a cold model would read as an outage |
+| `GET /health` | `{ status: ok \| degraded \| down, checks, version, queues }`, 2 s per check, unauthenticated. A check is an object: `{ status, latencyMs }` plus whatever that dependency says about itself, which comes free from its own health payload (`inbox` its email count and whether scoring is available, `docExtract` its tesseract build, `llmProxy` its alias count, `worker` its last heartbeat). `worker` is not a probe but the mark the worker leaves in Redis every 10 s, read back; null when none stands. `down` and 503 only for postgres or redis, which is the signal auto-deploy rolls back on: everything else, a stale heartbeat included, is `degraded` and still 200. `llmProxy` is read through its `/healthz`, which lists aliases and starts no session, so a cold model never reads as an outage. `version` is `GIT_SHA` from the build arg, `dev` outside an image. `queues` is null when Redis cannot be reached |
+| `GET /clients`, `PUT /clients/:domain` | every sender domain seen, full-outer-joined to `core.clients`, with its tier, kind, email count and mismatch count, and `known: false` for one nobody has ranked. The `PUT` upserts `{ name?, tier?, kind? }`, writes the `client:priority` hash after Postgres, and changes no category: `kind` is a label a person sets and nothing in the pipeline reads it |
 | `POST /runs` | start a run `{ source, ratePerSecond, limit?, emailIds?, subset?: dev \| holdout, promptSet?: { step: vN }, models?: { step: alias } }`. `subset` reads the id lists in `backend/eval/` (ids only). 400 for an unknown prompt version or a model that is not a proxy alias, before anything is queued |
 | `GET /runs`, `GET /runs/:id` | list, detail with stage counts, `finishedEmails` (done, failed and review), `processingDone`, `elapsedMs` (start to the last email finishing, or to now), queue depth, `promptSet`, `llm` usage with `verifierShare`, `review: { open, byReason }`, `outcomes: { ok, mismatch, byField }` over the compared pairs, score (`lastSubmission.scores` carries the scorer's own `weights`, so a page never assumes them). The list also carries `concurrency: { classify, llm }` from the env. `queues` is `null` when Redis cannot be reached; the rest comes from Postgres and is still served |
 | `POST /runs/:id/pause`, `/resume`, `/cancel` | control the replay |
@@ -858,7 +888,10 @@ it; client components never hold the secret. Polling uses SWR with `refreshInter
 - `GET /queues` and `run:{id}:counters` feed the dashboard; `docker compose logs -f worker`
   for the live view.
 - `/health` returns per-dependency status and the worker heartbeat (worker writes
-  `worker:heartbeat` to Redis every 10 s; api reports stale after 60 s).
+  `worker:heartbeat` to Redis every 10 s; api reports stale after 60 s). The TTL is six beats,
+  not one: a worker that misses a cycle under load is still working, and auto-deploy reads this.
+- The semaphore logs its peak whenever it rises (`model slots in flight`), which is how many
+  model calls were ever in flight at once against the cap.
 - Proxy spend by project at `http://llm-proxy:4000/admin/usage` inside the stack
   (`docker compose exec llm-proxy curl -s 127.0.0.1:4000/admin/usage`); set `X-Project:
   retina-worker` and `retina-chat` headers so it is split.
@@ -885,5 +918,7 @@ it; client components never hold the secret. Polling uses SWR with `refreshInter
 3. What the plain `subscription` alias maps to, and per-minute limits on the subscription.
 4. Averis container serves attachments correctly from inside the compose network.
 5. `tesseract` with `chi_sim` installed in the doc-extract image; OCR quality on the 5 scans.
-6. `job.changePriority` behaves as expected on the installed BullMQ version.
+6. `job.changePriority` behaves as expected on the installed BullMQ version. **Answered in
+   phase 9: it works on 6.3.6, and it updates `job.priority` while leaving `job.opts.priority`
+   at whatever the job was added with.**
 7. Disk headroom on the box for MinIO plus page renders (estimate under 1 GB for 520 emails).

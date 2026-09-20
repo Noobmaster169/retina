@@ -6,6 +6,7 @@ import { closePool, getPool } from "../../src/db";
 import { MemorySource } from "../../src/ingest/__fakes__/memory.source";
 import { type IngestDeps, ingestEmail } from "../../src/ingest/ingest-email";
 import { attachments, emailRuns, emails, runs } from "../../src/ontology/repositories";
+import { MemoryPriorityCache } from "../../src/queues/__fakes__/memory.priority-cache";
 import { RecordingAdder } from "../../src/queues/__fakes__/recording.adder";
 import type { ClassifyJob } from "../../src/queues/names";
 import { MemoryStore } from "../../src/storage/__fakes__/memory.store";
@@ -30,8 +31,10 @@ function fixture() {
   };
   const store = new MemoryStore();
   const classify = new RecordingAdder<ClassifyJob>();
-  const deps: IngestDeps = { pool: getPool(), source: new MemorySource([record], files), store, classify };
-  return { emailId, files, si, deps, store, classify };
+  // vitalsolutions.sg at tier 1, so the test can see the tier reach the job.
+  const priority = new MemoryPriorityCache({ "vitalsolutions.sg": 1 });
+  const deps: IngestDeps = { pool: getPool(), source: new MemorySource([record], files), store, classify, priority };
+  return { emailId, files, si, deps, store, classify, priority };
 }
 
 async function newRun(): Promise<string> {
@@ -63,13 +66,27 @@ describe("ingestEmail", () => {
     expect(storedSi.bytes).toBe(original.length);
     expect(await store.get(storedSi.objectKey)).toEqual(original);
 
+    // tier 1, and 138 MT in the subject: 1 * 200 - 13. The row and the job
+    // carry the same number, which is what lets a rerun keep it.
     expect(classify.added).toEqual([
       {
         name: "classify-email",
         data: { runId, emailId },
-        options: expect.objectContaining({ jobId: `${runId}__${emailId}`, priority: 600, attempts: 3 }),
+        options: expect.objectContaining({ jobId: `${runId}__${emailId}`, priority: 187, attempts: 3 }),
       },
     ]);
+    expect(await emailRuns.priorityOf(deps.pool, runId, emailId)).toBe(187);
+  });
+
+  it("queues an email from an unranked sender at the default tier rather than refusing it", async () => {
+    const { emailId, deps, classify, priority } = fixture();
+    priority.failWith = new Error("redis is reconnecting");
+    const runId = await newRun();
+
+    await ingestEmail(deps, runId, emailId);
+
+    // 3 * 200 - 13: the sender's tier was unreadable, the tonnage still counts.
+    expect(classify.added[0].options).toMatchObject({ priority: 587 });
   });
 
   it("is idempotent: a second call adds no rows, no objects and no job", async () => {

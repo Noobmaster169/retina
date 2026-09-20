@@ -4,7 +4,7 @@ import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 
 import { Icon, Mark } from "@/components/ui/icons";
-import { DEPENDENCIES, DEPENDENCY_LABELS, type HealthReport } from "@/lib/api/queues-schemas";
+import { checkDetail, DEPENDENCIES, DEPENDENCY_LABELS, type HealthReport } from "@/lib/api/queues-schemas";
 import type { RunSummary } from "@/lib/api/runs-schemas";
 import { panel, quick, spring } from "@/lib/motion";
 
@@ -159,14 +159,19 @@ function Dependencies({ health }: { health: HealthReport | null }) {
           <span className="text-caption text-ink-tertiary">Reading.</span>
         ) : (
           DEPENDENCIES.map((key) => {
-            const down = health.checks[key] === "down";
+            const down = health.checks[key].status === "down";
+            const detail = checkDetail(health, key);
             return (
               <span
                 key={key}
                 className={`inline-flex h-[22px] items-center rounded-sm px-2 font-mono text-mono-xs transition-colors duration-150 ${
                   down ? "bg-fault-tint text-fault" : "bg-sunken text-ink-secondary"
                 }`}
-                title={down ? `${DEPENDENCY_LABELS[key]} is not answering` : `${DEPENDENCY_LABELS[key]} is up`}
+                title={
+                  down
+                    ? `${DEPENDENCY_LABELS[key]} is not answering`
+                    : [`${DEPENDENCY_LABELS[key]} is up`, detail].filter(Boolean).join(", ")
+                }
               >
                 {DEPENDENCY_LABELS[key]}
               </span>

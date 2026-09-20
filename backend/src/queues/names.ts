@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { jobId } from "../lib/ids";
 
-export const QUEUES = { ingest: "ingest", classify: "classify", compare: "compare" } as const;
+export const QUEUES = { ingest: "ingest", classify: "classify", compare: "compare", scheduler: "scheduler" } as const;
 
 export const JOB_NAMES = {
   ingest: "ingest-run",
@@ -34,7 +34,12 @@ export type ClassifyJob = z.infer<typeof ClassifyJob>;
 export const CompareJob = ClassifyJob;
 export type CompareJob = z.infer<typeof CompareJob>;
 
-/** Every email until phase 9 replaces the constant with client tier and tonnage. */
+/**
+ * What a job is worth when nothing said. Every email job is added with a real
+ * priority from queues/priority.ts; this is what the classify processor
+ * forwards to compare for a job added before that existed, or by a test that
+ * did not care. It is deliberately the same number an unranked sender gets.
+ */
 export const DEFAULT_PRIORITY = 600;
 
 const RETRY: Pick<JobsOptions, "attempts" | "backoff" | "removeOnComplete" | "removeOnFail"> = {

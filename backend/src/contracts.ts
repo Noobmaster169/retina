@@ -4,6 +4,8 @@
  */
 import { z } from "zod";
 
+import { QueueCounts } from "./contracts.queues";
+
 import { Stage } from "./contracts.enums";
 import { RunOutcomes } from "./contracts.extraction";
 import { RunReview } from "./contracts.review";
@@ -66,9 +68,6 @@ export const CreateRunBody = z
   })
   .refine((body) => !(body.subset && body.emailIds), { message: "name either emailIds or a subset, not both" });
 export type CreateRunBody = z.infer<typeof CreateRunBody>;
-
-export const QueueCounts = z.object({ waiting: z.number(), active: z.number(), failed: z.number() });
-export type QueueCounts = z.infer<typeof QueueCounts>;
 
 export const LlmUsage = z.object({
   calls: z.number(),
@@ -141,22 +140,9 @@ export type Concurrency = z.infer<typeof Concurrency>;
 export const RunList = z.object({ runs: z.array(RunSummary), concurrency: Concurrency });
 export type RunList = z.infer<typeof RunList>;
 
-export const CheckStatus = z.enum(["up", "down"]);
-export type CheckStatus = z.infer<typeof CheckStatus>;
-
-export const HealthReport = z.object({
-  status: z.enum(["ok", "degraded"]),
-  checks: z.object({
-    postgres: CheckStatus,
-    redis: CheckStatus,
-    minio: CheckStatus,
-    inbox: CheckStatus,
-    docExtract: CheckStatus,
-  }),
-});
-export type HealthReport = z.infer<typeof HealthReport>;
-
 export * from "./contracts.actions";
+export * from "./contracts.health";
+export * from "./contracts.clients";
 export * from "./contracts.emails";
 export * from "./contracts.enums";
 export * from "./contracts.extraction";

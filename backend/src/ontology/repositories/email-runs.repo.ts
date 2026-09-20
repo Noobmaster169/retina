@@ -1,6 +1,5 @@
-import { type Category, type ComparisonStatus, type ReviewReason, Stage } from "../../contracts";
+import { Stage } from "../../contracts";
 import type { Queryable } from "../../db";
-import { DEFECT_FIELDS_SQL } from "./field-diffs.repo";
 
 export interface NewEmailRun {
   runId: string;
@@ -136,49 +135,8 @@ export async function idOf(db: Queryable, runId: string, emailId: string): Promi
   return rows[0]?.id ?? null;
 }
 
-/** Everything the scorer's payload is built from, one row per email of the run. */
-export interface SubmissionSource {
-  emailId: string;
-  stage: Stage;
-  finalCategory: Category | null;
-  humanCategory: Category | null;
-  status: ComparisonStatus | null;
-  reviewReason: ReviewReason | null;
-  /** The fields the judge found different, in field-name order. Validated against the enum on the way out. */
-  defectFields: string[];
-}
-
-export async function listForSubmission(db: Queryable, runId: string): Promise<SubmissionSource[]> {
-  const { rows } = await db.query<{
-    email_id: string;
-    stage: Stage;
-    final_category: Category | null;
-    human_category: Category | null;
-    status: ComparisonStatus | null;
-    review_reason: ReviewReason | null;
-    defect_fields: string[];
-  }>(
-    `select er.email_id, er.stage, c.final_category, c.human_category, cmp.status, cmp.review_reason,
-            ${DEFECT_FIELDS_SQL} as defect_fields
-       from core.email_runs er
-       left join core.classifications c on c.email_run_id = er.id
-       left join core.comparisons cmp on cmp.email_run_id = er.id
-      where er.run_id = $1
-      order by er.email_id`,
-    [runId],
-  );
-  return rows.map((row) => ({
-    emailId: row.email_id,
-    stage: row.stage,
-    finalCategory: row.final_category,
-    humanCategory: row.human_category,
-    status: row.status,
-    reviewReason: row.review_reason,
-    defectFields: row.defect_fields,
-  }));
-}
-
 export { handoff, inFlight, lastFinishedForRuns, stateOf } from "./email-runs.trace";
+export { listForSubmission, type SubmissionSource } from "./email-runs.submission";
 
 /**
  * A person has sent this email back through the pipeline. The count goes into
@@ -197,4 +155,17 @@ export async function incrementRerun(db: Queryable, emailRunId: string): Promise
 export async function rerunCount(db: Queryable, emailRunId: string): Promise<number> {
   const { rows } = await db.query<{ rerun_count: number }>("select rerun_count from core.email_runs where id = $1", [emailRunId]);
   return rows[0]?.rerun_count ?? 0;
+}
+
+/**
+ * What this email was queued at. Null when the run has never seen it. Read
+ * back rather than recomputed wherever a job is added again, so a rerun keeps
+ * the tier the email already had instead of joining a burst at a default.
+ */
+export async function priorityOf(db: Queryable, runId: string, emailId: string): Promise<number | null> {
+  const { rows } = await db.query<{ priority: number }>(
+    "select priority from core.email_runs where run_id = $1 and email_id = $2",
+    [runId, emailId],
+  );
+  return rows[0]?.priority ?? null;
 }

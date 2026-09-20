@@ -6,7 +6,9 @@ import { AverisSource } from "./ingest";
 import { childLogger } from "./lib/logger";
 import { redisLiveCalls } from "./live";
 import { closeRedis, getRedis } from "./queues/connection";
+import { redisPriorityCache } from "./queues/priority-cache";
 import { closeQueues, getQueues } from "./queues/queues";
+import { startSchedulers } from "./queues/schedulers";
 import { startWorkers } from "./queues/workers";
 import { createMinioStore } from "./storage";
 
@@ -17,9 +19,12 @@ await store.ensureBucket();
 
 const queues = getQueues();
 const live = redisLiveCalls();
+const redis = getRedis();
+const pool = getPool();
+const priority = redisPriorityCache(redis);
 const workers = startWorkers(
   {
-    pool: getPool(),
+    pool,
     source: new AverisSource(config.EMAIL_SERVER_URL),
     store,
     llm: proxyLlmClient({ maxConcurrency: config.LLM_MAX_CONCURRENCY }),
@@ -27,9 +32,14 @@ const workers = startWorkers(
     live,
     classify: queues.classify,
     compare: queues.compare,
+    priority,
   },
-  getRedis(),
+  redis,
 );
+// The worker owns the clock, not the api: the api runs behind a load balancer
+// in principle and one of two replicas writing the heartbeat would say the
+// worker is alive when it is not.
+const schedulers = await startSchedulers({ pool, redis, priority, aging: [queues.classify, queues.compare] });
 log.info(
   { classify: config.CLASSIFY_CONCURRENCY, compare: config.COMPARE_CONCURRENCY, llm: config.LLM_MAX_CONCURRENCY },
   "worker started",
@@ -43,6 +53,7 @@ async function shutdown(signal: string): Promise<void> {
   log.info({ signal }, "worker stopping");
   try {
     await workers.stop();
+    await schedulers.stop();
     await live.close();
     await closeQueues();
     await closeRedis();

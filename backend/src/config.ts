@@ -55,10 +55,18 @@ const Env = z.object({
   LLM_MODEL_EXTRACT: optionalString,
   LLM_MODEL_EXTRACT_VERIFY: optionalString,
   LLM_MODEL_FIELD_JUDGE: optionalString,
-  // How many model calls the worker has in flight at once, across every queue. Unset, it follows
-  // CLASSIFY_CONCURRENCY, so one number sets how parallel a run is. Keep both at or under what the
-  // proxy serves at once (max_concurrency in proxy/proxy.yaml): more only wait inside the proxy
-  // with their request timeout already running.
+  // How many model calls the worker has in flight at once, across every queue.
+  //
+  // Unset, it is CLASSIFY_CONCURRENCY plus COMPARE_CONCURRENCY, because that
+  // is how many jobs BullMQ actually runs at once and all of them contend for
+  // these slots. It used to follow CLASSIFY_CONCURRENCY alone, which meant
+  // eight classify jobs could hold every slot while four compare jobs sat
+  // blocked in the semaphore: on the run page, sorting unaffected and checking
+  // paused, with nothing anywhere saying why.
+  //
+  // Keep it at or under what the proxy serves at once (max_concurrency in
+  // proxy/proxy.yaml): more only wait inside the proxy with their request
+  // timeout already running.
   LLM_MAX_CONCURRENCY: z.coerce.number().int().positive().optional(),
   // How much of a body the classifier reads. A cost guard, not a judgement.
   CLASSIFY_BODY_CHARS: z.coerce.number().int().positive().default(4000),
@@ -69,11 +77,18 @@ const Env = z.object({
   // How much of a document the extractor and its verifier read. The same guard; no generated document comes near it.
   EXTRACT_TEXT_CHARS: z.coerce.number().int().positive().default(12_000),
 
-  // The proxy serves eight `claude -p` calls at a time (max_concurrency in proxy/proxy.yaml). More
-  // workers than that only queue inside the proxy with their request timeout already running.
+  // The proxy serves twelve `claude -p` calls at a time (max_concurrency in proxy/proxy.yaml),
+  // which is these two added up, because that is how many jobs run at once. More workers than
+  // that only queue inside the proxy with their request timeout already running.
   CLASSIFY_CONCURRENCY: z.coerce.number().int().positive().default(8),
   COMPARE_CONCURRENCY: z.coerce.number().int().positive().default(4),
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"]).default("info"),
+
+  // The commit this image was built from, passed as a build arg by the
+  // Dockerfile. "dev" outside a built image, which is exactly what a local
+  // process is. /health reports it so a deploy can be told apart from a
+  // rollback without reading the box's logs.
+  GIT_SHA: z.string().min(1).default("dev"),
 }).superRefine((env, ctx) => {
   // The proxy is a service of this stack now. An .env from before still names
   // another API's /ai/chat, which this backend no longer speaks to: every call
@@ -88,7 +103,10 @@ const Env = z.object({
     });
   }
 })
-  .transform((env) => ({ ...env, LLM_MAX_CONCURRENCY: env.LLM_MAX_CONCURRENCY ?? env.CLASSIFY_CONCURRENCY }));
+  .transform((env) => ({
+    ...env,
+    LLM_MAX_CONCURRENCY: env.LLM_MAX_CONCURRENCY ?? env.CLASSIFY_CONCURRENCY + env.COMPARE_CONCURRENCY,
+  }));
 
 export type Config = z.infer<typeof Env>;
 

@@ -8,9 +8,12 @@ import { RetryableError, UpstreamError } from "./lib/errors";
 import { childLogger } from "./lib/logger";
 import type { Scorer } from "./scorer/scorer";
 import type { ObjectStore } from "./storage";
+import type { PriorityCache } from "./queues/priority-cache";
 import type { RunQueues } from "./queues/run-queues";
 import { aiRouter } from "./routes/ai.routes";
+import { clientsRouter } from "./routes/clients.routes";
 import { promptsRouter } from "./routes/prompts.routes";
+import { requestLog } from "./routes/request-log";
 import { emailsRouter } from "./routes/emails.routes";
 import { evalRouter } from "./routes/eval.routes";
 import { filesRouter } from "./routes/files.routes";
@@ -31,27 +34,40 @@ export interface AppDeps {
   store: ObjectStore | null;
   scorer: Scorer;
   health: () => Promise<HealthReport>;
+  /** Where a tier change is written through, so the next email queued reads it. */
+  priority: PriorityCache;
   /** Where in-flight model calls are kept, for the run page. Absent, nothing shows as live. */
   live?: LiveCalls;
 }
 
 export function createApp(deps: AppDeps): express.Express {
   const app = express();
+  // Before the body parser, so a request that fails to parse is still logged.
+  app.use(requestLog());
   app.use(express.json({ limit: "1mb" }));
 
-  // Unauthenticated: the compose healthcheck has no key, and it reveals
-  // nothing but liveness. Degraded is still 200, so a Redis or MinIO outage
-  // does not make auto-deploy roll back a good image. Only a database the api
-  // cannot reach is a 503, as it was before the other checks existed.
+  // Unauthenticated, because the compose healthcheck has no key and
+  // auto-deploy.sh reads it from the box before anything is signed in.
+  //
+  // It is not nothing, though: the report carries the build, the queue depths
+  // and each dependency's own detail, all readable by anyone who reaches the
+  // ngrok URL. That is operational shape, not data, and it is the trade the
+  // deploy gate needs. Nothing here may ever carry an email, a document or a
+  // key.
+  //
+  // Degraded is still 200, so a MinIO restart, a cold doc-extract or a worker
+  // one heartbeat late does not make auto-deploy roll back a good image. Only
+  // postgres or redis, which the api cannot serve a run without, are a 503.
   app.get("/health", async (_req, res) => {
     const report = await deps.health();
-    res.status(report.checks.postgres === "up" ? 200 : 503).json(report);
+    res.status(report.status === "down" ? 503 : 200).json(report);
   });
 
   app.use(requireCaller);
 
   app.use("/ai", aiRouter());
   app.use("/prompts", promptsRouter(deps));
+  app.use("/clients", clientsRouter({ pool: deps.pool, priority: deps.priority }));
   app.use("/emails", emailsRouter());
   app.use("/runs", runsRouter(deps));
   app.use("/runs", runQueuesRouter(deps));

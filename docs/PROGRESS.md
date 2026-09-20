@@ -1,16 +1,196 @@
 # Progress
 
-Current phase: 9, not started. **Phase 8 is built on `phase-08-review-inbox` and its exit checklist
-is green.** Phase 7 is merged to `main`; its two `[~]` items are still under "Deferred" below.
+Current phase: 9, built on `phase-09-priority-and-ops`. **Phase 8 is merged to `main`.** Phase 7's
+two `[~]` items are still under "Deferred" below.
 
-**Start at `docs/phases/phase-09-handover.md`.** Phase 8's own sections are below; the shell
-contract, the design decisions settled with the user and the traps that cost real time are still in
-`docs/phases/phase-08-handover.md`, and all of it still applies.
+**Start at `docs/phases/phase-10-handover.md`.** Phase 9's section is below; the shell contract and
+the traps in `docs/phases/phase-08-handover.md` sections 6 and 10 all still apply.
 
 Phase 6 is built and tested; left for the user there: the holdout run and the full 520 run that
 decide its exit checklist's score lines (`pnpm eval:score --run <id> --holdout`), and phase 5's
 open items (the box check of doc-extract, the classify `v5` holdout). Phase 4's open items (the
 few-shot `v4` holdout, the model comparison) are still the user's.
+
+## Phase 9
+
+The queues behave like production queues: a client's tier decides who is served first, nothing
+starves, the model cap covers every queue that contends for it, the clock lives in the worker, and
+`/health` says enough that a person and a deploy script can both act on it.
+
+**Built.**
+
+- Migration `009_clients_seed.sql`: the nine domains the organisers' kit names as parties to a
+  shipment, every one at the default tier. Additive and idempotent.
+- `src/queues/priority.ts`, pure: `tier * 200 - min(floor(tonnage / 10), 99)`. The bonus caps below
+  a tier's width so it can never cross one, and the result is never 0, which BullMQ reads as "no
+  priority" and serves **ahead** of everything rather than behind it.
+- `src/queues/priority-cache.ts`: the `client:priority` hash behind one interface with a memory
+  fake. A read that fails answers null and the caller takes the default tier, because an email that
+  arrives while Redis is restarting still has to be queued.
+- `src/queues/aging.ts`: anything waiting over five minutes gains a tier of urgency, four passes
+  bringing the least urgent email to the front. A person's rerun is not exempt: aging only
+  promotes, so there is nothing to exempt it from.
+- `src/queues/schedulers.ts`: a `scheduler` queue with three repeatable jobs (the cache refresh,
+  the aging pass, the heartbeat), registered by key so the worker restarting every three minutes
+  under auto-deploy re-registers three rather than accumulating a fourth. The first heartbeat and
+  the first refresh happen at boot, before registration.
+- `src/queues/heartbeat.ts`: `worker:heartbeat`, written every 10 s with a 60 s TTL. Six beats, not
+  one: a worker that misses a cycle under load is still working.
+- `src/health.ts` and `src/health-probes.ts`: every check is an object carrying its own latency and
+  whatever that dependency says about itself, all of it free from the dependency's own health
+  payload. `llmProxy` and `worker` are new. `down` and 503 only for postgres or redis.
+- `GET /clients`, `PUT /clients/:domain`, and the `/clients` page with its rail entry and the
+  write-through to the cache.
+- `scripts/load-test.ts`: a burst, its elapsed time, its peak queue depth, the peak model calls in
+  flight swept out of `llm_calls`, and any 429s.
+- The logging audit: a model call names its `promptVersion`, a failed job names its `jobId` and
+  `attempt`, a queue pause names the job that caused it, and `routes/request-log.ts` gives every
+  request an id the response echoes. Successful requests log at `debug` on purpose: every open tab
+  polls three routes, and at `info` that would bury every decision the worker makes.
+
+**The finding phase 7 wrote down and phase 8 left alone.** `LLM_MAX_CONCURRENCY` defaulted to
+`CLASSIFY_CONCURRENCY` (8) alone while BullMQ runs 8 classify plus 4 compare jobs, all contending
+for those 8 slots, so eight classify jobs could hold every slot while four compare jobs sat blocked
+in the semaphore. It is their sum now, and `proxy.yaml` serves 12 to match. Both sit well under the
+measured ceilings: `claudecli` about 0.5 requests a second, ngrok falling over above roughly 64
+sockets.
+
+**New contracts**, mirrored in `frontend/lib/api/` and in `03-infra-deep.md` sections 4 and 10:
+
+- `contracts.clients.ts`: `ClientRow` (with `known`, false for a sender nobody has ranked),
+  `ClientList`, `ClientUpdate`, and `DEFAULT_TIER`.
+- `HealthReport` is a different shape: `status` gains `down`, every check is an object, and the
+  report carries `version` and `queues`.
+
+**Four things in the phase 9 spec were wrong; `phase-09-priority-and-ops.md` is corrected.**
+
+- The migration number. Phase 8 took `008`; `db/migrate.mjs` applies by filename, so a duplicate is
+  a migration that silently never runs.
+- `expire-counters` expires `run:{id}:counters`, a key that was never built: phase 7 draws its
+  counters from Postgres and `live:call:*` carries its own TTL. Not built, and `03-infra-deep.md`
+  section 4.1 is corrected.
+- The health check named `averis`. The built check is `inbox`, and the rail, its labels and
+  `DEPENDENCIES` all read that name. `CLAUDE.md` rule 5 gives the repo the last word.
+- "Insert every sender domain seen in the dataset", against its own list of nine. Fifteen appear;
+  the other six are the phishing senders, and seeding those would be a sender list fitted to one
+  seed of one dataset. `GET /clients` lists every sender actually seen instead, so all fifteen are
+  on the page with the six marked as nobody's decision.
+
+A fifth, smaller: the spec's test table says tier 1 and 500 MT is 151. It is 150.
+
+**Traps this phase added.**
+
+- **`changePriority` updates `job.priority` and leaves `job.opts.priority` alone.** The options
+  hold what the job was added with, so an aging pass that read them recomputed the same first step
+  forever: a job went 1000 to 900 and stayed there however long it waited.
+- **Two untyped parameters inside one `coalesce` are both inferred as text**, which Postgres then
+  refuses to write into a smallint. The upsert casts every parameter.
+- **Changing the health shape reaches the deploy scripts.** `retina_health_ready` in
+  `deploy/lib/stack.sh` gated on the substring `"postgres":"up"`, which a nested check does not
+  contain: left alone it would have failed every deploy's health check and rolled back a working
+  image. It accepts both shapes now, because a rollback puts the older image back and has to pass
+  its own gate. `deploy/sim/sim.sh` asserted the same substrings and is updated with it.
+- **A dev box accumulates workers.** Four generations of `pnpm dev:worker` from earlier sessions
+  were all consuming the same Redis queues, one of them pointed at a doc-extract base URL ending
+  `/nope`. A burst run came back 36 failed out of 52 with `doc-extract returned 404`, which is not
+  a bug in anything in this repository. Before reading a run, check there is one worker.
+- **A test against the real `scheduler` queue wipes a running worker's registrations.**
+  `startSchedulers` takes a queue name so the test has its own.
+
+**A standards review of the branch found two real bugs in phase 9's own new code**, both of them
+the same trap it had already written down.
+
+- **The aged priority was thrown away at the handoff.** `workers.ts` read `job.opts.priority` to
+  pass to the compare job, and the options hold what a job was added with. A classify job promoted
+  from 1000 to 200 handed its compare job 1000, so the compare leg earned every promotion again
+  from scratch. `aging.ts` carries a comment about exactly this, written two hours earlier.
+- **Aging promoted on every pass, not once per window.** The filter was
+  `now - job.timestamp > AGE_AFTER_MS`, and BullMQ never moves `job.timestamp`, so once a job
+  crossed five minutes every minute's pass promoted it again: a step a minute instead of a step per
+  five, the front reached nine minutes later, and a tier-5 email outranking every tier-1 one that
+  arrived after it. The tier would have stopped meaning what `/clients` says it means, quietly.
+  A pass now computes the target from elapsed time rather than subtracting from the current value,
+  which is idempotent and survives a restart. This is why the burst showed aging dominating tier so
+  completely; the handover's section 6 is written against the corrected behaviour.
+
+The review also found a health test that dialled the real llm-proxy, which `CLAUDE.md` bans
+outright, and asserted `emails === 520`, keying a unit test to one seed of one dataset. The three
+HTTP probes sit behind a `Probes` seam now with a fake beside them, which is what the rule was for.
+Eight smaller findings were fixed with them: a `multi().exec()` whose per-command errors were never
+inspected and logged a refresh that had not happened, a `PUT /clients/:domain` that answered
+fabricated counts, a cache write that failed a request whose row had already committed, unguarded
+boot work that could end the worker with jobs holding locks, a scheduler test that aged the real
+queues, and the `/health` comment that still claimed it revealed nothing but liveness.
+
+**Settled while building.**
+
+- **A rerun takes the priority the email already has**, read back from `email_runs.priority` rather
+  than recomputed. A correction on a tier-1 client's email queueing behind a burst is the one thing
+  the person who just fixed it would never expect.
+- **Aging does not exempt a rerun.** The phase 8 handover worried one would "age out"; that reads
+  the sign backwards. BullMQ serves the lowest number first, so aging promotes.
+- **`/clients` is global, not run-scoped.** Every other destination is `/runs/{id}/...` and the
+  shell contract forbids a second nav pattern, but a tier is a standing decision about a sender and
+  not a property of one replay. `Destination.global` is the one field that allows it.
+- **`kind = 'spam'` is a label and nothing reads it.** It is offered on the page because a person
+  may want to say it. No category is decided by it, by a sender list, or by anything but the model.
+
+**Verified live**, on a clean stack with one api and one worker:
+
+- `/health` carries all seven checks with their own detail: the inbox's 520 emails and
+  `scoringAvailable`, doc-extract's tesseract 5.5.0, the proxy's alias count, the worker's last
+  beat, the queue depths and the build.
+- `/clients` lists all fifteen senders with their counts, the two tier-1 domains at the top and the
+  six nobody ranked saying so. A tier and a kind changed from the page raise their toast, write
+  Postgres, and appear in the `client:priority` hash in the same second.
+
+**Exit checklist.**
+
+- [x] **Tier-1 emails complete before tier-3 emails.** A burst of 52 comparison emails, with
+      `fujitogrp.com` and `algurg.ae` at tier 1 and their sixteen emails deliberately ingested
+      **last**: all sixteen finished by place 20 of 52, average place 12.5 against tier 3's 32.7,
+      and twelve of the first sixteen to finish were theirs. The four tier-3 emails ahead of them
+      were already in flight before the tier-1 ones were ingested. Stored priorities were 170 to
+      200 for tier 1 and 578 to 600 for tier 3, tonnage breaking ties inside each tier.
+- [x] **A job waiting over five minutes has its priority raised by the aging job.** Watched live on
+      the compare queue: `email_064` went 190, then 90, then 1 across three passes, and the nine
+      jobs that had waited thirteen minutes were all at 1. The worker logs
+      `promoted a job that had waited` per job and `aged waiting jobs` per pass.
+- [x] **In-flight LLM calls never exceed `LLM_MAX_CONCURRENCY`.** Two readings, and the second does
+      not trust the first: the semaphore logs its own peak whenever it rises, and `load-test.ts`
+      sweeps the start and end of every `llm_calls` row to find the true overlap, because a
+      semaphore cannot report a violation of its own cap.
+- [x] **`/health` turns `degraded` within 60 s of stopping the worker, and `down` (503) when
+      Postgres is stopped.** Both watched. The worker case stayed HTTP 200 throughout, which is the
+      point: auto-deploy rolls back on a 503 and a worker restarting is not an outage. The Postgres
+      case first found that **the api died instead of answering**, which is written up above.
+- [x] **A tier changed through `/clients` reorders waiting jobs after the next refresh, and changes
+      no category.** The write reaches the hash immediately rather than waiting for the hourly
+      refresh, and `routes/clients.routes.test.ts` holds that a tier change writes no category and
+      that the contract carries none.
+- [x] **Both load-test durations recorded; zero 429s at either cap.** Table below.
+
+**Load test.** `pnpm load-test --limit 40`, a burst at rate 0, on the local stack:
+
+| `LLM_MAX_CONCURRENCY` | 40 emails | First 30 emails | Peak queue depth | Peak calls in flight | Model calls | Failed | 429s |
+|---|---|---|---|---|---|---|---|
+| 12 (the default: classify 8 plus compare 4) | 172 s | 77 s | 40 | 12 | 101 | 0 | 0 |
+| 2 | stopped at 34 of 40 | 253 s | 40 | 2 | 87 | 0 | 0 |
+
+The comparable column is the first 30, because the second run was stopped once it had shown what
+it was there to show. Throttling the cap from 12 to 2 slows the same work by 3.3x and fails
+nothing, which is the graceful-slowdown line. **Peak calls in flight of exactly 12 against a cap
+of 12 is the strongest form of the concurrency line**: the semaphore saturated and never went over,
+measured by sweeping `llm_calls` rather than by asking the semaphore about itself.
+
+**Deferred.**
+
+- **The full 520-email load test.** The user's, like phase 6's holdout: at the `claudecli`
+  provider's measured half a request a second, 520 emails is hours, not minutes, and every call
+  spends a real token budget. `pnpm load-test` with no `--limit` is the command.
+- `GET /review/stats` is still drawn nowhere. Unchanged from phase 8.
+- The chat's proposed action card and the action bar on an email that was never escalated. Both
+  still need a contract, and phase 10 is the phase that has to settle the first one.
 
 ## Phase 8
 
@@ -348,18 +528,19 @@ for a moment left the loader frozen at the left edge.
   reason. The documents pane buys its width back inside itself instead, from the field column and
   the line-number gutter.
 
-**A real finding, for phase 9 rather than this one.** BullMQ runs `CLASSIFY_CONCURRENCY` (8) plus
-`COMPARE_CONCURRENCY` (4) jobs at once, and all twelve contend for the same eight model slots that
-`llmSlots(LLM_MAX_CONCURRENCY)` hands out, because `LLM_MAX_CONCURRENCY` defaults to
-`CLASSIFY_CONCURRENCY` alone. Eight classify jobs can hold every slot, so four compare jobs sit
-blocked in the semaphore. That is exactly the shape of what the run page keeps showing: sorting
-unaffected, checking held. Either the two concurrencies should be budgeted against one number, or
-`LLM_MAX_CONCURRENCY` should be their sum and `proxy.yaml`'s `max_concurrency` raised with it.
+**A real finding, for phase 9 rather than this one. Fixed in phase 9.** BullMQ runs
+`CLASSIFY_CONCURRENCY` (8) plus `COMPARE_CONCURRENCY` (4) jobs at once, and all twelve contended
+for the same eight model slots that `llmSlots(LLM_MAX_CONCURRENCY)` hands out, because
+`LLM_MAX_CONCURRENCY` defaulted to `CLASSIFY_CONCURRENCY` alone. Eight classify jobs could hold
+every slot, so four compare jobs sat blocked in the semaphore, which is exactly the shape of what
+the run page kept showing: sorting unaffected, checking held. It is their sum now, and
+`proxy.yaml`'s `max_concurrency` is 12 to match.
 
-**Known, and left for phase 9.** A run whose ingest has finished reads `completed` while its
-queues are still full, and the API refuses both pause and cancel in that state, so the run page
+**Known, and still open after phase 9.** A run whose ingest has finished reads `completed` while
+its queues are still full, and the API refuses both pause and cancel in that state, so the run page
 offers neither. That is the API's rule and the page is drawing it honestly; stopping a run that is
-still working wants a backend change, not a button.
+still working wants a backend change, not a button. Phase 9 did not touch it: it is a rule about
+run state, not about how the queues are ordered.
 
 **Fixed under phase 7, outside its scope.** A run whose ingest finished read as `Completed` while
 its queues were still full: `status` is the ingest's and `processingDone` is the pipeline's. The

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { QueueCounts } from "./runs-schemas";
+
 /**
  * Mirrors backend/src/contracts.queues.ts by hand. A drift fails here, naming
  * the field, instead of reaching the run page as undefined.
@@ -52,20 +54,37 @@ export type RunQueuesView = z.infer<typeof RunQueuesView>;
 export const CheckStatus = z.enum(["up", "down"]);
 export type CheckStatus = z.infer<typeof CheckStatus>;
 
+/**
+ * A check carries its own detail, and the rail shows it on hover: which
+ * tesseract read a scan, how many emails the inbox is serving, how many
+ * aliases the proxy has. Every one of those has looked like a healthy system
+ * from the outside at least once.
+ */
+const check = z.object({ status: CheckStatus, latencyMs: z.number().optional() });
+
 export const HealthReport = z.object({
-  status: z.enum(["ok", "degraded"]),
+  status: z.enum(["ok", "degraded", "down"]),
   checks: z.object({
-    postgres: CheckStatus,
-    redis: CheckStatus,
-    minio: CheckStatus,
-    inbox: CheckStatus,
-    docExtract: CheckStatus,
+    postgres: check,
+    redis: check,
+    minio: check,
+    inbox: check.extend({ emails: z.number().optional(), scoringAvailable: z.boolean().optional() }),
+    docExtract: check.extend({ tesseract: z.string().nullable().optional() }),
+    llmProxy: check.extend({ models: z.number().optional() }),
+    /** Not a probe: the mark the worker leaves in Redis every ten seconds. Null when none stands. */
+    worker: check.extend({ heartbeatAt: z.string().nullable() }),
   }),
+  version: z.string(),
+  queues: z.object({ classify: QueueCounts, compare: QueueCounts }).nullable(),
 });
 export type HealthReport = z.infer<typeof HealthReport>;
 
-/** The rail draws these in the organisers' own order, with doc-extract last because it is the one that falls over. */
-export const DEPENDENCIES = ["postgres", "redis", "minio", "inbox", "docExtract"] as const;
+/**
+ * The rail draws these in the order the pipeline needs them, with the two that
+ * fall over last: doc-extract because it is the one that does, and the worker
+ * because it restarts on every deploy and is legitimately absent for a moment.
+ */
+export const DEPENDENCIES = ["postgres", "redis", "minio", "inbox", "llmProxy", "docExtract", "worker"] as const;
 
 /** The label each check takes on screen: the service's own name, not a prettified one. */
 export const DEPENDENCY_LABELS: Record<(typeof DEPENDENCIES)[number], string> = {
@@ -73,5 +92,17 @@ export const DEPENDENCY_LABELS: Record<(typeof DEPENDENCIES)[number], string> = 
   redis: "redis",
   minio: "minio",
   inbox: "inbox",
+  llmProxy: "llm-proxy",
   docExtract: "doc-extract",
+  worker: "worker",
 };
+
+/** What a check says about itself beyond being up, for the chip's title. Empty when it says nothing. */
+export function checkDetail(health: HealthReport, key: (typeof DEPENDENCIES)[number]): string {
+  const one = health.checks[key];
+  if (key === "inbox" && "emails" in one && one.emails !== undefined) return `${one.emails} emails`;
+  if (key === "docExtract" && "tesseract" in one && one.tesseract) return `tesseract ${one.tesseract}`;
+  if (key === "llmProxy" && "models" in one && one.models !== undefined) return `${one.models} models`;
+  if (key === "worker" && "heartbeatAt" in one && one.heartbeatAt) return `last beat ${one.heartbeatAt}`;
+  return "";
+}

@@ -197,7 +197,7 @@ simulate_commit() {
 # touched by the simulator
 ' >> deploy/lib/stack.sh ;;
         broken-health)
-          sed -i 's|check(\"postgres\", () => deps.pool.query(\"select 1\"))|check(\"postgres\", () => Promise.reject(new Error(\"simulated outage\")))|' backend/src/health.ts
+          sed -i 's|check(\"postgres\", async () => void (await deps.pool.query(\"select 1\")))|check(\"postgres\", () => Promise.reject(new Error(\"simulated outage\")))|' backend/src/health.ts
           grep -q 'simulated outage' backend/src/health.ts ;;
       esac
       git commit --quiet -am '$message'
@@ -218,7 +218,8 @@ cmd_test() {
   check "the api reaches the llm-proxy by its service name" sx "cd /home/student/retina && docker compose exec -T api wget -qO- http://llm-proxy:4000/v1/models | grep -q sonnet"
   check "doc-extract answers inside the stack, with tesseract" sx "cd /home/student/retina && docker compose exec -T doc-extract curl -fsS http://127.0.0.1:8000/healthz | grep -q '\"tesseract\":\"5'"
   check "the worker reaches doc-extract by its service name" sx "cd /home/student/retina && docker compose exec -T worker wget -qO- http://doc-extract:8000/healthz | grep -q chi_sim"
-  check "/health reports doc-extract up" health_has '"docExtract":"up"'
+  check "/health reports doc-extract up" health_has '"docExtract":{"status":"up"'
+  check "/health names the commit the image was built from" health_has '"version":"'
 
   say "B. a tick with nothing new"
   mark "B no-op"
@@ -233,7 +234,7 @@ cmd_test() {
   simulate_commit trivial "docs: a line the simulator added" || die "could not make the commit"
   cmd_deploy
   check "deployed and healthy" log_has "DEPLOYED"
-  check "still serving" health_has '"postgres":"up"'
+  check "still serving" health_has '"postgres":{"status":"up"'
 
   say "D. a commit that changes compose.yaml and auto-deploy.sh together"
   mark "D self-sync"
@@ -265,7 +266,7 @@ cmd_test() {
   cmd_deploy && { echo "  FAIL  a broken deploy must exit non-zero"; FAIL=$((FAIL + 1)); }
   check "the health gate refused it" log_has "HEALTH CHECK FAILED"
   check "rolled back to the previous image" log_has "rolling back to"
-  check "the API still serves the old code" health_has '"postgres":"up"'
+  check "the API still serves the old code" health_has '"postgres":{"status":"up"'
 
   say "G. a dirty clone"
   mark "G dirty"

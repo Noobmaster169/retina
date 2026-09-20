@@ -10,7 +10,7 @@ import { TerminalError } from "../lib/errors";
 import { childLogger } from "../lib/logger";
 import type { LiveCalls } from "../live";
 import { runs } from "../ontology/repositories";
-import { isFinalFailure, pausingOnOutage, type QueuePauser } from "./failure-policy";
+import { isFinalFailure, type PausedAt, pausingOnOutage, type QueuePauser } from "./failure-policy";
 import { recordJobFailure } from "./record-failure";
 import { ClassifyJob, CompareJob, DEFAULT_PRIORITY, IngestJob, type JobAdder, QUEUES } from "./names";
 import { processClassify } from "./processors/classify.processor";
@@ -54,6 +54,11 @@ async function noRetryOnTerminal<T>(work: () => Promise<T>): Promise<T> {
     if (error instanceof TerminalError) throw new UnrecoverableError(error.message);
     throw error;
   }
+}
+
+/** Where a pause happened, for the one log line nobody can afford to find unattributed. */
+function at(stage: string, job: Job, data: ClassifyJob): PausedAt {
+  return { stage, jobId: job.id, runId: data.runId, emailId: data.emailId };
 }
 
 type FailedListener = (job: Job | undefined, error: Error) => Promise<void>;
@@ -117,18 +122,28 @@ export function startWorkers(deps: WorkerDeps, connection: Redis): RunningWorker
 
   const classify = new Worker(
     QUEUES.classify,
-    (job) =>
-      noRetryOnTerminal(() =>
-        pausingOnOutage(deps.classify, () =>
-          processClassify(deps, parse(ClassifyJob, job), job.opts.priority ?? DEFAULT_PRIORITY),
+    (job) => {
+      const data = parse(ClassifyJob, job);
+      return noRetryOnTerminal(() =>
+        pausingOnOutage(deps.classify, at("classify", job, data), () =>
+          // `job.priority`, not `job.opts.priority`: the options hold what the
+          // job was added with and the aging pass does not touch them, so
+          // reading them would hand the compare job the priority this one had
+          // before it waited, and the compare leg would earn every promotion
+          // again from scratch.
+          processClassify(deps, data, job.priority ?? job.opts.priority ?? DEFAULT_PRIORITY),
         ),
-      ),
+      );
+    },
     { connection, concurrency: config.CLASSIFY_CONCURRENCY, limiter: NEVER_REACHED_LIMITER, ...EMAIL_LOCK },
   );
 
   const compare = new Worker(
     QUEUES.compare,
-    (job) => noRetryOnTerminal(() => pausingOnOutage(deps.compare, () => processCompare(deps, parse(CompareJob, job)))),
+    (job) => {
+      const data = parse(CompareJob, job);
+      return noRetryOnTerminal(() => pausingOnOutage(deps.compare, at("compare", job, data), () => processCompare(deps, data)));
+    },
     { connection, concurrency: config.COMPARE_CONCURRENCY, limiter: NEVER_REACHED_LIMITER, ...EMAIL_LOCK },
   );
 

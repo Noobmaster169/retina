@@ -12,14 +12,19 @@ import type { IconName } from "@/components/ui/icons";
  *
  * `planned` marks a destination this phase does not build. It renders, it is
  * reachable, and it says what it is waiting for rather than 404ing.
+ *
+ * `global` marks the one kind of destination that is not about a run. A
+ * client's tier is a standing decision about a sender, not a property of one
+ * replay, and scoping it to a run would say it was.
  */
 export interface Destination {
   key: string;
   label: string;
   icon: IconName;
-  /** Appended to `/runs/{id}`. Empty for the run's own overview. */
+  /** Appended to `/runs/{id}`, or taken whole when `global`. Empty for the run's own overview. */
   path: string;
   planned?: string;
+  global?: true;
 }
 
 export const DESTINATIONS: Destination[] = [
@@ -29,14 +34,19 @@ export const DESTINATIONS: Destination[] = [
   { key: "database", label: "Database", icon: "table", path: "/database", planned: "phase 10" },
   { key: "ontology", label: "Ontology", icon: "graph", path: "/ontology", planned: "phase 10" },
   { key: "chat", label: "Ask Retina", icon: "chat", path: "/chat", planned: "phase 10" },
+  { key: "clients", label: "Clients", icon: "client", path: "/clients", global: true },
 ];
 
 /**
  * Where a destination points. Without a run there is nothing to scope to, so
- * every one of them leads to the run list, which is where a run is chosen or
- * made. The rail keeps its shape either way.
+ * every run-scoped one leads to the run list, which is where a run is chosen
+ * or made. The rail keeps its shape either way.
+ *
+ * A global destination is reachable whether or not a run exists, because what
+ * it shows does not belong to one.
  */
 export function hrefFor(destination: Destination, runId: string | null): string {
+  if (destination.global) return destination.path;
   return runId ? `/runs/${runId}${destination.path}` : "/runs";
 }
 

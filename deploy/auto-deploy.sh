@@ -164,7 +164,7 @@ if [[ "$USE_REGISTRY" == "1" ]]; then
     log "  the commit stays checked out; the next run retries"
     exit 1
   fi
-elif ! docker build -t "$IMAGE" backend >>"$LOG" 2>&1; then
+elif ! docker build --build-arg "GIT_SHA=$REMOTE" -t "$IMAGE" backend >>"$LOG" 2>&1; then
   log "BUILD FAILED at ${REMOTE:0:7} — running container left untouched"
   exit 1
 fi
@@ -211,8 +211,11 @@ probe_health() {
 for _ in $(seq 1 "$HEALTH_TRIES"); do
   if probe_health; then
     log "DEPLOYED ${REMOTE:0:7} — healthy"
-    for dep in minio inbox; do
-      [[ "$HEALTH_BODY" == *"\"$dep\":\"down\""* ]] && log "  WARNING: $dep is down; deploy kept"
+    # The worker is in this list and not in the gate: it restarts with the api
+    # on every deploy, so it is legitimately absent for a moment. Worth saying,
+    # never worth rolling back a good image for.
+    for dep in minio inbox docExtract llmProxy worker; do
+      retina_check_down "$HEALTH_BODY" "$dep" && log "  WARNING: $dep is down; deploy kept"
     done
     # Dangling images only. Never -a: that would delete images still tagged.
     docker image prune -f >/dev/null 2>&1

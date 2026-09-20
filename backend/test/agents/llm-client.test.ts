@@ -150,6 +150,27 @@ describe("llmSlots", () => {
     await expect(slot(async () => "next")).resolves.toBe("next");
   });
 
+  // The cap's own evidence. The exit checklist asks whether in-flight calls
+  // ever exceed it, and "they cannot, by construction" is a claim about code.
+  it("reports the most calls it ever had in flight, and never more than the cap", async () => {
+    const slot = llmSlots(3);
+    const hold = () => new Promise((resolve) => setTimeout(resolve, 5));
+
+    expect(slot.peak()).toBe(0);
+    await Promise.all(Array.from({ length: 10 }, () => slot(hold)));
+
+    expect(slot.peak()).toBe(3);
+  });
+
+  it("reports a peak below the cap when nothing ever asked for that many", async () => {
+    const slot = llmSlots(8);
+
+    await slot(async () => "one");
+    await slot(async () => "two");
+
+    expect(slot.peak()).toBe(1);
+  });
+
   it("caps the real client too", async () => {
     let inFlight = 0;
     let most = 0;

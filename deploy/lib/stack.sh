@@ -21,10 +21,26 @@ retina_stack_defaults() {
 }
 
 # The report is degraded whenever ANY dependency is down, so "status":"ok" is
-# the wrong gate: it would roll back working code because MinIO is restarting.
-# Gate on the two the api cannot serve a run without, and warn about the rest.
+# the wrong gate: it would roll back working code because MinIO is restarting,
+# or because the worker is one heartbeat late during the very deploy that
+# restarted it. Gate on the two the api cannot serve a run without.
+#
+# Both shapes are accepted. From phase 9 a check is an object carrying its own
+# latency and detail ("postgres":{"status":"up",...); before it, a bare string
+# ("postgres":"up"). A rollback puts the older image back and this function
+# still has to say yes to it, or the rollback fails its own health check.
 retina_health_ready() {
-  [[ "$1" == *'"postgres":"up"'* && "$1" == *'"redis":"up"'* ]]
+  retina_check_up "$1" postgres && retina_check_up "$1" redis
+}
+
+retina_check_up() {
+  [[ "$1" == *"\"$2\":{\"status\":\"up\""* || "$1" == *"\"$2\":\"up\""* ]]
+}
+
+# The inverse, for the warnings. A check that is neither up nor present reads
+# as not down: a report missing a dependency is a shape change, not an outage.
+retina_check_down() {
+  [[ "$1" == *"\"$2\":{\"status\":\"down\""* || "$1" == *"\"$2\":\"down\""* ]]
 }
 
 # Copy into place only when it differs, keeping the replaced file as .previous.

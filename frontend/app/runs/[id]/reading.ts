@@ -15,7 +15,9 @@ const NAMES: Record<string, string> = {
   redis: "redis",
   minio: "minio",
   inbox: "the inbox",
+  llmProxy: "the llm-proxy",
   docExtract: "doc-extract",
+  worker: "the worker",
 };
 
 /**
@@ -25,7 +27,7 @@ const NAMES: Record<string, string> = {
  * with no queue held has not cost the run anything yet.
  */
 export function troubleOf(health: HealthReport | null, queues: RunQueuesView | null): Trouble | null {
-  const down = health ? Object.entries(health.checks).find(([, status]) => status === "down") : undefined;
+  const down = health ? Object.entries(health.checks).find(([, check]) => check.status === "down") : undefined;
   const heldQueues = queues
     ? [
         ...(queues.classify.heldUntil !== null ? (["sorting"] as const) : []),
