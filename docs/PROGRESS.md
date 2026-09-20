@@ -1,7 +1,11 @@
 # Progress
 
-Current phase: 9, built on `phase-09-priority-and-ops`. **Phase 8 is merged to `main`.** Phase 7's
-two `[~]` items are still under "Deferred" below.
+Current phase: 9, **merged to `main`** with its exit checklist green. Phase 7's two `[~]` items are
+still under "Deferred" below.
+
+**Next: phase 10.** Read `docs/phases/phase-10-handover.md` section 1 before writing any SQL: five
+things in the phase 10 spec do not match the schema that exists, including a migration number that
+would silently never run and two view columns that do not.
 
 **Start at `docs/phases/phase-10-handover.md`.** Phase 9's section is below; the shell contract and
 the traps in `docs/phases/phase-08-handover.md` sections 6 and 10 all still apply.
