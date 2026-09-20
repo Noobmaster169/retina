@@ -3,7 +3,8 @@ import type { Redis } from "ioredis";
 import type { Pool } from "pg";
 
 import { childLogger } from "../lib/logger";
-import { analytics, clients } from "../ontology/repositories";
+import { refreshIfStale } from "../ontology/derived";
+import { clients } from "../ontology/repositories";
 import { ageWaitingJobs } from "./aging";
 import { beat, HEARTBEAT_EVERY_MS } from "./heartbeat";
 import { QUEUES } from "./names";
@@ -15,7 +16,7 @@ const log = childLogger({ module: "schedulers" });
 /**
  * The work that runs on a clock rather than on an email: refreshing the tier
  * cache, promoting jobs that have waited, saying the worker is alive, and
- * bringing the analytics views level with core.
+ * bringing everything derived level with core.
  *
  * BullMQ's own schedulers, not cron on the box, for two reasons. The box runs
  * one crontab that nobody reviews and a scheduled job there would be invisible
@@ -79,17 +80,21 @@ function pick({ classify, compare }: ReturnType<typeof getQueues>) {
   return { classify, compare };
 }
 
-/** Only when core has moved, which is what makes a five minute clock cheap enough to leave on. */
-async function refreshAnalytics(deps: SchedulerDeps): Promise<void> {
-  const refreshed = await analytics.refreshIfStale(deps.pool);
-  if (refreshed) log.info("the analytics views caught up with core");
+/**
+ * The analytics views and the resolved ontology, both only when core has
+ * moved. That check is what makes a five minute clock cheap enough to leave
+ * on, and keeping them in one task is what stops one of them being forgotten.
+ */
+async function refreshDerived(deps: SchedulerDeps): Promise<void> {
+  const result = await refreshIfStale(deps.pool);
+  if (result.views) log.info({ things: result.entities }, "the derived data caught up with core");
 }
 
 async function runTask(deps: SchedulerDeps, name: string): Promise<void> {
   if (name === SCHEDULED.refreshPriorityCache) return refreshPriorityCache(deps);
   if (name === SCHEDULED.ageWaitingJobs) return ageEmailQueues(deps);
   if (name === SCHEDULED.heartbeat) return beat(deps.redis);
-  if (name === SCHEDULED.refreshAnalytics) return refreshAnalytics(deps);
+  if (name === SCHEDULED.refreshAnalytics) return refreshDerived(deps);
   // A name from an older image whose scheduler this worker inherited. Logged
   // and dropped: failing it would retry a job no code here can ever do.
   log.warn({ task: name }, "no such scheduled task");

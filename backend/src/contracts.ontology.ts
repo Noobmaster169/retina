@@ -15,13 +15,15 @@ import { z } from "zod";
  */
 
 /**
- * The types the ontology navigates. `port` and `party` are resolved from what
- * the extractor read; the rest are tables the pipeline writes.
+ * The types the ontology navigates.
  *
- * `shipment` and `carrier` are in docs/design/ontology-patterns.md section 0
- * and are deliberately absent: nothing in the organisers' seven fields yields
- * a booking or a vessel, so they have no source and are drawn `planned`
- * instead of being invented.
+ * Most are tables the pipeline writes. `port` and `party` are resolved from
+ * what the extractor read and what the field judge accepted. `shipment` and
+ * `carrier` are named here and are never `built`: nothing in the organisers'
+ * seven fields yields a booking or a vessel, so they have no source. They are
+ * in the enum so the rail can draw them dashed and say so, which is what
+ * docs/design/ontology-patterns.md section 0 asks for and is more honest than
+ * leaving a designed part of the model off the page.
  */
 export const ObjectType = z.enum([
   "run",
@@ -34,6 +36,8 @@ export const ObjectType = z.enum([
   "client",
   "port",
   "party",
+  "shipment",
+  "carrier",
 ]);
 export type ObjectType = z.infer<typeof ObjectType>;
 
