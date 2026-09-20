@@ -143,7 +143,7 @@ export async function values(db: Queryable, entityId: string): Promise<StoredVal
               where m.entity_id = e.id order by em.first_seen_at desc limit 1) as last_email,
             (select coalesce(array_agg(distinct m.field order by m.field), '{}')
                from core.entity_mentions m where m.entity_id = e.id) as fields
-       from core.entities e where e.id = $1::bigint`,
+       from core.entities e where e.id = $1::bigint and e.merged_into is null`,
     [entityId],
   );
   const row = rows[0];

@@ -61,7 +61,7 @@ export async function findCandidates(
               greatest(public.word_similarity($1::text, n.value), public.similarity($1::text, n.value)) as score
          from core.entity_names n
          join core.entities e on e.id = n.entity_id
-        where ($2::text is null or e.kind = $2::text)
+        where ($2::text is null or e.kind = $2::text) and e.merged_into is null
      ), best as (
        select distinct on (entity_id) entity_id, value, rank, score
          from scored
@@ -115,7 +115,7 @@ export async function listing(
               where m.entity_id = e.id)::text as emails,
             count(*) over ()::text as total
        from core.entities e
-      where e.kind = $1::text
+      where e.kind = $1::text and e.merged_into is null
         and ($2::text is null or exists (
               select 1 from core.entity_names n
                where n.entity_id = e.id and n.value ilike '%' || $2::text || '%'))
@@ -148,7 +148,7 @@ export async function knownValues(db: Queryable, values: string[]): Promise<stri
   const { rows } = await db.query<{ v: string }>(
     `select v from unnest($1::text[]) as v
       where exists (select 1 from core.entity_names n where n.value = v)
-         or exists (select 1 from core.entities e where e.canonical = v)
+         or exists (select 1 from core.entities e where e.canonical = v and e.merged_into is null)
          or exists (select 1 from core.emails m where m.email_id = v or m.sender_domain = v or m.from_addr = v)`,
     [values],
   );

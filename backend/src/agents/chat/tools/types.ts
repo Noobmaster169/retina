@@ -87,9 +87,9 @@ export interface ToolOutcome {
    * The resolved things this call put in front of the agent, for the
    * conversation to remember by name.
    *
-   * Names and not ids: `entities.replaceAll` deletes and reinserts, so an id
-   * is good for this turn and wrong on the next one. A later turn grounds the
-   * canonical again, which is one indexed lookup and survives a refresh.
+   * Names and not ids. A refresh keeps ids since phase 10f, so this is a
+   * choice: a name is what the person says on the next turn, and grounding it
+   * again is one indexed lookup that follows a merge for free.
    */
   things?: GroundedThing[];
 }

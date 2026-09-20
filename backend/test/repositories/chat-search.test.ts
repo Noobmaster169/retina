@@ -303,16 +303,20 @@ describe("what a conversation remembers", () => {
     });
   });
 
-  it("remembers a name that still grounds after the resolved things are rebuilt", async () => {
+  it("remembers a name that still grounds after the resolved things are rebuilt, and the id now survives too", async () => {
     await inRollback(async (tx) => {
       const first = await seedInbox(tx);
       const conversation = await chat.create(tx, { actor: "a test" });
       await chat.addAssistantTurn(tx, conversation.id, turn({
         grounded: [{ kind: "port", canonical: ALPHA, spellings: [] }],
       }));
-      // Every id changes here. The name is what has to survive, which is why memory holds names.
+      // A rebuild used to change every id, and memory holds names because of
+      // it. Since phase 10f it plans onto the ids that already hold each
+      // cluster, so the id survives as well. Memory still holds the name: it
+      // is what a person says on the next turn, and grounding it again is one
+      // indexed lookup.
       const second = await seedInbox(tx, undefined, first.emailIds);
-      expect(second.idOf(ALPHA)).not.toBe(first.idOf(ALPHA));
+      expect(second.idOf(ALPHA)).toBe(first.idOf(ALPHA));
 
       const remembered = (await chatMemory.memoryOf(tx, conversation.id)).things[0].canonical;
       const found = await entitySearch.findCandidates(tx, remembered, "port");

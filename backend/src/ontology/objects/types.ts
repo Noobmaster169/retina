@@ -167,8 +167,8 @@ export const NAVIGABLE = DESCRIPTORS.filter((descriptor) => descriptor.navigable
 export async function listTypes(db: Queryable): Promise<ObjectTypeSummary[]> {
   const { rows } = await db.query<Record<string, string>>(
     `select (select count(*) from core.emails)::text as email,
-            (select count(*) from core.entities where kind = 'port')::text as port,
-            (select count(*) from core.entities where kind = 'party')::text as party`,
+            (select count(*) from core.entities where kind = 'port' and merged_into is null)::text as port,
+            (select count(*) from core.entities where kind = 'party' and merged_into is null)::text as party`,
   );
   const counts = rows[0];
 

@@ -1,125 +1,16 @@
-import type { ComparisonField, EntityRow, ObjectType } from "../../contracts";
+import type { EntityRow, ObjectType } from "../../contracts";
 import type { Queryable } from "../../db";
-import { ENTITY_KINDS, type EntityKind, type Mention, type ResolvedEntity, type Verdict } from "../../pipeline/ontology";
+import { ENTITY_KINDS, type EntityKind } from "../../pipeline/ontology";
+import { ENTITY_FIELDS } from "./entities.inputs";
 
 /**
- * The things the extractor read, and the spellings that were judged into them.
+ * The things a model read, as the rest of the system asks about them.
  *
- * These three tables are derived: `resolveEntities` rebuilds them exactly from
- * `extraction_fields` and `field_diffs`, so replacing them wholesale is the
- * documented way to refresh them and not a deletion of anything. It is the
- * same rule the pipeline already follows, where re-running a stage replaces
- * that stage's rows.
+ * What the resolver reads is entities.inputs.ts and what it writes is
+ * entities.resolution.ts. Every query here filters `merged_into is null`: a
+ * merged thing keeps its row so a stored verdict can follow it, and it denotes
+ * nothing, so it is never a row anybody lists or counts.
  */
-
-/** The fields that denote a thing. Kept beside the resolver's own map so one query reads what the other resolves. */
-const ENTITY_FIELDS: ComparisonField[] = [
-  "port_of_loading",
-  "port_of_discharge",
-  "shipper",
-  "consignee",
-  "notify_party",
-];
-
-interface MentionRow {
-  id: string;
-  email_run_id: string;
-  field: ComparisonField;
-  value: string;
-  seen_at: Date;
-}
-
-/**
- * Every value the extractor stored for a field that denotes a thing.
- *
- * A person's correction wins over the model's reading, the same precedence
- * every other screen uses, so a party a reviewer corrected resolves under the
- * corrected spelling rather than the wrong one.
- */
-export async function loadMentions(db: Queryable): Promise<Mention[]> {
-  const { rows } = await db.query<MentionRow>(
-    `select ef.id::text as id,
-            ex.email_run_id::text as email_run_id,
-            ef.field,
-            coalesce(ef.human_value, ef.value) as value,
-            em.first_seen_at as seen_at
-       from core.extraction_fields ef
-       join core.extractions ex on ex.id = ef.extraction_id
-       join core.email_runs er on er.id = ex.email_run_id
-       join core.emails em on em.email_id = er.email_id
-      where ef.field = any($1::text[])
-        and coalesce(ef.human_value, ef.value) is not null`,
-    [ENTITY_FIELDS],
-  );
-  return rows.map((row) => ({
-    extractionFieldId: Number(row.id),
-    emailRunId: Number(row.email_run_id),
-    field: row.field,
-    value: row.value,
-    seenAt: row.seen_at,
-  }));
-}
-
-/** Every pair the field judge said denotes one thing. The only edge that ever joins two spellings. */
-export async function loadVerdicts(db: Queryable): Promise<Verdict[]> {
-  const { rows } = await db.query<{
-    field: ComparisonField;
-    si_value: string | null;
-    bl_value: string | null;
-    confidence: string | null;
-  }>(
-    `select field, si_value, bl_value, confidence
-       from core.field_diffs
-      where same and not missing and field = any($1::text[])`,
-    [ENTITY_FIELDS],
-  );
-  return rows.map((row) => ({
-    field: row.field,
-    siValue: row.si_value,
-    blValue: row.bl_value,
-    same: true,
-    confidence: row.confidence === null ? null : Number(row.confidence),
-  }));
-}
-
-/**
- * Replaces every resolved thing with the given set, in one transaction.
- *
- * Wholesale rather than incrementally: a single new verdict can merge two
- * clusters that were separate, which changes which spelling is canonical and
- * therefore the identity of both. Rebuilding is correct and, at this size,
- * cheaper than working out what moved.
- */
-export async function replaceAll(tx: Queryable, entities: ResolvedEntity[]): Promise<number> {
-  // Cascades to entity_names and entity_mentions.
-  await tx.query("delete from core.entities");
-
-  for (const entity of entities) {
-    const { rows } = await tx.query<{ id: string }>(
-      `insert into core.entities (kind, canonical, mention_count, name_count, first_seen_at, last_seen_at)
-       values ($1::text, $2::text, $3::int, $4::int, $5::timestamptz, $6::timestamptz)
-       returning id::text as id`,
-      [entity.kind, entity.canonical, entity.mentions.length, entity.names.length, entity.firstSeenAt, entity.lastSeenAt],
-    );
-    const id = rows[0].id;
-
-    for (const name of entity.names) {
-      await tx.query(
-        `insert into core.entity_names (entity_id, value, seen_count, joined_by, confidence)
-         values ($1::bigint, $2::text, $3::int, $4::text, $5::numeric)`,
-        [id, name.value, name.seenCount, name.joinedBy, name.confidence],
-      );
-    }
-    for (const mention of entity.mentions) {
-      await tx.query(
-        `insert into core.entity_mentions (entity_id, extraction_field_id, email_run_id, field, value)
-         values ($1::bigint, $2::bigint, $3::bigint, $4::text, $5::text)`,
-        [id, mention.extractionFieldId, mention.emailRunId, mention.field, mention.value],
-      );
-    }
-  }
-  return entities.length;
-}
 
 interface EntityDbRow {
   id: string;
@@ -143,17 +34,16 @@ function toRow(row: EntityDbRow): EntityRow {
   };
 }
 
+/** Distinct emails a thing has been seen in, from either table. */
+const EMAILS = `(select count(distinct a.email_id) from core.entity_appearances a where a.entity_id = e.id)::text as emails`;
+
 /** Most-seen first, which is the order a person scanning for the important ones wants. */
 export async function listByKind(db: Queryable, kind: EntityKind, limit = 200): Promise<EntityRow[]> {
   const { rows } = await db.query<EntityDbRow>(
-    `select e.id::text as id, e.kind, e.canonical, e.mention_count, e.name_count, e.last_seen_at,
-            (select count(distinct er.email_id)
-               from core.entity_mentions m
-               join core.email_runs er on er.id = m.email_run_id
-              where m.entity_id = e.id)::text as emails
+    `select e.id::text as id, e.kind, e.canonical, e.mention_count, e.name_count, e.last_seen_at, ${EMAILS}
        from core.entities e
-      where e.kind = $1::text
-      order by e.mention_count desc, e.canonical asc
+      where e.kind = $1::text and e.merged_into is null
+      order by e.mention_count + e.sighting_count desc, e.canonical asc
       limit $2`,
     [kind, limit],
   );
@@ -162,46 +52,51 @@ export async function listByKind(db: Queryable, kind: EntityKind, limit = 200): 
 
 export async function find(db: Queryable, id: string): Promise<EntityRow | null> {
   const { rows } = await db.query<EntityDbRow>(
-    `select e.id::text as id, e.kind, e.canonical, e.mention_count, e.name_count, e.last_seen_at,
-            (select count(distinct er.email_id)
-               from core.entity_mentions m
-               join core.email_runs er on er.id = m.email_run_id
-              where m.entity_id = e.id)::text as emails
-       from core.entities e where e.id = $1::bigint`,
+    `select e.id::text as id, e.kind, e.canonical, e.mention_count, e.name_count, e.last_seen_at, ${EMAILS}
+       from core.entities e where e.id = $1::bigint and e.merged_into is null`,
     [id],
   );
   return rows[0] ? toRow(rows[0]) : null;
 }
 
 /**
- * Whether the resolved things still match what the extractor has stored.
+ * Whether the resolved things still match what has been read.
  *
  * Its own check, not the analytics watermark. The views are created already
- * populated, so on a fresh database they are level with core while these three
+ * populated, so on a fresh database they are level with core while these
  * tables are empty, and gating the resolver on the views' staleness meant it
  * would never run until something else moved. Two derived things, two checks.
  *
- * Counting mentions against the values that should produce one catches both a
- * new extraction and a resolver that has never run. A re-judged pair that
- * merges two clusters without adding a value is the case this misses, and the
- * five minute tick after the next email covers it.
+ * Counting what was read against what resolved catches a new extraction, a new
+ * sighting, and a resolver that has never run. A re-judged pair that merges two
+ * clusters without adding a value is the case this misses, and the five minute
+ * tick after the next email covers it.
  */
 export async function isStale(db: Queryable): Promise<boolean> {
-  const { rows } = await db.query<{ want: string; have: string }>(
+  const { rows } = await db.query<{ want: string; have: string; sighted: string; resolved: string }>(
     `select (select count(*) from core.extraction_fields ef
               where ef.field = any($1::text[]) and coalesce(ef.human_value, ef.value) is not null)::text as want,
-            (select count(*) from core.entity_mentions)::text as have`,
+            (select count(*) from core.entity_mentions)::text as have,
+            (select count(*) from core.entity_sightings)::text as sighted,
+            (select coalesce(sum(sighting_count), 0) from core.entities where merged_into is null)::text as resolved`,
     [ENTITY_FIELDS],
   );
-  return rows[0].want !== rows[0].have;
+  const row = rows[0];
+  return row.want !== row.have || row.sighted !== row.resolved;
 }
 
 /** How many of each kind exist, for the rail's counts. A kind with none reads 0 rather than being absent. */
 export async function countsByKind(db: Queryable): Promise<Record<EntityKind, number>> {
   const { rows } = await db.query<{ kind: EntityKind; n: string }>(
-    "select kind, count(*)::text as n from core.entities group by kind",
+    "select kind, count(*)::text as n from core.entities where merged_into is null group by kind",
   );
   const counts = Object.fromEntries(ENTITY_KINDS.map((kind) => [kind, 0])) as Record<EntityKind, number>;
   for (const row of rows) counts[row.kind] = Number(row.n);
   return counts;
+}
+
+/** Marks things for the profile job to rewrite. Called with the ids one email's job touched. */
+export async function markStale(tx: Queryable, ids: number[]): Promise<void> {
+  if (ids.length === 0) return;
+  await tx.query("update core.entities set stale = true where id = any($1::bigint[])", [ids.map(String)]);
 }

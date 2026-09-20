@@ -5,8 +5,9 @@ import type { ConversationMemory } from "../../ontology/repositories/chat.memory
  *
  * It exists for one sentence: "and their notify parties?". The names in it are
  * how the data spells them, so the agent grounds the remembered canonical
- * again by exact match, which is one indexed lookup and survives the resolved
- * things being rebuilt. Ids are deliberately absent: they change on a refresh.
+ * again by exact match, which is one indexed lookup. Ids are deliberately
+ * absent even though a refresh now keeps them: a name is what the person says
+ * next, and it follows a merge without anything reading a tombstone.
  *
  * For the model and not for the literal guard. Nothing here counts as shown:
  * an earlier turn's answer repeats the person's own words back, so grounding a

@@ -161,9 +161,10 @@ export type ClarifyingQuestion = z.infer<typeof ClarifyingQuestion>;
 /**
  * A resolved thing a turn grounded, remembered by name for the turns after it.
  *
- * By name and not by id: the resolved things are rebuilt by deleting and
- * reinserting, so every id changes on a refresh. A follow-up grounds the
- * canonical again, which is one indexed lookup and survives that.
+ * By name and not by id. Ids survive a refresh since phase 10f, so this is a
+ * choice rather than a constraint: a name is what the person says on the next
+ * turn, grounding it again is one indexed lookup, and it goes on meaning the
+ * right thing after a merge without anything following a tombstone.
  */
 export const GroundedThing = z.object({
   kind: z.string(),

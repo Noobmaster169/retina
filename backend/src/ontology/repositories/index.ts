@@ -14,6 +14,8 @@ export * as documents from "./documents.repo";
 export * as emailRuns from "./email-runs.repo";
 export * as emailSearch from "./emails.search";
 export * as entities from "./entities.repo";
+export * as entityInputs from "./entities.inputs";
+export * as entityResolution from "./entities.resolution";
 export * as entityOverview from "./entities.overview";
 export * as entitySearch from "./entities.search";
 export * as entityDetail from "./entities.detail";
