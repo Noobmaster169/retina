@@ -189,6 +189,8 @@ describe("the prompts that ship", () => {
     loadPrompt("shipment-read", "v1"),
     loadPrompt("entity-resolve", "v1"),
     loadPrompt("entity-profile", "v1"),
+    loadPrompt("concept-define", "v1"),
+    loadPrompt("concept-judge", "v1"),
   ];
 
   it.each(readers.slice(0, 2))("$step $version names all seven of the organisers' fields", (prompt) => {

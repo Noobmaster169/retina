@@ -1,4 +1,13 @@
 export { classifyEmail, ClassifyOutput } from "./classify";
+export {
+  ConceptDefinition,
+  type ConceptVerdict,
+  defineConcept,
+  type DefineInput,
+  type JudgeInput as ConceptJudgeInput,
+  judgeConcept,
+  type JudgeSubject,
+} from "./concepts";
 export { DocTypeOutput, identifyDocument } from "./doc-type";
 export { type ExtractInput, extractFields, type ExtractionRole, ExtractOutput, verifyExtraction } from "./extract";
 export { type EntityResolveInput, EntityResolveOutput, type ResolveCandidate, resolveSighting } from "./entity-resolve";
