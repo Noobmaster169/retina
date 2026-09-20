@@ -86,6 +86,13 @@ ones the phase exists for: `MOMBASA_KENYA` from a subject line joined to `MOMBAS
 `VITAL SOLUTIONS PTE. LTD.` at 0.95, and a person joined to their email address. Every stored
 value's quote was found in its text.
 
+**The disputed rule was proven on the generator's own injected mismatches.** `email_013`'s draft
+bill says `TUTICORIN, INDIA (KEMBA)`, which carries Mombasa's code on Tuticorin's name; the
+instruction says `MOMBASA, KENYA (KEMBA)`. The appearances view marks only the bill's side
+disputed, `disputed_fields` on the shipment names `port_of_discharge`, and `email_shipments.pod_id`
+points at Mombasa. Ten appearances across the 25 emails are marked disputed and 359 are not, so a
+question about where cargo actually went can filter them out.
+
 **`find_entities` has been put to a live model once**, `pnpm eval:chat --set ontology --ids
 c-gulf-consignees`, five steps and 73 seconds. It is the shape the phase was built for: the agent
 narrowed to actual consignees with a recipe first, then asked for the meaning, and the answer put
