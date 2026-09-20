@@ -89,6 +89,9 @@ export function useChat(options: {
         sqlUsed: [],
         graph: null,
         proposal: null,
+        reading: "",
+        skillsUsed: [],
+        adhoc: false,
         createdAt: new Date().toISOString(),
       },
     ]);
