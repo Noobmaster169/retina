@@ -1430,6 +1430,18 @@ the same branch. The behaviour changes are the first three.
   later, and nothing should without a way to check it against something.
 - **`ambiguous` on a sighting is stored and nothing reads it.** `entity-resolve` sets it when the
   candidates spanned more than one thing; the page does not draw it yet and no tool reports it.
+- **`entity-resolve` judges sightings and never a document spelling.** The 25 email run left
+  `BUATAN, INDONESIA` and `BUATAN, INDONESIA (IDBUA)` as two ports, two mentions each and no
+  sighting: both were read out of documents, the field judge never saw them on one pair, and
+  nothing else joins a mention. That is 10b's design and 10f's spec scopes the new judge to what
+  `shipment-read` returns, so it is a limitation and not a regression. The fix, if the eval set
+  says it costs recall, is to offer `entity-resolve` the spellings a mention holds that no verdict
+  has ever touched, which is a bounded set and one call each.
+- **`refresh-profiles` reaches the oldest things first and nothing weights a kind.** Among things
+  never profiled the order is the index's, which is roughly insertion order, so the four kinds 10f
+  added sit behind every port and party until those are done. Everything is profiled eventually
+  and the 24 hour floor stops it churning, but the first day after a backfill a question about a
+  person is answered from a name alone.
 - **`entity-resolve`'s confidence is stored and nothing thresholds it.** The 25 email run joined
   `Deswita` to `Deswita Elvyani` at 0.55 and `NHAVA SHEVA` to `NHAVA SHEVA, INDIA (INNSA)` at 0.50.
   The first is the case the prompt warns against: two sightings of a person are one person only
