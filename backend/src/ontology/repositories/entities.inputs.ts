@@ -1,6 +1,6 @@
 import type { ComparisonField } from "../../contracts";
 import type { Queryable } from "../../db";
-import type { EntityKind, ExistingEntity, Mention, Sighting, Verdict } from "../../pipeline/ontology";
+import { type EntityKind, type ExistingEntity, kindOfRole, type Mention, type Sighting, type SightingRole, type Verdict } from "../../pipeline/ontology";
 
 /**
  * Everything a resolution pass reads: the values a model read, the verdicts
@@ -18,23 +18,6 @@ export const ENTITY_FIELDS: ComparisonField[] = [
   "consignee",
   "notify_party",
 ];
-
-/** Which entity kind each sighting role denotes. The roles are `core.entity_sightings.role`. */
-const KIND_OF_ROLE: Record<string, EntityKind> = {
-  shipper: "party",
-  on_behalf_of: "party",
-  consignee: "party",
-  notify_party: "party",
-  port_of_loading: "port",
-  port_of_discharge: "port",
-  carrier: "carrier",
-  vessel: "vessel",
-  commodity: "commodity",
-  sender: "person",
-  signer: "person",
-  addressee: "person",
-  mentioned: "party",
-};
 
 /**
  * Every value the extractor stored for a field that denotes a thing.
@@ -73,15 +56,12 @@ export async function loadMentions(db: Queryable): Promise<Mention[]> {
  * has no comparison field to take that from.
  */
 export async function loadSightings(db: Queryable): Promise<Sighting[]> {
-  const { rows } = await db.query<{ role: string; surface: string; seen_at: Date }>(
+  const { rows } = await db.query<{ role: SightingRole; surface: string; seen_at: Date }>(
     `select s.role, s.surface, em.first_seen_at as seen_at
        from core.entity_sightings s
        join core.emails em on em.email_id = s.email_id`,
   );
-  return rows.flatMap((row) => {
-    const kind = KIND_OF_ROLE[row.role];
-    return kind ? [{ kind, value: row.surface, seenAt: row.seen_at }] : [];
-  });
+  return rows.map((row) => ({ kind: kindOfRole(row.role), value: row.surface, seenAt: row.seen_at }));
 }
 
 /** Every pair the field judge said denotes one thing. */

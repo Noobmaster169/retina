@@ -6,5 +6,6 @@ export { type LlmClient, type LlmRequest, type LlmResponse, proxyLlmClient } fro
 export { completePromptSet, envModel, pinPromptSet, promptFor } from "./prompts/prompt-set";
 export type { Prompt } from "./prompts/registry";
 export type { StructuredDeps } from "./structured";
+export { readShipment, type ShipmentReadInput, ShipmentReadOutput } from "./shipment-read";
 export { TriageOutput, triageRequest } from "./triage";
 export { verifyClassification, VerifyOutput } from "./verify";

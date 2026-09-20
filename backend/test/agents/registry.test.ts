@@ -179,7 +179,15 @@ describe("the prompts that ship", () => {
     loadPrompt("classify-verify", "v2"),
   ];
   const readers = [loadPrompt("extract", "v1"), loadPrompt("extract-verify", "v1"), loadPrompt("field-judge", "v1")];
-  const shipped = [...classifiers, loadPrompt("triage", "v1"), loadPrompt("doc-type", "v1"), ...readers];
+  const shipped = [
+    ...classifiers,
+    loadPrompt("triage", "v1"),
+    loadPrompt("doc-type", "v1"),
+    ...readers,
+    // Phase 10f's five. None of them is scored and all of them are held to the
+    // same rule: describe the task, never the dataset.
+    loadPrompt("shipment-read", "v1"),
+  ];
 
   it.each(readers.slice(0, 2))("$step $version names all seven of the organisers' fields", (prompt) => {
     for (const field of ["shipper", "consignee", "notify_party", "port_of_loading", "port_of_discharge", "container_count", "gross_weight_kg"]) {

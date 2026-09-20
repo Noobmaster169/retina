@@ -28,18 +28,29 @@ function fold(text: string): string {
 }
 
 /**
- * Does the document text bear the field out: the quoted line must be in the
- * text, and the value inside the quoted line. A placeholder needs only its
- * line found. A field the extractor says the document does not carry has
- * nothing to prove and passes; the judge will call it missing.
+ * Does the text bear one value out: the quoted line must be in the text, and
+ * the value inside the quoted line.
+ *
+ * The rule every step that quotes its evidence is held to, here rather than in
+ * the caller so the folding is the same one everywhere. `value` null asks only
+ * that the line was found, which is what a placeholder needs.
+ */
+export function quoteBacks(text: string, quote: string | null, value: string | null): Evidence {
+  if (quote === null || quote.trim() === "") return { ok: false, reason: "no_quote" };
+  const folded = fold(quote);
+  if (!fold(text).includes(folded)) return { ok: false, reason: "quote_not_found" };
+  if (value !== null && !folded.includes(fold(value))) return { ok: false, reason: "value_not_in_quote" };
+  return { ok: true };
+}
+
+/**
+ * Does the document text bear the field out. A field the extractor says the
+ * document does not carry has nothing to prove and passes; the judge will call
+ * it missing.
  */
 export function checkEvidence(text: string, field: ExtractedField): Evidence {
   if (field.value === null && field.placeholder === null) return { ok: true };
-  if (field.source_quote === null || field.source_quote.trim() === "") return { ok: false, reason: "no_quote" };
-  const quote = fold(field.source_quote);
-  if (!fold(text).includes(quote)) return { ok: false, reason: "quote_not_found" };
-  if (field.value !== null && !quote.includes(fold(field.value))) return { ok: false, reason: "value_not_in_quote" };
-  return { ok: true };
+  return quoteBacks(text, field.source_quote, field.value);
 }
 
 /** Every field the verifier should read again: its evidence fails, or the extractor was unsure. */
