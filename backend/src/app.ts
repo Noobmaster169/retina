@@ -1,6 +1,7 @@
 import express, { type NextFunction, type Request, type Response } from "express";
 import type { Pool } from "pg";
 
+import type { LlmClient } from "./agents/llm-client";
 import { requireCaller } from "./auth";
 import { transactor } from "./db";
 import type { HealthReport } from "./contracts";
@@ -11,6 +12,7 @@ import type { ObjectStore } from "./storage";
 import type { PriorityCache } from "./queues/priority-cache";
 import type { RunQueues } from "./queues/run-queues";
 import { aiRouter } from "./routes/ai.routes";
+import { chatRouter } from "./routes/chat.routes";
 import { clientsRouter } from "./routes/clients.routes";
 import { promptsRouter } from "./routes/prompts.routes";
 import { requestLog } from "./routes/request-log";
@@ -38,6 +40,14 @@ export interface AppDeps {
   priority: PriorityCache;
   /** Where in-flight model calls are kept, for the run page. Absent, nothing shows as live. */
   live?: LiveCalls;
+  /**
+   * The read-only pool the chat agent's SQL runs on. Null when
+   * DATABASE_RO_URL is unset: the api still serves everything else, and
+   * run_sql refuses with that variable named.
+   */
+  roPool: Pool | null;
+  /** How the chat reaches a model. The api makes model calls now, not only the worker. */
+  llm: LlmClient;
 }
 
 export function createApp(deps: AppDeps): express.Express {
@@ -66,6 +76,7 @@ export function createApp(deps: AppDeps): express.Express {
   app.use(requireCaller);
 
   app.use("/ai", aiRouter());
+  app.use("/chat", chatRouter({ pool: deps.pool, roPool: deps.roPool, llm: deps.llm }));
   app.use("/prompts", promptsRouter(deps));
   app.use("/clients", clientsRouter({ pool: deps.pool, priority: deps.priority }));
   app.use("/emails", emailsRouter());

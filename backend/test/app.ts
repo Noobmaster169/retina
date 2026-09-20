@@ -1,3 +1,4 @@
+import { FakeLlmClient } from "../src/agents/__fakes__/fake.llm-client";
 import type { HealthChecks, HealthReport } from "../src/contracts";
 import { type AppDeps, createApp } from "../src/app";
 import { getPool } from "../src/db";
@@ -49,6 +50,13 @@ export function testApp(overrides: Partial<AppDeps> = {}) {
     scorer: new FakeScorer(),
     priority: new MemoryPriorityCache(),
     health: async () => allUp(),
+    // The read-only pool is the ordinary one here: retina_ro exists in the
+    // test database, but a rolled-back transaction is invisible to a second
+    // connection, so a route test that seeded rows would read none of them.
+    // The guardrail is what run_sql is tested on, and it is pure.
+    roPool: getPool(),
+    // No test may reach the proxy. A chat route test scripts this instead.
+    llm: new FakeLlmClient("{}"),
     ...overrides,
   });
 }
