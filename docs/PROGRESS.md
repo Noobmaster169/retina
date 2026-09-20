@@ -1,12 +1,17 @@
 # Progress
 
-Current phase: 10, on `phase-10-analytics-and-chat`, exit checklist green but for the full-run line,
-which costs tokens and is the user's. Phase 7's two `[~]` items are still under "Deferred" below.
+Current phase: 10, **merged to `main`, semi done**. The data layer, the ontology surfaces and the
+read-only agent are finished and tested. **The chat works and is the part that needs refinement.**
+Phase 7's two `[~]` items are still under "Deferred" below.
 
-**Next: phase 11.** Read the hand-off notes at the end of
-`docs/phases/phase-10-analytics-and-chat.md`, then `docs/phases/phase-11-eval-and-lessons.md`. The
-action card's contract is settled and written down in `docs/03-infra-deep.md` section 5.6; phase 11
-builds the apply path against that shape and answers the two things it leaves open.
+**Start at `docs/phases/phase-11-handover.md`.** Section 3 is the chat's backlog and is the real
+work left in phase 10; section 6 is the traps, two of which cost hours. Then
+`docs/phases/phase-11-eval-and-lessons.md`.
+
+The one thing to know before asking the chat anything: **only one question has ever been put to a
+live model.** It answered correctly, and it exercised `run_sql` and nothing else. `get_email`,
+`explain_decision` and `describe_schema` have been called by tests and by hand over MCP, never by
+a model choosing to.
 
 The shell contract and the traps in `docs/phases/phase-08-handover.md` sections 6 and 10 all still
 apply, as do phase 9's in `phase-09-handover.md` section 7.
@@ -56,9 +61,15 @@ working shown, the database page, and the ontology page.
   created already populated, so on a fresh database the views were level and the resolver never
   ran. Two derived things, two checks.
 
-**Numbers.** 612 backend tests, 48 frontend, none touching the proxy. On run `bd2f686e` the chat
+**Numbers.** 615 backend tests, 48 frontend, none touching the proxy. On run `bd2f686e` the chat
 answers "which of the seven fields differs most often" as `container_count` with 10, from one
 query it scoped to the conversation's run without being told to.
+
+**Semi done: the chat needs refinement.** `docs/phases/phase-11-handover.md` section 3 is the
+list. In short: only `run_sql` has been exercised by a live model; the result graph's entity
+column is the first column of the result, which is a row id for a `select *`; there is no live
+build of the graph, only a skeleton and an elapsed counter; the action card is drawn, disabled and
+never populated; and `MAX_STEPS = 8` has never been measured against a real question.
 
 **Left for the user.** The full 520-email run against these pages. The only 520 run in the
 database has no MISMATCH in it, so the database and ontology pages were checked against

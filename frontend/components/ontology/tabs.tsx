@@ -47,8 +47,6 @@ export function OntologyTabs({ active, hrefs }: TabsProps) {
           </Link>
         );
       })}
-      <span className="grow" />
-      <span className="self-center text-small text-ink-faint">One model, three ways to read it</span>
     </div>
   );
 }

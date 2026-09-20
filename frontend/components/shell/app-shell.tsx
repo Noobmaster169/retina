@@ -3,7 +3,6 @@
 import { useState, type ReactNode } from "react";
 import useSWR from "swr";
 
-import { HealthReport } from "@/lib/api/queues-schemas";
 import { RunList, type RunSummary } from "@/lib/api/runs-schemas";
 import { parsedFetcher } from "@/lib/poll";
 
@@ -29,7 +28,6 @@ import type { NavCounts } from "./nav";
  */
 
 const RUNS_MS = 5000;
-const HEALTH_MS = 10_000;
 
 interface AppShellProps {
   active: string;
@@ -42,10 +40,6 @@ interface AppShellProps {
 export function AppShell({ active, counts, children, runId = null }: AppShellProps) {
   const { data: list } = useSWR("/api/runs", parsedFetcher(RunList), {
     refreshInterval: RUNS_MS,
-    keepPreviousData: true,
-  });
-  const { data: health = null } = useSWR("/api/health", parsedFetcher(HealthReport), {
-    refreshInterval: HEALTH_MS,
     keepPreviousData: true,
   });
 
@@ -66,7 +60,6 @@ export function AppShell({ active, counts, children, runId = null }: AppShellPro
           counts={counts}
           current={current}
           runs={runs}
-          health={health}
         />
         {children}
       </div>

@@ -17,7 +17,6 @@ import { WrittenTheseWays } from "./written-these-ways";
  */
 
 export function ThingOpen({ detail, recordHref }: { detail: EntityDetail; recordHref: string }) {
-  const { row } = detail;
   return (
     <div className="border-b border-hairline bg-surface shadow-[inset_2px_0_0_0_var(--ink)]">
       <div className="flex gap-7 px-7 pt-1 pb-[22px]">
@@ -33,11 +32,6 @@ export function ThingOpen({ detail, recordHref }: { detail: EntityDetail; record
               </div>
             ))}
           </dl>
-          <p className="mt-3 rounded-lg border border-hairline bg-canvas px-3 py-2.5 text-caption leading-[17px] text-ink-tertiary">
-            Nobody typed this in. It exists because the model read it out of {row.mentions}{" "}
-            {row.mentions === 1 ? "document" : "documents"} and the judge accepted the spellings below as the same
-            thing.
-          </p>
         </section>
 
         <section className="w-[392px] shrink-0">

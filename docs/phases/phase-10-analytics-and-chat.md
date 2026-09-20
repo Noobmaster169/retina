@@ -331,8 +331,16 @@ Not in the first draft of this file, which covered 10a only. `docs/04-phases.md`
 - [ ] The full 520-email run against these pages. The one run of 520 in the database has no
       MISMATCH in it, so the ontology and database pages were checked against `bd2f686e` (52
       emails, 23 mismatches). Left for the user; it costs real tokens.
+- [ ] **The chat itself.** It works and it is thin. Only `run_sql` has been exercised by a live
+      model; the other three tools have been called by tests and by hand over MCP, never by a
+      model choosing to. The full list of what is unfinished is
+      `docs/phases/phase-11-handover.md` section 3, and it is what makes this phase semi done
+      rather than done.
 
 ## Hand-off notes for phase 11
+
+**`docs/phases/phase-11-handover.md` is the document.** It carries what is built, the chat's
+backlog, the traps and what was deliberately cut. The short version:
 
 - `explain_decision` output is what the lesson drafter reads; keep its shape stable.
 - The action card's contract is `docs/03-infra-deep.md` section 5.6, settled. Two things it leaves
@@ -340,3 +348,5 @@ Not in the first draft of this file, which covered 10a only. `docs/04-phases.md`
   that separates `Apply and remember` from `Just this once`.
 - A grant does not reach a table a later migration adds. If phase 11 adds a table the agent reads,
   grant it in the same commit; `014_ro_entities.sql` says why.
+- A structured step with two shapes is one flat object, never a union: the provider refuses
+  `oneOf` at the top level of a tool schema and reports it as a retryable 502.

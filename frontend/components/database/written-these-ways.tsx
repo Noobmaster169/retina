@@ -5,8 +5,8 @@ import type { EntityName } from "@/lib/api/ontology-schemas";
  *
  * A port or a party exists only because the field judge said several spellings
  * denote one thing. Each spelling says how often it was seen and how it was
- * judged, and the sentence under the list is the whole claim: nothing here
- * came from a lookup table, and if it had, this screen could not exist.
+ * judged: nothing here came from a lookup table, and if it had, this screen
+ * could not exist.
  */
 
 const VERDICT: Record<EntityName["joinedBy"], { words: string; tone: string }> = {
@@ -46,10 +46,6 @@ export function WrittenTheseWays({ names }: { names: EntityName[] }) {
           </li>
         ))}
       </ul>
-      <p className="mt-2.5 text-caption leading-[17px] text-ink-faint">
-        A spelling only joins this thing when the field judge said the two values denote the same thing. Nothing here
-        came from a lookup table.
-      </p>
     </section>
   );
 }

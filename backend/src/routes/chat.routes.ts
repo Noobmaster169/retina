@@ -29,7 +29,7 @@ export interface ChatRouteDeps {
 const IdParam = z.uuid();
 
 /**
- * How much of the conversation the model is given back.
+ * How much of the conversation the model is given back: the last twenty turns.
  *
  * Ten exchanges is more than any question here has needed, and the whole
  * history of a long conversation would crowd out the schema documentation,
@@ -109,7 +109,7 @@ export function chatRouter(deps: ChatRouteDeps): Router {
     await chat.addUserTurn(deps.pool, id.data, body.data.content);
     await chat.titleIfUnnamed(deps.pool, id.data, body.data.content);
 
-    const previous = await chat.turns(deps.pool, id.data, HISTORY_TURNS);
+    const previous = await chat.recentTurns(deps.pool, id.data, HISTORY_TURNS);
     const history = previous
       .slice(0, -1)
       .map((turn) => `${turn.role === "user" ? "they asked" : "you answered"}: ${turn.content}`);

@@ -140,6 +140,29 @@ export async function turns(db: Queryable, conversationId: string, limit = 200):
   return rows.map(toTurn);
 }
 
+/**
+ * The last `limit` turns, oldest first, which is what the model is given back.
+ *
+ * `turns` takes the first N and is right for drawing a thread from the top.
+ * Handing the model that same page was wrong in a way nothing would have shown
+ * until a conversation ran past the limit: it would have been given the
+ * opening exchanges and none of the recent ones, and answered the question
+ * before last.
+ */
+export async function recentTurns(db: Queryable, conversationId: string, limit: number): Promise<ChatTurn[]> {
+  const { rows } = await db.query<TurnRow>(
+    `select * from (
+       select id, role, content, tool_name, tool_args, tool_result, duration_ms, sql_used, created_at
+         from core.chat_turns
+        where conversation_id = $1::uuid and role <> 'tool'
+        order by id desc
+        limit $2
+     ) newest order by id asc`,
+    [conversationId, limit],
+  );
+  return rows.map(toTurn);
+}
+
 export async function addUserTurn(db: Queryable, conversationId: string, content: string): Promise<ChatTurn> {
   const { rows } = await db.query<TurnRow>(
     `insert into core.chat_turns (conversation_id, role, content) values ($1::uuid, 'user', $2::text)

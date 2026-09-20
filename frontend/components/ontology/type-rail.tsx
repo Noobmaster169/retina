@@ -20,10 +20,9 @@ interface TypeRailProps {
   /** Where a type leads. Null makes the whole list inert, for a page that only names them. */
   hrefFor?: (type: ObjectTypeSummary) => string | null;
   heading: string;
-  footnote: string;
 }
 
-export function TypeRail({ types, active, hrefFor, heading, footnote }: TypeRailProps) {
+export function TypeRail({ types, active, hrefFor, heading }: TypeRailProps) {
   return (
     <nav aria-label={heading} className="flex w-[200px] shrink-0 flex-col border-r border-hairline bg-surface">
       <div className="flex h-[26px] items-center px-[18px] pt-1.5 text-caption font-medium text-ink-tertiary">
@@ -36,7 +35,6 @@ export function TypeRail({ types, active, hrefFor, heading, footnote }: TypeRail
           </li>
         ))}
       </ul>
-      <p className="border-t border-hairline px-[18px] py-3.5 text-caption leading-[17px] text-ink-faint">{footnote}</p>
     </nav>
   );
 }

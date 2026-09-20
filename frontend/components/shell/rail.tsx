@@ -4,17 +4,15 @@ import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 
 import { Icon, Mark } from "@/components/ui/icons";
-import { checkDetail, DEPENDENCIES, DEPENDENCY_LABELS, type HealthReport } from "@/lib/api/queues-schemas";
 import type { RunSummary } from "@/lib/api/runs-schemas";
-import { panel, quick, spring } from "@/lib/motion";
+import { quick, spring } from "@/lib/motion";
 
 import { hrefFor, type NavCounts, RAIL_DESTINATIONS } from "./nav";
 import { RunSwitcher } from "./run-switcher";
 
 /**
  * The left rail, 232px, collapsing to 56px of glyphs. It is the same on every
- * screen: the run in context, the destinations, what that run pinned, and the
- * state of everything the pipeline depends on.
+ * screen: the run in context and the destinations.
  *
  * Same everywhere is the point. A rail that gained a block on one route and
  * lost it on the next made navigating feel like changing product, so nothing
@@ -29,11 +27,9 @@ interface RailProps {
   /** The run everything below is read through, and every run there is to switch to. */
   current: RunSummary | null;
   runs: RunSummary[];
-  /** Null while the first health read is in flight, or when it failed. */
-  health: HealthReport | null;
 }
 
-export function Rail({ open, onToggle, active, counts, current, runs, health }: RailProps) {
+export function Rail({ open, onToggle, active, counts, current, runs }: RailProps) {
   return (
     <motion.nav
       initial={false}
@@ -95,91 +91,12 @@ export function Rail({ open, onToggle, active, counts, current, runs, health }: 
         })}
       </div>
 
-      <AnimatePresence initial={false}>
-        {open ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={panel}
-            className="flex min-h-0 grow flex-col"
-          >
-            <Pinned run={current} />
-            <span className="grow" />
-            <Dependencies health={health} />
-          </motion.div>
-        ) : (
-          <div className="flex grow flex-col items-center justify-end pb-3.5">
-            <CollapseButton open={false} onClick={onToggle} />
-          </div>
-        )}
-      </AnimatePresence>
-    </motion.nav>
-  );
-}
-
-/** What the run in context pinned. A run from before pinning shows what that means instead of an empty block. */
-function Pinned({ run }: { run: RunSummary | null }) {
-  const pinned = run
-    ? Object.entries(run.promptSet).flatMap(([step, prompt]) => (prompt ? [{ step, version: prompt.version }] : []))
-    : [];
-  return (
-    <div className="px-[18px] pb-1.5 pt-3.5">
-      <div className="pb-1.5 text-small font-medium text-ink-tertiary">Pinned for this run</div>
-      {pinned.length > 0 ? (
-        pinned.map((prompt) => (
-          <div key={prompt.step} className="flex h-[25px] items-center">
-            <span className="font-mono text-mono-sm text-ink-tertiary">{prompt.step}</span>
-            <span className="grow" />
-            <span className="font-mono text-mono-sm text-ink-secondary">{prompt.version}</span>
-          </div>
-        ))
-      ) : (
-        <p className="text-caption leading-[17px] text-ink-tertiary">
-          {run
-            ? "Nothing pinned. Each step ran whichever prompt was active when it reached it."
-            : "A run pins a prompt version per step, and the worker loads exactly that."}
-        </p>
+      {open ? null : (
+        <div className="flex grow flex-col items-center justify-end pb-3.5">
+          <CollapseButton open={false} onClick={onToggle} />
+        </div>
       )}
-    </div>
-  );
-}
-
-/**
- * The state of everything the pipeline depends on, as chips. A chip carries
- * its state in its label and its tint: a coloured dot beside a word was the
- * single most common note across four rounds of review.
- */
-function Dependencies({ health }: { health: HealthReport | null }) {
-  return (
-    <div className="border-t border-hairline px-[18px] py-3.5">
-      <div className="text-small font-medium text-ink-tertiary">Dependencies</div>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {health === null ? (
-          <span className="text-caption text-ink-tertiary">Reading.</span>
-        ) : (
-          DEPENDENCIES.map((key) => {
-            const down = health.checks[key].status === "down";
-            const detail = checkDetail(health, key);
-            return (
-              <span
-                key={key}
-                className={`inline-flex h-[22px] items-center rounded-sm px-2 font-mono text-mono-xs transition-colors duration-150 ${
-                  down ? "bg-fault-tint text-fault" : "bg-sunken text-ink-secondary"
-                }`}
-                title={
-                  down
-                    ? `${DEPENDENCY_LABELS[key]} is not answering`
-                    : [`${DEPENDENCY_LABELS[key]} is up`, detail].filter(Boolean).join(", ")
-                }
-              >
-                {DEPENDENCY_LABELS[key]}
-              </span>
-            );
-          })
-        )}
-      </div>
-    </div>
+    </motion.nav>
   );
 }
 

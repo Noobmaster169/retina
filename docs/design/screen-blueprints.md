@@ -153,8 +153,8 @@ Zones:
    job list per queue. `RunSummary.queues` returns counts only.
 4. **Where they end up.** Every `Outcome` value in the enum's own words, with a share bar and a
    count, under two micro headers. Values at zero stay visible and grey.
-5. **The rail** carries the pinned prompt set, memory, and dependency health as neutral mono chips
-   that turn `--verdict-fault` when something is down.
+5. **The rail** carries no pinned prompt set and no dependency chips: both were removed as clutter.
+   A dependency that is down is named by the banner beside the controls, below.
 
 **The three states are the same page.** Nothing is relaid out:
 

@@ -32,15 +32,12 @@ export function OntologyEmailList({ emails, hrefFor, openId }: {
             <Link
               href={hrefFor(email.emailId)}
               aria-current={email.emailId === openId ? "page" : undefined}
-              className={`flex h-[52px] items-center gap-[22px] border-b border-hairline-faint px-7 ${
+              className={`flex h-11 items-center gap-[22px] border-b border-hairline-faint px-7 ${
                 email.emailId === openId ? "bg-active" : "hover:bg-surface"
               }`}
             >
               <span className="w-[104px] shrink-0 truncate font-mono text-mono-sm text-ink">{email.emailId}</span>
-              <span className="min-w-0 grow">
-                <span className="block truncate text-strong text-ink">{email.subject}</span>
-                <span className="block truncate text-caption text-ink-faint">{email.from}</span>
-              </span>
+              <span className="min-w-0 grow truncate text-strong text-ink">{email.subject}</span>
               <span className="w-[150px] shrink-0 truncate font-mono text-mono-xs text-ink-tertiary">
                 {email.category ?? "not sorted"}
               </span>

@@ -82,7 +82,6 @@ export default async function Page({ params, searchParams }: PageProps<"/runs/[i
           types={types}
           active={type}
           heading="What Retina knows"
-          footnote="Two types are designed and not yet stored. They show dashed, because drawing them as though they existed would overstate the model and leaving them out would understate it."
           hrefFor={(entry) => (entry.built ? `/runs/${id}/ontology?type=${entry.type}&tab=things` : null)}
         />
       )}
