@@ -31,7 +31,7 @@ const log = childLogger({ module: "chat.loop" });
 
 /** Two or three steps answer most questions; the rest is room to recover from a refusal. Never tuned upward without a measurement. */
 const MAX_STEPS = 8;
-const CHAT_PROMPT = "v2";
+const CHAT_PROMPT = "v3";
 
 export interface TurnInput {
   question: string;
@@ -82,6 +82,7 @@ export async function runTurn(deps: LoopDeps, input: TurnInput): Promise<TurnRes
         scope: input.scope,
         guardRefused: calls.some((call) => call.guardRefused),
         cameUpEmpty: calls.some((call) => call.cameUpEmpty),
+        ambiguous: calls.some((call) => call.ambiguous),
         loaded: calls.flatMap((call) => (call.skill ? [call.skill] : [])),
         sticky: input.stickySkills,
         picked: input.pickedSkills,

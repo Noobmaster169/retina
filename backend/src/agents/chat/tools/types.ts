@@ -72,6 +72,13 @@ export interface ToolOutcome {
   grounds?: string;
   /** The call looked and found nothing, or nothing exact. The harness injects the skill for that. */
   empty?: boolean;
+  /**
+   * The call returned candidates of more than one kind, which is the one
+   * ambiguity the harness can see for itself. Several candidates of one kind
+   * are not this: a short company name matching four companies of one group
+   * means all four, and ground-names already says to take them all.
+   */
+  ambiguous?: boolean;
   /** Set when the literal guard refused the call: the strings it would not filter on. */
   ungrounded?: string[];
   /** Set by `load_skill`: the skill now in front of the agent, which stays there for the conversation. */

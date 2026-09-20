@@ -59,6 +59,8 @@ export interface FinishedCall extends TouchedCall {
   guardRefused: boolean;
   /** It looked and found nothing, or nothing exact. */
   cameUpEmpty: boolean;
+  /** It returned candidates of more than one kind. */
+  ambiguous: boolean;
   /** A skill it put in front of the agent. */
   skill: string | null;
   /** The text the model reads back. */
@@ -84,6 +86,7 @@ export function finish(call: Call, outcome: ToolOutcome, durationMs: number): Fi
     entities: outcome.entities,
     guardRefused: (outcome.ungrounded?.length ?? 0) > 0,
     cameUpEmpty: outcome.empty === true,
+    ambiguous: outcome.ambiguous === true,
     skill: outcome.skill ?? null,
     text: outcome.text,
     grounds: outcome.ok ? (outcome.grounds ?? "") : "",
@@ -92,7 +95,7 @@ export function finish(call: Call, outcome: ToolOutcome, durationMs: number): Fi
 
 /** Drops what only the harness and the graph needed, so the wire carries the contract and nothing more. */
 export function forWire(call: FinishedCall): ChatToolCall {
-  const { touched: _t, entities: _e, guardRefused: _g, cameUpEmpty: _c, skill: _s, text: _x, grounds: _d, ...rest } = call;
+  const { touched: _t, entities: _e, guardRefused: _g, cameUpEmpty: _c, ambiguous: _a, skill: _s, text: _x, grounds: _d, ...rest } = call;
   return rest;
 }
 

@@ -18,6 +18,8 @@ export interface TurnFacts {
   guardRefused: boolean;
   /** A lookup on this turn found nothing, or nothing exact. */
   cameUpEmpty: boolean;
+  /** A lookup on this turn returned candidates of more than one kind. */
+  ambiguous: boolean;
   /** Skills the agent loaded on this turn. Already in front of it once; repeated so they survive to the next step. */
   loaded: string[];
   /** Skills loaded or picked earlier in this conversation. */
@@ -46,6 +48,7 @@ export function skillsToInject(facts: TurnFacts, known: ReadonlySet<string>): In
   ];
   if (facts.guardRefused || facts.cameUpEmpty) wanted.push({ name: "ground-names", how: "injected" });
   if (facts.cameUpEmpty) wanted.push({ name: "near-misses", how: "injected" });
+  if (facts.ambiguous) wanted.push({ name: "ask-back", how: "injected" });
   if (facts.scope.emailId) wanted.push({ name: "explain-an-email", how: "injected" });
   if (facts.scope.runId && !facts.scope.emailId) wanted.push({ name: "pick-the-run", how: "injected" });
   wanted.push(...facts.sticky.map((name) => ({ name, how: "loaded" as const })));
