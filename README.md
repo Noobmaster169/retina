@@ -132,6 +132,15 @@ All routes except `/health` need `Authorization: Bearer <key>`. The key is
 | `GET /runs/:id/live` | the run's model calls running now, each with the answer written so far |
 | `GET /runs/:id/emails/:emailId/trace` | one email: stage, the verdict (each reader's answer), the call running now, and every model call with its system prompt, input, answer, final JSON, tokens and cost |
 | `GET /prompts` | each prompt step's versions on disk, the active one marked |
+| `POST /chat/conversations`, `GET /chat/conversations?runId=` | open a conversation `{ title?, runId?, emailId?, actor }`, or list them. `runId` and `emailId` are its scope: a default the agent may widen, never a filter it cannot see past |
+| `POST /chat/:id/messages` | `{ content, actor }` → `{ turn, exhausted }`. One turn is up to eight model calls and can take minutes; there is no streaming. The turn carries the answer, the SQL that produced it, every tool call, and the graph of what it touched |
+| `GET /chat/:id`, `DELETE /chat/:id` | the thread with its turns, and delete |
+| `GET /ontology/types` | the five types the rail offers, with live counts: Emails, Ports, Parties, Shipments, Carriers. The last two are never built, because nothing in the seven fields yields a booking or a vessel |
+| `GET /ontology/:type/:id` | one object in the one shape every type shares: stored values each saying who wrote it, and the links out of it |
+| `GET /ontology/port/:id/detail` | what is stored, step out from here, written these ways, and where it appeared |
+| `GET /ontology/email/:id/graph?runId=&hops=1\|2` | the email one or two hops out, as nodes and named edges. No coordinates: the layout is the frontend's |
+| `GET /database/tables`, `/tables/:schema/:name?limit=&offset=` | every relation of `core` and `analytics` with an exact count, and a page of one with typed columns and the SQL that produced it |
+| `GET /database/tables/:schema/:name/rows/:id` | one row as fields, then what points at it by foreign key |
 
 ```bash
 curl -s 127.0.0.1:8091/ai/chat -H "authorization: Bearer $TEAM_API_KEY" \
@@ -153,11 +162,16 @@ curl -s 127.0.0.1:8091/ai/chat -H "authorization: Bearer $TEAM_API_KEY" \
 | Run the backend tests | `pnpm test` in `backend/`, with `compose.local.yaml` up. They use the database `retina_test` |
 | Measure a burst | `pnpm load-test [--limit N]` in `backend/`: starts a run at rate 0, then prints its elapsed time, peak queue depth, the peak model calls in flight and any 429s. Needs one worker running, and only one |
 | Change who is served first | `/clients` in the app, or `PUT /clients/:domain`. A tier orders the queue; it never decides a category |
-| Add a page | `frontend/app/`. `/` is the inbox, `/mail/[id]` a message, `/chat` the model page, `/runs` the pipeline runs |
+| Add a page | `frontend/app/`. Everything run-scoped lives under `app/runs/[id]/`: the overview, `inbox`, `review`, `ontology` and `chat`. `/clients` is the one destination that is not about a run, and `database` is built but kept off the rail by `Destination.hidden` |
 | Regenerate the emails | `emails/data_v2/README.md` |
 | Check types | `pnpm type-check` in `frontend/` or `backend/`. `pytest` in `proxy/`; `uv run pytest && uv run ruff check .` in `services/doc-extract/` |
 | Change how a document is parsed | an extractor in `services/doc-extract/extractors/`, then `docker compose -f compose.local.yaml up -d --build doc-extract` in `backend/` |
 | Debug the proxy | `curl -i 127.0.0.1:4000/v1/messages ...`. Look at the `X-LLM-Proxy-*` headers |
+| Rebuild the analytics views and the ontology | `pnpm derive` in `backend/`. The worker does it every five minutes when `core` has moved; this is for straight after a deploy and before a demo |
+| Change what the chat can read | `backend/src/agents/chat/schema-docs.md` for what it is told, and a `grant` migration for what it may actually read. A grant in an earlier migration does not reach a table a later one adds |
+| Add a chat tool | a file in `backend/src/agents/chat/tools/`, added to the registry in its `index.ts`. `src/mcp.ts` serves the same registry, so it appears over MCP with no second definition |
+| Use the tools from Claude Code | `.mcp.json` at the repo root already configures them. `pnpm mcp` in `backend/` runs the server by hand |
+| Give a model a structured answer with two shapes | one flat object with the discriminant as a field, narrowed after it parses. The provider refuses a union at the top level of a tool schema, and `toOutputSchema` refuses one before it gets there |
 
 ## Deploy
 

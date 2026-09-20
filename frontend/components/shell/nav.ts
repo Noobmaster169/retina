@@ -16,6 +16,13 @@ import type { IconName } from "@/components/ui/icons";
  * `global` marks the one kind of destination that is not about a run. A
  * client's tier is a standing decision about a sender, not a property of one
  * replay, and scoping it to a run would say it was.
+ *
+ * `hidden` keeps a destination built and reachable by its URL while taking it
+ * out of the rail. The database page is the only one: browsing raw tables
+ * turned out to be a flow nobody needs next to the ontology, which answers the
+ * same questions in the model's own words. It is hidden rather than deleted
+ * because `As rows` is the page that proves the ontology is not a mock-up, and
+ * a demo may still want to open it.
  */
 export interface Destination {
   key: string;
@@ -25,15 +32,17 @@ export interface Destination {
   path: string;
   planned?: string;
   global?: true;
+  /** Built and reachable by URL, kept out of the rail. See above. */
+  hidden?: true;
 }
 
 export const DESTINATIONS: Destination[] = [
   { key: "overview", label: "Overview", icon: "home", path: "" },
   { key: "inbox", label: "Inbox", icon: "mail", path: "/inbox" },
   { key: "review", label: "Needs a person", icon: "eye", path: "/review" },
-  { key: "database", label: "Database", icon: "table", path: "/database", planned: "phase 10" },
-  { key: "ontology", label: "Ontology", icon: "graph", path: "/ontology", planned: "phase 10" },
-  { key: "chat", label: "Ask Retina", icon: "chat", path: "/chat", planned: "phase 10" },
+  { key: "database", label: "Database", icon: "table", path: "/database", hidden: true },
+  { key: "ontology", label: "Ontology", icon: "graph", path: "/ontology" },
+  { key: "chat", label: "Ask Retina", icon: "chat", path: "/chat" },
   { key: "clients", label: "Clients", icon: "client", path: "/clients", global: true },
 ];
 
@@ -49,6 +58,9 @@ export function hrefFor(destination: Destination, runId: string | null): string 
   if (destination.global) return destination.path;
   return runId ? `/runs/${runId}${destination.path}` : "/runs";
 }
+
+/** What the rail draws. A hidden destination still exists; it is simply not offered. */
+export const RAIL_DESTINATIONS = DESTINATIONS.filter((destination) => !destination.hidden);
 
 /** Counts the rail shows against its destinations. Absent keys render no count. */
 export type NavCounts = Partial<Record<string, number>>;

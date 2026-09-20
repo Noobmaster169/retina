@@ -28,6 +28,17 @@ const PATHS = {
   client: "M8 3 a2.2 2.2 0 1 0 0.01 0 M3.5 13 a4.5 4.5 0 0 1 9 0",
   diff: "M4.5 2.5 v11 M11.5 2.5 v11 M2 6 h5 M9 10 h5",
   trash: "M2.5 4.5 h11 M6 4.5 V3 h4 v1.5 M4 4.5 l0.7 9 h6.6 l0.7 -9 M6.6 7 v4 M9.4 7 v4",
+  /*
+   * The entity vocabulary of docs/design/ontology-patterns.md section 0, which
+   * the ontology and database pages set in. Nothing in the set is a circle:
+   * circles are reserved for the live dot and avatars, so a dense table of
+   * glyphs stays quiet.
+   */
+  port: "M5 2.5 h6 L13.5 8 L11 13.5 H5 L2.5 8 Z",
+  party: "M3 3 h4.5 l1.5 1.5 H13 v9 H3 z",
+  field: "M6 3 H4 v10 h2 M10 3 h2 v10 h-2",
+  clip: "M3.5 2.5 h6 L12.5 5.5 v8 h-9 z M9.5 2.5 v3 h3",
+  box: "M3 3 h10 v10 h-10 z M6.3 3 v10",
 } as const;
 
 export type IconName = keyof typeof PATHS;

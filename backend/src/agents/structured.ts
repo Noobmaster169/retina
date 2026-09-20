@@ -22,7 +22,8 @@ export interface StructuredCall<T> {
   input: Record<string, string | string[]>;
   schema: z.ZodType<T>;
   project: string;
-  runId: string;
+  /** Null for a call that belongs to no run: the chat agent's loop is the only one. */
+  runId: string | null;
   emailRunId?: string;
 }
 
@@ -86,9 +87,30 @@ function parseOrUndefined(text: string): unknown {
   }
 }
 
-/** The schema as the provider takes it: plain JSON Schema, without the `$schema` dialect marker some reject. */
-function toOutputSchema(schema: z.ZodType): Record<string, unknown> {
+/**
+ * The schema as the provider takes it: plain JSON Schema, without the
+ * `$schema` dialect marker some reject.
+ *
+ * A top-level union is refused here rather than by the provider. The Anthropic
+ * wire answers `input_schema does not support oneOf, allOf, or anyOf at the
+ * top level`, which arrives as a 502 from the proxy marked retryable, so the
+ * caller retries a call that can never succeed and the reason is three layers
+ * away from the schema that caused it. Failing at the seam turns that into one
+ * sentence naming the fix.
+ *
+ * The fix is always the same: one flat object with the discriminant as a
+ * field, narrowed in code after it parses.
+ */
+export function toOutputSchema(schema: z.ZodType): Record<string, unknown> {
   const { $schema: _dialect, ...rest } = z.toJSONSchema(schema);
+  for (const combinator of ["oneOf", "anyOf", "allOf"]) {
+    if (combinator in rest) {
+      throw new TerminalError(
+        `a structured output schema cannot be a union: the provider refuses \`${combinator}\` at the top level of a tool schema. ` +
+          "Use one object with the discriminant as a field and narrow it after it parses.",
+      );
+    }
+  }
   return rest;
 }
 
@@ -131,9 +153,10 @@ export async function callStructured<T>(deps: StructuredDeps, call: StructuredCa
       attempt,
     };
 
-    // Streamed only where someone can watch it: an email's call, with a live store.
+    // Streamed only where someone can watch it: an email's call of a run, with
+    // a live store. A call that belongs to no run has no run page to stream to.
     const preview =
-      deps.live && call.emailRunId
+      deps.live && call.emailRunId && call.runId
         ? livePreview(deps.live, {
             emailRunId: call.emailRunId,
             runId: call.runId,

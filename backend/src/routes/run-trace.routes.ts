@@ -3,7 +3,6 @@ import type { Pool } from "pg";
 import { z } from "zod";
 
 import {
-  type DocumentView,
   type EmailTrace,
   type LiveCallView,
   type LlmCallSummaryList,
@@ -13,18 +12,8 @@ import {
 } from "../contracts";
 import { childLogger } from "../lib/logger";
 import type { LiveCall, LiveCalls } from "../live";
-import {
-  classifications,
-  comparisons,
-  documents,
-  emailRuns,
-  emails,
-  extractions,
-  llmCalls,
-  reviewCases,
-  type StoredDocument,
-} from "../ontology/repositories";
-import { documentVerdicts } from "../pipeline/compare";
+import { documents, emailRuns, emails, llmCalls } from "../ontology/repositories";
+import { buildEmailTrace, withVerdicts } from "../ontology/trace";
 import { runIdParam } from "./params";
 
 const EmailIdParam = z.string().regex(/^email_\w{1,32}$/);
@@ -34,12 +23,6 @@ export interface RunTraceDeps {
   pool: Pool;
   /** Where in-flight calls are kept. Absent, nothing is ever shown as live. */
   live?: LiveCalls;
-}
-
-/** The email's documents with the compare stage's verdict on each, so the page shows a reading rather than making one. */
-function withVerdicts(docs: StoredDocument[]): DocumentView[] {
-  const verdicts = documentVerdicts(docs);
-  return docs.map((doc) => documents.toView(doc, verdicts.get(doc.filename) ?? "unknown"));
 }
 
 /** What a run did, email by email and call by call: the list, the live feed, and one email's trace. */
@@ -109,27 +92,8 @@ export function runTraceRouter(deps: RunTraceDeps): Router {
       res.status(404).json({ error: "no such email in this run" });
       return;
     }
-    const [classification, docs, review, extracted, comparison, calls, live] = await Promise.all([
-      classifications.view(pool, state.id),
-      documents.listForEmailRun(pool, state.id),
-      reviewCases.latestFor(pool, state.id),
-      extractions.listForEmailRun(pool, state.id),
-      comparisons.view(pool, state.id),
-      llmCalls.listForEmail(pool, id, emailId.data),
-      liveOf([{ id: state.id, emailId: emailId.data }]),
-    ]);
-    const body: EmailTrace = {
-      emailId: emailId.data,
-      stage: state.stage,
-      error: state.error,
-      classification,
-      documents: withVerdicts(docs),
-      review,
-      extractions: extracted.map(extractions.toView),
-      comparison,
-      live: live[0] ?? null,
-      calls,
-    };
+    const live = await liveOf([{ id: state.id, emailId: emailId.data }]);
+    const body = (await buildEmailTrace(pool, id, emailId.data, live[0] ?? null)) as EmailTrace;
     res.json(body);
   });
 

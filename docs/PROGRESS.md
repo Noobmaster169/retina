@@ -1,19 +1,80 @@
 # Progress
 
-Current phase: 9, **merged to `main`** with its exit checklist green. Phase 7's two `[~]` items are
-still under "Deferred" below.
+Current phase: 10, **merged to `main`, semi done**. The data layer, the ontology surfaces and the
+read-only agent are finished and tested. **The chat works and is the part that needs refinement.**
+Phase 7's two `[~]` items are still under "Deferred" below.
 
-**Next: phase 10.** Read `docs/phases/phase-10-handover.md` section 1 before writing any SQL: five
-things in the phase 10 spec do not match the schema that exists, including a migration number that
-would silently never run and two view columns that do not.
+**Start at `docs/phases/phase-11-handover.md`.** Section 3 is the chat's backlog and is the real
+work left in phase 10; section 6 is the traps, two of which cost hours. Then
+`docs/phases/phase-11-eval-and-lessons.md`.
 
-**Start at `docs/phases/phase-10-handover.md`.** Phase 9's section is below; the shell contract and
-the traps in `docs/phases/phase-08-handover.md` sections 6 and 10 all still apply.
+The one thing to know before asking the chat anything: **only one question has ever been put to a
+live model.** It answered correctly, and it exercised `run_sql` and nothing else. `get_email`,
+`explain_decision` and `describe_schema` have been called by tests and by hand over MCP, never by
+a model choosing to.
+
+The shell contract and the traps in `docs/phases/phase-08-handover.md` sections 6 and 10 all still
+apply, as do phase 9's in `phase-09-handover.md` section 7.
 
 Phase 6 is built and tested; left for the user there: the holdout run and the full 520 run that
 decide its exit checklist's score lines (`pnpm eval:score --run <id> --holdout`), and phase 5's
 open items (the box check of doc-extract, the classify `v5` holdout). Phase 4's open items (the
 few-shot `v4` holdout, the model comparison) are still the user's.
+
+## Phase 10
+
+The ontology is queryable by people and by an agent, and the model itself is visible. Four
+surfaces: the analytics schema behind a read-only role, the chat that answers from it with its
+working shown, the database page, and the ontology page.
+
+**Built.**
+
+- Migrations `010` to `014`: the `analytics` schema, the `retina_ro` role granted column by
+  column, the chat tables, the three entity tables, and the grant `013` needed that `011` could
+  not have given. `db/migrate.mjs` gained the one substitution it was assumed to have, for
+  `PG_RO_PASSWORD`.
+- `pipeline/ontology/resolve.ts`, pure: ports and parties clustered out of `extraction_fields`
+  where the only edge that joins two spellings is a `field_diffs` row the field judge already
+  wrote with `same = true`. No normaliser, no lookup table, no edit distance. On the dataset it
+  resolves 80 things out of 2,265 mentions and 1,025 verdicts, and `NANTONG, CHINA (CNNTG)` and
+  `NANTONG, CHINA` are one place at 0.98, which is the design's own example.
+- `agents/chat/`: the four tools behind one registry, the pure SQL guardrail, and a loop of at
+  most eight steps. Every iteration is an `llm_calls` row with `run_id = null`.
+- `src/mcp.ts` serves the same registry over stdio; `.mcp.json` configures it.
+- The ontology page: Things, Record and Links over one of five types, with the type, the
+  selection and the tab all in the URL. The `/chat` page and the email page's chat rail turned on.
+- The database page is built and hidden from the rail. Five navigable types, not twelve: the rest
+  are reached through an object rather than browsed, and Client folds into Party because a sender
+  domain and a consignee are the same company read two ways.
+- `pnpm derive` forces the derived data level with core, for after a deploy and before a demo.
+
+**Three things only end-to-end use could have found, all fixed.**
+
+- The chat's step schema was a discriminated union, and the provider refuses `oneOf` at the top
+  level of a tool schema. It arrives as a retryable 502, so the caller retries a call that can
+  never succeed. `toOutputSchema` refuses a union at the seam now, naming the fix, and the schema
+  is one flat object.
+- Migration `011` grants table by table and ran before `013` created the entity tables, so the
+  three tables the ontology is made of were the three the agent could not read, while its own
+  schema documentation offered a query over them. `014` fixes it and says why.
+- `refreshIfStale` gated the entity resolver on the analytics watermark. A materialised view is
+  created already populated, so on a fresh database the views were level and the resolver never
+  ran. Two derived things, two checks.
+
+**Numbers.** 615 backend tests, 48 frontend, none touching the proxy. On run `bd2f686e` the chat
+answers "which of the seven fields differs most often" as `container_count` with 10, from one
+query it scoped to the conversation's run without being told to.
+
+**Semi done: the chat needs refinement.** `docs/phases/phase-11-handover.md` section 3 is the
+list. In short: only `run_sql` has been exercised by a live model; the result graph's entity
+column is the first column of the result, which is a row id for a `select *`; there is no live
+build of the graph, only a skeleton and an elapsed counter; the action card is drawn, disabled and
+never populated; and `MAX_STEPS = 8` has never been measured against a real question.
+
+**Left for the user.** The full 520-email run against these pages. The only 520 run in the
+database has no MISMATCH in it, so the database and ontology pages were checked against
+`bd2f686e`, which has 23. A fresh full run would exercise the resolver at the size the judges
+will see.
 
 ## Phase 9
 
@@ -1158,6 +1219,24 @@ the same branch. The behaviour changes are the first three.
   dev sample, decides a prompt switch; the runs page can pin them meanwhile.
 
 ## Deferred
+- Shipment and Carrier are in the design's entity vocabulary and are never `built`: nothing in the
+  organisers' seven fields yields a booking or a vessel. They are drawn dashed and the rail says
+  so. Building them needs a source, not a table.
+- The database page is hidden, not removed (`Destination.hidden` in `components/shell/nav.ts`).
+  `/runs/:id/database` still serves `As rows` and `As things`. If a demo wants the raw tables
+  back in the rail, deleting that one field is what does it.
+- Only an email has a graph. The Links tab is not drawn for a port or a party: another type's
+  graph is a different set of relations, not a parameter.
+- `entity_names.joined_by` allows `human` and nothing writes it. A person's `correct_field` says a
+  value was wrong, which is not the same claim as two values denoting one thing, so joining on a
+  correction would have been a guess. The path opens when the action card's apply path does.
+- The column configurator the canvas drew on the Record tab is gone rather than deferred. It
+  configured a list of eleven values, its `Add` offered three kinds of column that do not exist,
+  and two of its three tabs were dead. If a computed column is ever built, it needs a table to
+  configure, which is the database page's job.
+- A resolved thing's graph. `GET /ontology/:type/:id/graph` serves an email only, which is what
+  both canvases draw; another type's graph is a different set of relations, not a parameter.
+- The Earth view (`04-phases.md` 10c) is untouched and still optional.
 - `EXTRACT_TRUST_FROM` (0.7, `pipeline/compare/evidence.ts`) is the classify verifier's bar
   carried over, not a measured one. On the 24-email check it sent 1 of 48 documents to the
   verifier; the holdout run says whether that is too few (a wrong value passing at 0.8) or fine.

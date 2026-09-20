@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "retina": {
+      "command": "node",
+      "args": ["--env-file-if-exists=.env", "--import", "tsx", "src/mcp.ts"],
+      "cwd": "backend"
+    }
+  }
+}

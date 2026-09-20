@@ -15,6 +15,26 @@ function required(name) {
 }
 
 /**
+ * Substitutes `:'name'` with a single-quoted literal, the way psql does.
+ *
+ * Only 011_ro_role.sql uses it, and only for PG_RO_PASSWORD: a password cannot
+ * be in git and CREATE ROLE takes no bind parameter. A file that names a
+ * placeholder whose variable is unset fails loudly rather than applying a
+ * migration with the literal `:'ro_password'` as the password.
+ */
+const SUBSTITUTIONS = { ro_password: "PG_RO_PASSWORD" };
+
+function substitute(filename, sql) {
+  return sql.replace(/:'([a-z_]+)'/g, (match, name) => {
+    const variable = SUBSTITUTIONS[name];
+    if (!variable) throw new Error(`${filename} names :'${name}', which db/migrate.mjs does not know`);
+    const value = process.env[variable];
+    if (!value) throw new Error(`${filename} needs ${variable}, which is not set`);
+    return `'${value.replaceAll("'", "''")}'`;
+  });
+}
+
+/**
  * Applies every migration not yet recorded in schema_migrations, in filename
  * order. Each file runs in a transaction together with its bookkeeping insert,
  * so a failing migration leaves nothing half-applied.
@@ -54,7 +74,7 @@ export async function migrate({ log = console.log } = {}) {
     }
 
     for (const filename of pending) {
-      const sql = await readFile(join(MIGRATIONS_DIR, filename), "utf8");
+      const sql = substitute(filename, await readFile(join(MIGRATIONS_DIR, filename), "utf8"));
       await client.query("begin");
       try {
         await client.query(sql);

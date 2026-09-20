@@ -332,6 +332,11 @@ ensure_secret() {
 }
 
 ensure_secret PG_PASSWORD      32 "Postgres password for the retina user."
+# The chat agent's read-only principal. The api runs migration 011 before it
+# listens, and that migration needs this, so a stack without it fails at boot.
+# Unlike PG_PASSWORD it is safe to change: 011 resets the role's password on
+# every apply, and no data is encrypted under it.
+ensure_secret PG_RO_PASSWORD   32 "Postgres password for retina_ro, which the chat agent's SQL runs as."
 ensure_secret API_SHARED_SECRET 32 "Bearer the Vercel frontend sends. Put the same value in the Vercel project."
 ensure_secret TEAM_API_KEY     32 "Bearer teammates use to call the API directly."
 ensure_secret MINIO_ACCESS_KEY 16 "MinIO root user, and the access key the api and worker sign with."

@@ -17,6 +17,56 @@ export {
   listClients,
   updateClient,
 } from "./api/clients-client";
+export {
+  type EntityAppearance,
+  type EntityDetail,
+  type EntityList,
+  type EntityName,
+  type EntityRow,
+  getEntityDetail,
+  getObjectGraph,
+  getObjectRecord,
+  type GraphEdge,
+  type GraphNode,
+  listEntities,
+  listObjectTypes,
+  type ObjectGraph,
+  type ObjectLink,
+  type ObjectRecord,
+  type ObjectType,
+  type ObjectTypeSummary,
+  type StoredValue,
+  type WrittenBy,
+} from "./api/ontology-client";
+export {
+  type ColumnInfo,
+  type ColumnType,
+  type ForeignKeyCount,
+  getRowDetail,
+  getTablePage,
+  listTables,
+  type TablePage,
+  type TableRowDetail,
+  type TableSummary,
+} from "./api/database-client";
+export {
+  askQuestion,
+  type ChatAnswer,
+  type ChatConversation,
+  type ChatGraph,
+  type ChatGraphNode,
+  type ChatScope,
+  type ChatThread,
+  type ChatToolCall,
+  type ChatToolName,
+  type ChatTurn,
+  createConversation,
+  deleteConversation,
+  getThread,
+  listConversations,
+  type ProposedAction,
+  type SqlResult,
+} from "./api/chat-agent-client";
 export { type ChatMessage, type ChatOutcome, type ChatRequest, type ChatResult, chat, listModels, type ModelInfo } from "./api/chat-client";
 export { Email, type EmailListQuery, type EmailPage, type EmailSummary, fetchAttachment, getEmail, listEmails } from "./api/mail-client";
 export {

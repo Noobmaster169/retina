@@ -1,7 +1,14 @@
 import type { Queryable } from "../../db";
 
 export interface NewLlmCall {
-  runId: string;
+  /**
+   * Null for a call that belongs to no run, which is every chat turn. A run's
+   * cost is what the pipeline spent on that run, so a conversation scoped to a
+   * run still writes null here rather than adding its own tokens to the run's
+   * bill. Every read of this table filters on `run_id` or joins `email_run_id`,
+   * so a null-run row appears in none of them.
+   */
+  runId: string | null;
   emailRunId: string | null;
   step: string;
   model: string;

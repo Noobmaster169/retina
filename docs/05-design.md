@@ -391,8 +391,9 @@ Panes, left to right, each one a hairline apart. Every screen is a variation of 
 +--------+----------+--------------------------------+-------------+
 ```
 
-**Left rail, 232px.** One group of destinations, then what is pinned for the current context, then
-memory, then dependency health at the foot. The destinations are the entity types plus the
+**Left rail, 232px.** The run in context, then one group of destinations, and nothing below them:
+the pinned prompt set and dependency health were taken off it as clutter (a dependency that is down
+is still named by the banner on the run page). The destinations are the entity types plus the
 operations, because putting the entities in the navigation is the cheapest way to say that this
 product has a knowledge model and not just a list of emails. Counts sit right aligned in mono.
 

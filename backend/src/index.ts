@@ -1,8 +1,9 @@
 import net from "node:net";
 
+import { proxyLlmClient } from "./agents";
 import { createApp } from "./app";
 import { config } from "./config";
-import { closePool, getPool } from "./db";
+import { closePool, closeRoPool, getPool, getRoPool } from "./db";
 import { checkHealth } from "./health";
 import { childLogger } from "./lib/logger";
 import { redisLiveCalls } from "./live";
@@ -32,6 +33,7 @@ function storeOrNull(): ObjectStore | null {
 }
 
 const pool = getPool();
+const roPool = getRoPool();
 const store = storeOrNull();
 const live = redisLiveCalls();
 const runQueues = bullRunQueues();
@@ -41,6 +43,11 @@ const app = createApp({
   store,
   scorer: inboxScorer(config.EMAIL_SERVER_URL),
   priority: redisPriorityCache(getRedis()),
+  roPool,
+  // The api makes model calls now: one chat turn is several. Its own client,
+  // with its own concurrency, so a conversation cannot take slots the worker's
+  // pipeline is waiting on.
+  llm: proxyLlmClient({ maxConcurrency: 2 }),
   health: () =>
     checkHealth({
       pool,
@@ -67,6 +74,7 @@ async function shutdown(): Promise<void> {
     await closeQueues();
     await closeRedis();
     await closePool();
+    await closeRoPool();
   } catch (error) {
     log.error({ err: error instanceof Error ? error.message : String(error) }, "shutdown failed");
     process.exit(1);

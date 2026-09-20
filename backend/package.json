@@ -17,10 +17,13 @@
     "eval:score": "node --env-file-if-exists=.env --import tsx src/eval/run-eval.ts",
     "eval:sample": "node --env-file-if-exists=.env --import tsx src/eval/sample.cli.ts",
     "eval:examples": "node --env-file-if-exists=.env --import tsx src/eval/examples.cli.ts",
-    "load-test": "node --env-file-if-exists=.env --import tsx scripts/load-test.ts"
+    "load-test": "node --env-file-if-exists=.env --import tsx scripts/load-test.ts",
+    "derive": "node --env-file-if-exists=.env --import tsx scripts/derive.ts",
+    "mcp": "node --env-file-if-exists=.env --import tsx src/mcp.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "bullmq": "^6.3.6",
     "express": "^5.2.1",
     "ioredis": "^5.11.1",

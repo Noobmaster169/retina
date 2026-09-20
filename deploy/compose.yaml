@@ -21,6 +21,11 @@ x-backend-env: &backend-env
   PG_DATABASE: retina_prod
   PG_USER: retina
   PG_PASSWORD: ${PG_PASSWORD:?set PG_PASSWORD in .env}
+  # The chat agent's read-only principal (migration 011). The api runs the
+  # migrations before it listens, and 011 needs this to create the role, so a
+  # deploy without it fails at boot rather than at the first question.
+  PG_RO_PASSWORD: ${PG_RO_PASSWORD:?set PG_RO_PASSWORD in .env}
+  DATABASE_RO_URL: postgres://retina_ro:${PG_RO_PASSWORD:?set PG_RO_PASSWORD in .env}@postgres:5432/retina_prod
   API_SHARED_SECRET: ${API_SHARED_SECRET:?set API_SHARED_SECRET in .env}
   TEAM_API_KEY: ${TEAM_API_KEY:?set TEAM_API_KEY in .env}
   REDIS_URL: redis://redis:6379
