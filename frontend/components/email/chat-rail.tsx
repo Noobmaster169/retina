@@ -31,7 +31,11 @@ interface ChatRailProps {
 
 export function ChatRail({ scope, opening, suggestions }: ChatRailProps) {
   return (
-    <aside className="flex w-[340px] shrink-0 flex-col bg-surface" aria-label="Ask Retina">
+    // Below 1280px the chat gives up its column: `05-design.md` section 7 makes
+    // it an overlay sheet at that width, and until phase 10 gives it anything
+    // to say, not being there is the same sheet with nothing in it. A media
+    // query and not a tab, so switching a tab still never moves the panes.
+    <aside className="hidden w-[340px] shrink-0 flex-col bg-surface xl:flex" aria-label="Ask Retina">
       <header className="flex h-16 shrink-0 items-center gap-2.5 border-b border-hairline px-[18px]">
         <Icon name="chat" size={15} className="text-ink" />
         <h2 className="text-[14px] font-semibold tracking-[-0.01em]">Ask Retina</h2>
