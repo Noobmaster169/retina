@@ -1,6 +1,5 @@
-import type { EntityRow, ObjectType } from "../../contracts";
+import { EntityKind, type EntityRow, type ObjectType } from "../../contracts";
 import type { Queryable } from "../../db";
-import { ENTITY_KINDS, type EntityKind } from "../../pipeline/ontology";
 import { ENTITY_FIELDS } from "./entities.inputs";
 
 /**
@@ -90,7 +89,7 @@ export async function countsByKind(db: Queryable): Promise<Record<EntityKind, nu
   const { rows } = await db.query<{ kind: EntityKind; n: string }>(
     "select kind, count(*)::text as n from core.entities where merged_into is null group by kind",
   );
-  const counts = Object.fromEntries(ENTITY_KINDS.map((kind) => [kind, 0])) as Record<EntityKind, number>;
+  const counts = Object.fromEntries(EntityKind.options.map((kind) => [kind, 0])) as Record<EntityKind, number>;
   for (const row of rows) counts[row.kind] = Number(row.n);
   return counts;
 }

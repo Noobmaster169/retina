@@ -18,8 +18,10 @@ export {
   updateClient,
 } from "./api/clients-client";
 export {
+  type AttributeSource,
   type EntityAppearance,
   type EntityDetail,
+  type EntityKind,
   type EntityList,
   type EntityName,
   type EntityRow,
@@ -35,6 +37,8 @@ export {
   type ObjectRecord,
   type ObjectType,
   type ObjectTypeSummary,
+  type SemanticReading,
+  type StoredProfile,
   type StoredValue,
   type WrittenBy,
 } from "./api/ontology-client";

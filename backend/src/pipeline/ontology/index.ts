@@ -1,7 +1,6 @@
 export { type ExistingEntity, reconcile, type ReconcilePlan } from "./reconcile";
+export type { EntityKind } from "../../contracts";
 export {
-  ENTITY_KINDS,
-  type EntityKind,
   type JoinedBy,
   type Mention,
   type ResolvedEntity,

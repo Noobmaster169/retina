@@ -22,6 +22,9 @@ export const GLYPH_OF: Record<ObjectType, IconName> = {
   party: "party",
   shipment: "box",
   carrier: "ship",
+  person: "client",
+  commodity: "box",
+  vessel: "ship",
 };
 
 /** Singular, for a chip beside one thing. The rail's plural labels come from the api. */
@@ -38,6 +41,9 @@ export const LABEL_OF: Record<ObjectType, string> = {
   party: "Party",
   shipment: "Shipment",
   carrier: "Carrier",
+  person: "Person",
+  commodity: "Commodity",
+  vessel: "Vessel",
 };
 
 /** The two resolved kinds, which are the only ones with an index of their own. */

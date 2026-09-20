@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { StoredProfile } from "./semantic-schemas";
+
 /**
  * Mirrors backend/src/contracts.ontology.ts by hand. A drift fails here,
  * naming the field, instead of reaching the ontology page as undefined.
@@ -18,6 +20,9 @@ export const ObjectType = z.enum([
   "party",
   "shipment",
   "carrier",
+  "person",
+  "commodity",
+  "vessel",
 ]);
 export type ObjectType = z.infer<typeof ObjectType>;
 
@@ -139,6 +144,8 @@ export type EntityList = z.infer<typeof EntityList>;
 
 export const EntityDetail = z.object({
   row: EntityRow,
+  /** What this thing is. Null until the profile job has written one. */
+  profile: StoredProfile.nullable().default(null),
   values: z.array(StoredValue),
   links: z.array(ObjectLink),
   names: z.array(EntityName),

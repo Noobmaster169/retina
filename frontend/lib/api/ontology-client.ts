@@ -25,6 +25,7 @@ export type {
   StoredValue,
   WrittenBy,
 } from "./ontology-schemas";
+export type { AttributeSource, EntityKind, SemanticReading, StoredProfile } from "./semantic-schemas";
 
 /** The rail on both the database page and the ontology page, with live counts. */
 export async function listObjectTypes(): Promise<ObjectTypeSummary[]> {

@@ -57,6 +57,7 @@ export function optimistic(question: string): ChatTurn {
     checked: [],
     next: [],
     clarify: null,
+    semantic: [],
     createdAt: new Date().toISOString(),
   };
 }

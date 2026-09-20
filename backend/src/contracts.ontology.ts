@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { StoredProfile } from "./contracts.semantic";
+
 /**
  * The model as a model: object types, one object's stored values, the links
  * out of it, and the spellings that were judged into it.
@@ -38,6 +40,9 @@ export const ObjectType = z.enum([
   "party",
   "shipment",
   "carrier",
+  "person",
+  "commodity",
+  "vessel",
 ]);
 export type ObjectType = z.infer<typeof ObjectType>;
 
@@ -207,6 +212,8 @@ export type EntityList = z.infer<typeof EntityList>;
 /** The four parts a row opens into, and what the full record page draws. */
 export const EntityDetail = z.object({
   row: EntityRow,
+  /** What this thing is, as the profile step wrote it. Null until it has been profiled once. */
+  profile: StoredProfile.nullable().default(null),
   values: z.array(StoredValue),
   links: z.array(ObjectLink),
   names: z.array(EntityName),

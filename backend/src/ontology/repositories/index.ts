@@ -19,6 +19,7 @@ export * as entityResolution from "./entities.resolution";
 export * as entityOverview from "./entities.overview";
 export * as entitySearch from "./entities.search";
 export * as entityDetail from "./entities.detail";
+export * as entityProfile from "./entities.profile";
 export * as emails from "./emails.repo";
 export * as extractions from "./extractions.repo";
 export * as fieldDiffs from "./field-diffs.repo";

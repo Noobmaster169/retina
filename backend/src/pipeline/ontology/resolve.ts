@@ -1,4 +1,4 @@
-import type { ComparisonField } from "../../contracts";
+import type { ComparisonField, EntityKind } from "../../contracts";
 import { Clusters } from "./clusters";
 
 /**
@@ -27,18 +27,6 @@ const KIND_OF_FIELD: Partial<Record<ComparisonField, EntityKind>> = {
   consignee: "party",
   notify_party: "party",
 };
-
-/**
- * The kinds a thing can be.
- *
- * `port` and `party` come from the seven fields. The other four come from what
- * the `shipment-read` step reads in a subject, a body or the rest of a
- * document: they are stated in the mail as plainly as a consignee is, and
- * nothing but a missing reader kept them out until now.
- */
-export type EntityKind = "port" | "party" | "carrier" | "person" | "commodity" | "vessel";
-
-export const ENTITY_KINDS: EntityKind[] = ["port", "party", "carrier", "person", "commodity", "vessel"];
 
 /** How a spelling came to be part of a thing. Nothing writes `human` until the action-card contract lands. */
 export type JoinedBy = "kept" | "judge" | "human";

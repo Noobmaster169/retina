@@ -150,6 +150,7 @@ export * from "./contracts.emails";
 export * from "./contracts.enums";
 export * from "./contracts.extraction";
 export * from "./contracts.ontology";
+export * from "./contracts.semantic";
 export * from "./contracts.prompts";
 export * from "./contracts.queues";
 export * from "./contracts.review";
