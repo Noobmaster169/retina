@@ -5,10 +5,11 @@ import { loadPrompt } from "../prompts/registry";
 import { callStructured, type StructuredDeps } from "../structured";
 import { buildGraph } from "./graph";
 import { type How, skillsToInject } from "./inject";
-import { finish, type FinishedCall, forWire, Step, transcribe } from "./loop.steps";
+import { type Scope, scopeText, stepInput } from "./loop.input";
+import { finish, type FinishedCall, forWire, Step } from "./loop.steps";
 import { skills, skillText, skillVersions } from "./skills/registry";
 import { standing, standingText } from "./standing";
-import { callTool, toolDescriptions, type ToolContext } from "./tools";
+import { callTool, type ToolContext } from "./tools";
 
 const log = childLogger({ module: "chat.loop" });
 
@@ -22,7 +23,8 @@ const log = childLogger({ module: "chat.loop" });
  *
  * The harness around it is what keeps a session from starting blind: the
  * standing instructions, the orientation, the skills it injects on what it can
- * see, and the literal guard inside the tools.
+ * see, and the literal guard inside the tools. What one step is given is
+ * `loop.input.ts`; what one step may say is `loop.steps.ts`.
  */
 
 /** Two or three steps answer most questions; the rest is room to recover from a refusal. Never tuned upward without a measurement. */
@@ -33,7 +35,7 @@ export interface TurnInput {
   question: string;
   /** Oldest first: what the person asked and what the agent answered before now. */
   history: { role: "user" | "assistant"; content: string }[];
-  scope: { runId: string | null; emailId: string | null };
+  scope: Scope;
   /** What the database holds right now, rendered. See orientation.ts. */
   orientation: string;
   /** ISO date. The prompt files never hold it. */
@@ -60,19 +62,6 @@ export interface TurnResult {
 
 export interface LoopDeps extends StructuredDeps {
   tools: ToolContext;
-}
-
-/** What the model is told about the scope it was opened in. A default it may widen, never a filter it cannot see past. */
-function scopeText(scope: TurnInput["scope"]): string {
-  const parts = [
-    scope.runId ? `run ${scope.runId}` : "no particular run",
-    scope.emailId ? `the email ${scope.emailId}` : null,
-  ].filter((part): part is string => part !== null);
-  return `This conversation was opened about ${parts.join(", and ")}. Use it where the question does not say otherwise, and go wider when the question asks something wider.`;
-}
-
-function historyText(history: TurnInput["history"]): string[] {
-  return history.map((turn) => `${turn.role === "user" ? "they asked" : "you answered"}: ${turn.content}`);
 }
 
 export async function runTurn(deps: LoopDeps, input: TurnInput): Promise<TurnResult> {
@@ -126,19 +115,17 @@ export async function runTurn(deps: LoopDeps, input: TurnInput): Promise<TurnRes
 
     const { value } = await callStructured(deps, {
       prompt,
-      input: {
-        "Standing instructions": held.instructions,
-        "Orientation: what the database holds right now": input.orientation,
-        "The skills, and the recipes each brings": held.skillCards,
-        "Skills for this turn": skillBodies.length > 0 ? skillBodies.join("\n\n") : "(none injected; load one if a card matches)",
-        "Every recipe, as run_recipe takes it": held.recipeSignatures,
-        "The schema you may query": held.schemaDocs,
-        "The tools you have": toolDescriptions(),
-        "The scope of this conversation": `${scopeText(input.scope)} Today is ${input.today}.`,
-        "The conversation so far": input.history.length > 0 ? historyText(input.history) : "(this is the first question)",
-        "What you have done on this turn": calls.length + notes.length > 0 ? [...calls.map(transcribe), ...notes] : "(nothing yet)",
-        "The question": input.question,
-      },
+      input: stepInput({
+        held,
+        orientation: input.orientation,
+        scope: input.scope,
+        today: input.today,
+        history: input.history,
+        skillBodies,
+        calls,
+        notes,
+        question: input.question,
+      }),
       schema: Step,
       project: "chat",
       // A conversation's tokens are not a run's cost, even when the
