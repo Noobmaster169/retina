@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { type Mention, resolveEntities, type Verdict } from "../../src/pipeline/ontology";
+import { type Mention, resolveEntities, type Sighting, type Verdict } from "../../src/pipeline/ontology";
 
 /**
  * The values are real lines from the dataset's Nantong cluster, which is the
@@ -35,8 +35,8 @@ describe("resolveEntities", () => {
     expect(entity.kind).toBe("port");
     expect(entity.canonical).toBe("NANTONG, CHINA");
     expect(entity.names).toEqual([
-      { value: "NANTONG, CHINA", seenCount: 2, joinedBy: "kept", confidence: null },
-      { value: "NANTONG", seenCount: 1, joinedBy: "judge", confidence: 0.97 },
+      { value: "NANTONG, CHINA", seenCount: 2, joinedBy: "kept", confidence: null, joinedStep: null },
+      { value: "NANTONG", seenCount: 1, joinedBy: "judge", confidence: 0.97, joinedStep: null },
     ]);
     expect(entity.mentions).toHaveLength(3);
   });
@@ -118,6 +118,47 @@ describe("resolveEntities", () => {
       [judged("consignee", "BRAVO LTD", "ALPHA LTD")],
     );
     expect(entity.canonical).toBe("ALPHA LTD");
+  });
+
+  it("counts a spelling read in a subject or a body, which has no extraction field behind it", () => {
+    const sightings: Sighting[] = [
+      { kind: "party", value: "UAB NOVAKOPA", seenAt: new Date(MAR13) },
+      { kind: "party", value: "UAB NOVAKOPA", seenAt: new Date(MAR14) },
+    ];
+    const [entity] = resolveEntities([], [], sightings);
+
+    expect(entity.canonical).toBe("UAB NOVAKOPA");
+    expect(entity.sightingCount).toBe(2);
+    expect(entity.mentions).toEqual([]);
+    expect(entity.names[0].seenCount).toBe(2);
+  });
+
+  it("resolves a kind no comparison field yields, from sightings alone", () => {
+    const [entity] = resolveEntities([], [], [{ kind: "carrier", value: "CMA CGM", seenAt: new Date(MAR14) }]);
+    expect(entity.kind).toBe("carrier");
+  });
+
+  it("joins a sighting to a document value on an entity-resolve verdict, and says which step did it", () => {
+    const [entity] = resolveEntities(
+      [mention("port_of_discharge", "MOMBASA, KENYA", MAR14), mention("port_of_discharge", "MOMBASA, KENYA", MAR13)],
+      [{ kind: "port", siValue: "MOMBASA_KENYA", blValue: "MOMBASA, KENYA", same: true, confidence: 0.94, step: "entity-resolve" }],
+      [{ kind: "port", value: "MOMBASA_KENYA", seenAt: new Date(MAR14) }],
+    );
+
+    expect(entity.canonical).toBe("MOMBASA, KENYA");
+    expect(entity.names).toEqual([
+      { value: "MOMBASA, KENYA", seenCount: 2, joinedBy: "kept", confidence: null, joinedStep: null },
+      { value: "MOMBASA_KENYA", seenCount: 1, joinedBy: "judge", confidence: 0.94, joinedStep: "entity-resolve" },
+    ]);
+  });
+
+  it("keeps a port and a party spelt the same way apart, whichever read them", () => {
+    const entities = resolveEntities(
+      [mention("port_of_discharge", "SINGAPORE", MAR14)],
+      [],
+      [{ kind: "party", value: "SINGAPORE", seenAt: new Date(MAR14) }],
+    );
+    expect(entities.map((entity) => entity.kind).sort()).toEqual(["party", "port"]);
   });
 
   it("is empty with nothing to resolve", () => {

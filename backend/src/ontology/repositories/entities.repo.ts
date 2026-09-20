@@ -1,6 +1,6 @@
 import type { ComparisonField, EntityRow, ObjectType } from "../../contracts";
 import type { Queryable } from "../../db";
-import type { EntityKind, Mention, ResolvedEntity, Verdict } from "../../pipeline/ontology";
+import { ENTITY_KINDS, type EntityKind, type Mention, type ResolvedEntity, type Verdict } from "../../pipeline/ontology";
 
 /**
  * The things the extractor read, and the spellings that were judged into them.
@@ -201,7 +201,7 @@ export async function countsByKind(db: Queryable): Promise<Record<EntityKind, nu
   const { rows } = await db.query<{ kind: EntityKind; n: string }>(
     "select kind, count(*)::text as n from core.entities group by kind",
   );
-  const counts: Record<EntityKind, number> = { port: 0, party: 0 };
+  const counts = Object.fromEntries(ENTITY_KINDS.map((kind) => [kind, 0])) as Record<EntityKind, number>;
   for (const row of rows) counts[row.kind] = Number(row.n);
   return counts;
 }

@@ -16,9 +16,11 @@ function cluster(canonical: string, names: [string, number][], mentions = names.
       seenCount,
       joinedBy: at === 0 ? "kept" : "judge",
       confidence: at === 0 ? null : 0.95,
+      joinedStep: null,
     })),
     // Only the count is read here; a mention's own fields belong to the writer.
     mentions: Array.from({ length: mentions }, () => ({ extractionFieldId: 0, emailRunId: 1, field: "consignee" as const, value: canonical, seenAt: new Date(0) })),
+    sightingCount: 0,
     firstSeenAt: new Date(0),
     lastSeenAt: new Date(0),
   };
