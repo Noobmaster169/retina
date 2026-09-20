@@ -6,6 +6,14 @@ run that decide the exit checklist's score lines (`pnpm eval:score --run <id> --
 phase 5's open items (the box check of doc-extract, the classify `v5` holdout). Phase 4's open
 items (the few-shot `v4` holdout, the model comparison) are still the user's.
 
+**Next: phase 7.** The interface was designed on 2026-09-20 over four rounds of review, on a
+canvas of eleven artboards at `https://claude.ai/artifact/CSbrqYfTwzHpGFLVgKQpUZ`.
+`docs/05-design.md`, `docs/design/screen-blueprints.md` and `docs/design/ontology-patterns.md` were
+rewritten against it in the same session, and `docs/04-phases.md` phases 7, 8 and 10 with them.
+**Start at `docs/phases/phase-07-handover.md`**, which says how to read the canvas, what the API
+does not return yet, and which four components of the original phase 7 spec were cut. The design
+docs are not committed yet.
+
 Phase 5 merged to `main` on 2026-09-20. Every document's text is in MinIO under `text/`, typed
 on its `documents` row; phase 6 reads it from there.
 

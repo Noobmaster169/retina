@@ -1,5 +1,12 @@
 # Phase 7: Dashboard and email trace
 
+> **Read `phase-07-handover.md` first.** The interface was settled on a canvas of eleven artboards
+> after this spec was written, and four things this spec asks for were cut in review: the
+> provenance spine, its 60px row strip, the histogram facets and the stage bar. The handover says
+> what replaced them, what the API does not return yet, and what to leave to phases 8, 10 and 11.
+> Where this spec and the handover disagree, the handover is later and wins.
+
+
 ## Goal
 
 A person can watch a run and understand any single decision without SQL: what arrived, where

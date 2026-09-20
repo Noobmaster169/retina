@@ -9,6 +9,11 @@ Session start: read `CLAUDE.md`, `PROGRESS.md`, this file's row for the phase, t
 spec in `docs/phases/phase-NN-*.md`, which is the authoritative work list. Session end: exit
 checklist green, `PROGRESS.md` updated, merged to `main`.
 
+From phase 7 on, every screen is built against `docs/05-design.md` and the three files under
+`docs/design/`. Those are the target state and nothing in `frontend/` follows them yet, so the
+house rule applies: the doc wins for anything not built. A phase 7 or later session reads the
+design language before the phase spec.
+
 The sections below are summaries. The detailed specs are:
 
 ```
@@ -34,10 +39,10 @@ docs/phases/phase-12-hardening-and-demo.md
 | 4 | Classification quality | Prompt versions, verifier on doubt, gated few-shot, model comparison; stage 1 score rises |
 | 5 | Document parsing and triage | doc-extract service, attachment triage, fingerprints, first escalations |
 | 6 | Extraction and comparison | Seven fields with evidence, deterministic diff, full submission; end-to-end score rises |
-| 7 | Dashboard and email trace | Run view with live counters, per-email trace page |
+| 7 | Design system, dashboard and trace | The design language in code, the three pane shell, run view with live counters, per-email trace with the comparison row |
 | 8 | Review inbox | Human actions, uploads, failures with retry |
 | 9 | Priority, concurrency, ops | Client tiers, aging, semaphore, extended health, heartbeat |
-| 10 | Analytics schema and chat agent | Star-schema views, read-only role, chat page, explain a decision |
+| 10 | Ontology surfaces and chat agent | Star-schema views, read-only role, chat with a result graph, entity pages, search around, the ontology graph, and the Earth |
 | 11 | Eval tooling and gated lessons | Prompt versions, run diff, lesson proposals with approval and eval gate |
 | 12 | Hardening and demo | Failure drills, fresh-seed test, demo script, docs final |
 
@@ -222,49 +227,110 @@ end-to-end component.
 - [ ] Scanned pairs (512 to 514) escalate `unreadable` with a `provisional` result attached.
 - [ ] Every judged field is in `field_diffs` and every extracted value in `extraction_fields` with its quote.
 
-## Phase 7: Dashboard and email trace
+## Phase 7: Design system, the run page and the email page
 
-**Goal.** A person can watch a run and understand any single decision without SQL.
+**Goal.** A person can watch a run and understand any single decision without SQL, in the design
+language of `docs/05-design.md`. This phase replaces the phase 1 palette and establishes the shell
+every later screen inherits.
 
-**Build.**
+**Read first: `docs/phases/phase-07-handover.md`.** The design was settled on a canvas of eleven
+artboards after this section was first written, and the handover says how to read it, what the API
+does not return yet, and what to leave out. Three things this section originally asked for were
+cut in review and must not be built: the provenance spine and its 60px row strip, the histogram
+facets, and the stage bar.
+
+The phase is large. If it does not fit one session, split at the seam: **7a** is the design system,
+the shell and the run page, **7b** is the email page, the check and both documents. Never split
+across a seam.
+
+**Build, design system.**
+
+- `globals.css`: the Air token set from `05-design.md` section 4, replacing the phase 1 harbour
+  palette per the migration table in section 12. Newsreader for the one display line per page,
+  Inter for UI, JetBrains Mono for data. Tokens as CSS variables and in the Tailwind theme; no
+  second stylesheet.
+- The shell (`05-design.md` section 7): a 232px rail that collapses to 56px, a 56px top bar with
+  the ontology breadcrumb, and the panes. Every page must work at both rail widths.
+- The component set from `design/screen-blueprints.md` section 14, and the distinctive ones from
+  `05-design.md` section 8: the verdict chip with no dot, the marked span, the seam, the message
+  card, the slot row, the evidence well, the type badge, the empty and failure states.
+- **No status dot anywhere.** `05-design.md` section 2.1 principle 9. This is a review gate, not a
+  preference.
+
+**Build, screens.**
 
 - `GET /emails/:runId/:emailId` full trace contract; `GET /queues`; `run:{id}:counters` in Redis.
-- `/runs/[id]`: stage funnel, queue depth, category mix, verifier share, cost, live feed, score card.
-- `/emails/[runId]/[emailId]`: email, attachment viewer (text and page images via `/files`),
-  classification panel with generator and verifier rationales, extraction table with
-  source quotes highlighted in the document text, comparison table, escalation reason.
-- `/files/*key` streaming route.
-- Polling with SWR at the intervals in section 13.
+- **The run page** (`design/screen-blueprints.md` section 3), in its three states: running, a
+  dependency down, finished and scored. Two lanes left to right, one panel per queue with one row
+  per email, and the outcomes list in the enum's own words. The memory panel renders only when
+  `core.lessons` exists, which is phase 11.
+- **The email page** (section 5): the message as a bordered card, the labelled seam, the reading in
+  plain English, then the check. Tabs for `The check`, `Both documents` and `Model calls`. The
+  `Links to` strip above the action bar.
+- **The field comparison row** (section 6), which is the component this whole product exists to
+  render. The difference is marked at the word on both sides; a `missing` field is the hatch.
+- The `Both documents` tab with the rail closed, shared line numbers and the four marking states.
+- The 340px chat column, present and inert, with its composer disabled and one sentence saying
+  phase 10 turns it on. Drawing it now is what stops the page being relaid out twice.
+- `/files/*key` streaming route. Polling with SWR at the intervals in `03-infra-deep.md` section 13.
+
+**Out.** The database page and the ontology pages (phase 10b). The review queue and every write
+path (phase 8). The chat itself (phase 10a). Lessons (phase 11).
 
 **Exit checklist.**
 
-- [ ] During a 2 emails/s run the funnel and feed update without page reloads.
-- [ ] Opening a mismatch shows the differing field with SI and BL values and the quoted lines highlighted.
-- [ ] Opening an unreadable case shows the rendered page image.
+- [ ] No token from the phase 1 palette remains in `frontend/`; `globals.css` matches `05-design.md` section 4, and the three families load.
+- [ ] No status dot sits beside a chip, a row or a card anywhere in `frontend/`.
+- [ ] No JSON blob, model name, token count or dollar cost appears outside the run page's own machinery view.
+- [ ] During a 2 emails/s run both queue panels, the counters and the outcomes update without page reloads, and the two queues are visibly independent.
+- [ ] Stopping doc-extract mid run leaves the sorting panel running and the checking panel showing a held state that names the dependency and the retry, not an empty grid.
+- [ ] A finished run replaces its two queue panels rather than leaving them blank.
+- [ ] Opening a mismatch shows the message walled off from the reading by the seam, and the differing words marked on both sides, with nothing else on the row coloured.
+- [ ] A `missing_value` case renders the hatch, not a colour, and not the word "missing" in place of the value.
+- [ ] Opening an unreadable case shows the rendered page images with their per page OCR confidence.
+- [ ] The rail collapses to 56px and every page still works.
+- [ ] Every screen passes the accessibility checks in `05-design.md` section 10: 4.5:1 body contrast with nothing informational in `--ink-faint`, keyboard row navigation, no meaning carried by colour alone.
 - [ ] No secret or ngrok URL appears in browser network requests.
+- [ ] `eslint` clean, including the 200-line rule.
 
 ## Phase 8: Review inbox
 
-**Goal.** The human-in-the-loop path is real: see, decide, correct, upload, retry, and the
-report updates.
+**Goal.** The human in the loop path is real: see, decide, correct, upload, retry, and the report
+updates.
+
+**Read first: `docs/phases/phase-08-handover.md`.** The case pane phase 8 needs was drawn and built
+in phase 7; this phase adds the queue in front of it and the write path behind it, and builds no
+second component set.
 
 **Build.**
 
 - `review_actions` migration; `POST /review/:id/actions`, `POST /review/:id/upload`,
   `GET /review`.
-- Actions per section 5.5, including reruns with `rerunFrom` and human values winning in
-  normalise/compare.
-- Failure cases (`kind = failure`, no `review_reason`) from the BullMQ `failed` handler; Failures tab; retry action.
-- `/review` page: grouped by reason, case detail reusing the trace components, action bar,
-  upload form.
-- Each action stores a labelled example row (the raw material for phase 11).
+- Actions per `03-infra-deep.md` section 5.5, including reruns with `rerunFrom` and human values
+  winning in extract and compare.
+- Failure cases (`kind = failure`, no `review_reason`) from the BullMQ `failed` handler; a failures
+  group at the foot of the queue; a retry action.
+- `/review` per `design/screen-blueprints.md` section 7: the same three pane shell with the list
+  filtered to open cases, grouped by `review_reason` under neutral micro headers. The case pane is
+  phase 7's email page in its NEEDS_REVIEW state, reused, not rebuilt.
+- The action bar pinned above a hairline, in the order of section 5.5. `Correct field` edits inline
+  on the comparison row so the source quote stays visible while the value is typed, never in a
+  modal.
+- Each action stores a labelled example row, which is the raw material for phase 11.
+
+**Out.** The chat's proposed action card. The component is drawn and the write path it describes is
+exactly this phase's, but nothing routes a chat turn into a `review_action` and no contract for it
+exists. Phase 10 specifies that; phase 8 ships every action from the action bar.
 
 **Exit checklist.**
 
 - [ ] Correcting a weight on a `missing_value` case re-runs compare and the case closes with the new status.
 - [ ] Uploading a BL to a `missing_attachment` case produces a full comparison.
-- [ ] Stopping doc-extract mid-run creates failure cases; retry after restart clears them.
+- [ ] Stopping doc-extract mid run creates failure cases; retry after restart clears them.
 - [ ] Submission after review reflects human decisions.
+- [ ] The case pane is phase 7's component with a different tab selected; `git diff` shows no second review component set.
+- [ ] A correction never writes to one document as the correct value: the UI records what a person says and the product still reports symmetric difference.
+- [ ] Every action raises a toast naming what was written and what was re-queued.
 
 ## Phase 9: Priority, concurrency, ops
 
@@ -286,20 +352,75 @@ the proxy never overloaded, and the system reports its own health.
 - [ ] In-flight LLM calls never exceed `LLM_MAX_CONCURRENCY` (assert via semaphore metrics).
 - [ ] `/health` turns red within 60 s of stopping the worker.
 
-## Phase 10: Analytics schema and chat agent
+## Phase 10: Ontology surfaces and the chat agent
 
-**Goal.** The ontology is queryable by people and by an agent, and the agent can explain any
-decision from the audit trail.
+**Goal.** The ontology is queryable by people and by an agent, the agent can explain any decision
+from the audit trail, and the model itself is visible. This is the phase that makes the knowledge
+layer a thing a judge can see rather than a claim in a README.
 
-**Build.**
+Split if needed: **10a** analytics, role and chat; **10b** the ontology surfaces (entity pages,
+search around, the ontology graph); **10c** the Earth. Build in that order and stop wherever time
+runs out: each is shippable on its own.
+
+**Build, 10a.**
 
 - `analytics` schema migration: views from section 8.2; refresh job every 5 min and on run finish.
 - `retina_ro` role and `DATABASE_RO_URL`; column grant excluding `llm_calls.request`.
 - `agents/chat/loop.ts` and tools `describe_schema`, `run_sql` (guardrails per section 11),
   `get_email`, `explain_decision`.
 - `chat_conversations`, `chat_turns` migrations; chat routes.
-- `/chat` page: conversation list, messages, SQL block, result table.
+- **The chat rail first**, not the chat page: the 340px column phase 7 drew inert
+  (`design/screen-blueprints.md` section 5), turned on. It carries the scope chips naming what the
+  conversation can see, the turns, and **the proposed action card**, which names the action kind
+  and target, shows was and is, and writes nothing until `Apply and remember` is pressed.
+- **The contract that does not exist yet**: what a chat turn may write. The card proposes a
+  `review_action`, which is phase 8's table and phase 8's rerun behaviour. Specify it in
+  `03-infra-deep.md` before building it, including who may apply one and what `Apply and remember`
+  means beyond `Just this once`.
+- `/chat` page per `design/screen-blueprints.md` section 10, for a question about the whole inbox
+  rather than one email. Four artefacts per answer in a fixed order: **result graph, prose, SQL,
+  result table.** The SQL block is never collapsed by default.
+- The **chat result graph** (`design/ontology-patterns.md` section 3): a layered left-to-right
+  graph of what the agent touched, built node by node as each tool returns, then frozen. The
+  agent loop must emit the tool and relation names it used so the graph is drawn from fact, not
+  inferred in the frontend.
 - `backend/src/mcp.ts` exposing the same four tools over stdio (optional in this phase if time is short).
+
+**Build, 10b.**
+
+- `GET /ontology/:type` and `GET /ontology/:type/:id`: entity index and entity page contracts.
+- `GET /ontology/:type/:id/around` returning `[{ linkType, label, count }]`, which is the whole
+  of **search around** (`design/ontology-patterns.md` section 2.6). Two or three derived
+  traversals per type, hand chosen, defined in one module beside the repositories.
+- **The database page** per `design/screen-blueprints.md` section 8: one page, a segmented control
+  between `As things` and `As rows`, and the record underneath. As rows is the typed grid with the
+  SQL along the bottom and a drawer per row; as things is the entity list that opens in place into
+  what is stored, step out from here, written these ways, and where it appeared; the record is the
+  full page with the appearance history and the tree.
+- `written these ways`, the component that makes the ontology's argument: the spellings the field
+  judge accepted as one thing, each with how often it was seen and how it was judged. It reads
+  `field_diffs` and the extraction rows; nothing in it comes from a lookup table.
+- Entity index and entity pages per `design/screen-blueprints.md` section 8, one shape for every
+  type. The ontology group in the rail becomes live.
+- The ontology page, two tabs: `Record` and `Links` (`ObjectTyped.dc.html`, `GraphLinks.dc.html`).
+  A third tab, Rows and columns, was drawn and cut because the database page does the same job
+  better.
+- The **ontology graph** page (`design/ontology-patterns.md` section 5): object types, link
+  types, live row counts, hierarchical layout, and a `built` / `planned` status legend so the
+  types that are designed but not yet in the schema are drawn honestly. This is the best candidate
+  for the third ontology tab if one is wanted.
+- Shipment level entities (`shipments`, `parties`, `ports`, `carriers`) populated from verified
+  extractions, which `03-infra-deep.md` section 8.1 defers to "a later phase". This is it. Until
+  they exist, their nodes render `planned`.
+
+**Build, 10c, optional.**
+
+- The **Earth view** (`design/ontology-patterns.md` section 4): globe and flat projections, a
+  light basemap with no tile provider, port markers, great circle lanes, the capped traffic
+  animation with its reduced motion fallback, the Layers and Find panels, the ranked table, the
+  Unplaced list, and the run replay scrubber.
+- A static UN/LOCODE gazetteer in the frontend. No fuzzy port matcher: LOCODE or exact name, and
+  everything else is Unplaced.
 
 **Exit checklist.**
 
@@ -307,6 +428,10 @@ decision from the audit trail.
 - [ ] "Explain email_407" narrates generator, verifier, evidence, diffs and any human action.
 - [ ] `run_sql` refuses `delete`, multi-statement input, and queries over 5 s.
 - [ ] Views refresh within 5 minutes of a run finishing.
+- [ ] The chat result graph draws only tools and relations the agent reported, and a tool that returned zero rows still appears with a `0`.
+- [ ] Search around from an email reaches its documents, fields, diffs, calls and client, and every count matches a direct query.
+- [ ] The ontology graph's counts are live and its `planned` nodes are exactly the types with no table.
+- [ ] 10c only: the Earth's ranked table and the map agree, an unknown LOCODE appears under Unplaced rather than being placed, and `prefers-reduced-motion` replaces the traffic with static arrowheads.
 
 ## Phase 11: Eval tooling and gated lessons
 
@@ -379,5 +504,6 @@ Current phase: 1
 
 If a phase does not fit one session, split at the seam already drawn: phase 5 into "doc-extract
 service" and "triage + escalations"; phase 6 into "extraction + evidence" and "normalise +
-compare + decide"; phase 10 into "analytics + role" and "chat agent". Never split across a
-seam (for example, half a processor).
+compare + decide"; phase 7 into "design system + shell" and "trace + comparison row"; phase 10
+into "analytics + chat", "ontology surfaces" and "the Earth". Never split across a seam (for
+example, half a processor, or tokens without the components that use them).
