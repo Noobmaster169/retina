@@ -48,9 +48,8 @@ describe("POST /chat/:id/messages", () => {
     const server = app([
       step({
         action: "tool",
-        tool: "run_sql",
-        args: { sql: "select 7 as n", purpose: "reading a number" },
-        thought: "I need the number.",
+        reading: "One number.",
+        calls: [{ tool: "run_sql", args: { sql: "select 7 as n", purpose: "reading a number" }, thought: "I need the number." }],
       }),
       step({ action: "final", answer: "It is 7.", sql_used: [] }),
     ]);
@@ -78,7 +77,7 @@ describe("POST /chat/:id/messages", () => {
 
   it("keeps the person's words even when the model never answers", async () => {
     // One reply repeats, so the loop spends its budget and returns exhausted.
-    const server = app(step({ action: "tool", tool: "run_sql", args: { sql: "select 1", purpose: "again" }, thought: "Again." }));
+    const server = app(step({ action: "tool", calls: [{ tool: "run_sql", args: { sql: "select 1", purpose: "again" }, thought: "Again." }] }));
     const { body: conversation } = await newConversation(server);
 
     const answered = await request(server)

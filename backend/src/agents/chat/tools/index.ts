@@ -1,8 +1,15 @@
 import type { ChatToolName } from "../../../contracts";
 import { describeSchema } from "./describe-schema";
 import { explainDecision } from "./explain-decision";
+import { findEntity } from "./find-entity";
 import { getEmail } from "./get-email";
+import { getEntity } from "./get-entity";
+import { listEntities } from "./list-entities";
+import { loadSkill } from "./load-skill";
+import { profileColumn } from "./profile-column";
+import { runRecipe } from "./run-recipe";
 import { runSql } from "./run-sql";
+import { searchEmails } from "./search-emails";
 import type { ChatTool, ToolContext, ToolOutcome } from "./types";
 
 export { refused } from "./types";
@@ -10,7 +17,8 @@ export type { ChatTool, ToolContext, ToolOutcome } from "./types";
 export { relationsIn } from "./run-sql";
 
 /**
- * The four tools, and the one place they are named.
+ * The tools, and the one place they are named, in the order the agent should
+ * reach for them: the standard query, the ways of looking, then its own SQL.
  *
  * `src/mcp.ts` serves this same object over stdio rather than declaring its
  * own, so a teammate in Claude Code and the chat page are running identical
@@ -19,8 +27,15 @@ export { relationsIn } from "./run-sql";
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- each tool has its own input type; the registry is keyed by name and the loop parses through the tool's own schema.
 export const TOOLS: Record<ChatToolName, ChatTool<any>> = {
-  describe_schema: describeSchema,
+  run_recipe: runRecipe,
+  find_entity: findEntity,
+  list_entities: listEntities,
+  get_entity: getEntity,
+  search_emails: searchEmails,
+  profile_column: profileColumn,
+  load_skill: loadSkill,
   run_sql: runSql,
+  describe_schema: describeSchema,
   get_email: getEmail,
   explain_decision: explainDecision,
 };

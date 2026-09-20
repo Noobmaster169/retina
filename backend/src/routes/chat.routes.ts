@@ -5,9 +5,10 @@ import { z } from "zod";
 import type { ChatAnswer, ChatThread, ProposedAction } from "../contracts";
 import { NewConversation, NewMessage } from "../contracts";
 import { runTurn } from "../agents/chat/loop";
+import { orientationFor } from "../agents/chat/orientation";
 import type { LlmClient } from "../agents/llm-client";
 import { childLogger } from "../lib/logger";
-import { chat } from "../ontology/repositories";
+import { chat, chatState } from "../ontology/repositories";
 
 const log = childLogger({ module: "chat.routes" });
 
@@ -112,12 +113,26 @@ export function chatRouter(deps: ChatRouteDeps): Router {
     const previous = await chat.recentTurns(deps.pool, id.data, HISTORY_TURNS);
     const history = previous
       .slice(0, -1)
-      .map((turn) => `${turn.role === "user" ? "they asked" : "you answered"}: ${turn.content}`);
+      .flatMap((turn) => (turn.role === "tool" ? [] : [{ role: turn.role, content: turn.content }]));
 
     const scope = { runId: conversation.scope.runId, emailId: conversation.scope.emailId };
+    // Read where the agent's own queries run, so the orientation never shows it
+    // something it could not reach; without a read-only pool the tools refuse anyway.
+    const [orientation, stickySkills] = await Promise.all([
+      orientationFor({ read: deps.roPool ?? deps.pool, write: deps.pool }, { id: id.data, runId: scope.runId }),
+      chatState.stickySkills(deps.pool, id.data),
+    ]);
     const result = await runTurn(
       { llm: deps.llm, pool: deps.pool, tools: { pool: deps.pool, roPool: deps.roPool, ...scope } },
-      { question: body.data.content, history, scope },
+      {
+        question: body.data.content,
+        history,
+        scope,
+        orientation,
+        today: new Date().toISOString().slice(0, 10),
+        stickySkills,
+        pickedSkills: [],
+      },
     );
 
     const turn = await chat.addAssistantTurn(deps.pool, id.data, {
@@ -125,6 +140,9 @@ export function chatRouter(deps: ChatRouteDeps): Router {
       sqlUsed: result.sqlUsed,
       toolCalls: result.toolCalls,
       graph: result.graph,
+      reading: result.reading,
+      skillsUsed: result.skillsUsed,
+      adhoc: result.adhoc,
       // Nothing in phase 10 proposes one yet; the field exists so the shape the
       // card reads is settled and phase 11 fills it rather than inventing it.
       proposal: null,

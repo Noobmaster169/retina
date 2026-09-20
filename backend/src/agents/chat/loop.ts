@@ -1,65 +1,59 @@
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
-import { z } from "zod";
-
-import type { ChatGraph, ChatToolCall, ChatToolName } from "../../contracts";
+import type { ChatGraph, ChatToolCall } from "../../contracts";
 import { config } from "../../config";
 import { childLogger } from "../../lib/logger";
 import { loadPrompt } from "../prompts/registry";
 import { callStructured, type StructuredDeps } from "../structured";
-import { buildGraph, type TouchedCall } from "./graph";
-import { callTool, toolDescriptions, TOOL_NAMES, type ToolContext } from "./tools";
+import { buildGraph } from "./graph";
+import { type How, skillsToInject } from "./inject";
+import { finish, type FinishedCall, forWire, Step, transcribe } from "./loop.steps";
+import { skills, skillText, skillVersions } from "./skills/registry";
+import { standing, standingText } from "./standing";
+import { callTool, toolDescriptions, type ToolContext } from "./tools";
 
 const log = childLogger({ module: "chat.loop" });
 
-const SCHEMA_DOCS = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "schema-docs.md"), "utf8");
-
 /**
- * The agent's turn: read the question, call tools until it can answer, answer.
+ * The agent's turn: read the question, look, answer.
  *
  * Tool use is a JSON protocol rather than a provider's tool-call API, because
  * every call goes through the proxy to `claude -p` and the wire between them
- * carries text. One step per model call, each step either a tool or the final
- * answer, each one a row in `llm_calls`.
- */
-
-/** Eight is two or three queries, a schema lookup when one is wrong, and room to recover from a typo. */
-const MAX_STEPS = 8;
-
-/**
- * One flat object, not a discriminated union.
+ * carries text. One step per model call, each step either up to four tool
+ * calls run together or the final answer, each one a row in `llm_calls`.
  *
- * The provider refuses `oneOf` at the top level of a tool schema, so the
- * discriminant is a field and the narrowing happens in code below. Every field
- * that belongs to only one of the two shapes carries a default, so a step that
- * leaves the other one out still parses and the loop decides what it meant.
+ * The harness around it is what keeps a session from starting blind: the
+ * standing instructions, the orientation, the skills it injects on what it can
+ * see, and the literal guard inside the tools.
  */
-const Step = z.object({
-  action: z.enum(["tool", "final"]),
-  /** On a tool step. Null on a final one. */
-  tool: z.enum(TOOL_NAMES as [ChatToolName, ...ChatToolName[]]).nullable().default(null),
-  args: z.record(z.string(), z.unknown()).default({}),
-  /** One sentence on why this tool, shown to the reader beside the call. */
-  thought: z.string().max(400).default(""),
-  /** On a final step. */
-  answer: z.string().default(""),
-  sql_used: z.array(z.string()).default([]),
-});
+
+/** Two or three steps answer most questions; the rest is room to recover from a refusal. Never tuned upward without a measurement. */
+const MAX_STEPS = 8;
+const CHAT_PROMPT = "v2";
 
 export interface TurnInput {
   question: string;
-  /** Oldest first, already rendered: what the person asked and what the agent answered before now. */
-  history: string[];
+  /** Oldest first: what the person asked and what the agent answered before now. */
+  history: { role: "user" | "assistant"; content: string }[];
   scope: { runId: string | null; emailId: string | null };
+  /** What the database holds right now, rendered. See orientation.ts. */
+  orientation: string;
+  /** ISO date. The prompt files never hold it. */
+  today: string;
+  /** Skills loaded or picked earlier in this conversation. */
+  stickySkills: string[];
+  /** Skills the person picked for this message. */
+  pickedSkills: string[];
 }
 
 export interface TurnResult {
   answer: string;
+  /** One sentence on how the question was read, from the first step. */
+  reading: string;
   sqlUsed: string[];
   toolCalls: ChatToolCall[];
   graph: ChatGraph;
+  skillsUsed: { name: string; version: number; how: How }[];
+  /** True when the turn needed SQL the agent wrote itself: a question no recipe covers yet. */
+  adhoc: boolean;
   /** True when the step budget ran out: the answer is what it had, and the page says so. */
   exhausted: boolean;
 }
@@ -77,32 +71,75 @@ function scopeText(scope: TurnInput["scope"]): string {
   return `This conversation was opened about ${parts.join(", and ")}. Use it where the question does not say otherwise, and go wider when the question asks something wider.`;
 }
 
-/** Drops what only the graph needed, so the wire carries the contract and nothing more. */
-function forWire(call: TouchedCall): ChatToolCall {
-  const { touched: _touched, entities: _entities, ...rest } = call;
-  return rest;
-}
-
-/** What one finished tool call looks like to the model on the next step. */
-function transcribe(name: string, thought: string, outcome: { ok: boolean; text: string }): string {
-  return `### you called ${name}\nwhy: ${thought}\nresult${outcome.ok ? "" : " (it did not work)"}:\n${outcome.text}`;
+function historyText(history: TurnInput["history"]): string[] {
+  return history.map((turn) => `${turn.role === "user" ? "they asked" : "you answered"}: ${turn.content}`);
 }
 
 export async function runTurn(deps: LoopDeps, input: TurnInput): Promise<TurnResult> {
-  const prompt = loadPrompt("chat", "v1", config.LLM_MODEL_CHAT);
-  const toolCalls: TouchedCall[] = [];
-  const sqlUsed: string[] = [];
-  const transcript: string[] = [];
+  const prompt = loadPrompt("chat", CHAT_PROMPT, config.LLM_MODEL_CHAT);
+  const held = standing();
+  const known = new Set(skills().keys());
+  const calls: FinishedCall[] = [];
+  const used = new Map<string, How>();
+  /** Things the model is told about its own steps that are not tool calls, so they never reach the page as one. */
+  const notes: string[] = [];
+  let reading = "";
+
+  // What the agent has been shown that is not a tool result. The person's own
+  // words are left out on purpose: a name that appears only there is a guess.
+  const shownBefore = [
+    standingText(held),
+    input.orientation,
+    scopeText(input.scope),
+    ...input.history.filter((turn) => turn.role === "assistant").map((turn) => turn.content),
+  ].join("\n\n");
+
+  const result = (answer: string, sqlFromModel: string[], exhausted: boolean): TurnResult => {
+    const sqlUsed = calls.flatMap((call) => (call.sql ? [call.sql] : []));
+    return {
+      answer,
+      reading,
+      // What the tools actually ran beats what the model remembers running.
+      sqlUsed: sqlUsed.length > 0 ? sqlUsed : sqlFromModel,
+      toolCalls: calls.map(forWire),
+      graph: buildGraph(input.question, calls),
+      skillsUsed: skillVersions([...used.keys()]).map((skill) => ({ ...skill, how: used.get(skill.name) ?? "injected" })),
+      adhoc: calls.some((call) => call.tool === "run_sql" && call.ok),
+      exhausted,
+    };
+  };
 
   for (let step = 1; step <= MAX_STEPS; step++) {
+    const injected = skillsToInject(
+      {
+        scope: input.scope,
+        guardRefused: calls.some((call) => call.guardRefused),
+        cameUpEmpty: calls.some((call) => call.cameUpEmpty),
+        loaded: calls.flatMap((call) => (call.skill ? [call.skill] : [])),
+        sticky: input.stickySkills,
+        picked: input.pickedSkills,
+      },
+      known,
+    );
+    for (const skill of injected) if (!used.has(skill.name)) used.set(skill.name, skill.how);
+    const skillBodies = injected.flatMap((item) => {
+      const skill = skills().get(item.name);
+      return skill ? [skillText(skill)] : [];
+    });
+
     const { value } = await callStructured(deps, {
       prompt,
       input: {
-        "The schema you may query": SCHEMA_DOCS,
+        "Standing instructions": held.instructions,
+        "Orientation: what the database holds right now": input.orientation,
+        "The skills, and the recipes each brings": held.skillCards,
+        "Skills for this turn": skillBodies.length > 0 ? skillBodies.join("\n\n") : "(none injected; load one if a card matches)",
+        "Every recipe, as run_recipe takes it": held.recipeSignatures,
+        "The schema you may query": held.schemaDocs,
         "The tools you have": toolDescriptions(),
-        "The scope of this conversation": scopeText(input.scope),
-        "The conversation so far": input.history.length > 0 ? input.history : "(this is the first question)",
-        "What you have done on this turn": transcript.length > 0 ? transcript : "(nothing yet)",
+        "The scope of this conversation": `${scopeText(input.scope)} Today is ${input.today}.`,
+        "The conversation so far": input.history.length > 0 ? historyText(input.history) : "(this is the first question)",
+        "What you have done on this turn": calls.length + notes.length > 0 ? [...calls.map(transcribe), ...notes] : "(nothing yet)",
         "The question": input.question,
       },
       schema: Step,
@@ -112,62 +149,41 @@ export async function runTurn(deps: LoopDeps, input: TurnInput): Promise<TurnRes
       runId: null,
     });
 
-    if (value.action === "final") {
-      return {
-        answer: value.answer,
-        // What the tools actually ran beats what the model remembers running.
-        sqlUsed: sqlUsed.length > 0 ? sqlUsed : value.sql_used,
-        toolCalls: toolCalls.map(forWire),
-        graph: buildGraph(input.question, toolCalls),
-        exhausted: false,
-      };
-    }
+    if (step === 1 || reading === "") reading = value.reading || reading;
+    if (value.action === "final") return result(value.answer, value.sql_used, false);
 
-    // A tool step that named no tool is the one shape the flat schema lets
-    // through and the union would not have. Handing the mistake back is the
-    // same thing the loop does with a bad query or bad arguments.
-    if (value.tool === null) {
-      transcript.push(
-        "### you asked for a tool and named none\nSay which of the four tools you mean, or answer with action: final.",
-      );
-      log.warn({ step }, "a chat step asked for a tool without naming one");
+    // A tool step that carries no call is the one shape the flat schema lets
+    // through and a union would not have. Handing the mistake back is the same
+    // thing the loop does with a bad query or bad arguments.
+    if (value.calls.length === 0) {
+      notes.push("### you asked for a tool step and gave no calls\nPut one to four calls in `calls`, or answer with action: final.");
+      log.warn({ step }, "a chat step asked for tools without naming any");
       continue;
     }
 
-    const started = Date.now();
-    const outcome = await callTool(value.tool, value.args, deps.tools);
-    const durationMs = Date.now() - started;
-
-    if (outcome.sql) sqlUsed.push(outcome.sql);
-    toolCalls.push({
-      tool: value.tool,
-      args: value.args,
-      thought: value.thought,
-      ok: outcome.ok,
-      preview: outcome.preview,
-      sql: outcome.sql ?? null,
-      result: outcome.result ?? null,
-      durationMs,
-      // Carried on the call so the graph is built from what the tools
-      // reported, never from what the frontend guesses the answer touched.
-      touched: outcome.touched,
-      entities: outcome.entities,
-    });
-    transcript.push(transcribe(value.tool, value.thought, outcome));
-    log.info({ step, tool: value.tool, ok: outcome.ok, durationMs }, "chat tool call");
+    const shown = [shownBefore, ...skillBodies, ...calls.map((call) => call.text)].join("\n\n");
+    const finished = await Promise.all(
+      value.calls.map(async (call) => {
+        const started = Date.now();
+        const outcome = await callTool(call.tool, call.args, { ...deps.tools, shown });
+        return finish(call, outcome, Date.now() - started);
+      }),
+    );
+    for (const call of finished) {
+      if (call.skill && !used.has(call.skill)) used.set(call.skill, "loaded");
+      log.info({ step, tool: call.tool, ok: call.ok, durationMs: call.durationMs }, "chat tool call");
+    }
+    calls.push(...finished);
   }
 
   // The budget is spent. Saying so with what was found beats a made-up answer,
   // and beats an error: the tool results are on the page either way.
   log.warn({ steps: MAX_STEPS, question: input.question.slice(0, 120) }, "the chat loop ran out of steps");
-  return {
-    answer:
-      `I could not finish this within ${MAX_STEPS} steps. What I found is under "Tools used": ` +
-      `${toolCalls.map((call) => `${call.tool} (${call.preview})`).join(", ")}. ` +
+  return result(
+    `I could not finish this within ${MAX_STEPS} steps. What I found is under "Tools used": ` +
+      `${calls.map((call) => `${call.tool} (${call.preview})`).join(", ")}. ` +
       "Ask it again more narrowly, or name the run you mean.",
-    sqlUsed,
-    toolCalls: toolCalls.map(forWire),
-    graph: buildGraph(input.question, toolCalls),
-    exhausted: true,
-  };
+    [],
+    true,
+  );
 }
