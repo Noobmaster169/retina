@@ -8,6 +8,31 @@ nothing here depends on it.
 Grounded in the inbox field survey (`https://claude.ai/artifact/52y7ALXhGK2cvr51qtXKtA`), whose
 findings are summarised under "What the survey says the agent must know".
 
+## As built (2026-09-20)
+
+Built on `phase-10d-chat-harness`. Where the build differs from the work items below, the build
+wins and this list says how:
+
+- **No new columns on `chat_turns`.** An assistant turn already keeps its extras in `tool_result`
+  jsonb, so `reading`, `skillsUsed` and `adhoc` live there. Migration 015 adds the indexes, the
+  search column and `chat_conversations.orientation` only.
+- **`v2` replaces `v1`; they are not run side by side.** The step protocol changed (several calls
+  per step), so one loop cannot serve both prompts. `v1.md` stays on disk for the record. The
+  exit line comparing the two is replaced by the live findings below.
+- **The old single `tool`/`args` pair is gone from the step schema**, not kept for a version:
+  stored turns hold tool calls, never steps, so nothing needed it.
+- **The guard asks the database one question.** A string that is exactly a stored spelling, email
+  id or sender is grounded whoever typed it (`entitySearch.knownValues`), which saves a step when
+  the person typed the name correctly.
+- **Two recipes changed:** `emails_mentioning` was dropped (the `search_emails` tool is that), and
+  `senders_ranked` was added. Twenty in all.
+- **Found by the first live run, and fixed:** the lookups failed as `retina_ro` because `pg_trgm`
+  lives in `public`, which is off that role's search path, while every test passed as a superuser.
+  The fixed queries and every recipe are now tested as `retina_ro`. The tool list gave no argument
+  names, so the model guessed them and repeated the same bad call until the budget ran out; each
+  tool's argument shape is now derived from its schema into the prompt and the refusal, and
+  `run_recipe` takes flat parameters. A tool that throws comes back as a refusal.
+
 ## Goal
 
 A chat session starts knowing where it is. Before its first answer the agent has been told how

@@ -73,7 +73,8 @@ docker compose -f compose.local.yaml up -d
 - `worker` consumes `classify` and `compare` queues and runs pipeline stages in order.
 - `pipeline/` is pure: functions from plain inputs to plain outputs. No database, no queue, no
   HTTP inside. Workers load inputs through repositories, call pipeline functions, persist results.
-- `ontology/repositories/` owns all SQL. Nothing else writes SQL except `agents/chat/tools/run_sql`.
+- `ontology/repositories/` owns all SQL. Nothing else writes SQL except the chat, read-only and on
+  `roPool`: `agents/chat/tools/run_sql` (model-written) and the recipe files under `agents/chat/skills/`.
 - `agents/` owns every LLM call: prompt files, structured output, the chat tool loop.
 - `ingest/` turns an external inbox into rows and jobs behind the `Source` interface. The first
   source is the Averis server in `emails/`, reached at `EMAIL_SERVER_URL`.

@@ -35,7 +35,7 @@ backend/
     agents/
       prompts/             <step>/<version>.md, registry.ts
       structured.ts        JSON schema call + zod parse + retry
-      chat/                loop.ts, tools/{describe_schema,run_sql,get_email,explain_decision}.ts
+      chat/                loop.ts, CHAT.md, orientation.ts, grounding.ts, inject.ts, skills/<name>/{SKILL.md,recipes/*.sql}, tools/
     ontology/
       repositories/        one module per aggregate (emails, documents, comparisons, reviews...)
       submission.ts        builds the scorer JSON for a run
@@ -881,8 +881,8 @@ Contract types live in `backend/src/contracts.ts` and are copied into
 
 ## 11. Chat agent
 
-`agents/chat/loop.ts`: one step per model call, each step either a tool or the answer, max 8 steps
-per turn. Tool use is a JSON protocol rather than a provider's tool-call API, because every call
+`agents/chat/loop.ts`: one step per model call, each step either one to four tool calls run
+together or the answer, max 8 steps per turn. Tool use is a JSON protocol rather than a provider's tool-call API, because every call
 goes through the proxy to `claude -p` and the wire between them carries text.
 
 **The step schema is one flat object, never a union.** The provider refuses `oneOf`, `anyOf` and
@@ -891,17 +891,58 @@ a caller retries a call that can never succeed. `agents/structured.ts:toOutputSc
 `TerminalError` naming the fix instead. Any future step with two shapes does the same: one object
 with the discriminant as a field, narrowed after it parses.
 
-The prompt is `agents/prompts/chat/v1.md`; the schema documentation it is given is
-`agents/chat/schema-docs.md`, hand written, one block per view with its grain, its columns, the
-enums value for value, and five example questions with the SQL that answers them. Every loop
+The prompt is `agents/prompts/chat/v2.md`; the schema documentation it is given is
+`agents/chat/schema-docs.md`, hand written, one block per view with its grain, its columns, every
+closed set of values, and example questions with the SQL that answers them. Every loop
 iteration is one `llm_calls` row with `step = chat` and **`run_id = null`**, even when the
 conversation is about a run: a run's cost is what the pipeline spent on it, not what somebody asked
 about it afterwards.
 
-Tools:
+### 11.1 The harness (phase 10d)
+
+A turn does not start blind. Besides the question it is given, in this order:
+
+| Part | Where | What it is |
+|---|---|---|
+| Standing instructions | `agents/chat/CHAT.md`, versioned | how to start a turn, how this mailbox stores things, the rules of evidence |
+| Orientation | `agents/chat/orientation.ts`, SQL in `orientation.repo.ts` | what the database holds right now: runs, the scoped or latest run's counts, every port (up to 60) and the top parties with ids, sender domains, what is not there. Computed on a conversation's first turn, kept in `chat_conversations.orientation` with a watermark, recomputed only when a run progressed or the resolver rebuilt |
+| Skills | `agents/chat/skills/<name>/SKILL.md`, versioned | how to do one kind of task here. A two-line card per skill is always shown; a body is injected or loaded |
+| Recipes | `agents/chat/skills/<name>/recipes/<recipe>.sql` | a named, parameterised query with declared parameters and columns. Passes `guardSql` when it loads, runs on `roPool`, tested as `retina_ro` |
+
+**Structure is written, values are computed.** `CHAT.md`, the skills and the recipes name no
+company, port, sender or subject code (`chat-harness.test.ts` holds that); what exists is the
+orientation's to report.
+
+**Injection** (`inject.ts`, pure) is decided from facts the harness can see, never from the words of
+the question: the person picked a skill, the agent loaded one, a call was refused by the literal
+guard or came up empty (`ground-names`), the conversation is about an email (`explain-an-email`) or
+a run (`pick-the-run`), a skill was loaded earlier in the conversation. At most three.
+
+**The literal guard** (`grounding.ts`, pure). `run_sql` and the text arguments of `run_recipe` are
+refused when they filter on a string the agent was never shown: not in `CHAT.md`, the schema notes,
+the orientation, a skill, the agent's own earlier answers or a tool result on this turn. The
+person's words are deliberately not part of that. Patterns (`like`, a text search), dates, numbers,
+uuids, intervals and format strings pass, and so does a string that is exactly a stored spelling,
+email id or sender (`entitySearch.knownValues`). Over MCP there is no turn, so the guard stands down.
+
+The turn stores `reading` (one sentence on how the question was read), `skillsUsed`
+(`name, version, how`) and `adhoc` (it needed SQL of its own, which is the backlog for the next
+recipe) on the assistant turn's `tool_result`, beside the tool calls and the graph.
+
+### 11.2 Tools
+
+Each tool's argument shape is derived from its zod schema (`tools/args-signature.ts`) into the
+prompt and into the bad-arguments message. A tool that throws comes back as a refusal.
 
 | Tool | Input | Guardrails |
 |---|---|---|
+| `run_recipe` | `{ name, params? }` | a recipe by name; `run_id` defaults to the conversation's run, else the latest; parameters may also sit beside `name`; text parameters go through the literal guard |
+| `find_entity` | `{ text, kind? }` | candidates over every spelling: exact, same ignoring case, then `pg_trgm` similarity over 0.3. It proposes and picks none: `resolve.ts` still joins spellings on the field judge's verdict only. Also reports sender domains and subjects where the name appears |
+| `list_entities` | `{ kind, contains?, limit? }` | the things of a kind, or those with a spelling containing a word, which is how a country's ports are found |
+| `get_entity` | `{ id }` | every spelling and how it joined, mentions by field, distinct emails and runs |
+| `search_emails` | `{ text, runId?, limit? }` | `websearch_to_tsquery('simple', ...)` over `core.emails.search`, subject `ilike` as fallback, with a snippet |
+| `profile_column` | `{ relation, column }` | counts and the thirty most frequent values. The column must exist in `information_schema` as the connection sees it, and both names pass `safeIdentifier` before they are quoted |
+| `load_skill` | `{ name }` | a skill's body and its recipes' signatures; it then stays with the conversation |
 | `describe_schema` | `{ schema?, table? }` | `pg_catalog` through the RO pool, not `information_schema`, which holds no row for a materialised view and would report the whole `analytics` schema as empty |
 | `run_sql` | `{ sql, purpose }` | `agents/chat/sql-guard.ts`, pure and table-tested: comments stripped first, must start with `select` or `with`, one statement, no `;` inside, a banned-word list as words, `limit 200` appended when the query ends without one, 200 rows and 20 kB out. Every ambiguity resolves towards refusal, a banned word inside a string literal included |
 | `get_email` | `{ emailId, runId? }` | the trace summary. Without a run, the most recent one that processed the email |
@@ -912,7 +953,7 @@ privilege, defaults its transactions to read only and times out at 5 s. Two inde
 the right number when one of them is a regex over text a model wrote.
 
 Turns are stored in `chat_turns`, tool calls and the result graph on the assistant turn. The same
-four tools are served over stdio by `backend/src/mcp.ts` from the same `TOOLS` registry, so a
+tools are served over stdio by `backend/src/mcp.ts` from the same `TOOLS` registry, so a
 teammate in Claude Code runs identical code against identical guardrails. `.mcp.json` at the
 repository root configures it.
 
