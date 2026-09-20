@@ -1,6 +1,11 @@
+"use client";
+
 import type { ChatTurn } from "@/lib/api/chat-agent-schemas";
 
 import { ActionCard } from "./action-card";
+import { Clarify } from "./clarify";
+import { NextMoves } from "./next-moves";
+import { OutcomeLine } from "./outcome-line";
 import { Reading } from "./reading";
 import { ResultGraph } from "./result-graph";
 import { SqlBlock } from "./sql-block";
@@ -9,13 +14,25 @@ import { ToolsUsed } from "./tools-used";
 /**
  * One turn.
  *
- * An answer is four artefacts in a fixed order: what it touched, what it said,
- * what it ran, and what came back. The prose is the shortest of the four on
- * purpose. A reader can check the other three, and the sentence is only there
- * to say what they mean.
+ * An answer is artefacts in a fixed order: what it touched, how it read the
+ * question, what it said, where it looked, what it ran, what came back, and
+ * what to ask next. The prose is the shortest of them on purpose. A reader can
+ * check the others, and the sentence is only there to say what they mean.
  */
 
-export function Turn({ turn, exhausted = false }: { turn: ChatTurn; exhausted?: boolean }) {
+export function Turn({
+  turn,
+  exhausted = false,
+  onAsk,
+  answered = false,
+}: {
+  turn: ChatTurn;
+  exhausted?: boolean;
+  /** Sends a chip's question, or a clarifying option, as the next message. */
+  onAsk?(question: string): void;
+  /** True when a later turn exists, so this turn's question has been overtaken. */
+  answered?: boolean;
+}) {
   if (turn.role === "user") {
     return (
       <div className="flex justify-end">
@@ -38,6 +55,10 @@ export function Turn({ turn, exhausted = false }: { turn: ChatTurn; exhausted?: 
 
       <p className="max-w-[72ch] text-body leading-[21px] whitespace-pre-wrap text-ink">{turn.content}</p>
 
+      <OutcomeLine turn={turn} />
+
+      {turn.clarify && onAsk ? <Clarify clarify={turn.clarify} onAnswer={onAsk} answered={answered} /> : null}
+
       {exhausted ? (
         <p className="rounded-md border border-differ-line bg-differ-tint px-3 py-2 text-small text-differ-ink">
           The agent ran out of steps before it finished. What it did find is below.
@@ -57,6 +78,8 @@ export function Turn({ turn, exhausted = false }: { turn: ChatTurn; exhausted?: 
 
       {turn.proposal ? <ActionCard proposal={turn.proposal} /> : null}
       {turn.toolCalls.length > 0 ? <ToolsUsed calls={turn.toolCalls} /> : null}
+
+      {onAsk ? <NextMoves moves={turn.next} onAsk={onAsk} disabled={answered} /> : null}
     </div>
   );
 }

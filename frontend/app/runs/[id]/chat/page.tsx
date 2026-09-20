@@ -28,5 +28,10 @@ export default async function Page({ params, searchParams }: PageProps<"/runs/[i
   const open = wanted ?? conversations[0]?.id ?? null;
   const thread = open ? await getThread(open) : null;
 
-  return <ChatPage runId={id} conversations={conversations} thread={thread} />;
+  // Keyed by the conversation, so switching between two remounts the thread.
+  // `useChat` seeds its turns from `initial` on mount and holds them after, to
+  // avoid refetching an answer that cost real model calls; without the key that
+  // same state survives the navigation and the new conversation opens showing
+  // the previous one's answers.
+  return <ChatPage key={open ?? "none"} runId={id} conversations={conversations} thread={thread} />;
 }

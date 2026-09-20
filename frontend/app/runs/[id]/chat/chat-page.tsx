@@ -1,17 +1,17 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 
 import { Composer } from "@/components/chat/composer";
+import { LiveSteps } from "@/components/chat/live-steps";
 import { Turn } from "@/components/chat/turn";
 import { openConversation, useChat } from "@/components/chat/use-chat";
+
+import { ConversationRail } from "./conversation-rail";
 import { AppShell } from "@/components/shell/app-shell";
 import { TopBar } from "@/components/shell/top-bar";
-import { Icon } from "@/components/ui/icons";
-import type { ChatConversation, ChatThread } from "@/lib/api/chat-agent-schemas";
-import { formatWhenShort } from "@/lib/when";
+import type { ChatConversation, ChatThread, ChatTurn } from "@/lib/api/chat-agent-schemas";
 
 /**
  * A question about the whole inbox rather than one email.
@@ -82,9 +82,15 @@ export function ChatPage({ runId, conversations, thread }: ChatPageProps) {
           ) : (
             <div className="mx-auto max-w-[900px] space-y-6">
               {chat.turns.map((turn, index) => (
-                <Turn key={turn.id} turn={turn} exhausted={chat.exhausted && index === chat.turns.length - 1} />
+                <Turn
+                  key={turn.id}
+                  turn={turn}
+                  exhausted={chat.exhausted && index === chat.turns.length - 1}
+                  onAsk={chat.ask}
+                  answered={index < chat.turns.length - 1 || chat.pending}
+                />
               ))}
-              {chat.pending ? <Pending /> : null}
+              {chat.pending ? <Pending steps={chat.steps} since={chat.since} /> : null}
               {chat.error ? (
                 <p className="rounded-md border border-fault-tint bg-fault-tint px-3 py-2 text-small text-fault">
                   {chat.error}
@@ -98,6 +104,7 @@ export function ChatPage({ runId, conversations, thread }: ChatPageProps) {
         {thread ? (
           <Composer
             onAsk={chat.ask}
+            onStop={chat.stop}
             pending={chat.pending}
             suggestions={chat.turns.length === 0 ? SUGGESTIONS : []}
             placeholder="Ask about this inbox"
@@ -108,18 +115,18 @@ export function ChatPage({ runId, conversations, thread }: ChatPageProps) {
   );
 }
 
-/** No streaming, so a pending turn shows the shape of what is coming and the time it is taking. */
-function Pending() {
+/**
+ * A turn in flight: the steps it has finished, and the one it is on.
+ *
+ * The prose is still not streamed, so the skeleton under the steps stands for
+ * the answer that is coming. What has changed is that the steps above it are
+ * real: each line is a call that actually finished, read back from the database
+ * while the question is still open.
+ */
+function Pending({ steps, since }: { steps: ChatTurn[]; since: number }) {
   return (
     <div className="space-y-3">
-      <div className="h-[240px] rounded-xl border border-hairline bg-surface">
-        <div className="flex h-11 items-center border-b border-hairline px-4 text-caption text-ink-faint">
-          What it touched
-        </div>
-        <div className="flex h-[196px] items-center justify-center text-small text-ink-faint">
-          It is reading. The graph is drawn when the turn finishes.
-        </div>
-      </div>
+      <LiveSteps steps={steps} since={since} />
       <div className="h-4 w-2/3 rounded-xs bg-sunken" />
       <div className="h-4 w-1/2 rounded-xs bg-sunken" />
     </div>
@@ -141,54 +148,5 @@ function Empty({ onNew }: { onNew(): void }) {
         Start a conversation
       </button>
     </div>
-  );
-}
-
-function ConversationRail({
-  conversations,
-  runId,
-  openId,
-  onNew,
-}: {
-  conversations: ChatConversation[];
-  runId: string;
-  openId: string | null;
-  onNew(): void;
-}) {
-  return (
-    <nav aria-label="Conversations" className="flex w-60 shrink-0 flex-col border-r border-hairline bg-surface">
-      <div className="flex h-14 shrink-0 items-center gap-2 border-b border-hairline px-4">
-        <Icon name="chat" size={15} className="text-ink" />
-        <h2 className="text-[14px] font-semibold tracking-[-0.01em]">Conversations</h2>
-        <span className="grow" />
-        <button
-          type="button"
-          onClick={onNew}
-          className="h-[26px] rounded-sm border border-hairline bg-canvas px-2.5 text-caption text-ink-secondary hover:border-hairline-strong"
-        >
-          New
-        </button>
-      </div>
-      <ul className="min-h-0 grow overflow-y-auto p-2">
-        {conversations.map((conversation) => (
-          <li key={conversation.id}>
-            <Link
-              href={`/runs/${runId}/chat?c=${conversation.id}`}
-              aria-current={conversation.id === openId ? "page" : undefined}
-              className={`block rounded-md px-2.5 py-2 ${conversation.id === openId ? "bg-active" : "hover:bg-sunken"}`}
-            >
-              <span className="block truncate text-small text-ink">{conversation.title ?? "A new question"}</span>
-              <span className="mt-0.5 block text-caption text-ink-faint">
-                {formatWhenShort(conversation.updatedAt)} · {conversation.turnCount}{" "}
-                {conversation.turnCount === 1 ? "turn" : "turns"}
-              </span>
-            </Link>
-          </li>
-        ))}
-        {conversations.length === 0 ? (
-          <li className="px-2.5 py-3 text-caption text-ink-faint">Nothing asked about this run yet.</li>
-        ) : null}
-      </ul>
-    </nav>
   );
 }

@@ -165,6 +165,27 @@ export type ChatConversationList = z.infer<typeof ChatConversationList>;
 export const ChatThread = z.object({ conversation: ChatConversation, turns: z.array(ChatTurn) });
 export type ChatThread = z.infer<typeof ChatThread>;
 
+/**
+ * The turns newer than one id, which is what the page polls while a turn runs.
+ *
+ * The only response that carries `role: "tool"` turns. Each is one finished
+ * call, drawn as a line of the live steps and dropped when the assistant turn
+ * lands, which carries the same calls in full.
+ */
+export const ChatTurnsAfter = z.object({ turns: z.array(ChatTurn) });
+export type ChatTurnsAfter = z.infer<typeof ChatTurnsAfter>;
+
+/** One skill as the composer's menu lists it. The body is never sent: it is for the agent, not the reader. */
+export const ChatSkillCard = z.object({
+  name: z.string(),
+  version: z.number().int(),
+  when: z.string(),
+});
+export type ChatSkillCard = z.infer<typeof ChatSkillCard>;
+
+export const ChatSkillCards = z.object({ skills: z.array(ChatSkillCard) });
+export type ChatSkillCards = z.infer<typeof ChatSkillCards>;
+
 export const ChatAnswer = z.object({
   turn: ChatTurn,
   /** The loop ran out of steps. The answer is what it had, and the page says so. */

@@ -55,17 +55,23 @@ export {
   type ChatConversation,
   type ChatGraph,
   type ChatGraphNode,
+  type ChatNextMove,
   type ChatScope,
+  type ChatSkillCard,
   type ChatThread,
   type ChatToolCall,
   type ChatToolName,
   type ChatTurn,
+  type ChatTurnOutcome,
+  type ClarifyingQuestion,
   createConversation,
   deleteConversation,
   getThread,
   listConversations,
+  listSkills,
   type ProposedAction,
   type SqlResult,
+  turnsAfter,
 } from "./api/chat-agent-client";
 export { type ChatMessage, type ChatOutcome, type ChatRequest, type ChatResult, chat, listModels, type ModelInfo } from "./api/chat-client";
 export { Email, type EmailListQuery, type EmailPage, type EmailSummary, fetchAttachment, getEmail, listEmails } from "./api/mail-client";
