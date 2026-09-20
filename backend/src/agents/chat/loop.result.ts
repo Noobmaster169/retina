@@ -39,6 +39,15 @@ export interface TurnResult {
   clarify: ClarifyingQuestion | null;
   /** The resolved things this turn grounded, for the turns after it to remember by name. */
   grounded: GroundedThing[];
+  /**
+   * How many alternatives were dropped because their thing or their number did
+   * not come back from a tool on this turn.
+   *
+   * Not on the wire and not drawn: a reader should never learn what the agent
+   * nearly said. It is here because the eval set asks the opposite question of
+   * every interactive turn, which is whether anything had to be dropped at all.
+   */
+  removedMoves: number;
   /** True when the step budget ran out: the answer is what it had, and the page says so. */
   exhausted: boolean;
 }
@@ -83,6 +92,11 @@ function groundedIn(calls: FinishedCall[]): GroundedThing[] {
 export function assemble(so: TurnSoFar, final: FinalStep): TurnResult {
   const ran = so.calls.flatMap((call) => (call.sql ? [call.sql] : []));
   const claims = settle({ outcome: final.outcome, checked: final.checked, clarify: final.clarify });
+  const kept = keepReal(
+    final.next,
+    so.calls.map((call) => call.grounds),
+    so.question,
+  );
   return {
     answer: final.answer,
     reading: so.reading,
@@ -94,13 +108,10 @@ export function assemble(so: TurnSoFar, final: FinalStep): TurnResult {
     adhoc: so.calls.some((call) => call.tool === "run_sql" && call.ok),
     outcome: claims.outcome,
     checked: claims.checked,
-    next: keepReal(
-      final.next,
-      so.calls.map((call) => call.grounds),
-      so.question,
-    ),
+    next: kept,
     clarify: claims.clarify,
     grounded: groundedIn(so.calls),
+    removedMoves: final.next.length - kept.length,
     exhausted: final.exhausted,
   };
 }

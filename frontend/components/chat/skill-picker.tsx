@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 
 import { ChatSkillCards, type ChatSkillCard } from "@/lib/api/chat-agent-schemas";
 
+import { matchingSkills } from "./slash";
+
 /**
  * Picking a skill by hand, with `/` in the composer.
  *
@@ -72,7 +74,7 @@ export function SkillMenu({
   filter: string;
   onPick(name: string): void;
 }) {
-  const matching = cards.filter((card) => card.name.includes(filter.toLowerCase()));
+  const matching = matchingSkills(cards, filter);
   if (matching.length === 0) return null;
 
   return (

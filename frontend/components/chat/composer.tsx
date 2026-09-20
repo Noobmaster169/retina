@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 import { Icon } from "@/components/ui/icons";
 
 import { MAX_PICKED, SkillChips, SkillMenu, useSkillCards } from "./skill-picker";
+import { slashFilter } from "./slash";
 
 /**
  * The question box: what to ask, which skills to ask it with, and how to stop.
@@ -30,8 +31,8 @@ export function Composer({ onAsk, onStop, pending, suggestions, placeholder }: C
 
   // The menu opens on a `/` that starts the question, and the word after it
   // filters. Anywhere else a slash is an ordinary character, because a question
-  // can contain a date or a path.
-  const slash = /^\/([a-z-]*)$/.exec(text);
+  // can contain a date or a path. The rule is in slash.ts, with its edges.
+  const slash = slashFilter(text);
   const menuOpen = slash !== null && !pending && picked.length < MAX_PICKED;
 
   function ask(question: string): void {
@@ -73,7 +74,7 @@ export function Composer({ onAsk, onStop, pending, suggestions, placeholder }: C
         </ul>
       ) : null}
 
-      {menuOpen ? <SkillMenu cards={cards} filter={slash[1]} onPick={pick} /> : null}
+      {menuOpen ? <SkillMenu cards={cards} filter={slash} onPick={pick} /> : null}
       <SkillChips picked={picked} onRemove={(name) => setPicked((was) => was.filter((item) => item !== name))} />
 
       <div className="flex items-end gap-2 rounded-lg border border-hairline-strong bg-canvas px-3 py-2.5">

@@ -1,5 +1,7 @@
 import type { ChatTurn } from "@/lib/api/chat-agent-schemas";
 
+import { outcomeLead } from "./moves";
+
 /**
  * Where it looked, above an answer that found nothing or found part of it.
  *
@@ -13,15 +15,12 @@ import type { ChatTurn } from "@/lib/api/chat-agent-schemas";
  */
 
 export function OutcomeLine({ turn }: { turn: ChatTurn }) {
-  if (turn.checked.length === 0) return null;
-  if (turn.outcome !== "none_found" && turn.outcome !== "partial") return null;
+  const lead = outcomeLead(turn);
+  if (lead === null) return null;
 
   return (
     <p className="max-w-[72ch] rounded-md border border-review-line bg-review-tint px-3 py-2 text-small leading-[19px] text-ink-secondary">
-      <span className="font-medium text-ink">
-        {turn.outcome === "none_found" ? "Nothing found." : "Part of it."}
-      </span>{" "}
-      Looked in: {turn.checked.join(", ")}.
+      <span className="font-medium text-ink">{lead}</span> Looked in: {turn.checked.join(", ")}.
     </p>
   );
 }

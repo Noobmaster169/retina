@@ -352,3 +352,74 @@ describe("a turn while it is running", () => {
     expect(order).toEqual(["wrote a step", "finished writing", "wrote a step", "finished writing"]);
   });
 });
+
+describe("what an answer may claim", () => {
+  const finalWith = (extra: Record<string, unknown>) => step({ action: "final", answer: "An answer.", ...extra });
+
+  it("keeps an alternative whose thing and count came back from a tool", async () => {
+    const { result } = await turn([
+      calls(sql("select 'PORT ALPHA, ATLANTIS (ATALP)' as port, 7 as emails", "the ports")),
+      finalWith({
+        next: [
+          { kind: "alternative", label: "Port Alpha", prompt: "What goes through Port Alpha?", thing: "PORT ALPHA, ATLANTIS (ATALP)", count: 7, basis: "general_knowledge" },
+        ],
+      }),
+    ]);
+    expect(result.next.map((move) => move.label)).toEqual(["Port Alpha"]);
+    expect(result.removedMoves).toBe(0);
+  });
+
+  it("removes one the agent reasoned its way to, and the answer still stands", async () => {
+    const { result } = await turn([
+      calls(sql("select 'PORT ALPHA, ATLANTIS (ATALP)' as port, 7 as emails", "the ports")),
+      finalWith({
+        next: [
+          { kind: "alternative", label: "Port Alpha", prompt: "What goes through Port Alpha?", thing: "PORT ALPHA, ATLANTIS (ATALP)", count: 7, basis: "data" },
+          { kind: "alternative", label: "Port Omega", prompt: "What goes through Port Omega?", thing: "PORT OMEGA, LEMURIA", count: 3, basis: "general_knowledge" },
+        ],
+      }),
+    ]);
+    expect(result.next.map((move) => move.label)).toEqual(["Port Alpha"]);
+    expect(result.removedMoves).toBe(1);
+    expect(result.answer).toBe("An answer.");
+  });
+
+  it("hands back a none_found that does not say where it looked, once", async () => {
+    const { result, requests } = await turn([
+      finalWith({ outcome: "none_found", checked: [] }),
+      finalWith({ outcome: "none_found", checked: ["resolved ports", "subject lines"] }),
+    ]);
+    expect(requests).toHaveLength(2);
+    expect(result.outcome).toBe("none_found");
+    expect(result.checked).toEqual(["resolved ports", "subject lines"]);
+  });
+
+  it("settles a claim the agent would not fix, and keeps the prose", async () => {
+    const { result, requests } = await turn([
+      finalWith({ outcome: "needs_input", clarify: null }),
+      finalWith({ outcome: "needs_input", clarify: null }),
+    ]);
+    // Asked once, not argued with twice.
+    expect(requests).toHaveLength(2);
+    expect(result.outcome).toBe("answered");
+    expect(result.clarify).toBeNull();
+    expect(result.answer).toBe("An answer.");
+  });
+
+  it("carries a clarifying question that came with its options", async () => {
+    const clarify = { question: "Which one do you mean?", options: ["the port", "the company"] };
+    const { result } = await turn([finalWith({ outcome: "needs_input", clarify })]);
+    expect(result.outcome).toBe("needs_input");
+    expect(result.clarify).toEqual(clarify);
+  });
+
+  it("remembers by name what a lookup grounded, and never by id", async () => {
+    const { result, seeded } = await turn(
+      [calls({ tool: "find_entity", args: { text: ACME_ME } }), final("Found it.")],
+      { seed: true, question: `What do we have on ${ACME_ME}?` },
+    );
+    expect(seeded).not.toBeNull();
+    expect(result.grounded.map((thing) => thing.canonical)).toContain(ACME_ME);
+    expect(result.grounded.every((thing) => thing.kind === "party")).toBe(true);
+  });
+});

@@ -2,6 +2,8 @@
 
 import type { ChatNextMove } from "@/lib/api/chat-agent-schemas";
 
+import { orderMoves } from "./moves";
+
 /**
  * What to ask next, as chips under the answer.
  *
@@ -30,8 +32,7 @@ function Mark() {
 
 export function NextMoves({ moves, onAsk, disabled = false }: { moves: ChatNextMove[]; onAsk(prompt: string): void; disabled?: boolean }) {
   if (moves.length === 0) return null;
-  // Alternatives first: a thing that is there beats another question about what is not.
-  const ordered = [...moves].sort((a, b) => Number(a.kind === "follow_up") - Number(b.kind === "follow_up"));
+  const ordered = orderMoves(moves);
 
   return (
     <ul className="flex max-w-[72ch] flex-wrap gap-1.5">
