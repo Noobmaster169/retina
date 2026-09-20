@@ -3,8 +3,10 @@
 Current phase: **10e, built on `phase-10e-interactive-chat`, not yet merged.** 10a to 10d are on
 `main`. Phase 7's two `[~]` items are still under "Deferred" below.
 
-**Start at `docs/phases/phase-10f-handover.md`.** It says what 10e built, what is left in it, and
-the traps. Then `docs/phases/phase-10e-interactive-chat.md` for the spec and its corrected exit
+**Start at `docs/phases/phase-10f-handover.md`.** Sections 1 to 5 say what 10e built, what is
+left in it and the traps; **section 6 is the pickup doc for 10f**, including the two numbers in
+the 10f spec that are now taken and the one measurement that decides whether 10f is worth
+building. Then `docs/phases/phase-10e-interactive-chat.md` for the spec and its corrected exit
 checklist, and `docs/phases/phase-10f-semantic-layer.md`, which is still parked.
 
 The one number that decides whether 10e helped has not been taken: **`pnpm eval:chat` has never
