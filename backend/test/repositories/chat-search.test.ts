@@ -205,6 +205,11 @@ describe("as retina_ro, the role the chat reads as", () => {
     await expect(orientation.snapshot(ro(), null)).resolves.toHaveProperty("watermark");
   });
 
+  it("can profile a materialised view, which information_schema does not list", async () => {
+    const outcome = await databaseProfile.profileColumn(ro(), "analytics.fact_email_outcome", "category");
+    expect(outcome.ok).toBe(true);
+  });
+
   it("cannot profile a column it was not granted", async () => {
     const outcome = await databaseProfile.profileColumn(ro(), "core.llm_calls", "request");
     expect(outcome.ok).toBe(false);

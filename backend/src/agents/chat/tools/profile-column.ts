@@ -39,6 +39,9 @@ export const profileColumn: ChatTool<Input> = {
       profile.min !== null ? `min: ${profile.min}, max: ${profile.max}` : null,
       "",
       profile.distinct > profile.top.length ? `the ${profile.top.length} most frequent of ${profile.distinct} values:` : "every value:",
+      profile.top.some((row) => (row.value?.length ?? 0) >= databaseProfile.VALUE_WIDTH)
+        ? `values are cut at ${databaseProfile.VALUE_WIDTH} characters: filter on a cut one with like and a %, not with =`
+        : null,
       "value\tcount",
       ...profile.top.map((row) => `${row.value ?? "(null)"}\t${row.count}`),
     ].filter((line): line is string => line !== null);

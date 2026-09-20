@@ -6,13 +6,14 @@ import { safeIdentifier } from "./database.repo";
  * values themselves, most frequent first.
  *
  * The one place an identifier is interpolated into SQL, so it is checked twice:
- * the column must exist in `information_schema` as the connection sees it
- * (on `roPool` that is exactly what `retina_ro` may read, column grants
- * included), and both names must pass `safeIdentifier` before they are quoted.
+ * the column must exist in the catalog and be readable by the connection (on
+ * `roPool` that is exactly what `retina_ro` may read, column grants included),
+ * and both names must pass `safeIdentifier` before they are quoted.
  */
 
 const TOP_VALUES = 30;
-const VALUE_WIDTH = 120;
+/** A value longer than this is cut, and the profile says so: a cut value cannot be filtered on with `=`. */
+export const VALUE_WIDTH = 120;
 
 export interface ColumnProfile {
   relation: string;
@@ -40,9 +41,17 @@ export async function profileColumn(db: Queryable, relation: string, column: str
     return { ok: false, reason: `only the core and analytics schemas can be profiled, not "${schema}"` };
   }
 
+  // The catalog and not `information_schema.columns`, which holds no row for a materialised view
+  // and would report the whole of `analytics` as having no columns. The privilege check is what
+  // `information_schema` did implicitly: a column the connection may not read does not exist here.
   const found = await db.query<{ data_type: string }>(
-    `select data_type from information_schema.columns
-      where table_schema = $1::text and table_name = $2::text and column_name = $3::text`,
+    `select format_type(a.atttypid, a.atttypmod) as data_type
+       from pg_attribute a
+       join pg_class c on c.oid = a.attrelid
+       join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = $1::text and c.relname = $2::text and a.attname = $3::text
+        and c.relkind in ('r', 'v', 'm') and a.attnum > 0 and not a.attisdropped
+        and has_column_privilege(c.oid, a.attnum, 'select')`,
     [schema, table, column],
   );
   if (found.rows.length === 0) {
