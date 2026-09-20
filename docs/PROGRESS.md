@@ -1,12 +1,18 @@
 # Progress
 
-Current phase: 7, on `phase-07-design-system-and-screens`. The design system, the shell, the run
-page and the email page are built and checked in a browser against the canvas; see "Phase 7" below
-for what was built, what was substituted and what is deferred. Phase 6 is built and tested;
-left for the user there: the holdout run and the full 520 run that decide its exit checklist's
-score lines (`pnpm eval:score --run <id> --holdout`), and phase 5's open items (the box check of
-doc-extract, the classify `v5` holdout). Phase 4's open items (the few-shot `v4` holdout, the
-model comparison) are still the user's.
+Current phase: 8, not started. **Phase 7 is merged to `main`.** Its exit checklist is green but for
+two items marked `[~]` in `docs/04-phases.md`, both recorded under "Deferred" below.
+
+**Start at `docs/phases/phase-08-handover.md`.** Its first four sections are the design session's;
+the rest is what phase 7's implementation established, including the shell contract, the contracts
+it added, the design decisions settled with the user, and a list of traps that each cost a real
+amount of time. Read it before `phase-07-handover.md`, which is still right about intent and out of
+date about the API.
+
+Phase 6 is built and tested; left for the user there: the holdout run and the full 520 run that
+decide its exit checklist's score lines (`pnpm eval:score --run <id> --holdout`), and phase 5's
+open items (the box check of doc-extract, the classify `v5` holdout). Phase 4's open items (the
+few-shot `v4` holdout, the model comparison) are still the user's.
 
 ## Phase 7
 
