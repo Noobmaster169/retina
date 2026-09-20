@@ -30,6 +30,8 @@ export interface EntityCandidate {
   mentions: number;
   /** Distinct emails, not email runs: an email replayed in five runs is one email. */
   emails: number;
+  /** The first line of its profile, so two similar names can be told apart by what they are. Empty before it is profiled. */
+  summary: string;
 }
 
 interface CandidateRow {
@@ -41,6 +43,7 @@ interface CandidateRow {
   score: string;
   mention_count: number;
   emails: string;
+  summary: string | null;
 }
 
 const HOW: MatchKind[] = ["exact", "same ignoring case", "similar"];
@@ -70,10 +73,10 @@ export async function findCandidates(
      )
      select e.id::text as id, e.kind, e.canonical, b.value as matched, b.rank, b.score::text as score,
             e.mention_count,
-            (select count(distinct er.email_id)
-               from core.entity_mentions m
-               join core.email_runs er on er.id = m.email_run_id
-              where m.entity_id = e.id)::text as emails
+            (select count(distinct a.email_id) from core.entity_appearances a where a.entity_id = e.id)::text as emails,
+            -- The fourth line of a rendered profile is its summary: the title,
+            -- the kind, a blank, then the two sentences. See profile-md.ts.
+            split_part(coalesce(e.profile_md, ''), chr(10), 4) as summary
        from best b
        join core.entities e on e.id = b.entity_id
       order by b.rank asc, b.score desc, e.mention_count desc, e.canonical asc
@@ -89,6 +92,7 @@ export async function findCandidates(
     score: Number(Number(row.score).toFixed(2)),
     mentions: row.mention_count,
     emails: Number(row.emails),
+    summary: row.summary ?? "",
   }));
 }
 

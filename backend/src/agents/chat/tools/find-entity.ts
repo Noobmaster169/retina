@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { EntityKind } from "../../../contracts";
 import { emailSearch, entitySearch } from "../../../ontology/repositories";
 import { type ChatTool, refused, type ToolContext, type ToolOutcome } from "./types";
 
@@ -13,16 +14,17 @@ import { type ChatTool, refused, type ToolContext, type ToolOutcome } from "./ty
 const Input = z.object({
   /** The name as the person wrote it. */
   text: z.string().min(2).max(200),
-  kind: z.enum(["port", "party"]).optional(),
+  kind: EntityKind.optional(),
 });
 type Input = z.infer<typeof Input>;
 
 export const findEntity: ChatTool<Input> = {
   name: "find_entity",
   description:
-    "Finds the resolved ports and parties a name could mean, by every spelling, with how each matched, its id, " +
-    "and how many emails it appears in. Also reports the sender domains and subject lines where the name " +
-    "appears. Call it for every company or place in a question before filtering on anything.",
+    "Finds the resolved things a name could mean, of any kind (port, party, carrier, person, commodity, vessel), " +
+    "by every spelling, with how each matched, its id, how many emails it appears in, and a line on what it is. " +
+    "Also reports the sender domains and subject lines where the name appears. Call it for every company, place, " +
+    "carrier, vessel or person in a question before filtering on anything.",
   schema: Input,
   shape: Input.shape,
 
@@ -36,11 +38,11 @@ export const findEntity: ChatTool<Input> = {
 
     const lines = [`Looking for "${input.text}"${input.kind ? ` among ${input.kind} things` : ""}.`, ""];
     if (candidates.length === 0) {
-      lines.push("No resolved port or party has a spelling close to it.");
+      lines.push("No resolved thing has a spelling close to it.");
     } else {
-      lines.push("id\tkind\tcanonical\tmatched spelling\thow\tscore\tmentions\temails");
+      lines.push("id\tkind\tcanonical\tmatched spelling\thow\tscore\tmentions\temails\twhat it is");
       for (const c of candidates) {
-        lines.push([c.id, c.kind, c.canonical, c.matched, c.how, c.score, c.mentions, c.emails].join("\t"));
+        lines.push([c.id, c.kind, c.canonical, c.matched, c.how, c.score, c.mentions, c.emails, c.summary].join("\t"));
       }
       if (!candidates.some((candidate) => candidate.how !== "similar")) {
         lines.push("None of these is an exact match. Read them and decide which, if any, the name means.");
@@ -70,7 +72,7 @@ export const findEntity: ChatTool<Input> = {
       // answer offers is kept only where one row carried both the thing and the
       // number, so splitting them here would drop every real suggestion.
       grounds: [
-        ...candidates.map((c) => [c.id, c.kind, c.canonical, c.matched, c.mentions, c.emails].join("\t")),
+        ...candidates.map((c) => [c.id, c.kind, c.canonical, c.matched, c.mentions, c.emails, c.summary].join("\t")),
         ...elsewhere.senderDomains.map((domain) => `${domain.domain}\t${domain.emails}`),
         ...elsewhere.subjects,
       ].join("\n"),

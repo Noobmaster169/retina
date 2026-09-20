@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 
+/** The six kinds, written once: two tool signatures and one refusal all name them. */
+const KINDS = '"port" | "party" | "carrier" | "person" | "commodity" | "vessel"';
+
 import { callTool, toolDescriptions, TOOLS } from "../../src/agents/chat/tools";
 import { argsSignature } from "../../src/agents/chat/tools/args-signature";
 import { getPool, getRoPool } from "../../src/db";
 
 describe("argsSignature", () => {
   it.each([
-    ["find_entity", '{ text: string, kind?: "port" | "party" }'],
-    ["list_entities", '{ kind: "port" | "party", contains?: string, limit?: number }'],
+    ["find_entity", `{ text: string, kind?: ${KINDS} }`],
+    ["list_entities", `{ kind: ${KINDS}, contains?: string, limit?: number }`],
     ["get_entity", "{ id: string | number }"],
     ["profile_column", "{ relation: string, column: string, near?: string | null }"],
     ["load_skill", "{ name: string }"],
@@ -30,7 +33,7 @@ describe("callTool", () => {
   it("says what the tool takes when the arguments do not fit, so the next call can be right", async () => {
     const outcome = await callTool("find_entity", { name: "Acme" }, ctx());
     expect(outcome.ok).toBe(false);
-    expect(outcome.text).toContain('It takes exactly: { text: string, kind?: "port" | "party" }');
+    expect(outcome.text).toContain(`It takes exactly: { text: string, kind?: ${KINDS} }`);
   });
 
   it("takes a recipe's parameters beside its name as well as inside params", async () => {

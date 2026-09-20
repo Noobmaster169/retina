@@ -1,12 +1,13 @@
 import { z } from "zod";
 
+import { EntityKind } from "../../../contracts";
 import { entitySearch } from "../../../ontology/repositories";
 import { type ChatTool, refused, type ToolContext, type ToolOutcome } from "./types";
 
 /** The resolved things of one kind, as a list the agent can read names and ids from. */
 
 const ListInput = z.object({
-  kind: z.enum(["port", "party"]),
+  kind: EntityKind,
   /** A word any spelling must contain, such as a country. Case does not matter. */
   contains: z.string().min(2).max(80).optional(),
   limit: z.number().int().min(1).max(200).default(60),
@@ -16,7 +17,8 @@ type ListInput = z.infer<typeof ListInput>;
 export const listEntities: ChatTool<ListInput> = {
   name: "list_entities",
   description:
-    "Lists the resolved ports or parties, most mentioned first, with ids and distinct email counts. Give " +
+    "Lists the resolved things of one kind (port, party, carrier, person, commodity, vessel), most mentioned " +
+    "first, with ids and distinct email counts. Give " +
     "`contains` to keep those with a spelling containing a word, which is how a country's ports are found.",
   schema: ListInput,
   shape: ListInput.shape,
