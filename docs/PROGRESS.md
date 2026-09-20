@@ -1,17 +1,16 @@
 # Progress
 
-Current phase: 10, **merged to `main`, semi done**. The data layer, the ontology surfaces and the
-read-only agent are finished and tested. **The chat works and is the part that needs refinement.**
-Phase 7's two `[~]` items are still under "Deferred" below.
+Current phase: **10e, built on `phase-10e-interactive-chat`, not yet merged.** 10a to 10d are on
+`main`. Phase 7's two `[~]` items are still under "Deferred" below.
 
-**Start at `docs/phases/phase-11-handover.md`.** Section 3 is the chat's backlog and is the real
-work left in phase 10; section 6 is the traps, two of which cost hours. Then
-`docs/phases/phase-11-eval-and-lessons.md`.
+**Start at `docs/phases/phase-10f-handover.md`.** It says what 10e built, what is left in it, and
+the traps. Then `docs/phases/phase-10e-interactive-chat.md` for the spec and its corrected exit
+checklist, and `docs/phases/phase-10f-semantic-layer.md`, which is still parked.
 
-The one thing to know before asking the chat anything: **only one question has ever been put to a
-live model.** It answered correctly, and it exercised `run_sql` and nothing else. `get_email`,
-`explain_decision` and `describe_schema` have been called by tests and by hand over MCP, never by
-a model choosing to.
+The one number that decides whether 10e helped has not been taken: **`pnpm eval:chat` has never
+been run in full**, in 10d or in 10e. The set is now 45 questions, 15 of them tagged `interactive`,
+and a full run is roughly 150 sonnet calls. It is the user's to start, and there is no baseline to
+compare against until it is.
 
 The shell contract and the traps in `docs/phases/phase-08-handover.md` sections 6 and 10 all still
 apply, as do phase 9's in `phase-09-handover.md` section 7.
@@ -635,6 +634,56 @@ corrected where it described the old behaviour:
 - The frontend parses every response with zod under `lib/api/`. A new contract field is a schema
   there, not an interface, and `getRun` / `listRunEmails` / the four organisers' enums were
   deleted as unused: the run page brings them back from `git show d68ed1b^`.
+
+### Phase 10e: an interactive chat (built 2026-09-20, local, on `phase-10e-interactive-chat`)
+
+An answer that finds nothing now says where it looked and offers what is there; the agent asks back
+when the data made a fork real; a turn's steps are readable while it runs and can be stopped; and a
+conversation remembers the names it grounded.
+
+**Built.**
+
+- **The answer's shape.** The final step gained `outcome`, `checked`, `next` and `clarify`, all
+  defaulted, still one flat object. `agents/chat/next-moves.ts` is pure and table-tested: an
+  alternative whose thing and number did not come back **on one row** of a tool result is dropped
+  before the turn is stored. Checked against `grounds` and never against a call's `text`, which
+  echoes what was asked for, so the agent cannot recommend Jakarta because it asked about Jakarta.
+- **`none_found` without `checked`, and `needs_input` without `clarify`, are handed back once** and
+  settled in code if the agent repeats them: the claim is dropped and the prose stands.
+- **Two skills.** `near-misses`, injected on an empty lookup, and `ask-back`, injected when
+  `find_entity` returned candidates of more than one kind. Several candidates of one kind are
+  deliberately not an ambiguity. `CHAT.md` went to v2 with the general-knowledge rule: it may
+  **relate** among values a tool returned, never **report** a fact about this mailbox, and a move
+  its own knowledge chose is marked `inference` on the chip. Prompt `chat/v3.md`.
+- **`profile_column` gained `near`**, values ranked by `public.similarity` instead of by frequency,
+  which is how a mistyped column value is found. It is not a recipe: a recipe binds parameters and
+  an identifier cannot be bound.
+- **Live steps, and stop.** Migration `016` adds `chat_turns.in_reply_to`; the loop takes `onStep`
+  and the route writes one `role = 'tool'` row per finished call; `GET /chat/:id/turns?after=` is
+  the only read that returns them. Stopping is the client aborting its POST, read between steps.
+- **Memory**, by name and never by id: what earlier turns grounded, the runs their recipes bound,
+  and the last open clarifying question. For the model only, and not part of `shown`.
+- **The skill picker**: `/` in the composer, `GET /chat/skills`, `NewMessage.skills`, `how: picked`.
+
+**Numbers.** 857 backend tests, 70 frontend, none touching the proxy. Eleven skills, 20 recipes.
+
+**Live, on the local stack, run `fa0f8e38`.** The Jakarta walk-through behaves as the spec wrote
+it: `none_found`, "Looked in: resolved ports, sender domains, subject lines, email bodies", the one
+Indonesian port named with its loading-only role, and one chip whose number was read on that turn.
+`near-misses` was injected by the empty lookup and not by the question's words. The steps appeared
+one at a time while the turn ran, on the `/chat` page and in the email rail at 340px. **`get_email`
+was called by a live model for the first time** (the rail, asking about one email's ports), which
+`phase-11-handover.md` had recorded as never having happened.
+
+**Found while building, and fixed:** switching conversations kept the previous one's turns on the
+page, because `useChat` seeds from `initial` on mount and holds after; the route now keys
+`ChatPage` by the conversation. A stop that lands while the last model call is in flight lets the
+turn finish and store a whole answer, so the browser re-reads `?after=` for twelve seconds and
+shows what landed rather than saying "stopped" over an answer that exists.
+
+**Left in 10e.** The full `pnpm eval:chat` (45 questions, about 150 sonnet calls, the user's to
+start); a live follow-up by pronoun after an entity refresh, whose repository half is tested;
+`MAX_STEPS = 8`, still unmeasured.
 
 ### Phase 10d: the chat harness (built 2026-09-20, local)
 

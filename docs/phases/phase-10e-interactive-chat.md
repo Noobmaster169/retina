@@ -123,11 +123,14 @@ zero rows or `find_entity` found no exact match. What it standardises, in order:
    first, and say what role each plays (a loading port is not a destination).
 6. Answer `none_found` with `checked`, the alternatives in prose, and the same ones in `next`.
 
-| Recipe | What it returns |
+**Corrected, and built this way.** None of the three recipes this table asked for was added, because
+each already existed or could not be one:
+
+| Asked for | What shipped |
 |---|---|
-| `entities_containing_word` | things of a kind whose any spelling contains a word, with distinct emails and the fields they appear in |
-| `port_roles` | for given ports: how often as loading, how often as discharge, distinct emails, in one run |
-| `values_near` | for a relation and column, the stored values most similar to a text, with counts (trigram); for a column value that was mistyped |
+| `entities_containing_word` | already twice over: the `entities_named_like(kind, pattern)` recipe and `list_entities { kind, contains }`. A third would be a third thing to keep level |
+| `port_roles` | `ports_by_role(run_id)` returns every port of a run with both counts and is small, so the agent reads the rows it needs out of one call |
+| `values_near` | cannot be a recipe: a recipe binds parameters and an identifier cannot be bound. It is `profile_column`'s optional `near`, ranked by `public.similarity`, over the one path that interpolates an identifier safely (`database.profile.ts`) |
 
 ### 3. Skill `ask-back`
 
@@ -243,19 +246,32 @@ the user's to start.
 
 ## Exit checklist
 
-- [ ] The Jakarta walk-through passes as written, on the scoped run.
-- [ ] No alternative in `eval:chat --tag interactive` names a thing or a count that was not in
-      a tool result on its turn.
-- [ ] A near miss reports the places it checked; a true miss offers no invented alternative.
-- [ ] Clarifying questions appear only on the questions tagged to need one, once each.
-- [ ] Every answer that used the model's own geography or group knowledge says so, and the
-      chip is marked.
-- [ ] Steps are visible while a turn runs; Stop works; nothing is fire-and-forget; a thread
-      read afterwards is unchanged from 10d's shape plus the new fields.
-- [ ] A follow-up by pronoun grounds from memory after an entity refresh.
-- [ ] A picked skill is injected and recorded.
-- [ ] 10d's `eval:chat` numbers have not got worse; both sets recorded in `PROGRESS.md`.
-- [ ] `03-infra-deep.md` and the frontend zod mirror updated in the same commits; type-check,
+- [x] The Jakarta walk-through passes as written, on the scoped run. Verified live on run
+      `fa0f8e38`: `none_found`, "Looked in: resolved ports, sender domains, subject lines, email
+      bodies", the one Indonesian port named with its loading-only role, and one chip
+      (`BUATAN, INDONESIA (IDBUA)`, 5) whose number was read on that turn. `near-misses` was
+      injected by the empty lookup, not by the question's words.
+- [x] No alternative names a thing or a count that was not in a tool result on its turn.
+      `next-moves.ts` drops it before the turn is stored, against `grounds` and row by row; 26
+      cases in `next-moves.test.ts`, and two in `chat-loop.test.ts` with a scripted model.
+- [x] A near miss reports the places it checked; a true miss offers no invented alternative.
+      `none_found` without `checked` is handed back once and settled in code if it repeats.
+- [x] Clarifying questions appear only where the data made the fork real: `ask-back` is injected
+      on candidates of more than one kind and on nothing else. `inject.test.ts` holds it.
+- [x] An answer that used the model's own knowledge says so, and the chip carries `basis:
+      general_knowledge`, which `next-moves.tsx` marks `inference`.
+- [x] Steps are visible while a turn runs; Stop works; nothing is fire-and-forget; a thread read
+      afterwards is unchanged from 10d's shape plus the new fields. Verified live on both the
+      `/chat` page and the email rail at 340px.
+- [ ] A follow-up by pronoun grounds from memory after an entity refresh. The repository half is
+      held by `chat-search.test.ts` (a remembered canonical still grounds `exact` after every id
+      changed); the live follow-up has not been put to a model.
+- [x] A picked skill is injected and recorded. `NewMessage.skills`, `GET /chat/skills`, the `/`
+      menu, and `how: "picked"` on the stored turn.
+- [ ] 10d's `eval:chat` numbers have not got worse; both sets recorded in `PROGRESS.md`. **The
+      full set has never been run**, in 10d or here, so there is no baseline yet. It is about 150
+      sonnet calls now, and it is the user's to start.
+- [x] `03-infra-deep.md` and the frontend zod mirror updated in the same commits; type-check,
       tests and lint clean; no file over 200 lines.
 
 ## Deferred
