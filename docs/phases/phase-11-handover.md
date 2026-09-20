@@ -1,6 +1,12 @@
 # Phase 11 handover: what phase 10 built, what the chat still needs, and the traps
 
-Written 2026-09-20, after phase 10 merged to `main`. Nothing below is a plan; it is all on `main`.
+Written 2026-09-20 after phase 10 merged, and extended on 2026-09-21 after 10f. Nothing below is
+a plan; it is all on `main`.
+
+**10d, 10e and 10f each have a handover of their own**, and each is about the phase before it:
+`phase-10e-handover.md` (10d to 10e), `phase-10f-handover.md` (10e to 10f). This file is the one
+for phase 11, so **section 0 is what 10f left you** and the rest is phase 10's original. Where the
+two disagree, section 0 wins: it is three phases newer.
 
 **Phase 10 is semi done.** The data layer, the ontology surfaces and the read-only agent are
 finished and tested. The chat works and is the part that needs refinement, and sections 3 and 4
@@ -13,6 +19,90 @@ Read in this order:
 3. **Section 6**, the traps. Two of them cost hours.
 4. `docs/03-infra-deep.md` sections 5.6, 8.2 to 8.4, 10 and 11.
 5. `docs/phases/phase-11-eval-and-lessons.md`, the work list.
+
+---
+
+## 0. What 10f left phase 11 (written 2026-09-21)
+
+### 0.1 Two numbers nobody has taken, and both are yours
+
+- **`pnpm eval:chat`** has never been run in full in 10d, 10e or 10f. 45 questions, 15 tagged
+  `interactive`, roughly 150 sonnet calls. **There is no baseline**, so nothing can be said about
+  whether any of the three phases helped. `pnpm eval:chat --limit 30` gives you 10d's original 30
+  if you want the comparison honestly.
+- **`pnpm eval:chat --set ontology`** has never been run. 21 questions, roughly 80 calls. It needs
+  a backfilled inbox first: `pnpm ontology:backfill --limit 30` with a worker running, then two
+  ten-minute ticks for the profiles. Its two numbers are recall and precision of the entity set
+  against what `find_entities` returned, and how often a turn's completeness flag agreed with its
+  own deferred count.
+
+Until both exist, "the semantic layer helps" and "the semantic layer costs nothing it should not"
+are both opinions.
+
+### 0.2 What 10f built, so you do not rebuild it
+
+| Where | What it is |
+|---|---|
+| `pipeline/ontology/reconcile.ts` | Pure. Plans each cluster onto the id that already holds its spellings. **Entity ids survive a refresh now**; a merge leaves a tombstone and every read filters `merged_into is null` |
+| `pipeline/ontology/shipment.ts`, `shipment-reading.ts`, `shipment-draft.ts` | Pure. One email's reading into a shipment and its sightings, dropping any value whose quote is not in the text |
+| `pipeline/ontology/resolve-sighting.ts`, `dossier.ts`, `profile-md.ts`, `plan-judging.ts` | Pure, all four table-tested. Which spellings cost a model call, what a profile is shown, how it renders, and which things a concept question judges now |
+| `agents/shipment-read.ts`, `entity-resolve.ts`, `entity-profile.ts`, `concepts.ts` | The five steps, all sonnet, all prompts on disk |
+| `ontology/concept-search.ts` | Define once, judge a bounded number, keep every verdict. Used by the tool and by the backfill, which never redefines |
+| `queues/processors/ontology.processor.ts` + `-resolve` + `-write` | The queue's job: read, decide, write in one transaction |
+| `queues/refresh-profiles.ts`, `backfill-concepts.ts` | The two scheduled tasks |
+| `agents/chat/tools/find-entities.ts`, `skills/meaning-terms/` | The tool and the skill for a term no column holds |
+| `db/migrations/017` to `022` | Four tables, one view, the profile columns, and three indexes the bench asked for |
+
+**Numbers.** 941 backend tests, 70 frontend, none touching the proxy.
+
+### 0.3 Three decisions worth knowing before you change them
+
+**A profile has two halves and the label is the whole point.** `observed` is only what our mail
+shows; `general` is the model's own knowledge, stored under the heading "General knowledge,
+unverified" with a confidence. `CHAT.md` v3 lets the agent repeat what one says **with that label**
+and never extend it. That is what makes `ONTOLOGY_KNOWLEDGE=mail+model` compatible with v2's rule
+that general knowledge may relate and never report. If you ever drop the label from a surface, you
+have turned a claim about the world into a claim about this mailbox, and nothing downstream will
+notice.
+
+**`unknown` is not a soft `no`.** `concept-judge` answers three ways and the counts are reported
+separately, because "none of these" and "we do not know about these" are different sentences. The
+prompt says so twice. A change that collapses them will read as an improvement on every question
+that has an answer and as a lie on every question that does not.
+
+**The ontology queue may never fail or slow a scored email.** Priority 2000, its own queue, a
+failure that logs a warning and nothing else: no review case, no stage change. That is deliberate
+and it has a cost, which is 0.5 below.
+
+### 0.4 Traps, four of them new
+
+- **The bench is the only thing that found the three missing indexes.** `pnpm ontology:bench`
+  inserts 200,000 things and 2,000,000 sightings in a transaction it rolls back, and it caught a
+  sequential scan on the exact-spelling lookup, another on the candidate ranking, and a 760 ms
+  candidate search. If you add a query the chat makes per turn, add it to the bench.
+- **Uniform synthetic data measures the wrong thing.** The bench's first version gave every row the
+  same words, so every predicate matched every row and Postgres correctly chose a sequential scan.
+  The names and trades vary for that reason; do not simplify them.
+- **A rolled-back run still spends sequence values**, so ids are not contiguous and arithmetic on
+  them joins to nothing. The bench numbers its rows with `row_number()` for that reason.
+- **A backtick inside a SQL comment inside a template literal ends the template literal.** Two
+  files cost a few minutes each to this. Write SQL comments in prose.
+- **`shipment-read` is slow**, tens of seconds to minutes per email: a long prompt and a large
+  output schema. At `ONTOLOGY_CONCURRENCY=2` a 25 email backfill is a quarter of an hour. Nothing
+  is wrong; watch `core.email_shipments` filling rather than the log.
+- **Everything in `phase-10f-handover.md` section 4 still applies**, the stale api on 8091 most of
+  all.
+
+### 0.5 What 10f deliberately left
+
+Under "Deferred" in `PROGRESS.md`, with reasons. The three worth knowing here:
+
+- **A failed reading has no surface.** It is a warning in the worker's log. If readings start
+  failing quietly nobody finds out, and the first thing to give a surface is that.
+- **`ambiguous` on a sighting is stored and nothing reads it.** `entity-resolve` sets it when the
+  candidates spanned more than one thing. The clarifying path 10e built is the natural home.
+- **`attributes_source.llmCallId` is always null.** The shape carries it; `callStructured` does not
+  hand the id back and threading it through for provenance nobody reads yet was not worth the seam.
 
 ---
 
