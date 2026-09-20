@@ -2,7 +2,7 @@ import type { Pool } from "pg";
 
 import { type LlmClient, type ProfileOutput, writeProfile } from "../agents";
 import { loadPrompt } from "../agents/prompts/registry";
-import { config } from "../config";
+import { type Config, config } from "../config";
 import { childLogger } from "../lib/logger";
 import { entityDossier, entityProfile, type ProfileWrite } from "../ontology/repositories";
 import { renderProfile, type RenderedProfile } from "../pipeline/ontology";
@@ -24,8 +24,8 @@ const PROFILE_PROMPT = "v1";
  * individual is not something this system stores, whatever
  * `ONTOLOGY_KNOWLEDGE` says.
  */
-export function generalAllowed(kind: string): boolean {
-  return config.ONTOLOGY_KNOWLEDGE === "mail+model" && kind !== "person";
+export function generalAllowed(kind: string, knowledge: Config["ONTOLOGY_KNOWLEDGE"] = config.ONTOLOGY_KNOWLEDGE): boolean {
+  return knowledge === "mail+model" && kind !== "person";
 }
 
 export interface RefreshProfilesDeps {
