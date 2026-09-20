@@ -36,16 +36,34 @@ const BASE: Omit<TurnInput, "question"> = {
 
 async function turn(
   replies: string[],
-  options: { question?: string; input?: Partial<TurnInput>; seed?: boolean } = {},
+  options: {
+    question?: string;
+    input?: Partial<TurnInput>;
+    seed?: boolean;
+    /** Called with each step's finished calls, as the route's writer is. */
+    onStep?(calls: { tool: string; preview: string }[]): Promise<void>;
+    /** Stops the turn after this many steps have finished, as the composer's button does. */
+    stopAfter?: number;
+  } = {},
 ) {
   return inRollback(async (tx: PoolClient) => {
     const seeded: SeededInbox | null = options.seed ? await seedInbox(tx) : null;
     const llm = new FakeLlmClient(replies);
+    const steps: { tool: string; preview: string }[][] = [];
     const result = await runTurn(
-      { llm, pool: tx, tools: { pool: getPool(), roPool: tx, runId: options.input?.scope?.runId ?? null, emailId: null } },
+      {
+        llm,
+        pool: tx,
+        tools: { pool: getPool(), roPool: tx, runId: options.input?.scope?.runId ?? null, emailId: null },
+        onStep: async (finished) => {
+          steps.push(finished.map((call) => ({ tool: call.tool, preview: call.preview })));
+          await options.onStep?.(finished.map((call) => ({ tool: call.tool, preview: call.preview })));
+        },
+        stopped: () => options.stopAfter !== undefined && steps.length >= options.stopAfter,
+      },
       { ...BASE, question: options.question ?? "which client had the most mismatches?", ...options.input },
     );
-    return { result, seeded, requests: llm.requests };
+    return { result, seeded, requests: llm.requests, steps };
   });
 }
 
@@ -278,5 +296,59 @@ describe("the harness around the loop", () => {
     );
     expect(result.toolCalls[0].ok).toBe(true);
     expect(result.toolCalls[1].ok).toBe(false);
+  });
+});
+
+describe("a turn while it is running", () => {
+  it("reports each step's calls as they finish, in order, one call at a time", async () => {
+    const { steps } = await turn([
+      calls(sql("select 1 as n", "the first"), sql("select 2 as n", "the second")),
+      calls(sql("select 3 as n", "the third")),
+      final("Done."),
+    ]);
+
+    // Two steps, not three calls: a step's calls run together, so they finish together.
+    expect(steps.map((step) => step.length)).toEqual([2, 1]);
+    expect(steps[0].map((call) => call.tool)).toEqual(["run_sql", "run_sql"]);
+  });
+
+  it("reports a failed call too, because a step that went wrong is still a step", async () => {
+    const { steps } = await turn([calls(sql("drop table core.emails")), final("I could not.")]);
+    expect(steps[0]).toHaveLength(1);
+    expect(steps[0][0].preview).toMatch(/must start with .select./i);
+  });
+
+  it("does not report the final step, which is the answer and not a call", async () => {
+    const { steps, result } = await turn([calls(sql("select 1 as n")), final("One.")]);
+    expect(steps).toHaveLength(1);
+    expect(result.answer).toBe("One.");
+  });
+
+  it("stops between steps, keeps what it found, and never asks the model again", async () => {
+    const { result, requests } = await turn(
+      [calls(sql("select 1 as n", "the only one that runs")), calls(sql("select 2 as n")), final("Never reached.")],
+      { stopAfter: 1 },
+    );
+
+    expect(result.answer).toMatch(/^Stopped after 1 step/);
+    expect(result.outcome).toBe("partial");
+    // What it had is still on the turn: half an answer with its working is evidence.
+    expect(result.toolCalls).toHaveLength(1);
+    expect(result.answer).toContain("run_sql");
+    // One model call, not three: the budget is not spent on a turn nobody is waiting for.
+    expect(requests).toHaveLength(1);
+  });
+
+  it("lets a step's writes land before the step after it asks the model", async () => {
+    const order: string[] = [];
+    await turn([calls(sql("select 1 as n")), calls(sql("select 2 as n")), final("Done.")], {
+      onStep: async () => {
+        order.push("wrote a step");
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        order.push("finished writing");
+      },
+    });
+    // Never "wrote, wrote, finished, finished": the page would show them out of order.
+    expect(order).toEqual(["wrote a step", "finished writing", "wrote a step", "finished writing"]);
   });
 });

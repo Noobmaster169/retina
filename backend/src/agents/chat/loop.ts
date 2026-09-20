@@ -2,12 +2,12 @@ import { config } from "../../config";
 import { childLogger } from "../../lib/logger";
 import { loadPrompt } from "../prompts/registry";
 import { callStructured, type StructuredDeps } from "../structured";
-import { type How, skillsToInject } from "./inject";
+import type { How } from "./inject";
 import { type Scope, scopeText, stepInput } from "./loop.input";
-import { assemble, type FinalStep, type TurnResult } from "./loop.result";
+import { assemble, exhaustedAnswer, type FinalStep, stoppedAnswer, type TurnResult } from "./loop.result";
+import { skillsForStep } from "./loop.skills";
 import { finish, type FinishedCall, Step } from "./loop.steps";
 import { problemWith } from "./next-moves";
-import { skills, skillText } from "./skills/registry";
 import { standing, standingText } from "./standing";
 import { callTool, type ToolContext } from "./tools";
 
@@ -52,12 +52,27 @@ export interface TurnInput {
 
 export interface LoopDeps extends StructuredDeps {
   tools: ToolContext;
+  /**
+   * Called with a step's finished calls, before the next model call.
+   *
+   * A step's calls run together, so this fires once per step with up to four of
+   * them rather than once per call. Awaited: the write that makes a step
+   * readable must land before the step that follows it, or the page shows them
+   * out of order. A failure here is the caller's to handle; the turn does not
+   * depend on it.
+   */
+  onStep?(calls: FinishedCall[]): Promise<void>;
+  /**
+   * Whether the person has stopped this turn. Read between steps, never inside
+   * one: a model call already in flight is left to finish, because abandoning
+   * it would leave an `llm_calls` row that no turn accounts for.
+   */
+  stopped?(): boolean;
 }
 
 export async function runTurn(deps: LoopDeps, input: TurnInput): Promise<TurnResult> {
   const prompt = loadPrompt("chat", CHAT_PROMPT, config.LLM_MODEL_CHAT);
   const held = standing();
-  const known = new Set(skills().keys());
   const calls: FinishedCall[] = [];
   const used = new Map<string, How>();
   /** Things the model is told about its own steps that are not tool calls, so they never reach the page as one. */
@@ -79,23 +94,16 @@ export async function runTurn(deps: LoopDeps, input: TurnInput): Promise<TurnRes
     );
 
   for (let step = 1; step <= MAX_STEPS; step++) {
-    const injected = skillsToInject(
-      {
-        scope: input.scope,
-        guardRefused: calls.some((call) => call.guardRefused),
-        cameUpEmpty: calls.some((call) => call.cameUpEmpty),
-        ambiguous: calls.some((call) => call.ambiguous),
-        loaded: calls.flatMap((call) => (call.skill ? [call.skill] : [])),
-        sticky: input.stickySkills,
-        picked: input.pickedSkills,
-      },
-      known,
-    );
-    for (const skill of injected) if (!used.has(skill.name)) used.set(skill.name, skill.how);
-    const skillBodies = injected.flatMap((item) => {
-      const skill = skills().get(item.name);
-      return skill ? [skillText(skill)] : [];
+    const { injected, bodies: skillBodies } = skillsForStep({
+      scope: input.scope,
+      guardRefused: calls.some((call) => call.guardRefused),
+      cameUpEmpty: calls.some((call) => call.cameUpEmpty),
+      ambiguous: calls.some((call) => call.ambiguous),
+      loaded: calls.flatMap((call) => (call.skill ? [call.skill] : [])),
+      sticky: input.stickySkills,
+      picked: input.pickedSkills,
     });
+    for (const skill of injected) if (!used.has(skill.name)) used.set(skill.name, skill.how);
 
     const { value } = await callStructured(deps, {
       prompt,
@@ -169,16 +177,16 @@ export async function runTurn(deps: LoopDeps, input: TurnInput): Promise<TurnRes
       log.info({ step, tool: call.tool, ok: call.ok, durationMs: call.durationMs }, "chat tool call");
     }
     calls.push(...finished);
+    if (deps.onStep) await deps.onStep(finished);
+
+    if (deps.stopped?.()) {
+      log.info({ step, calls: calls.length }, "a chat turn was stopped between steps");
+      return result({ answer: stoppedAnswer(calls, step), outcome: "partial" });
+    }
   }
 
   // The budget is spent. Saying so with what was found beats a made-up answer,
   // and beats an error: the tool results are on the page either way.
   log.warn({ steps: MAX_STEPS, question: input.question.slice(0, 120) }, "the chat loop ran out of steps");
-  return result({
-    answer:
-      `I could not finish this within ${MAX_STEPS} steps. What I found is under "Tools used": ` +
-      `${calls.map((call) => `${call.tool} (${call.preview})`).join(", ")}. ` +
-      "Ask it again more narrowly, or name the run you mean.",
-    exhausted: true,
-  });
+  return result({ answer: exhaustedAnswer(calls, MAX_STEPS), exhausted: true });
 }

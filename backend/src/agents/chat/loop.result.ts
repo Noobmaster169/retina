@@ -104,3 +104,26 @@ export function assemble(so: TurnSoFar, final: FinalStep): TurnResult {
     exhausted: final.exhausted,
   };
 }
+
+/** What was found, listed by tool and preview. The two endings that are not an answer both say it this way. */
+function found(calls: FinishedCall[]): string {
+  return calls.map((call) => `${call.tool} (${call.preview})`).join(", ");
+}
+
+/**
+ * The budget is spent.
+ *
+ * Saying so with what was found beats a made-up answer and beats an error: the
+ * tool results are on the page either way.
+ */
+export function exhaustedAnswer(calls: FinishedCall[], maxSteps: number): string {
+  return (
+    `I could not finish this within ${maxSteps} steps. What I found is under "Tools used": ${found(calls)}. ` +
+    "Ask it again more narrowly, or name the run you mean."
+  );
+}
+
+/** The person stopped it. What it had is kept, because half an answer with its working is still evidence. */
+export function stoppedAnswer(calls: FinishedCall[], steps: number): string {
+  return `Stopped after ${steps} ${steps === 1 ? "step" : "steps"}. What I had found is under "Tools used": ${found(calls)}.`;
+}

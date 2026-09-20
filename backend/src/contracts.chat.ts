@@ -230,6 +230,16 @@ export type ChatConversationList = z.infer<typeof ChatConversationList>;
 export const ChatThread = z.object({ conversation: ChatConversation, turns: z.array(ChatTurn) });
 export type ChatThread = z.infer<typeof ChatThread>;
 
+/**
+ * The turns newer than one id, which is what the page polls while a turn runs.
+ *
+ * The only response that carries `role = "tool"` turns. Each one is a single
+ * finished call, drawn as a line of the live steps and dropped when the
+ * assistant turn lands, which carries the same calls in full.
+ */
+export const ChatTurnsAfter = z.object({ turns: z.array(ChatTurn) });
+export type ChatTurnsAfter = z.infer<typeof ChatTurnsAfter>;
+
 export const NewConversation = z.object({
   title: z.string().max(200).optional(),
   runId: z.uuid().optional(),
@@ -241,8 +251,26 @@ export type NewConversation = z.infer<typeof NewConversation>;
 export const NewMessage = z.object({
   content: z.string().min(1).max(4000),
   actor: z.string().min(1).max(120),
+  /**
+   * Skills the person picked in the composer, injected exactly as an
+   * event-injected one is. A nudge and not a mode: the agent still follows
+   * CHAT.md, and a name the registry does not know is refused at the route
+   * rather than silently ignored.
+   */
+  skills: z.array(z.string().max(60)).max(3).default([]),
 });
 export type NewMessage = z.infer<typeof NewMessage>;
+
+/** One skill as the composer's menu lists it. The body is never sent: it is for the agent, not the reader. */
+export const ChatSkillCard = z.object({
+  name: z.string(),
+  version: z.number().int(),
+  when: z.string(),
+});
+export type ChatSkillCard = z.infer<typeof ChatSkillCard>;
+
+export const ChatSkillCards = z.object({ skills: z.array(ChatSkillCard) });
+export type ChatSkillCards = z.infer<typeof ChatSkillCards>;
 
 /** What one turn answers with. The page draws these four in this order. */
 export const ChatAnswer = z.object({

@@ -16,7 +16,7 @@ import type { Queryable } from "../../db";
  * conversations themselves and re-exports this, so callers still say `chat.turns`.
  */
 
-interface TurnRow {
+export interface TurnRow {
   id: string;
   role: "user" | "assistant" | "tool";
   content: string;
@@ -71,7 +71,7 @@ function extrasOf(row: TurnRow): AssistantExtras {
   return { ...NO_EXTRAS, ...Object.fromEntries(Object.entries(held ?? {}).filter(([, value]) => value !== undefined)) };
 }
 
-function toTurn(row: TurnRow): ChatTurn {
+export function toTurn(row: TurnRow): ChatTurn {
   const extras = row.role === "assistant" ? extrasOf(row) : NO_EXTRAS;
   return {
     id: Number(row.id),
