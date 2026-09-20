@@ -11,6 +11,7 @@ describe("literalsIn", () => {
     { name: "a tagged dollar quote", sql: "select 1 from t where a = $q$x$q$", values: ["x"] },
     { name: "a quoted identifier is not a literal", sql: 'select "it\'s" from t where a = \'x\'', values: ["x"] },
     { name: "an escape string", sql: "select 1 from t where a = E'a\\'b'", values: ["a\\'b"] },
+    { name: "a dollar tag with a digit in it", sql: "select 1 from t where a = $a1$x y$a1$", values: ["x y"] },
     { name: "an unterminated literal still ends", sql: "select 1 from t where a = 'oops", values: ["oops"] },
     { name: "no literal at all", sql: "select count(*) from core.emails", values: [] },
   ];
@@ -65,6 +66,22 @@ describe("ungrounded", () => {
     },
     { name: "an enum value from the schema docs", sql: "select 1 from c where status = 'MISMATCH' and field = 'consignee'", missing: [] },
     { name: "a like pattern is exploration", sql: "select 1 from core.entity_names where value ilike '%acme%'", missing: [] },
+    {
+      name: "a like with no wildcard is an equality, and is held to the same rule",
+      sql: "select 1 from core.entities where canonical like 'Acme Paper Trading' or canonical ilike 'Jakarta'",
+      missing: ["Acme Paper Trading", "Jakarta"],
+    },
+    { name: "a regular expression is a search", sql: "select 1 from core.emails where subject ~* 'acme'", missing: [] },
+    { name: "what a case says is output, not a filter", sql: "select case when same then 'agrees' else 'differs' end from core.field_diffs", missing: [] },
+    { name: "a label in the select list", sql: "select 'all runs' as scope, count(*) from core.runs", missing: [] },
+    { name: "a fallback for a null", sql: "select coalesce(review_reason, 'no reason') from core.comparisons", missing: [] },
+    { name: "a jsonb key", sql: "select detail->>'swapped', detail->'provisional' from core.comparisons", missing: [] },
+    { name: "a time zone", sql: "select created_at at time zone 'Australia/Melbourne' from core.runs", missing: [] },
+    {
+      name: "a name hidden in a string function is still a name",
+      sql: "select 1 from core.entities where canonical = concat_ws(' ', 'Acme', 'Trading')",
+      missing: ["Acme", "Trading"],
+    },
     { name: "similar to", sql: "select 1 from t where value similar to '%(acme|apex)%'", missing: [] },
     { name: "a uuid", sql: "select 1 from core.runs where id = '69ee1e42-f2cb-46b3-8fd0-fb623e4e2d71'", missing: [] },
     { name: "a number and a date", sql: "select 1 from t where a = '42' and at >= '2026-01-15'", missing: [] },
@@ -90,5 +107,7 @@ describe("ungrounded", () => {
     expect(reason).toContain("find_entity");
     expect(reason).toContain("profile_column");
     expect(reason).toContain("search_emails");
+    // The refusal steers towards a real pattern, not towards `like` as a way round.
+    expect(reason).toContain("with a % in it");
   });
 });

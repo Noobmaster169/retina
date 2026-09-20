@@ -42,6 +42,7 @@ export const searchEmails: ChatTool<Input> = {
       preview: `${total} ${total === 1 ? "email" : "emails"} for "${input.text}"`,
       touched: [{ relation: "core.emails", count: total }],
       entities: hits.slice(0, 6).map((hit) => hit.emailId),
+      grounds: hits.map((hit) => [hit.emailId, hit.fromAddr, hit.senderDomain, hit.subject, hit.snippet].join("\n")).join("\n"),
       empty: total === 0,
     };
   },

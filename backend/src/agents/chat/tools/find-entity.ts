@@ -66,6 +66,11 @@ export const findEntity: ChatTool<Input> = {
         { relation: "core.emails", count: elsewhere.emailsMentioning },
       ],
       entities: candidates.slice(0, 6).map((candidate) => candidate.canonical),
+      grounds: [
+        ...candidates.flatMap((candidate) => [candidate.canonical, candidate.matched]),
+        ...elsewhere.senderDomains.map((domain) => domain.domain),
+        ...elsewhere.subjects,
+      ].join("\n"),
       empty: exact === 0,
     };
   },

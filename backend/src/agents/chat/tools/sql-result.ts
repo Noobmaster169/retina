@@ -47,6 +47,11 @@ export function asText(result: SqlResult, purpose: string): string {
   return `${purpose}\n${result.rowCount} rows in ${result.durationMs} ms\n\n${header}\n${body}${note}`;
 }
 
+/** Every cell and column name, for the literal guard: what the query returned, without the purpose the model wrote. */
+export function cellsOf(result: SqlResult): string {
+  return [result.columns.join("\t"), ...result.rows.map((row) => row.map((cell) => cell ?? "").join("\t"))].join("\n");
+}
+
 /** The distinct values of the first column, which is what the result graph draws as the things an answer is about. */
 export function firstColumn(result: SqlResult, limit = 6): string[] {
   const cells = result.rows.map((row) => row[0]).filter((cell): cell is string => cell !== null);

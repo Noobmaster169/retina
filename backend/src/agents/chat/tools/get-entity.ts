@@ -41,6 +41,7 @@ export const getEntity: ChatTool<GetInput> = {
         { relation: "core.entity_mentions", count: thing.byField.reduce((sum, row) => sum + row.mentions, 0) },
       ],
       entities: [thing.canonical],
+      grounds: [thing.canonical, ...thing.names.map((name) => name.value)].join("\n"),
     };
   },
 };

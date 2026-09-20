@@ -3,7 +3,7 @@ import { z } from "zod";
 import { refusalFor } from "../grounding";
 import { guardSql } from "../sql-guard";
 import { guesses, nearestTo } from "./grounded";
-import { asText, firstColumn, toResult } from "./sql-result";
+import { asText, cellsOf, firstColumn, toResult } from "./sql-result";
 import { type ChatTool, refused, type ToolContext, type ToolOutcome } from "./types";
 
 /**
@@ -90,6 +90,7 @@ ${near}` : asText(result, input.purpose),
         ? relations.map((relation) => ({ relation, count: result.rowCount }))
         : [{ relation: "the query named no table", count: result.rowCount }],
       entities: firstColumn(result),
+      grounds: cellsOf(result),
       empty: result.rowCount === 0,
     };
   },

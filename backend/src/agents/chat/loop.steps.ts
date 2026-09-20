@@ -49,8 +49,10 @@ export interface FinishedCall extends TouchedCall {
   cameUpEmpty: boolean;
   /** A skill it put in front of the agent. */
   skill: string | null;
-  /** The text the model reads back, kept so the guard can treat it as shown. */
+  /** The text the model reads back. */
   text: string;
+  /** What the data returned, which is all the literal guard treats as shown. Empty on a refusal. */
+  grounds: string;
 }
 
 export function finish(call: Call, outcome: ToolOutcome, durationMs: number): FinishedCall {
@@ -72,16 +74,19 @@ export function finish(call: Call, outcome: ToolOutcome, durationMs: number): Fi
     cameUpEmpty: outcome.empty === true,
     skill: outcome.skill ?? null,
     text: outcome.text,
+    grounds: outcome.ok ? (outcome.grounds ?? "") : "",
   };
 }
 
 /** Drops what only the harness and the graph needed, so the wire carries the contract and nothing more. */
 export function forWire(call: FinishedCall): ChatToolCall {
-  const { touched: _t, entities: _e, guardRefused: _g, cameUpEmpty: _c, skill: _s, text: _x, ...rest } = call;
+  const { touched: _t, entities: _e, guardRefused: _g, cameUpEmpty: _c, skill: _s, text: _x, grounds: _d, ...rest } = call;
   return rest;
 }
 
 /** What one finished call looks like to the model on the next step. */
 export function transcribe(call: FinishedCall): string {
+  // A loaded skill is under "Skills for this turn" from the next step on; twice would only crowd the question.
+  if (call.skill) return `### you called ${call.tool}\nresult: ${call.preview}. Its text is under "Skills for this turn".`;
   return `### you called ${call.tool}\nwhy: ${call.thought}\nresult${call.ok ? "" : " (it did not work)"}:\n${call.text}`;
 }

@@ -177,6 +177,32 @@ describe("the harness around the loop", () => {
     expect(result.skillsUsed).toContainEqual({ name: "ground-names", version: 1, how: "injected" });
   });
 
+  it("still refuses the guess after looking it up, because a tool's echo of what was asked is not data", async () => {
+    const guess = "select id from core.entities where canonical = 'Acme Paper Trading'";
+    const { result } = await turn(
+      [
+        calls({ tool: "find_entity", args: { text: "Acme Paper Trading" } }, { tool: "search_emails", args: { text: "Acme Paper Trading" } }),
+        calls(sql(guess, "emails for Acme Paper Trading")),
+        // Sending the refused query again does not ground it either: the refusal quotes the string.
+        calls(sql(guess)),
+        calls(sql("select id from core.entities where canonical like 'Acme Paper Trading'")),
+        final("Nothing under that spelling."),
+      ],
+      { question: "what do we have on Acme Paper Trading?", seed: true },
+    );
+    expect(result.toolCalls.map((call) => call.ok)).toEqual([true, true, false, false, false]);
+    expect(result.toolCalls[2].preview).toContain("'Acme Paper Trading'");
+  });
+
+  it("does not take the agent's earlier answer as data, since it repeats the person's spelling", async () => {
+    const history: TurnInput["history"] = [
+      { role: "user", content: "anything on Zephyrus Limited?" },
+      { role: "assistant", content: "I found nothing for Zephyrus Limited." },
+    ];
+    const { result } = await turn([calls(sql("select 1 from core.entities where canonical = 'Zephyrus Limited'")), final("None.")], { input: { history } });
+    expect(result.toolCalls[0].ok).toBe(false);
+  });
+
   it("grounds two names in one step and answers from a recipe, which is not adhoc", async () => {
     const { result, seeded, requests } = await turn(
       [
@@ -224,6 +250,11 @@ describe("the harness around the loop", () => {
     expect(result.skillsUsed.map((skill) => skill.name)).toContain("ground-names");
   });
 
+  it("shows a loaded skill once, under the skills, and not again in the transcript", async () => {
+    const { requests } = await turn([calls({ tool: "load_skill", args: { name: "time-questions" } }), final("There is no sent time.")]);
+    expect(requests[1].user.split("## Skill: time-questions")).toHaveLength(2);
+  });
+
   it("keeps a skill the agent loaded, and gives a sticky one to the next turn without a step", async () => {
     const loaded = await turn([calls({ tool: "load_skill", args: { name: "time-questions" } }), final("There is no sent time.")]);
     expect(loaded.result.skillsUsed).toContainEqual({ name: "time-questions", version: 1, how: "loaded" });
@@ -233,17 +264,13 @@ describe("the harness around the loop", () => {
     expect(next.requests[0].user).toContain("## Skill: time-questions");
   });
 
-  it("treats what the agent said earlier as shown, and what the person said as not", async () => {
-    const history: TurnInput["history"] = [
-      { role: "user", content: "anything on Zephyrus Limited?" },
-      { role: "assistant", content: "The party is ZEPHYR PAPER CO., LTD, in one email." },
-    ];
+  it("lets a stored spelling through whoever typed it, and refuses one that is stored nowhere", async () => {
     const { result } = await turn(
       [
         calls(sql("select 1 from core.entities where canonical = 'ZEPHYR PAPER CO., LTD'"), sql("select 1 from core.entities where canonical = 'Zephyrus Limited'")),
         final("Done."),
       ],
-      { input: { history } },
+      { seed: true },
     );
     expect(result.toolCalls[0].ok).toBe(true);
     expect(result.toolCalls[1].ok).toBe(false);

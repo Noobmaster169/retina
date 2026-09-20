@@ -86,13 +86,10 @@ export async function runTurn(deps: LoopDeps, input: TurnInput): Promise<TurnRes
   let reading = "";
 
   // What the agent has been shown that is not a tool result. The person's own
-  // words are left out on purpose: a name that appears only there is a guess.
-  const shownBefore = [
-    standingText(held),
-    input.orientation,
-    scopeText(input.scope),
-    ...input.history.filter((turn) => turn.role === "assistant").map((turn) => turn.content),
-  ].join("\n\n");
+  // words are left out on purpose, and so are the agent's earlier answers, which
+  // repeat them ("nothing for April Paper Trading"). A name it grounded on an
+  // earlier turn is a stored spelling, and the guard asks the database for those.
+  const shownBefore = [standingText(held), input.orientation, scopeText(input.scope)].join("\n\n");
 
   const result = (answer: string, sqlFromModel: string[], exhausted: boolean): TurnResult => {
     const sqlUsed = calls.flatMap((call) => (call.sql ? [call.sql] : []));
@@ -166,7 +163,8 @@ export async function runTurn(deps: LoopDeps, input: TurnInput): Promise<TurnRes
       continue;
     }
 
-    const shown = [shownBefore, ...skillBodies, ...calls.map((call) => call.text)].join("\n\n");
+    // Only what the data returned: a tool's text also echoes what was asked for.
+    const shown = [shownBefore, ...skillBodies, ...calls.map((call) => call.grounds)].join("\n\n");
     const finished = await Promise.all(
       value.calls.map(async (call) => {
         const started = Date.now();

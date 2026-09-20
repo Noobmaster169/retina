@@ -22,7 +22,7 @@ export interface SqlLiteral {
   fn: string;
 }
 
-const WORD_BEFORE = /([a-z_]+|[~!*<>=]+)\s*\(?\s*$/i;
+const WORD_BEFORE = /([a-z_]+|[-~!*<>=#@]+)\s*\(?\s*$/i;
 const CAST_AFTER = /^\s*::\s*([a-z_ ]+?)(?=[\s,);\]]|$)/i;
 
 /** The name before the nearest parenthesis still open at the end of `head`. */
@@ -68,7 +68,7 @@ export function literalsIn(sql: string): SqlLiteral[] {
       continue;
     }
     if (char === "$") {
-      const tag = /^\$[a-z_]*\$/i.exec(sql.slice(at));
+      const tag = /^\$(?:[a-z_][a-z0-9_]*)?\$/i.exec(sql.slice(at));
       if (tag) {
         const end = sql.indexOf(tag[0], at + tag[0].length);
         const stop = end === -1 ? sql.length : end;
@@ -96,14 +96,27 @@ export function literalsIn(sql: string): SqlLiteral[] {
   return found;
 }
 
-/** A search is exploration, which is the behaviour being asked for, so a pattern is never refused. */
-const PATTERN_OPERATORS = new Set(["like", "ilike", "~", "~*", "!~", "!~*", "~~", "~~*", "to"]);
+/**
+ * A search is exploration, which is the behaviour being asked for, so a pattern is never refused.
+ * But `like 'Acme Co'` with no wildcard is an equality wearing a different word, and is the
+ * original failure with one word changed, so a `like` must actually be a pattern.
+ */
+const LIKE_OPERATORS = new Set(["like", "ilike", "~~", "~~*", "!~~", "!~~*", "to"]);
+const REGEX_OPERATORS = new Set(["~", "~*", "!~", "!~*"]);
+
+/** A literal here is something the query says, not something it filters on. */
+const OUTPUT_POSITIONS = new Set(["then", "else", "select"]);
+
+/** What stands before a jsonb key, and the `zone` of `at time zone`. Neither is a stored name. */
+const KEY_POSITIONS = new Set(["->", "->>", "#>", "#>>", "zone"]);
 
 /** Functions whose text argument is a search or a format, never an equality on a stored name. */
 const SEARCH_FUNCTIONS = new Set([
   "websearch_to_tsquery", "plainto_tsquery", "phraseto_tsquery", "to_tsquery", "to_tsvector", "ts_headline",
   "similarity", "word_similarity", "to_char", "to_date", "to_timestamp", "date_trunc", "date_part", "extract",
-  "regexp_replace", "regexp_match", "regexp_matches", "split_part", "string_agg", "concat_ws", "format", "position", "strpos",
+  "regexp_replace", "regexp_match", "regexp_matches", "split_part", "position", "strpos",
+  // A fallback for a null is output, not a filter.
+  "coalesce", "nullif",
 ]);
 
 /** Casts that make a literal a value of a type rather than a name someone might have misspelt. */
@@ -120,7 +133,9 @@ const DATE_PARTS = new Set(["microseconds", "milliseconds", "second", "minute", 
 function harmless(literal: SqlLiteral): boolean {
   const value = literal.value.trim();
   if (!/[\p{L}\p{N}]/u.test(value)) return true;
-  if (PATTERN_OPERATORS.has(literal.before) || literal.before === "interval") return true;
+  if (LIKE_OPERATORS.has(literal.before) && /[%_]/.test(value)) return true;
+  if (REGEX_OPERATORS.has(literal.before) || literal.before === "interval") return true;
+  if (OUTPUT_POSITIONS.has(literal.before) || KEY_POSITIONS.has(literal.before)) return true;
   if (SEARCH_FUNCTIONS.has(literal.fn)) return true;
   if (literal.cast !== null && TYPED_CASTS.test(literal.cast)) return true;
   if (UUID.test(value) || NUMBER.test(value) || DATE.test(value) || INTERVAL.test(value)) return true;
@@ -167,6 +182,6 @@ export function refusalFor(values: string[]): string {
     `${quoted} ${values.length === 1 ? "has" : "have"} not appeared in anything you have been shown on this turn, ` +
     "so filtering on it would be filtering on a guess. Call find_entity for a company or a port, " +
     "profile_column for the values of a column, or search_emails for a reference or a name in text; " +
-    "then filter on an id or a value that came back. A pattern with like or ilike is allowed."
+    "then filter on an id or a value that came back. A like or ilike pattern with a % in it is a search, and is allowed."
   );
 }

@@ -5,7 +5,7 @@ import { refusalFor } from "../grounding";
 import { bind, recipes } from "../skills/recipes";
 import { guesses } from "./grounded";
 import { relationsIn } from "./run-sql";
-import { asText, firstColumn, toResult } from "./sql-result";
+import { asText, cellsOf, firstColumn, toResult } from "./sql-result";
 import { type ChatTool, refused, type ToolContext, type ToolOutcome } from "./types";
 
 /**
@@ -53,7 +53,7 @@ export const runRecipe: ChatTool<Input> = {
 
     const params = { ...input.params };
     let runNote = "";
-    if (recipe.params.some((param) => param.name === "run_id") && params.run_id === undefined) {
+    if (recipe.params.some((param) => param.name === "run_id") && params.run_id == null) {
       const runId = ctx.runId ?? (await orientation.latestRunId(ctx.roPool));
       if (!runId) return refused("there are no runs yet, so there is nothing for this recipe to read", "core.runs");
       params.run_id = runId;
@@ -87,6 +87,7 @@ export const runRecipe: ChatTool<Input> = {
       result,
       touched: relations.map((relation) => ({ relation, count: result.rowCount })),
       entities: firstColumn(result),
+      grounds: cellsOf(result),
       empty: result.rowCount === 0,
       recipe: { name: recipe.name, skill: recipe.skill, params },
     };

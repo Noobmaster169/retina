@@ -46,6 +46,8 @@ export const TOOLS: Record<ChatToolName, ChatTool<any>> = {
 
 export const TOOL_NAMES = Object.keys(TOOLS) as ChatToolName[];
 
+const TEXT_IS_DATA = new Set<ChatToolName>(["describe_schema", "get_email", "explain_decision", "load_skill"]);
+
 /** The tool list as the prompt shows it: what each does, then the exact arguments it takes, in the order they are usually reached for. */
 export function toolDescriptions(): string {
   return TOOL_NAMES.map((name) => `- ${name}: ${TOOLS[name].description}\n  args: ${argsSignature(TOOLS[name].schema)}`).join("\n");
@@ -73,7 +75,11 @@ export async function callTool(name: ChatToolName, args: unknown, ctx: ToolConte
     };
   }
   try {
-    return await tool.run(parsed.data, ctx);
+    const outcome = await tool.run(parsed.data, ctx);
+    // These four return text made wholly of stored data or of our own files, so the text is what
+    // they ground. Every other tool says for itself what the data returned.
+    if (outcome.ok && outcome.grounds === undefined && TEXT_IS_DATA.has(name)) return { ...outcome, grounds: outcome.text };
+    return outcome;
   } catch (error) {
     // A tool that throws (a query the role may not run, a timeout) must not take
     // the turn with it: the agent is told, can try another way, and the page

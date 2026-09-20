@@ -49,6 +49,7 @@ export const profileColumn: ChatTool<Input> = {
       preview: `${profile.relation}.${profile.column}: ${profile.distinct} distinct in ${profile.rows} rows`,
       touched: [{ relation: profile.relation, count: profile.rows }],
       entities: profile.top.slice(0, 6).map((row) => row.value ?? "(null)"),
+      grounds: profile.top.map((row) => row.value ?? "").join("\n"),
     };
   },
 };
