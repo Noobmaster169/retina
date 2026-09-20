@@ -31,9 +31,9 @@ export const DESTINATIONS: Destination[] = [
   { key: "overview", label: "Overview", icon: "home", path: "" },
   { key: "inbox", label: "Inbox", icon: "mail", path: "/inbox" },
   { key: "review", label: "Needs a person", icon: "eye", path: "/review" },
-  { key: "database", label: "Database", icon: "table", path: "/database", planned: "phase 10" },
-  { key: "ontology", label: "Ontology", icon: "graph", path: "/ontology", planned: "phase 10" },
-  { key: "chat", label: "Ask Retina", icon: "chat", path: "/chat", planned: "phase 10" },
+  { key: "database", label: "Database", icon: "table", path: "/database" },
+  { key: "ontology", label: "Ontology", icon: "graph", path: "/ontology" },
+  { key: "chat", label: "Ask Retina", icon: "chat", path: "/chat" },
   { key: "clients", label: "Clients", icon: "client", path: "/clients", global: true },
 ];
 

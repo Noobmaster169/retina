@@ -78,7 +78,14 @@ export function ReviewPage({ runId }: { runId: string }) {
       )}
 
       {emailId && trace && email ? (
-        <ChatRail scope={chatScope(trace)} opening={openingLine(trace)} suggestions={["Upload a copy", "Leave a note"]} />
+        <ChatRail
+          key={emailId}
+          runId={runId}
+          emailId={emailId}
+          scope={chatScope(trace)}
+          opening={openingLine(trace)}
+          suggestions={["Why did this need a person?", "What did the parser see?"]}
+        />
       ) : null}
     </AppShell>
   );

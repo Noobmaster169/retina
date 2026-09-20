@@ -58,9 +58,16 @@ export function EmailPage({ runId, initialTrace, message, subject, initialList }
       <EmailPane trace={trace} message={message} subject={subject} onChanged={() => void mutate()} />
 
       <ChatRail
+        key={trace.emailId}
+        runId={runId}
+        emailId={trace.emailId}
         scope={chatScope(trace)}
         opening={openingLine(trace)}
-        suggestions={trace.review ? ["Upload a copy", "Leave a note"] : ["Reclassify", "Correct a field"]}
+        suggestions={
+          trace.review
+            ? ["Why did this need a person?", "What did the parser see?"]
+            : ["Why do these two fields differ?", "Has this client differed before?"]
+        }
       />
     </AppShell>
   );

@@ -1,30 +1,32 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 
-import { Placeholder } from "@/components/shell/placeholder";
+import { getThread, listConversations } from "@/lib/api-client";
 
+import { ChatPage } from "./chat-page";
+
+export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Ask Retina · Retina SDOC" };
 
-export default async function ChatPage({ params }: PageProps<"/runs/[id]/chat">) {
+const RUN_ID = /^[0-9a-f-]{36}$/;
+
+/**
+ * Which conversation is open is in the URL, so a link to an answer is a link
+ * to the answer and not to "whatever I was last reading".
+ */
+export default async function Page({ params, searchParams }: PageProps<"/runs/[id]/chat">) {
   const { id } = await params;
-  return (
-    <Placeholder
-      runId={id}
-      active="chat"
-      icon="chat"
-      title="Ask Retina"
-      crumbs={["Runs", id.slice(0, 8), "Ask Retina"]}
-      phase="phase 10"
-      blurb="A conversation that can read the whole model and answer from it, rather than one email at a time."
-      holds={[
-        "The turns, with the scope chips naming exactly what the conversation can see.",
-        "The proposed action, drawn before anything is written, with Apply and remember against Just this once.",
-        "The SQL a question produced, in a block a person can read.",
-      ]}
-    >
-      <p className="mt-4 max-w-[560px] text-small leading-[18px] text-ink-tertiary">
-        The 340px column on the email page is the same conversation scoped to one email. It is drawn there
-        already, with its composer off and a sentence saying why.
-      </p>
-    </Placeholder>
-  );
+  if (!RUN_ID.test(id)) notFound();
+
+  const asked = await searchParams;
+  const wanted = typeof asked.c === "string" ? asked.c : null;
+
+  const conversations = await listConversations(id);
+  // Falling back to the newest conversation of this run means a person who
+  // comes back to the page lands where they left off, and the New button is
+  // the way to start again.
+  const open = wanted ?? conversations[0]?.id ?? null;
+  const thread = open ? await getThread(open) : null;
+
+  return <ChatPage runId={id} conversations={conversations} thread={thread} />;
 }
