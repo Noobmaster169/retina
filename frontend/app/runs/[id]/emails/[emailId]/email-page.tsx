@@ -18,7 +18,6 @@ import { EmailTrace, RunEmailsPage } from "@/lib/api/trace-schemas";
 import { parsedFetcher } from "@/lib/poll";
 
 import { ActionBar } from "./action-bar";
-import { EmailRail } from "./email-rail";
 import { chatScope, openingLine, statusOf } from "./email-reading";
 
 /**
@@ -56,10 +55,10 @@ export function EmailPage({ runId, initialTrace, message, subject, initialList }
 
   return (
     <AppShell
-      active="runs"
+      active="inbox"
+      runId={runId}
       counts={{ inbox: initialList.total, review: trace.review ? 1 : 0 }}
       wantsWidth={documentsOpen}
-      rail={<EmailRail runId={runId} />}
     >
       {!documentsOpen ? (
         <EmailList

@@ -146,6 +146,44 @@ Every route was then swept: all twelve answer, all twelve carry the rail and the
 and nothing in `frontend/` uses a Tailwind default type size, a grey that is not an Air token, a
 drop shadow or an uppercase label.
 
+**The run became the shell's context, not a page in it.** The rail changed shape on every
+navigation: the run list showed no run block, the run page suddenly grew pinned prompts and an
+inbox count, and clicking Inbox from inside a run showed no emails at all. The cause was that each
+page handed the rail its own contents, and that a run was a destination beside the others rather
+than the thing they are all read through.
+
+- `AppShell` owns the run in context and fetches the run list and health itself. Every page passes
+  which destination is current and nothing else, so the rail is identical on all of them.
+- The rail's head is a run switcher: the run's name, its id, a progress bar, and a menu of every
+  run. Switching keeps you where you are, so the inbox of one run becomes the inbox of another,
+  which is how two prompt versions get compared on one screen.
+- Every destination is run scoped: `/runs/[id]`, `/runs/[id]/inbox`, `/runs/[id]/review`,
+  `/runs/[id]/database`, `/runs/[id]/ontology`, `/runs/[id]/chat`. The flat versions are gone.
+  Without any run at all, every destination leads to the run list, which is where one is made.
+- `/runs/[id]/inbox` is real: the same 300px list the email page carries, with nothing open.
+- `/runs` is the one page with no run of its own and takes the newest as context, so it looks like
+  the same application as everything else.
+- `DELETE /runs/:id` (five tests). Every table referencing `core.runs` cascades, so it is one
+  statement. A running run is refused with a message saying to cancel it first rather than being
+  deleted from under its workers. The runs list carries the control, hover revealed, and it names
+  what goes before it asks.
+
+**Live feel on the run page.** The elapsed time on a queue slot jumped two seconds at a time,
+because it was a duration computed at poll time. `QueueSlot.startedAt` and `QueuedEmail.queuedAt`
+are instants, so `components/run/elapsed.tsx` counts up against a real clock at 100ms and the rule
+along the row grows with it. It is not optimism: the instants are the worker's own, so this is the
+real elapsed time measured continuously rather than sampled. The component owns its interval so the
+panel does not re-render ten times a second.
+
+The bars glide over 1.1s rather than settling in 0.3s of a 2s poll, and the cards' colours settle
+over 500ms. `Reading` is `Classifying`, which is what the queue is called. Every card's unit was
+shortened so none of them truncates. The crossing arrow gets a column wide enough for its label,
+and both rows of the lane map now share one CSS grid, so a drop rule always hangs from the centre
+of the card it belongs to and a wide group of chips cannot push the last card off the panel.
+
+A held queue keeps its working rows: a rate limit stops new jobs starting and the ones already in
+flight carry on, and hiding them said the queue had stopped dead.
+
 **Known, and left for phase 9.** A run whose ingest has finished reads `completed` while its
 queues are still full, and the API refuses both pause and cancel in that state, so the run page
 offers neither. That is the API's rule and the page is drawing it honestly; stopping a run that is

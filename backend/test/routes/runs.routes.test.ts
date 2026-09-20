@@ -210,3 +210,59 @@ describe("GET /runs/:id and /runs/:id/emails", () => {
     expect((await request(app()).get(`/runs/${id}/emails?stage=nonsense`).set(TEAM)).status).toBe(400);
   });
 });
+
+describe("DELETE /runs/:id", () => {
+  it("drops the run and everything hanging off it", async () => {
+    const created = await request(app()).post("/runs").set(TEAM).send({ limit: 1 }).expect(201);
+    const id = created.body.id as string;
+    const emailId = uniqueEmailId();
+    await emails.upsert(getPool(), {
+      emailId,
+      from: "docs@algurg.ae",
+      senderDomain: "algurg.ae",
+      subject: "TO CONFIRM DOCS",
+      body: "Please compare.",
+      attachmentPaths: [],
+      tonnageMt: null,
+      raw: {},
+    });
+    await emailRuns.insert(getPool(), { runId: id, emailId, stage: "ingested", priority: 600 });
+
+    await request(app()).delete(`/runs/${id}`).set(TEAM).expect(204);
+
+    expect(await runs.get(getPool(), id)).toBeNull();
+    // The cascade took the email run with it; the email itself is shared and stays.
+    expect(await emailRuns.exists(getPool(), id, emailId)).toBe(false);
+    expect(await emails.get(getPool(), emailId)).not.toBeNull();
+  });
+
+  it("drops the run's waiting jobs so nothing is left pointing at it", async () => {
+    const created = await request(app()).post("/runs").set(TEAM).send({ limit: 1 }).expect(201);
+    const id = created.body.id as string;
+    await request(app()).delete(`/runs/${id}`).set(TEAM).expect(204);
+    expect(runQueues.removedFor).toContain(id);
+  });
+
+  it("refuses a running run rather than deleting it from under its workers", async () => {
+    const created = await request(app()).post("/runs").set(TEAM).send({ limit: 1 }).expect(201);
+    const id = created.body.id as string;
+    await runs.markStarted(getPool(), id, 1);
+
+    const refused = await request(app()).delete(`/runs/${id}`).set(TEAM).expect(409);
+    expect(refused.body.error).toMatch(/cancel it first/i);
+    expect(await runs.get(getPool(), id)).not.toBeNull();
+  });
+
+  it("deletes a cancelled run, which is what the refusal tells a caller to do first", async () => {
+    const created = await request(app()).post("/runs").set(TEAM).send({ limit: 1 }).expect(201);
+    const id = created.body.id as string;
+    await runs.markStarted(getPool(), id, 1);
+    await request(app()).post(`/runs/${id}/cancel`).set(TEAM).expect(200);
+    await request(app()).delete(`/runs/${id}`).set(TEAM).expect(204);
+    expect(await runs.get(getPool(), id)).toBeNull();
+  });
+
+  it("is 404 for a run that is not there", async () => {
+    await request(app()).delete(`/runs/${randomUUID()}`).set(TEAM).expect(404);
+  });
+});

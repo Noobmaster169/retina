@@ -24,7 +24,7 @@ export default async function RunsPage() {
   const { list, backendError } = await loadRuns();
 
   return (
-    <AppShell active="runs" counts={{ runs: list?.runs.length }}>
+    <AppShell active="" counts={{}}>
       <div className="flex min-w-0 grow flex-col">
         <TopBar crumbs={[{ label: "Runs" }]}>
           <Search />
@@ -33,8 +33,8 @@ export default async function RunsPage() {
           <div className="py-5">
             <h1 className="font-display text-display font-normal tracking-[-0.01em]">Runs</h1>
             <p className="mt-0.5 max-w-[68ch] text-body text-ink-tertiary">
-              A run replays the inbox through the pipeline. Each one keeps its own results, so two can be compared on
-              the same emails.
+              A run replays the inbox through the pipeline and keeps its own results, so two can be compared on the
+              same emails. Every other screen reads through whichever run the rail has in context.
             </p>
           </div>
           <RunsTable initialList={list} initialError={backendError} />

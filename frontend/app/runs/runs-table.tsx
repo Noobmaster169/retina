@@ -52,11 +52,12 @@ export function RunsTable({ initialList, initialError }: Props) {
             <Th className="w-[210px]">Emails</Th>
             <Th>Where they ended up</Th>
             <Th className="w-[132px] text-right">Score</Th>
+            <Th className="w-[52px] text-right" hidden>Delete</Th>
           </tr>
         </thead>
         <tbody>
           {runs.map((run) => (
-            <RunRow key={run.id} run={run} />
+            <RunRow key={run.id} run={run} onDeleted={() => void mutate()} />
           ))}
         </tbody>
       </table>
@@ -69,6 +70,10 @@ export function RunsTable({ initialList, initialError }: Props) {
 }
 
 /** Sentence case at the caption size. Section 5.1 retired the uppercase label. */
-function Th({ children, className = "" }: { children: string; className?: string }) {
-  return <th className={`h-8 pr-4 align-middle text-caption font-normal text-ink-tertiary ${className}`}>{children}</th>;
+function Th({ children, className = "", hidden = false }: { children: string; className?: string; hidden?: boolean }) {
+  return (
+    <th className={`h-8 pr-4 align-middle text-caption font-normal text-ink-tertiary ${className}`}>
+      {hidden ? <span className="sr-only">{children}</span> : children}
+    </th>
+  );
 }

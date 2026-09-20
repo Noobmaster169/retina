@@ -158,3 +158,19 @@ export async function setStatus(db: Queryable, id: string, to: RunStatus, from: 
   );
   return (rowCount ?? 0) > 0;
 }
+
+/**
+ * Drops a run and everything hanging off it. Every table that references
+ * `core.runs` does so `on delete cascade`, so this one statement takes the
+ * email runs, classifications, comparisons, documents, extractions, review
+ * cases, attachments, llm calls and submissions with it.
+ *
+ * Refuses a run that is still running: its workers hold jobs that would then
+ * fail on a run that no longer exists, and a person who wants it gone can
+ * cancel it first and see that happen. False when there was no such run, or
+ * when it is running.
+ */
+export async function remove(db: Queryable, id: string): Promise<boolean> {
+  const { rowCount } = await db.query("delete from core.runs where id = $1 and status <> 'running'", [id]);
+  return rowCount === 1;
+}

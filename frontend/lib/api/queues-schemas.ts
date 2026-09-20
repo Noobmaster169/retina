@@ -21,7 +21,8 @@ export const QueuedEmail = z.object({
   emailId: z.string(),
   /** "two files, txt and pdf". Empty before ingest has written the attachments. */
   files: z.string(),
-  heldMs: z.number().nullable(),
+  /** When the job joined the queue. The page counts up from it on its own clock. */
+  queuedAt: z.string(),
 });
 export type QueuedEmail = z.infer<typeof QueuedEmail>;
 

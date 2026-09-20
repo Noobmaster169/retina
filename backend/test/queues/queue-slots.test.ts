@@ -100,7 +100,9 @@ describe("viewOf", () => {
       NOW,
       words,
     );
-    expect(view.next).toEqual([{ emailId: "email_002", files: "two files, txt and pdf", heldMs: 41_000 }]);
+    expect(view.next).toEqual([
+      { emailId: "email_002", files: "two files, txt and pdf", queuedAt: new Date(NOW - 41_000).toISOString() },
+    ]);
   });
 
   it("never reports a negative elapsed when a clock runs backwards", () => {
@@ -114,6 +116,6 @@ describe("viewOf", () => {
       words,
     );
     expect(view.slots[0].elapsedMs).toBe(0);
-    expect(view.next[0].heldMs).toBe(0);
+    expect(view.next[0].queuedAt).toBe(new Date(NOW + 5000).toISOString());
   });
 });

@@ -63,7 +63,7 @@ describe("laneMap, a run in flight", () => {
   const map = laneMap(run(), queues({ classify: queue({ active: 8 }), compare: queue({ name: "compare", concurrency: 4, active: 4, waiting: 45 }) }));
 
   it("reads a busy queue as live, against its own concurrency", () => {
-    expect(card(map, "reading")).toMatchObject({ value: "8 / 8", state: "live", unit: "a model each" });
+    expect(card(map, "classifying")).toMatchObject({ value: "8 / 8", state: "live", unit: "slots busy" });
     expect(card(map, "checking")).toMatchObject({ value: "4 / 4", state: "live" });
   });
 
@@ -91,11 +91,11 @@ describe("laneMap, a dependency down", () => {
   const map = laneMap(run(), held);
 
   it("says the checking slots are held and not that they failed", () => {
-    expect(card(map, "checking")).toMatchObject({ value: "0 / 4", state: "held", unit: "held, not failed" });
+    expect(card(map, "checking")).toMatchObject({ value: "0 / 4", state: "held", unit: "held" });
   });
 
   it("leaves the first queue alone, because only one of them is held", () => {
-    expect(card(map, "reading").state).toBe("live");
+    expect(card(map, "classifying").state).toBe("live");
   });
 
   it("marks the queue piling up behind it", () => {
@@ -104,7 +104,7 @@ describe("laneMap, a dependency down", () => {
 
   it("holds the first queue too when that is the one a dependency stopped", () => {
     const map = laneMap(run(), queues({ classify: queue({ active: 0, heldUntil: new Date(Date.now() + 9000).toISOString() }) }));
-    expect(card(map, "reading")).toMatchObject({ state: "held", value: "0 / 8" });
+    expect(card(map, "classifying")).toMatchObject({ state: "held", value: "0 / 8" });
   });
 });
 
@@ -121,9 +121,9 @@ describe("laneMap, a finished run", () => {
   );
 
   it("says every queue is empty rather than showing an idle slot count as live", () => {
-    expect(card(map, "reading").state).toBe("idle");
+    expect(card(map, "classifying").state).toBe("idle");
     expect(card(map, "checking").state).toBe("idle");
-    expect(card(map, "waiting").unit).toBe("queue is empty");
+    expect(card(map, "waiting").unit).toBe("none queued");
   });
 
   it("says all of them when everything crossed and was checked", () => {
@@ -138,7 +138,7 @@ describe("laneMap, before ingest has finished", () => {
       run({ totalEmails: 520, stageCounts: { ingested: 10, classifying: 2, classified: 0, comparing: 0, review: 0, done: 0, failed: 0 } }),
       queues(),
     );
-    expect(card(map, "arriving")).toMatchObject({ value: "508", unit: "left to ingest", state: "live" });
+    expect(card(map, "arriving")).toMatchObject({ value: "508", unit: "to ingest", state: "live" });
   });
 
   it("never reports a negative backlog when the total is not known yet", () => {

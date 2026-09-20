@@ -159,6 +159,38 @@ export function runsRouter(deps: RunsDeps): Router {
     if (run) res.json(await summaryOf(run));
   });
 
+  /**
+   * Drops a run and everything it produced. A running run is refused rather
+   * than stopped from under its workers: cancel it first, which the run page
+   * offers beside this.
+   */
+  router.delete("/:id", async (req, res) => {
+    const id = runIdParam(req, res);
+    if (!id) return;
+    const run = await runs.get(pool, id);
+    if (!run) {
+      res.status(404).json({ error: "no such run" });
+      return;
+    }
+    if (run.status === "running") {
+      res.status(409).json({ error: "this run is still running. Cancel it first, then delete it." });
+      return;
+    }
+    try {
+      await runQueues.removeWaiting(id);
+    } catch (error) {
+      // The jobs left behind stop at the processors' own check for the run.
+      if (!(error instanceof RetryableError)) throw error;
+      log.warn({ runId: id, err: error.message }, "could not remove the deleted run's waiting jobs");
+    }
+    if (!(await runs.remove(pool, id))) {
+      res.status(409).json({ error: "the run started again while it was being deleted" });
+      return;
+    }
+    log.info({ runId: id }, "run deleted");
+    res.status(204).end();
+  });
+
   router.post("/:id/cancel", async (req, res) => {
     const run = await transition(req, res, "cancelled", ["created", "running", "paused"]);
     if (!run) return;

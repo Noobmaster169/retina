@@ -1,9 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { motion } from "motion/react";
 
 import { statusWord } from "@/components/run/run-header";
+import { runName } from "@/components/shell/run-name";
+import { Icon } from "@/components/ui/icons";
 import { Bar } from "@/components/ui/panel";
 import type { RunSummary } from "@/lib/api/runs-schemas";
 import { formatDuration } from "@/lib/duration";
@@ -18,7 +21,7 @@ import { formatDuration } from "@/lib/duration";
  * it knows.
  */
 
-export function RunRow({ run }: { run: RunSummary }) {
+export function RunRow({ run, onDeleted }: { run: RunSummary; onDeleted: () => void }) {
   const status = statusWord(run, false);
   const finished = run.totalEmails ? (run.finishedEmails / run.totalEmails) * 100 : 0;
 
@@ -28,8 +31,10 @@ export function RunRow({ run }: { run: RunSummary }) {
         {/* One link, stretched over the row: section 10 asks every table row to
             be a link, and a link per cell would make the row six tab stops. */}
         <Link href={`/runs/${run.id}`} className="block after:absolute after:inset-0 after:content-['']">
-          <span className="block text-strong group-hover:underline">{started(run)}</span>
-          <span className="mt-0.5 block font-mono text-mono-sm text-ink-tertiary">{run.id.slice(0, 8)}</span>
+          <span className="block text-strong group-hover:underline">{runName(run)}</span>
+          <span className="mt-0.5 block font-mono text-mono-sm text-ink-tertiary">
+            {run.id.slice(0, 8)} · {started(run)}
+          </span>
         </Link>
       </Cell>
 
@@ -64,7 +69,58 @@ export function RunRow({ run }: { run: RunSummary }) {
       <Cell className="text-right">
         <Score run={run} />
       </Cell>
+
+      <Cell className="text-right">
+        <Delete run={run} onDeleted={onDeleted} />
+      </Cell>
     </tr>
+  );
+}
+
+/**
+ * Dropping a run takes everything it produced with it, so it asks first and
+ * names what goes. A running run is refused by the API rather than stopped
+ * from under its workers, and the refusal says to cancel it first.
+ */
+function Delete({ run, onDeleted }: { run: RunSummary; onDeleted: () => void }) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function remove() {
+    const emails = run.totalEmails ?? run.finishedEmails;
+    if (!window.confirm(`Delete ${runName(run).toLowerCase()}? Its ${emails} emails, every model call it made and its score go with it.`)) return;
+    setPending(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/runs/${run.id}`, { method: "DELETE" });
+      if (response.status === 204) {
+        onDeleted();
+        return;
+      }
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      setError(body.error ?? `Request failed with ${response.status}`);
+    } catch (cause) {
+      console.error("[runs] delete failed:", cause);
+      setError("Could not reach the server.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <span className="relative z-10 inline-flex flex-col items-end gap-1">
+      <button
+        type="button"
+        onClick={remove}
+        disabled={pending}
+        aria-label={`Delete ${runName(run)}`}
+        title={run.status === "running" ? "Cancel it first" : "Delete this run"}
+        className="flex h-7 w-7 items-center justify-center rounded-md text-ink-faint opacity-0 transition-all duration-150 hover:bg-fault-tint hover:text-fault focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-40"
+      >
+        <Icon name="trash" size={14} />
+      </button>
+      {error ? <span className="max-w-[220px] text-right text-caption text-fault">{error}</span> : null}
+    </span>
   );
 }
 

@@ -32,7 +32,12 @@ export const QueuedEmail = z.object({
   emailId: z.string(),
   /** "two files, txt and pdf". Empty string before ingest has written its attachments. */
   files: z.string(),
-  heldMs: z.number().nullable(),
+  /**
+   * When the job joined the queue. An instant and not a duration, for the same
+   * reason as `heldUntil`: the page counts up from it on its own clock, and a
+   * duration would be two seconds stale before it was ever drawn.
+   */
+  queuedAt: z.string(),
 });
 export type QueuedEmail = z.infer<typeof QueuedEmail>;
 

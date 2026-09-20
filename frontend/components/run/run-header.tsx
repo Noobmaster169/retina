@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icons";
 import { RunStatus, RunSummary } from "@/lib/api/runs-schemas";
 import { CONTROLS, type RunActions } from "@/app/runs/[id]/use-run-actions";
+import { runName } from "@/components/shell/run-name";
 import { formatDuration } from "@/lib/duration";
 import { panel } from "@/lib/motion";
 
@@ -55,20 +56,6 @@ export function statusWord(run: RunSummary, degraded: boolean): { word: string; 
   if (working) return { word: "Running", tint: STATUS_TINT.running };
   const word = run.status.charAt(0).toUpperCase() + run.status.slice(1);
   return { word, tint: STATUS_TINT[run.status] };
-}
-
-/**
- * What to call a run. The contract has no name field, so the one display line
- * this page gets names it by when it started, which is how a person refers to
- * one anyway: the morning run, yesterday's overnight run. The id stays in the
- * breadcrumb, where an identifier belongs.
- */
-function runName(run: RunSummary): string {
-  const at = run.startedAt ?? run.createdAt;
-  const hour = new Date(at).getHours();
-  const part = hour < 5 ? "Overnight" : hour < 12 ? "Morning" : hour < 17 ? "Afternoon" : "Evening";
-  const today = new Date().toDateString() === new Date(at).toDateString();
-  return today ? `${part} run` : `${part} run, ${new Date(at).toLocaleDateString(undefined, { day: "numeric", month: "short" })}`;
 }
 
 export function RunHeader({ run, trouble, summary, actions }: RunHeaderProps) {

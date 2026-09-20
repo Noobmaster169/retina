@@ -28,6 +28,7 @@ export {
   type Concurrency,
   createRun,
   type CreateRunInput,
+  deleteRun,
   getRun,
   type HeadlineScores,
   type LastSubmission,

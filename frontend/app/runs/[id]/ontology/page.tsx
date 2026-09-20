@@ -4,13 +4,15 @@ import { Placeholder } from "@/components/shell/placeholder";
 
 export const metadata: Metadata = { title: "Ontology · Retina SDOC" };
 
-export default function OntologyPage() {
+export default async function OntologyPage({ params }: PageProps<"/runs/[id]/ontology">) {
+  const { id } = await params;
   return (
     <Placeholder
+      runId={id}
       active="ontology"
       icon="graph"
       title="Ontology"
-      crumbs={["Ontology"]}
+      crumbs={["Runs", id.slice(0, 8), "Ontology"]}
       phase="phase 10"
       blurb="What the model knows as a model: the stored values of a record, and the links out of it."
       holds={[

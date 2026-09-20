@@ -27,6 +27,7 @@ const PATHS = {
   ship: "M2 11 h12 l-1.5 3 h-9 z M4 11 V5 h8 v6 M8 5 V2.5",
   client: "M8 3 a2.2 2.2 0 1 0 0.01 0 M3.5 13 a4.5 4.5 0 0 1 9 0",
   diff: "M4.5 2.5 v11 M11.5 2.5 v11 M2 6 h5 M9 10 h5",
+  trash: "M2.5 4.5 h11 M6 4.5 V3 h4 v1.5 M4 4.5 l0.7 9 h6.6 l0.7 -9 M6.6 7 v4 M9.4 7 v4",
 } as const;
 
 export type IconName = keyof typeof PATHS;

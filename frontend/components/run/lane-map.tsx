@@ -33,6 +33,18 @@ const CARD: Record<CardState, { border: string; tint: string; icon: string; bar:
 /** The card the first lane ends on, and so the one the crossing count sits after. */
 const SORTED = 2;
 
+/**
+ * Eleven columns: six cards that share the width evenly, and five arrows at a
+ * fixed size. The crossing arrow is wider than the rest because it carries a
+ * label, and at the drawn 34px that label overhung the cards on both sides.
+ *
+ * The row under the cards uses the same template, so what hangs from a card
+ * stays under it at every width. `minmax(0, 1fr)` is what lets a hung group be
+ * wider than its column without widening the column, which is the bug that put
+ * the last card off the panel when this was a flex row.
+ */
+const COLUMNS = "minmax(0,1fr) 34px minmax(0,1fr) 34px minmax(0,1fr) 86px minmax(0,1fr) 34px minmax(0,1fr) 34px minmax(0,1fr)";
+
 interface LaneMapProps {
   map: LaneMap;
   /** The sentence under the title. It says what the two lanes are doing right now. */
@@ -52,8 +64,7 @@ export function LaneMapPanel({ map, note, slots }: LaneMapProps) {
           <Lane title="Check the two documents" queue="compare" concurrency={`${slots.compare} at once`} />
         </div>
 
-        {/* Six equal cards and five fixed arrows, so every card is the same width. */}
-        <div className="mt-3 flex items-stretch">
+        <div className="mt-3 grid items-stretch" style={{ gridTemplateColumns: COLUMNS }}>
           {map.cards.map((card, index) => (
             <Fragment key={card.key}>
               <Card card={card} index={index} />
@@ -62,19 +73,13 @@ export function LaneMapPanel({ map, note, slots }: LaneMapProps) {
           ))}
         </div>
 
-        {/*
-          What each lane ended with, hung from the card that ended it. Both are
-          positioned rather than laid out, so a wide group of chips can never
-          widen the column it hangs under and push the last card off the panel.
-          The two anchors are the board's own: the centre of `Sorted` and the
-          right edge of `Checked`.
-        */}
-        <div className="relative h-[62px]">
-          <div className="absolute left-[42.7%] top-0 flex -translate-x-1/2 flex-col items-center">
+        {/* The same columns again: `Sorted` is the fifth, `Checked` the eleventh. */}
+        <div className="grid items-start pt-0" style={{ gridTemplateColumns: COLUMNS }}>
+          <div className="col-start-5 flex w-max flex-col items-center justify-self-center">
             <Drop />
             <NotComparable count={map.notComparable} />
           </div>
-          <div className="absolute right-[5.8%] top-0 flex flex-col items-end">
+          <div className="col-start-11 flex w-max flex-col items-end justify-self-end">
             <Drop />
             <Ends ends={map.ends} />
           </div>
@@ -102,11 +107,11 @@ function Card({ card, index }: { card: StageCard; index: number }) {
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={stagger(index)}
-      className={`flex h-[88px] min-w-0 flex-1 basis-0 flex-col rounded-lg border px-3 py-2.5 transition-colors duration-300 ${skin.border}`}
+      className={`flex h-[88px] min-w-0 flex-1 basis-0 flex-col rounded-lg border px-3 py-2.5 transition-colors duration-500 ${skin.border}`}
     >
       <div className="flex items-center gap-2">
-        <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-sm ${skin.tint}`}>
-          <Icon name={card.icon} size={11} className={skin.icon} />
+        <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-sm transition-colors duration-500 ${skin.tint}`}>
+          <Icon name={card.icon} size={11} className={`transition-colors duration-500 ${skin.icon}`} />
         </span>
         <span className="truncate text-small font-medium">{card.label}</span>
       </div>
@@ -128,18 +133,24 @@ function Card({ card, index }: { card: StageCard; index: number }) {
           className={`h-1 rounded-full ${skin.bar}`}
           initial={false}
           animate={{ width: `${card.pct}%` }}
-          transition={{ duration: 0.3, ease: "easeOut" }}
+          transition={{ duration: 1.1, ease: [0.25, 0.8, 0.3, 1] }}
         />
       </div>
     </motion.div>
   );
 }
 
-/** The crossing between the two lanes, drawn on the one arrow that carries a count. */
+/**
+ * The crossing between the two lanes. The one arrow that carries a count gets
+ * a wider column than the rest: at the drawn 34px the label overhung the cards
+ * on both sides of it and read as a collision rather than as a label.
+ */
 function Arrow({ crossing }: { crossing: number | null }) {
   const live = crossing !== null && crossing > 0;
   return (
-    <div className="flex w-[34px] shrink-0 flex-col items-center justify-center gap-1">
+    <div
+      className={`flex shrink-0 flex-col items-center justify-center gap-1 ${crossing === null ? "w-[34px]" : "w-[86px]"}`}
+    >
       {crossing === null ? null : (
         <motion.span
           initial={{ opacity: 0 }}

@@ -17,6 +17,8 @@ import { Search, TopBar } from "./top-bar";
 
 interface PlaceholderProps {
   active: string;
+  /** The run this destination will be read through once it is built. */
+  runId?: string | null;
   title: string;
   crumbs: string[];
   /** One sentence on what this page is for, in the present tense. */
@@ -29,11 +31,11 @@ interface PlaceholderProps {
   children?: ReactNode;
 }
 
-export function Placeholder({ active, title, crumbs, blurb, holds, phase, icon, children }: PlaceholderProps) {
+export function Placeholder({ active, runId = null, title, crumbs, blurb, holds, phase, icon, children }: PlaceholderProps) {
   return (
-    <AppShell active={active} counts={{}}>
+    <AppShell active={active} runId={runId} counts={{}}>
       <div className="flex min-w-0 grow flex-col">
-        <TopBar crumbs={crumbs.map((label) => ({ label }))}>
+        <TopBar crumbs={crumbs.map((label, index) => ({ label, href: index === 0 ? "/runs" : undefined, mono: index === 1 }))}>
           <Search />
           <span className="inline-flex h-[30px] items-center rounded-md bg-sunken px-3 text-small font-medium text-ink-tertiary">
             {phase}

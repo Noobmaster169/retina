@@ -53,7 +53,7 @@ export function Bar({ pct, tone = "ink", height = 5 }: { pct: number; tone?: str
       aria-hidden="true"
     >
       <span
-        className="absolute left-0 top-0 rounded-full transition-[width] duration-300 ease-out"
+        className="absolute left-0 top-0 rounded-full transition-[width] duration-[1100ms] ease-out"
         style={{ width: `${Math.max(0, Math.min(100, pct))}%`, height, background: tone }}
       />
     </span>

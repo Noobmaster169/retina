@@ -7,6 +7,7 @@ import { Panel, PanelFoot, PanelHead } from "@/components/ui/panel";
 import { QueueView } from "@/lib/api/queues-schemas";
 import { panel, rowEnter } from "@/lib/motion";
 
+import { Elapsed, ElapsedText } from "./elapsed";
 import { HeldNotice } from "./held-notice";
 
 /**
@@ -49,9 +50,9 @@ export function QueuePanel({ title, queue, runId, note, drained, standing, typic
       />
 
       <div className="flex min-h-0 grow flex-col overflow-y-auto">
-      {held ? (
-        <HeldNotice until={queue.heldUntil ?? ""} queue={queue.name} />
-      ) : empty ? (
+      {held ? <HeldNotice until={queue.heldUntil ?? ""} queue={queue.name} still={queue.slots.length} /> : null}
+
+      {held && queue.slots.length === 0 ? null : empty ? (
         // An empty panel is replaced, not padded. Four dashed slots standing in
         // for four busy ones was rejected in review: say what happened instead.
         <motion.p
@@ -81,8 +82,7 @@ export function QueuePanel({ title, queue, runId, note, drained, standing, typic
                 <span className="w-[74px] shrink-0 font-mono text-mono-sm">{slot.emailId}</span>
                 <span className="min-w-0 truncate text-small text-ink-secondary">{slot.step}</span>
                 <span className="grow" />
-                <span className="font-mono text-micro text-ink-tertiary">{elapsed(slot.elapsedMs)}</span>
-                <Elapsed ms={slot.elapsedMs} typicalMs={typicalMs} />
+                <Elapsed since={slot.startedAt} typicalMs={typicalMs} />
               </Link>
             </motion.div>
           ))}
@@ -103,7 +103,7 @@ export function QueuePanel({ title, queue, runId, note, drained, standing, typic
               <span className="w-[74px] shrink-0 font-mono text-mono-sm text-ink-faint">{waiting.emailId}</span>
               <span className="min-w-0 truncate text-small text-ink-faint">{waiting.files}</span>
               <span className="grow" />
-              <span className="font-mono text-micro text-ink-faint">held {elapsed(waiting.heldMs)}</span>
+              <ElapsedText since={waiting.queuedAt} prefix="held " />
             </div>
           ))}
         </>
@@ -123,29 +123,4 @@ export function QueuePanel({ title, queue, runId, note, drained, standing, typic
       </PanelFoot>
     </Panel>
   );
-}
-
-/**
- * How long this email has held its slot, as a 2px rule along the bottom of the
- * row. Live is drawn structurally rather than with a pulse, so it survives a
- * screenshot: docs/05-design.md section 9.
- */
-function Elapsed({ ms, typicalMs }: { ms: number | null; typicalMs: number }) {
-  if (ms === null) return null;
-  const pct = Math.min(100, (ms / typicalMs) * 100);
-  return (
-    <motion.span
-      className="absolute bottom-0 left-0 h-0.5 bg-signal-line"
-      initial={false}
-      animate={{ width: `${pct}%` }}
-      transition={{ duration: 0.4, ease: "linear" }}
-      aria-hidden="true"
-    />
-  );
-}
-
-function elapsed(ms: number | null): string {
-  if (ms === null) return "";
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${Math.round(ms / 60_000)}m`;
 }

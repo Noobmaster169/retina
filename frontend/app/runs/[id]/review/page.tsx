@@ -4,13 +4,15 @@ import { Placeholder } from "@/components/shell/placeholder";
 
 export const metadata: Metadata = { title: "Needs a person · Retina SDOC" };
 
-export default function ReviewPage() {
+export default async function ReviewPage({ params }: PageProps<"/runs/[id]/review">) {
+  const { id } = await params;
   return (
     <Placeholder
+      runId={id}
       active="review"
       icon="doc"
       title="Needs a person"
-      crumbs={["Needs a person"]}
+      crumbs={["Runs", id.slice(0, 8), "Needs a person"]}
       phase="phase 8"
       blurb="The emails Retina stopped on, grouped by why, with the failures in their own group."
       holds={[

@@ -21,7 +21,7 @@ const WHAT: Record<QueueName, string> = {
   compare: "Checking is held",
 };
 
-export function HeldNotice({ until, queue }: { until: string; queue: QueueName }) {
+export function HeldNotice({ until, queue, still = 0 }: { until: string; queue: QueueName; still?: number }) {
   const seconds = useSecondsUntil(until);
   return (
     <motion.div
@@ -39,8 +39,11 @@ export function HeldNotice({ until, queue }: { until: string; queue: QueueName }
         </span>
       </div>
       <p className="mt-1.5 text-small leading-[18px] text-differ-ink">
-        The queue is rate limited for thirty seconds. Held jobs go back with their attempts untouched, so nothing is
-        spent waiting.
+        The queue is rate limited for thirty seconds, so nothing new starts. Held jobs go back with their attempts
+        untouched, and nothing is spent waiting.
+        {still > 0
+          ? ` The ${still === 1 ? "one email" : `${still} emails`} below took a slot before the limit and ${still === 1 ? "is" : "are"} still working.`
+          : ""}
       </p>
     </motion.div>
   );

@@ -98,7 +98,7 @@ export function viewOf(reading: QueueReading, concurrency: number, now: number, 
     next: reading.next.map((job) => ({
       emailId: job.emailId,
       files: words.filesOf(job.emailId),
-      heldMs: Math.max(0, now - job.addedAt),
+      queuedAt: new Date(job.addedAt).toISOString(),
     })),
   };
 }

@@ -4,13 +4,15 @@ import { Placeholder } from "@/components/shell/placeholder";
 
 export const metadata: Metadata = { title: "Database · Retina SDOC" };
 
-export default function DatabasePage() {
+export default async function DatabasePage({ params }: PageProps<"/runs/[id]/database">) {
+  const { id } = await params;
   return (
     <Placeholder
+      runId={id}
       active="database"
       icon="table"
       title="Database"
-      crumbs={["Database"]}
+      crumbs={["Runs", id.slice(0, 8), "Database"]}
       phase="phase 10"
       blurb="The same data two ways: as the rows the schema stores, and as the things the model reads them as."
       holds={[
