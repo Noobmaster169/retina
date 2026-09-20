@@ -10,6 +10,12 @@
 -- `:'ro_password'` is substituted by db/migrate.mjs from PG_RO_PASSWORD. It is
 -- the one templated migration in the repo; a password does not belong in git.
 --
+-- A role belongs to the cluster and not to a database, so this same role is
+-- what retina_test and the development database both reach, and whichever
+-- migrates last sets the password. Local development and the tests therefore
+-- share one value: vitest.config.ts and .env.example both say `localdev`. On
+-- the box there is one database and PG_RO_PASSWORD is a real secret.
+--
 -- Additive only. A rollback to phase 9 leaves the role in place with nothing
 -- using it, which costs nothing and breaks nothing.
 
