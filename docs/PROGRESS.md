@@ -110,6 +110,12 @@ five unknowns are things the profile job has not reached yet, which is the hones
 miss. One real finding: the definition is shown to the reader word for word, so `concept-define`
 now asks for plain English with no em dash and no markdown.
 
+**The person rule was confirmed live.** Once the profile batch reached them, 28 of 28 ports and
+14 of 18 parties carry a labelled `general` section (the four without are companies the model knew
+nothing about, which is the null the prompt asks for) and the one person profiled carries none. A
+failed pass during the merge also demonstrated the second fix by accident: the job was removed
+rather than holding its id, and the next tick picked the work straight back up.
+
 **It also found a bug that only a real run could have found.** `refresh-profiles` did its model
 work on the scheduler queue, which runs at concurrency 1 and also writes the heartbeat. A pass of
 fifty profiles at tens of seconds each held that queue for half an hour, the heartbeat's key
