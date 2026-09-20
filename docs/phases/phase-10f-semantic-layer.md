@@ -663,7 +663,7 @@ the honest `complete: false` matters more than any ranking trick.
 - [x] Profiles: `observed` and `general` separate, the second labelled with a confidence. Live,
       after the batch reached them: 28 of 28 ports and 14 of 18 parties carry a `general` section
       (the four without are companies the model knew nothing about, which is the honest null), and
-      the one person profiled carries none. The `mail` setting and the person rule are also held
+      all four people profiled carry none. The `mail` setting and the person rule are also held
       by `refresh-profiles.test.ts` over every kind and both settings.
 - [~] The manual questions: "which ports in Asia" answers from `attributes->>'region'` in one SQL
       statement with no `find_entities` call, and the Gulf question ran live end to end. The other
