@@ -2,22 +2,21 @@ import { Router } from "express";
 import type { Pool } from "pg";
 import { z } from "zod";
 
-import type { ChatAnswer, ChatThread, ProposedAction } from "../contracts";
+import type { ChatSkillCards, ChatThread, ChatTurnsAfter, ProposedAction } from "../contracts";
 import { NewConversation, NewMessage } from "../contracts";
-import { runTurn } from "../agents/chat/loop";
-import { orientationFor } from "../agents/chat/orientation";
+import { skills } from "../agents/chat/skills/registry";
 import type { LlmClient } from "../agents/llm-client";
-import { childLogger } from "../lib/logger";
-import { chat, chatState } from "../ontology/repositories";
-
-const log = childLogger({ module: "chat.routes" });
+import { chat, chatLive } from "../ontology/repositories";
+import { answerTurn } from "./chat.turn";
 
 /**
  * Asking a question and getting an answer with its working shown.
  *
- * No streaming: `docs/01-product.md` section 7 puts it out of scope, so a turn
- * is one request that takes as long as it takes. The page draws the graph
- * building and a skeleton for the prose meanwhile.
+ * The POST holds until the answer, as it always has: there is no streaming
+ * (`docs/01-product.md` section 7) and no queue. What is new is that the turn's
+ * steps are readable while it runs, through `GET /:id/turns?after=`, which the
+ * page polls against the id of the question it just asked. Stopping is the
+ * client aborting the POST.
  */
 
 export interface ChatRouteDeps {
@@ -30,23 +29,14 @@ export interface ChatRouteDeps {
 const IdParam = z.uuid();
 
 /**
- * How much of the conversation the model is given back: the last twenty turns.
- *
- * Ten exchanges is more than any question here has needed, and the whole
- * history of a long conversation would crowd out the schema documentation,
- * which is what actually decides whether the answer is right.
- */
-const HISTORY_TURNS = 20;
-
-/**
  * Phase 10 proposes and never applies.
  *
- * The contract is docs/03-infra-deep.md section 5.5 and
- * `ProposedAction` in contracts.chat.ts. The phase's scope says write tools
- * are out, so the agent has no tool that could write one and this is the only
- * place a proposal could come from. It is drawn with both buttons disabled and
- * this sentence under them, rather than left off the page: the card is what
- * phase 11 turns on, and hiding it now would hide the thing being deferred.
+ * The contract is docs/03-infra-deep.md section 5.5 and `ProposedAction` in
+ * contracts.chat.ts. The phase's scope says write tools are out, so the agent
+ * has no tool that could write one and nothing sets it. It is drawn with both
+ * buttons disabled and this sentence under them, rather than left off the page:
+ * the card is what phase 11 turns on, and hiding it now would hide the thing
+ * being deferred.
  */
 const NOT_YET: ProposedAction["blockedReason"] =
   "Retina can read and explain, and cannot yet write. Applying an action arrives in phase 11.";
@@ -72,6 +62,14 @@ export function chatRouter(deps: ChatRouteDeps): Router {
     res.json({ conversations: await chat.list(deps.pool, runId) });
   });
 
+  /** The skills a person may pick, as the composer's `/` menu lists them. */
+  router.get("/skills", (_req, res) => {
+    const body: ChatSkillCards = {
+      skills: [...skills().values()].map((skill) => ({ name: skill.name, version: skill.version, when: skill.when })),
+    };
+    res.json(body);
+  });
+
   router.get("/:id", async (req, res) => {
     const id = IdParam.safeParse(req.params.id);
     if (!id.success) {
@@ -87,6 +85,28 @@ export function chatRouter(deps: ChatRouteDeps): Router {
     res.json(body);
   });
 
+  /**
+   * The turns of a conversation newer than one id, this turn's steps included.
+   *
+   * The page polls this while its own POST is in flight, which is how the steps
+   * appear one by one rather than all at once with the answer. It is the only
+   * read that returns `role = 'tool'` rows.
+   */
+  router.get("/:id/turns", async (req, res) => {
+    const id = IdParam.safeParse(req.params.id);
+    if (!id.success) {
+      res.status(400).json({ error: "bad conversation id" });
+      return;
+    }
+    const after = Number(req.query.after);
+    if (!Number.isInteger(after) || after < 0) {
+      res.status(400).json({ error: "after must be a turn id" });
+      return;
+    }
+    const body: ChatTurnsAfter = { turns: await chatLive.turnsAfter(deps.pool, id.data, after) };
+    res.json(body);
+  });
+
   router.post("/:id/messages", async (req, res) => {
     const id = IdParam.safeParse(req.params.id);
     if (!id.success) {
@@ -98,62 +118,30 @@ export function chatRouter(deps: ChatRouteDeps): Router {
       res.status(400).json({ error: "invalid message", issues: body.error.issues });
       return;
     }
+    const unknown = body.data.skills.filter((name) => !skills().has(name));
+    if (unknown.length > 0) {
+      res.status(400).json({ error: `no such skill: ${unknown.join(", ")}` });
+      return;
+    }
     const conversation = await chat.find(deps.pool, id.data);
     if (!conversation) {
       res.status(404).json({ error: "no such conversation" });
       return;
     }
 
-    // The question is stored before the model is asked. A turn that fails
-    // halfway must still leave the person's own words on the page, or they
-    // retype them.
-    await chat.addUserTurn(deps.pool, id.data, body.data.content);
-    await chat.titleIfUnnamed(deps.pool, id.data, body.data.content);
-
-    const previous = await chat.recentTurns(deps.pool, id.data, HISTORY_TURNS);
-    const history = previous
-      .slice(0, -1)
-      .flatMap((turn) => (turn.role === "tool" ? [] : [{ role: turn.role, content: turn.content }]));
-
-    const scope = { runId: conversation.scope.runId, emailId: conversation.scope.emailId };
-    // Read where the agent's own queries run, so the orientation never shows it
-    // something it could not reach; without a read-only pool the tools refuse anyway.
-    const [orientation, stickySkills] = await Promise.all([
-      orientationFor({ read: deps.roPool ?? deps.pool, write: deps.pool }, { id: id.data, runId: scope.runId }),
-      chatState.stickySkills(deps.pool, id.data),
-    ]);
-    const result = await runTurn(
-      { llm: deps.llm, pool: deps.pool, tools: { pool: deps.pool, roPool: deps.roPool, ...scope } },
-      {
-        question: body.data.content,
-        history,
-        scope,
-        orientation,
-        today: new Date().toISOString().slice(0, 10),
-        stickySkills,
-        pickedSkills: [],
-      },
-    );
-
-    const turn = await chat.addAssistantTurn(deps.pool, id.data, {
-      answer: result.answer,
-      sqlUsed: result.sqlUsed,
-      toolCalls: result.toolCalls,
-      graph: result.graph,
-      reading: result.reading,
-      skillsUsed: result.skillsUsed,
-      adhoc: result.adhoc,
-      // Nothing in phase 10 proposes one yet; the field exists so the shape the
-      // card reads is settled and phase 11 fills it rather than inventing it.
-      proposal: null,
+    // Stopping is the client aborting its own POST. Express reports that as
+    // `close` before a response was sent, and the loop reads the flag between
+    // steps, so a model call already in flight finishes and is still paid for
+    // and recorded rather than being abandoned half written.
+    let stopped = false;
+    req.on("close", () => {
+      if (!res.writableEnded) stopped = true;
     });
 
-    log.info(
-      { conversationId: id.data, tools: result.toolCalls.length, exhausted: result.exhausted },
-      "a chat turn answered",
-    );
-    const answer: ChatAnswer = { turn, exhausted: result.exhausted };
-    res.json(answer);
+    const answer = await answerTurn({ ...deps, stopped: () => stopped }, conversation, body.data);
+    // A stopped turn is stored, so the thread keeps what it found, and then has
+    // nobody to answer: the client that aborted is gone.
+    if (!stopped) res.json(answer);
   });
 
   router.delete("/:id", async (req, res) => {

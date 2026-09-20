@@ -1,7 +1,7 @@
 import type { Pool } from "pg";
 import type { z } from "zod";
 
-import type { ChatToolName, SqlResult } from "../../../contracts";
+import type { ChatToolName, GroundedThing, SqlResult } from "../../../contracts";
 import type { Queryable } from "../../../db";
 
 /**
@@ -72,10 +72,26 @@ export interface ToolOutcome {
   grounds?: string;
   /** The call looked and found nothing, or nothing exact. The harness injects the skill for that. */
   empty?: boolean;
+  /**
+   * The call returned candidates of more than one kind, which is the one
+   * ambiguity the harness can see for itself. Several candidates of one kind
+   * are not this: a short company name matching four companies of one group
+   * means all four, and ground-names already says to take them all.
+   */
+  ambiguous?: boolean;
   /** Set when the literal guard refused the call: the strings it would not filter on. */
   ungrounded?: string[];
   /** Set by `load_skill`: the skill now in front of the agent, which stays there for the conversation. */
   skill?: string;
+  /**
+   * The resolved things this call put in front of the agent, for the
+   * conversation to remember by name.
+   *
+   * Names and not ids: `entities.replaceAll` deletes and reinserts, so an id
+   * is good for this turn and wrong on the next one. A later turn grounds the
+   * canonical again, which is one indexed lookup and survives a refresh.
+   */
+  things?: GroundedThing[];
 }
 
 export interface ChatTool<I> {

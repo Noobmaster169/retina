@@ -13,11 +13,12 @@ const NONE: TurnFacts = {
   scope: { runId: null, emailId: null },
   guardRefused: false,
   cameUpEmpty: false,
+  ambiguous: false,
   loaded: [],
   sticky: [],
   picked: [],
 };
-const KNOWN = new Set(["ground-names", "pick-the-run", "explain-an-email", "time-questions", "lanes-and-ports", "near-misses"]);
+const KNOWN = new Set(["ground-names", "pick-the-run", "explain-an-email", "time-questions", "lanes-and-ports", "near-misses", "ask-back"]);
 const names = (list: Injected[]) => list.map((item) => item.name);
 
 describe("skillsToInject", () => {
@@ -27,6 +28,12 @@ describe("skillsToInject", () => {
     { name: "a conversation about an email, which also has a run", facts: { scope: { runId: "r", emailId: "e" } }, expected: ["explain-an-email"] },
     { name: "a guard refusal", facts: { guardRefused: true }, expected: ["ground-names"] },
     { name: "a lookup that came up empty", facts: { cameUpEmpty: true }, expected: ["ground-names", "near-misses"] },
+    { name: "a name that meant two kinds of thing", facts: { ambiguous: true }, expected: ["ask-back"] },
+    {
+      name: "a lookup that came up empty and was also ambiguous asks after it widens",
+      facts: { cameUpEmpty: true, ambiguous: true },
+      expected: ["ground-names", "near-misses", "ask-back"],
+    },
     { name: "a skill loaded on this turn stays for its later steps", facts: { loaded: ["time-questions"] }, expected: ["time-questions"] },
     { name: "a skill from earlier in the conversation", facts: { sticky: ["lanes-and-ports"] }, expected: ["lanes-and-ports"] },
     {
@@ -95,10 +102,11 @@ describe("the skills that ship", () => {
   const all = loadSkills();
   const recipes = loadRecipes();
 
-  it("are the nine of phase 10d, each with a version and a sentence on when", () => {
+  it("are the eleven that ship, each with a version and a sentence on when", () => {
     expect([...all.keys()].sort()).toEqual([
-      "counts-and-rates", "explain-an-email", "explore-values", "find-references", "ground-names",
-      "lanes-and-ports", "pick-the-run", "quality-and-review", "time-questions",
+      "ask-back", "counts-and-rates", "explain-an-email", "explore-values", "find-references",
+      "ground-names", "lanes-and-ports", "near-misses", "pick-the-run", "quality-and-review",
+      "time-questions",
     ]);
     for (const skill of all.values()) {
       expect(skill.version).toBeGreaterThanOrEqual(1);

@@ -1,62 +1,738 @@
 [
-  { "id": "name-partial", "tags": ["grounding"], "question": "What shipments involve April Paper Trading?",
-    "expect": { "mentions": ["APRIL FINE PAPER TRADING"], "behaviours": ["grounds_first"] } },
-  { "id": "name-group", "tags": ["grounding"], "question": "Which emails involve April?",
-    "expect": { "mentionsAnyOf": [["APRIL FAR EAST", "APRIL FINE PAPER"]], "behaviours": ["grounds_first"] } },
-  { "id": "name-typo", "tags": ["grounding"], "question": "Anything for Roxel Trading?",
-    "expect": { "mentions": ["ROXCEL"], "behaviours": ["grounds_first"] } },
-  { "id": "name-short", "tags": ["grounding"], "question": "What do we have on Al Gurg?",
-    "expect": { "mentions": ["AL GURG"], "mentionsAnyOf": [["algurg.ae", "sender"]], "behaviours": ["grounds_first"] } },
-  { "id": "name-sender-and-party", "tags": ["grounding"], "question": "Is Vital Solutions someone who emails us, or a party on the documents?",
-    "expect": { "mentions": ["vitalsolutions.sg", "VITAL SOLUTIONS"], "behaviours": ["grounds_first"] } },
-  { "id": "port-by-city", "tags": ["grounding", "ports"], "question": "How many emails name Mombasa?",
-    "expect": { "mentions": ["MOMBASA"], "behaviours": ["grounds_first"] } },
-  { "id": "port-by-country", "tags": ["grounding", "ports"], "question": "Which ports in India appear in the documents?",
-    "expect": { "mentions": ["NHAVA SHEVA"] } },
-  { "id": "port-role", "tags": ["ports"], "question": "Is Nantong somewhere we load or somewhere we discharge?",
-    "expect": { "mentions": ["NANTONG"], "mentionsAnyOf": [["loading", "load"]], "behaviours": ["grounds_first"] } },
-  { "id": "lanes", "tags": ["ports"], "question": "What are the busiest lanes?",
-    "expect": { "behaviours": ["uses_recipe", "no_own_sql", "names_the_run"] } },
-  { "id": "ref-order", "tags": ["references"], "scoped": false, "question": "Anything on 5RFR-36541?",
-    "expect": { "mentions": ["5RFR-36541", "email_013"] } },
-  { "id": "ref-bill", "tags": ["references"], "scoped": false, "question": "Which email is about bill of lading MEDUUD104332?",
-    "expect": { "mentions": ["email_001"] } },
-  { "id": "ref-vessel", "tags": ["references"], "scoped": false, "question": "Which emails mention the vessel LE HAVRE?",
-    "expect": { "mentions": ["LE HAVRE"], "mentionsAnyOf": [["subject", "text", "body"]] } },
-  { "id": "ref-carrier", "tags": ["references"], "scoped": false, "question": "Which emails are with the carrier CMA?",
-    "expect": { "mentions": ["CMA"], "mentionsAnyOf": [["subject", "text"]] } },
-  { "id": "ref-term", "tags": ["references"], "scoped": false, "question": "Which subjects carry the payment term OA_CFR?",
-    "expect": { "mentions": ["OA_CFR"] } },
-  { "id": "senders", "tags": ["counts"], "question": "Who sends us the most email?",
-    "expect": { "mentions": ["aprilasia.com"], "behaviours": ["uses_recipe", "no_own_sql"] } },
-  { "id": "field-differs-most", "tags": ["counts"], "question": "Which of the seven fields differs most often?",
-    "expect": { "behaviours": ["uses_recipe", "no_own_sql", "names_the_run"], "maxSteps": 3 } },
-  { "id": "reviewer-changes", "tags": ["review"], "question": "What did reviewers change in this run?",
-    "expect": { "behaviours": ["uses_recipe", "no_own_sql"] } },
-  { "id": "time-sent", "tags": ["time"], "question": "How many emails were sent in January?",
-    "expect": { "mentionsAnyOf": [["no sent", "sent time", "sent date", "not when", "ingest", "no date"]] } },
-  { "id": "weight-total", "tags": ["counts"], "question": "What is the total weight shipped to Karachi?",
-    "expect": { "absent": ["tonnage_mt"], "mentionsAnyOf": [["as written", "as the document", "cannot be summed", "cannot sum", "cannot total", "out of reach", "not stored as a number", "not a number"]] } },
-  { "id": "mismatch-rate", "tags": ["counts"], "question": "What share of comparison emails ended in a mismatch?",
-    "expect": { "mentionsAnyOf": [["judged", "actually compared", "compared field", "nothing to compare", "no documents"]], "behaviours": ["uses_recipe"] } },
-  { "id": "name-absent", "tags": ["grounding"], "question": "Any shipments for Acme Semiconductors?",
-    "expect": { "mentionsAnyOf": [["no ", "none", "nothing", "not "]], "behaviours": ["grounds_first"] } },
-  { "id": "value-case", "tags": ["counts"], "question": "How many emails are in category bl_comparison?",
-    "expect": { "mentions": ["BL_COMPARISON"], "behaviours": ["uses_recipe"] } },
-  { "id": "roles-both", "tags": ["counts"], "question": "Which companies appear both as a consignee and as a notify party?",
-    "expect": {} },
-  { "id": "explain-one", "tags": ["email"], "scoped": false, "question": "Why did email_004 end the way it did?",
-    "expect": { "mentions": ["email_004"], "mentionsAnyOf": [["consignee", "notify", "MISMATCH", "OK", "NEEDS_REVIEW"]] } },
-  { "id": "cost", "tags": ["counts"], "question": "What did this run cost, by step?",
-    "expect": { "behaviours": ["uses_recipe", "no_own_sql"] } },
-  { "id": "plain-size", "tags": ["plain"], "question": "How many emails are in this run?",
-    "expect": { "behaviours": ["names_the_run"], "maxSteps": 2 } },
-  { "id": "plain-mismatches", "tags": ["plain"], "question": "How many mismatches are there in this run?",
-    "expect": { "behaviours": ["names_the_run"], "maxSteps": 3 } },
-  { "id": "plain-reviews", "tags": ["plain"], "question": "How many emails went to a person, and for what reasons?",
-    "expect": { "maxSteps": 3 } },
-  { "id": "plain-categories", "tags": ["plain"], "question": "What categories were the emails sorted into?",
-    "expect": { "mentions": ["BL_COMPARISON"], "maxSteps": 3 } },
-  { "id": "plain-finished", "tags": ["plain"], "question": "Is this run finished?",
-    "expect": { "maxSteps": 3 } }
+  {
+    "id": "name-partial",
+    "tags": [
+      "grounding"
+    ],
+    "question": "What shipments involve April Paper Trading?",
+    "expect": {
+      "mentions": [
+        "APRIL FINE PAPER TRADING"
+      ],
+      "behaviours": [
+        "grounds_first"
+      ]
+    }
+  },
+  {
+    "id": "name-group",
+    "tags": [
+      "grounding"
+    ],
+    "question": "Which emails involve April?",
+    "expect": {
+      "mentionsAnyOf": [
+        [
+          "APRIL FAR EAST",
+          "APRIL FINE PAPER"
+        ]
+      ],
+      "behaviours": [
+        "grounds_first"
+      ]
+    }
+  },
+  {
+    "id": "name-typo",
+    "tags": [
+      "grounding"
+    ],
+    "question": "Anything for Roxel Trading?",
+    "expect": {
+      "mentions": [
+        "ROXCEL"
+      ],
+      "behaviours": [
+        "grounds_first"
+      ]
+    }
+  },
+  {
+    "id": "name-short",
+    "tags": [
+      "grounding"
+    ],
+    "question": "What do we have on Al Gurg?",
+    "expect": {
+      "mentions": [
+        "AL GURG"
+      ],
+      "mentionsAnyOf": [
+        [
+          "algurg.ae",
+          "sender"
+        ]
+      ],
+      "behaviours": [
+        "grounds_first"
+      ]
+    }
+  },
+  {
+    "id": "name-sender-and-party",
+    "tags": [
+      "grounding"
+    ],
+    "question": "Is Vital Solutions someone who emails us, or a party on the documents?",
+    "expect": {
+      "mentions": [
+        "vitalsolutions.sg",
+        "VITAL SOLUTIONS"
+      ],
+      "behaviours": [
+        "grounds_first"
+      ]
+    }
+  },
+  {
+    "id": "port-by-city",
+    "tags": [
+      "grounding",
+      "ports"
+    ],
+    "question": "How many emails name Mombasa?",
+    "expect": {
+      "mentions": [
+        "MOMBASA"
+      ],
+      "behaviours": [
+        "grounds_first"
+      ]
+    }
+  },
+  {
+    "id": "port-by-country",
+    "tags": [
+      "grounding",
+      "ports"
+    ],
+    "question": "Which ports in India appear in the documents?",
+    "expect": {
+      "mentions": [
+        "NHAVA SHEVA"
+      ]
+    }
+  },
+  {
+    "id": "port-role",
+    "tags": [
+      "ports"
+    ],
+    "question": "Is Nantong somewhere we load or somewhere we discharge?",
+    "expect": {
+      "mentions": [
+        "NANTONG"
+      ],
+      "mentionsAnyOf": [
+        [
+          "loading",
+          "load"
+        ]
+      ],
+      "behaviours": [
+        "grounds_first"
+      ]
+    }
+  },
+  {
+    "id": "lanes",
+    "tags": [
+      "ports"
+    ],
+    "question": "What are the busiest lanes?",
+    "expect": {
+      "behaviours": [
+        "uses_recipe",
+        "no_own_sql",
+        "names_the_run"
+      ]
+    }
+  },
+  {
+    "id": "ref-order",
+    "tags": [
+      "references"
+    ],
+    "scoped": false,
+    "question": "Anything on 5RFR-36541?",
+    "expect": {
+      "mentions": [
+        "5RFR-36541",
+        "email_013"
+      ]
+    }
+  },
+  {
+    "id": "ref-bill",
+    "tags": [
+      "references"
+    ],
+    "scoped": false,
+    "question": "Which email is about bill of lading MEDUUD104332?",
+    "expect": {
+      "mentions": [
+        "email_001"
+      ]
+    }
+  },
+  {
+    "id": "ref-vessel",
+    "tags": [
+      "references"
+    ],
+    "scoped": false,
+    "question": "Which emails mention the vessel LE HAVRE?",
+    "expect": {
+      "mentions": [
+        "LE HAVRE"
+      ],
+      "mentionsAnyOf": [
+        [
+          "subject",
+          "text",
+          "body"
+        ]
+      ]
+    }
+  },
+  {
+    "id": "ref-carrier",
+    "tags": [
+      "references"
+    ],
+    "scoped": false,
+    "question": "Which emails are with the carrier CMA?",
+    "expect": {
+      "mentions": [
+        "CMA"
+      ],
+      "mentionsAnyOf": [
+        [
+          "subject",
+          "text"
+        ]
+      ]
+    }
+  },
+  {
+    "id": "ref-term",
+    "tags": [
+      "references"
+    ],
+    "scoped": false,
+    "question": "Which subjects carry the payment term OA_CFR?",
+    "expect": {
+      "mentions": [
+        "OA_CFR"
+      ]
+    }
+  },
+  {
+    "id": "senders",
+    "tags": [
+      "counts"
+    ],
+    "question": "Who sends us the most email?",
+    "expect": {
+      "mentions": [
+        "aprilasia.com"
+      ],
+      "behaviours": [
+        "uses_recipe",
+        "no_own_sql"
+      ]
+    }
+  },
+  {
+    "id": "field-differs-most",
+    "tags": [
+      "counts"
+    ],
+    "question": "Which of the seven fields differs most often?",
+    "expect": {
+      "behaviours": [
+        "uses_recipe",
+        "no_own_sql",
+        "names_the_run"
+      ],
+      "maxSteps": 3
+    }
+  },
+  {
+    "id": "reviewer-changes",
+    "tags": [
+      "review"
+    ],
+    "question": "What did reviewers change in this run?",
+    "expect": {
+      "behaviours": [
+        "uses_recipe",
+        "no_own_sql"
+      ]
+    }
+  },
+  {
+    "id": "time-sent",
+    "tags": [
+      "time"
+    ],
+    "question": "How many emails were sent in January?",
+    "expect": {
+      "mentionsAnyOf": [
+        [
+          "no sent",
+          "sent time",
+          "sent date",
+          "not when",
+          "ingest",
+          "no date"
+        ]
+      ]
+    }
+  },
+  {
+    "id": "weight-total",
+    "tags": [
+      "counts"
+    ],
+    "question": "What is the total weight shipped to Karachi?",
+    "expect": {
+      "absent": [
+        "tonnage_mt"
+      ],
+      "mentionsAnyOf": [
+        [
+          "as written",
+          "as the document",
+          "cannot be summed",
+          "cannot sum",
+          "cannot total",
+          "out of reach",
+          "not stored as a number",
+          "not a number"
+        ]
+      ]
+    }
+  },
+  {
+    "id": "mismatch-rate",
+    "tags": [
+      "counts"
+    ],
+    "question": "What share of comparison emails ended in a mismatch?",
+    "expect": {
+      "mentionsAnyOf": [
+        [
+          "judged",
+          "actually compared",
+          "compared field",
+          "nothing to compare",
+          "no documents"
+        ]
+      ],
+      "behaviours": [
+        "uses_recipe"
+      ]
+    }
+  },
+  {
+    "id": "name-absent",
+    "tags": [
+      "grounding"
+    ],
+    "question": "Any shipments for Acme Semiconductors?",
+    "expect": {
+      "mentionsAnyOf": [
+        [
+          "no ",
+          "none",
+          "nothing",
+          "not "
+        ]
+      ],
+      "behaviours": [
+        "grounds_first"
+      ]
+    }
+  },
+  {
+    "id": "value-case",
+    "tags": [
+      "counts"
+    ],
+    "question": "How many emails are in category bl_comparison?",
+    "expect": {
+      "mentions": [
+        "BL_COMPARISON"
+      ],
+      "behaviours": [
+        "uses_recipe"
+      ]
+    }
+  },
+  {
+    "id": "roles-both",
+    "tags": [
+      "counts"
+    ],
+    "question": "Which companies appear both as a consignee and as a notify party?",
+    "expect": {}
+  },
+  {
+    "id": "explain-one",
+    "tags": [
+      "email"
+    ],
+    "scoped": false,
+    "question": "Why did email_004 end the way it did?",
+    "expect": {
+      "mentions": [
+        "email_004"
+      ],
+      "mentionsAnyOf": [
+        [
+          "consignee",
+          "notify",
+          "MISMATCH",
+          "OK",
+          "NEEDS_REVIEW"
+        ]
+      ]
+    }
+  },
+  {
+    "id": "cost",
+    "tags": [
+      "counts"
+    ],
+    "question": "What did this run cost, by step?",
+    "expect": {
+      "behaviours": [
+        "uses_recipe",
+        "no_own_sql"
+      ]
+    }
+  },
+  {
+    "id": "plain-size",
+    "tags": [
+      "plain"
+    ],
+    "question": "How many emails are in this run?",
+    "expect": {
+      "behaviours": [
+        "names_the_run"
+      ],
+      "maxSteps": 2
+    }
+  },
+  {
+    "id": "plain-mismatches",
+    "tags": [
+      "plain"
+    ],
+    "question": "How many mismatches are there in this run?",
+    "expect": {
+      "behaviours": [
+        "names_the_run"
+      ],
+      "maxSteps": 3
+    }
+  },
+  {
+    "id": "plain-reviews",
+    "tags": [
+      "plain"
+    ],
+    "question": "How many emails went to a person, and for what reasons?",
+    "expect": {
+      "maxSteps": 3
+    }
+  },
+  {
+    "id": "plain-categories",
+    "tags": [
+      "plain"
+    ],
+    "question": "What categories were the emails sorted into?",
+    "expect": {
+      "mentions": [
+        "BL_COMPARISON"
+      ],
+      "maxSteps": 3
+    }
+  },
+  {
+    "id": "plain-finished",
+    "tags": [
+      "plain"
+    ],
+    "question": "Is this run finished?",
+    "expect": {
+      "maxSteps": 3
+    }
+  },
+  {
+    "id": "place-absent-country-present",
+    "tags": [
+      "interactive",
+      "near-miss"
+    ],
+    "question": "Do we have any shipments to Jakarta, Indonesia?",
+    "expect": {
+      "outcome": "none_found",
+      "absent": [
+        "Jakarta is a port",
+        "shipped to Jakarta"
+      ],
+      "alternativesAbsent": [
+        "JAKARTA"
+      ],
+      "behaviours": [
+        "grounds_first",
+        "every_alternative_real",
+        "offers_a_next_move",
+        "did_not_ask"
+      ]
+    }
+  },
+  {
+    "id": "place-absent-country-absent",
+    "tags": [
+      "interactive",
+      "near-miss"
+    ],
+    "question": "Do we have any shipments to Atlantis?",
+    "expect": {
+      "outcome": "none_found",
+      "alternativesAbsent": [
+        "ATLANTIS"
+      ],
+      "behaviours": [
+        "every_alternative_real",
+        "offers_a_next_move",
+        "did_not_ask"
+      ]
+    }
+  },
+  {
+    "id": "near-miss-says-where-it-looked",
+    "tags": [
+      "interactive",
+      "near-miss"
+    ],
+    "question": "Is there anything for a company called Meridian Freight?",
+    "expect": {
+      "outcome": "none_found",
+      "behaviours": [
+        "grounds_first",
+        "every_alternative_real",
+        "did_not_ask"
+      ]
+    }
+  },
+  {
+    "id": "country-word-in-port-names",
+    "tags": [
+      "interactive",
+      "near-miss"
+    ],
+    "question": "Which ports do we use in Vietnam?",
+    "expect": {
+      "behaviours": [
+        "grounds_first",
+        "every_alternative_real",
+        "did_not_ask"
+      ]
+    }
+  },
+  {
+    "id": "group-present-company-absent",
+    "tags": [
+      "interactive",
+      "near-miss"
+    ],
+    "question": "What do we have on April Container Lines?",
+    "expect": {
+      "mentionsAnyOf": [
+        [
+          "APRIL FAR EAST",
+          "APRIL FINE PAPER"
+        ]
+      ],
+      "behaviours": [
+        "grounds_first",
+        "every_alternative_real"
+      ]
+    }
+  },
+  {
+    "id": "mistyped-column-value",
+    "tags": [
+      "interactive",
+      "near-miss"
+    ],
+    "question": "How many emails were sorted as BL_COMPARISION?",
+    "expect": {
+      "mentionsAnyOf": [
+        [
+          "BL_COMPARISON"
+        ]
+      ],
+      "behaviours": [
+        "every_alternative_real",
+        "no_guard_refusal"
+      ]
+    }
+  },
+  {
+    "id": "alternatives-carry-a-role",
+    "tags": [
+      "interactive",
+      "near-miss"
+    ],
+    "question": "Which Indonesian port do we ship cargo to?",
+    "expect": {
+      "mentionsAnyOf": [
+        [
+          "loading",
+          "port of loading"
+        ]
+      ],
+      "behaviours": [
+        "grounds_first",
+        "every_alternative_real"
+      ]
+    }
+  },
+  {
+    "id": "broad-gets-a-reading-not-a-question",
+    "tags": [
+      "interactive",
+      "ask-back"
+    ],
+    "question": "Which customers are big?",
+    "expect": {
+      "behaviours": [
+        "did_not_ask",
+        "names_the_run"
+      ]
+    }
+  },
+  {
+    "id": "broad-word-is-not-an-ambiguity",
+    "tags": [
+      "interactive",
+      "ask-back"
+    ],
+    "question": "How is the inbox doing?",
+    "expect": {
+      "behaviours": [
+        "did_not_ask"
+      ]
+    }
+  },
+  {
+    "id": "one-group-means-all-of-it",
+    "tags": [
+      "interactive",
+      "ask-back"
+    ],
+    "question": "Anything for April?",
+    "expect": {
+      "mentionsAnyOf": [
+        [
+          "APRIL FAR EAST",
+          "APRIL FINE PAPER"
+        ]
+      ],
+      "behaviours": [
+        "grounds_first",
+        "did_not_ask"
+      ]
+    }
+  },
+  {
+    "id": "general-knowledge-is-marked",
+    "tags": [
+      "interactive",
+      "knowledge"
+    ],
+    "question": "Do we ship anywhere near Jakarta?",
+    "expect": {
+      "behaviours": [
+        "every_alternative_real",
+        "marks_its_inference"
+      ]
+    }
+  },
+  {
+    "id": "general-knowledge-never-reports",
+    "tags": [
+      "interactive",
+      "knowledge"
+    ],
+    "question": "What is the busiest container port in South-East Asia in our data?",
+    "expect": {
+      "absent": [
+        "generally",
+        "typically",
+        "usually one of the world"
+      ],
+      "behaviours": [
+        "every_alternative_real",
+        "names_the_run"
+      ]
+    }
+  },
+  {
+    "id": "offers-a-way-on-from-a-count",
+    "tags": [
+      "interactive",
+      "next-moves"
+    ],
+    "question": "How many emails needed a person?",
+    "expect": {
+      "behaviours": [
+        "uses_recipe",
+        "offers_a_next_move",
+        "every_alternative_real"
+      ]
+    }
+  },
+  {
+    "id": "next-move-does-not-repeat-the-question",
+    "tags": [
+      "interactive",
+      "next-moves"
+    ],
+    "question": "Which of the seven fields differs most often?",
+    "expect": {
+      "behaviours": [
+        "uses_recipe",
+        "no_own_sql",
+        "every_alternative_real"
+      ],
+      "maxSteps": 4
+    }
+  },
+  {
+    "id": "a-true-miss-offers-no-neighbour",
+    "tags": [
+      "interactive",
+      "near-miss"
+    ],
+    "question": "How many emails mention the vessel QUETZALCOATL EXPRESS?",
+    "expect": {
+      "outcome": "none_found",
+      "alternativesAbsent": [
+        "QUETZALCOATL"
+      ],
+      "behaviours": [
+        "grounds_first",
+        "every_alternative_real",
+        "did_not_ask"
+      ]
+    }
+  }
 ]

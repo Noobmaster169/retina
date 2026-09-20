@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { bind, recipes } from "../../src/agents/chat/skills/recipes";
 import { orientationFor } from "../../src/agents/chat/orientation";
 import {
-  chat, chatState, databaseProfile, emailSearch, entityOverview, entitySearch, orientation,
+  chat, chatMemory, chatState, databaseProfile, emailSearch, entityOverview, entitySearch, orientation,
 } from "../../src/ontology/repositories";
 import { getRoPool } from "../../src/db";
 import { ACME_FE, ACME_ME, ALPHA, BETA, GAMMA, NORTHWIND, seedInbox } from "../chat-seed";
@@ -98,6 +98,29 @@ describe("profiling a column", () => {
     });
   });
 
+  it("with near, ranks the values by closeness rather than by frequency", async () => {
+    await inRollback(async (tx) => {
+      await seedInbox(tx);
+      // The spelling a person would reach for, and not one that is stored: this is the
+      // half-remembered value the ranking exists to find.
+      const outcome = await databaseProfile.profileColumn(tx, "core.entities", "canonical", "BETA HARBOR LEMURIA");
+      expect(outcome.ok).toBe(true);
+      if (!outcome.ok) return;
+      expect(outcome.profile.near).toBe("BETA HARBOR LEMURIA");
+      expect(outcome.profile.top[0].value).toBe(BETA);
+      expect(outcome.profile.top[0].score).toBeGreaterThan(0.5);
+    });
+  });
+
+  it("with near, returns nothing rather than the whole column when nothing is close", async () => {
+    await inRollback(async (tx) => {
+      await seedInbox(tx);
+      const outcome = await databaseProfile.profileColumn(tx, "core.entities", "canonical", "qqqqzzzzxxxx");
+      expect(outcome.ok).toBe(true);
+      if (outcome.ok) expect(outcome.profile.top).toEqual([]);
+    });
+  });
+
   it.each([
     { name: "a relation with no schema", relation: "emails", column: "subject", reason: /schema-qualified/ },
     { name: "another schema", relation: "pg_catalog.pg_authid", column: "rolpassword", reason: /only the core and analytics/ },
@@ -177,6 +200,7 @@ describe("sticky skills", () => {
       const conversation = await chat.create(tx, { actor: "a test" });
       await chat.addAssistantTurn(tx, conversation.id, {
         answer: "an answer", sqlUsed: [], toolCalls: [], graph: null, proposal: null, reading: "", adhoc: false,
+        outcome: "answered", checked: [], next: [], clarify: null, standingVersion: 1, grounded: [],
         skillsUsed: [
           { name: "time-questions", version: 1, how: "loaded" },
           { name: "ground-names", version: 1, how: "injected" },
@@ -202,6 +226,8 @@ describe("as retina_ro, the role the chat reads as", () => {
     await expect(emailSearch.searchEmails(ro(), "draft", null, 5)).resolves.toHaveProperty("total");
     await expect(emailSearch.elsewhere(ro(), "Vital Solutions")).resolves.toHaveProperty("senderDomains");
     await expect(databaseProfile.profileColumn(ro(), "core.emails", "sender_domain")).resolves.toHaveProperty("ok", true);
+    // pg_trgm lives in public, which is off retina_ro's search path, so this is the query that fails first if it is not written in full.
+    await expect(databaseProfile.profileColumn(ro(), "core.emails", "sender_domain", "exmaple.com")).resolves.toHaveProperty("ok", true);
     await expect(orientation.snapshot(ro(), null)).resolves.toHaveProperty("watermark");
   });
 
@@ -213,5 +239,84 @@ describe("as retina_ro, the role the chat reads as", () => {
   it("cannot profile a column it was not granted", async () => {
     const outcome = await databaseProfile.profileColumn(ro(), "core.llm_calls", "request");
     expect(outcome.ok).toBe(false);
+  });
+});
+
+describe("what a conversation remembers", () => {
+  const turn = (over: Record<string, unknown>) => ({
+    answer: "an answer", sqlUsed: [], toolCalls: [], graph: null, proposal: null, reading: "",
+    skillsUsed: [], adhoc: false, outcome: "answered" as const, checked: [], next: [],
+    clarify: null, standingVersion: 2, grounded: [], ...over,
+  });
+
+  it("carries the names grounded earlier, most recent first, one per canonical", async () => {
+    await inRollback(async (tx) => {
+      const conversation = await chat.create(tx, { actor: "a test" });
+      await chat.addAssistantTurn(tx, conversation.id, turn({
+        grounded: [{ kind: "party", canonical: NORTHWIND, spellings: ["Northwind"] }],
+      }));
+      await chat.addAssistantTurn(tx, conversation.id, turn({
+        grounded: [
+          { kind: "port", canonical: ALPHA, spellings: [] },
+          { kind: "party", canonical: NORTHWIND, spellings: ["Northwind"] },
+        ],
+      }));
+
+      const memory = await chatMemory.memoryOf(tx, conversation.id);
+      expect(memory.things.map((thing) => thing.canonical)).toEqual([ALPHA, NORTHWIND]);
+      expect(memory.openQuestion).toBeNull();
+    });
+  });
+
+  it("reads the run off a recipe's bound parameters, never off the prose", async () => {
+    await inRollback(async (tx) => {
+      const seeded = await seedInbox(tx);
+      const conversation = await chat.create(tx, { actor: "a test" });
+      await chat.addAssistantTurn(tx, conversation.id, turn({
+        answer: `Nothing in run ${seeded.runId} matches.`,
+        toolCalls: [{
+          tool: "run_recipe", args: {}, thought: "", ok: true, preview: "", sql: null, result: null, durationMs: 1,
+          recipe: { name: "ports_by_role", version: 1, skill: "lanes-and-ports", params: { run_id: seeded.runId } },
+        }],
+      }));
+      expect((await chatMemory.memoryOf(tx, conversation.id)).runsUsed).toEqual([seeded.runId]);
+    });
+  });
+
+  it("holds only the last turn's question open, because an earlier one was overtaken", async () => {
+    await inRollback(async (tx) => {
+      const conversation = await chat.create(tx, { actor: "a test" });
+      await chat.addAssistantTurn(tx, conversation.id, turn({
+        outcome: "needs_input", clarify: { question: "Which Alpha?", options: ["the port", "the company"] },
+      }));
+      await chat.addAssistantTurn(tx, conversation.id, turn({
+        outcome: "needs_input", clarify: { question: "Which Beta?", options: ["the port", "the company"] },
+      }));
+      expect((await chatMemory.memoryOf(tx, conversation.id)).openQuestion?.question).toBe("Which Beta?");
+    });
+  });
+
+  it("is empty for a conversation that has said nothing yet", async () => {
+    await inRollback(async (tx) => {
+      const conversation = await chat.create(tx, { actor: "a test" });
+      expect(await chatMemory.memoryOf(tx, conversation.id)).toEqual({ things: [], runsUsed: [], openQuestion: null });
+    });
+  });
+
+  it("remembers a name that still grounds after the resolved things are rebuilt", async () => {
+    await inRollback(async (tx) => {
+      const first = await seedInbox(tx);
+      const conversation = await chat.create(tx, { actor: "a test" });
+      await chat.addAssistantTurn(tx, conversation.id, turn({
+        grounded: [{ kind: "port", canonical: ALPHA, spellings: [] }],
+      }));
+      // Every id changes here. The name is what has to survive, which is why memory holds names.
+      const second = await seedInbox(tx, undefined, first.emailIds);
+      expect(second.idOf(ALPHA)).not.toBe(first.idOf(ALPHA));
+
+      const remembered = (await chatMemory.memoryOf(tx, conversation.id)).things[0].canonical;
+      const found = await entitySearch.findCandidates(tx, remembered, "port");
+      expect(found[0]).toMatchObject({ canonical: ALPHA, how: "exact" });
+    });
   });
 });

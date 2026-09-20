@@ -141,6 +141,7 @@ export const RunList = z.object({ runs: z.array(RunSummary), concurrency: Concur
 export type RunList = z.infer<typeof RunList>;
 
 export * from "./contracts.actions";
+export * from "./contracts.chat-agent";
 export * from "./contracts.chat";
 export * from "./contracts.database";
 export * from "./contracts.health";

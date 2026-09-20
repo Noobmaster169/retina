@@ -1,7 +1,15 @@
 import { z } from "zod";
 
-import type { ChatToolCall, ChatToolName } from "../../contracts";
+import {
+  ChatNextMove,
+  ChatOutcome,
+  type ChatToolCall,
+  type ChatToolName,
+  ClarifyingQuestion,
+  type GroundedThing,
+} from "../../contracts";
 import type { TouchedCall } from "./graph";
+import { MAX_MOVES } from "./next-moves";
 import { TOOL_NAMES, type ToolOutcome } from "./tools";
 
 /**
@@ -37,6 +45,17 @@ export const Step = z.object({
   /** On a final step. */
   answer: z.string().default(""),
   sql_used: z.array(z.string()).default([]),
+  /** How the answer ended. `none_found` obliges `checked`; `needs_input` obliges `clarify`. */
+  outcome: ChatOutcome.default("answered"),
+  /** The places looked, in the reader's words: resolved ports, subject lines, bodies, sender domains. */
+  checked: z.array(z.string()).default([]),
+  /**
+   * Up to four chips under the prose. Every alternative is checked against what
+   * the tools returned before it is stored, so one invented here is removed and
+   * the answer still stands.
+   */
+  next: z.array(ChatNextMove).max(MAX_MOVES).default([]),
+  clarify: ClarifyingQuestion.nullable().default(null),
 });
 export type Step = z.infer<typeof Step>;
 
@@ -47,8 +66,12 @@ export interface FinishedCall extends TouchedCall {
   guardRefused: boolean;
   /** It looked and found nothing, or nothing exact. */
   cameUpEmpty: boolean;
+  /** It returned candidates of more than one kind. */
+  ambiguous: boolean;
   /** A skill it put in front of the agent. */
   skill: string | null;
+  /** The resolved things it put in front of the agent, for the conversation to remember by name. */
+  things: GroundedThing[];
   /** The text the model reads back. */
   text: string;
   /** What the data returned, which is all the literal guard treats as shown. Empty on a refusal. */
@@ -72,7 +95,9 @@ export function finish(call: Call, outcome: ToolOutcome, durationMs: number): Fi
     entities: outcome.entities,
     guardRefused: (outcome.ungrounded?.length ?? 0) > 0,
     cameUpEmpty: outcome.empty === true,
+    ambiguous: outcome.ambiguous === true,
     skill: outcome.skill ?? null,
+    things: outcome.things ?? [],
     text: outcome.text,
     grounds: outcome.ok ? (outcome.grounds ?? "") : "",
   };
@@ -80,7 +105,7 @@ export function finish(call: Call, outcome: ToolOutcome, durationMs: number): Fi
 
 /** Drops what only the harness and the graph needed, so the wire carries the contract and nothing more. */
 export function forWire(call: FinishedCall): ChatToolCall {
-  const { touched: _t, entities: _e, guardRefused: _g, cameUpEmpty: _c, skill: _s, text: _x, grounds: _d, ...rest } = call;
+  const { touched: _t, entities: _e, guardRefused: _g, cameUpEmpty: _c, ambiguous: _a, skill: _s, things: _n, text: _x, grounds: _d, ...rest } = call;
   return rest;
 }
 

@@ -2,7 +2,9 @@ import {
   ChatAnswer,
   ChatConversation,
   ChatConversationList,
+  ChatSkillCards,
   ChatThread,
+  ChatTurnsAfter,
 } from "./chat-agent-schemas";
 import { get, parseAs, refusalMessage, request } from "./transport";
 
@@ -11,11 +13,15 @@ export type {
   ChatConversation,
   ChatGraph,
   ChatGraphNode,
+  ChatNextMove,
+  ChatOutcome as ChatTurnOutcome,
   ChatScope,
+  ChatSkillCard,
   ChatThread,
   ChatToolCall,
   ChatToolName,
   ChatTurn,
+  ClarifyingQuestion,
   ProposedAction,
   SqlResult,
 } from "./chat-agent-schemas";
@@ -64,14 +70,29 @@ export async function createConversation(body: NewConversation): Promise<ChatOut
  * them inline beside the question that caused them: a failed turn must not
  * lose the conversation a person is in the middle of.
  */
-export async function askQuestion(id: string, content: string, actor: string): Promise<ChatOutcome<ChatAnswer>> {
+export async function askQuestion(
+  id: string,
+  content: string,
+  actor: string,
+  skills: string[] = [],
+): Promise<ChatOutcome<ChatAnswer>> {
   const response = await request(`/chat/${id}/messages`, {
     method: "POST",
-    body: JSON.stringify({ content, actor }),
+    body: JSON.stringify({ content, actor, skills }),
     timeoutMs: TURN_TIMEOUT_MS,
   });
   if (!response.ok) return { ok: false, message: await refusalMessage(response) };
   return { ok: true, value: await parseAs(ChatAnswer, response, `POST /chat/${id}/messages`) };
+}
+
+/** The turns newer than one id, tool rows included. What the page polls while its own question is in flight. */
+export async function turnsAfter(id: string, after: number): Promise<ChatTurnsAfter> {
+  return get(ChatTurnsAfter, `/chat/${id}/turns?after=${after}`);
+}
+
+/** The skills a person may pick, for the composer's menu. */
+export async function listSkills(): Promise<ChatSkillCards["skills"]> {
+  return (await get(ChatSkillCards, "/chat/skills")).skills;
 }
 
 export async function deleteConversation(id: string): Promise<ChatOutcome<null>> {

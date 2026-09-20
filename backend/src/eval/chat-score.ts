@@ -1,6 +1,9 @@
 import { z } from "zod";
 
 import type { TurnResult } from "../agents/chat/loop";
+import { Behaviour, type ChatQuestion } from "./chat-questions";
+
+export { Behaviour, ChatQuestion, ChatQuestionSet } from "./chat-questions";
 
 /**
  * Whether one chat turn did what its question expected of it.
@@ -10,44 +13,6 @@ import type { TurnResult } from "../agents/chat/loop";
  * use the standard query, does the answer name what it should), never the
  * model's prose against a reference sentence.
  */
-
-export const Behaviour = z.enum([
-  /** A lookup came before the first call that filters on a thing or a text value. */
-  "grounds_first",
-  /** At least one recipe ran. */
-  "uses_recipe",
-  /** The turn needed no SQL the agent wrote itself. */
-  "no_own_sql",
-  /** The literal guard never had to refuse a call. */
-  "no_guard_refusal",
-  /** The answer names the run it counted in, by the first eight characters of its id. */
-  "names_the_run",
-]);
-export type Behaviour = z.infer<typeof Behaviour>;
-
-export const ChatQuestion = z.object({
-  id: z.string().min(1),
-  tags: z.array(z.string()).default([]),
-  question: z.string().min(1),
-  /** Ask it in a conversation opened about the latest run, as the run page's chat is. */
-  scoped: z.boolean().default(true),
-  expect: z
-    .object({
-      /** Each must appear in the answer. Case does not matter. */
-      mentions: z.array(z.string()).default([]),
-      /** At least one of each inner list must appear: for a fact that can be worded several ways. */
-      mentionsAnyOf: z.array(z.array(z.string()).min(1)).default([]),
-      /** None may appear. */
-      absent: z.array(z.string()).default([]),
-      behaviours: z.array(Behaviour).default([]),
-      /** Model calls, the answer included. */
-      maxSteps: z.number().int().positive().optional(),
-    })
-    .default({ mentions: [], mentionsAnyOf: [], absent: [], behaviours: [] }),
-});
-export type ChatQuestion = z.infer<typeof ChatQuestion>;
-
-export const ChatQuestionSet = z.array(ChatQuestion).min(1);
 
 export interface Check {
   name: string;
@@ -89,19 +54,35 @@ function groundsFirst(calls: TurnResult["toolCalls"]): Check {
   return { name: "grounds_first", ok: looked, detail: looked ? "a lookup came first" : `${calls[firstFilter].tool} filtered before any lookup` };
 }
 
-export function scoreTurn(question: ChatQuestion, turn: TurnResult, context: { steps: number; runId: string | null }): Scored {
+export interface TurnContext {
+  steps: number;
+  runId: string | null;
+  /** Alternatives the loop removed because their thing or number was not in a result. Zero on a turn that invented none. */
+  removedMoves: number;
+}
+
+export function scoreTurn(question: ChatQuestion, turn: TurnResult, context: TurnContext): Scored {
   const answer = turn.answer.toLowerCase();
   const has = (text: string) => answer.includes(text.toLowerCase());
   const { expect } = question;
   const refusals = turn.toolCalls.filter(isGuardRefusal).length;
   const recipes = [...new Set(turn.toolCalls.flatMap((call) => (call.recipe && call.ok ? [call.recipe.name] : [])))];
 
+  const things = turn.next.flatMap((move) => (move.thing === null ? [] : [move.thing.toLowerCase()]));
+  const names = (thing: string) => things.some((offered) => offered.includes(thing.toLowerCase()));
+
   const checks: Check[] = [
     ...expect.mentions.map((text) => ({ name: `mentions "${text}"`, ok: has(text), detail: "" })),
     ...expect.mentionsAnyOf.map((group) => ({ name: `mentions one of ${group.map((text) => `"${text}"`).join(", ")}`, ok: group.some(has), detail: "" })),
     ...expect.absent.map((text) => ({ name: `does not say "${text}"`, ok: !has(text), detail: "" })),
+    ...expect.alternatives.map((thing) => ({ name: `offers "${thing}"`, ok: names(thing), detail: things.join(", ") })),
+    ...expect.alternativesAbsent.map((thing) => ({ name: `does not offer "${thing}"`, ok: !names(thing), detail: things.join(", ") })),
     { name: "finished within the step budget", ok: !turn.exhausted, detail: "" },
   ];
+
+  if (expect.outcome !== undefined) {
+    checks.push({ name: `outcome is ${expect.outcome}`, ok: turn.outcome === expect.outcome, detail: turn.outcome });
+  }
 
   for (const behaviour of expect.behaviours) {
     if (behaviour === "grounds_first") checks.push(groundsFirst(turn.toolCalls));
@@ -111,6 +92,19 @@ export function scoreTurn(question: ChatQuestion, turn: TurnResult, context: { s
     if (behaviour === "names_the_run") {
       const short = context.runId?.slice(0, 8) ?? "";
       checks.push({ name: behaviour, ok: short !== "" && has(short), detail: short });
+    }
+    // Every alternative on the turn was already checked against what the tools
+    // returned, so this asks the opposite question: did the agent propose any
+    // that had to be removed. `removedMoves` is what the loop dropped.
+    if (behaviour === "every_alternative_real") {
+      checks.push({ name: behaviour, ok: context.removedMoves === 0, detail: `${context.removedMoves} removed` });
+    }
+    if (behaviour === "asked") checks.push({ name: behaviour, ok: turn.clarify !== null, detail: turn.clarify?.question ?? "asked nothing" });
+    if (behaviour === "did_not_ask") checks.push({ name: behaviour, ok: turn.clarify === null, detail: turn.clarify?.question ?? "" });
+    if (behaviour === "offers_a_next_move") checks.push({ name: behaviour, ok: turn.next.length > 0, detail: `${turn.next.length} offered` });
+    if (behaviour === "marks_its_inference") {
+      const marked = turn.next.some((move) => move.basis === "general_knowledge");
+      checks.push({ name: behaviour, ok: marked, detail: marked ? "marked" : "nothing marked as its own knowledge" });
     }
   }
   if (expect.maxSteps !== undefined) {

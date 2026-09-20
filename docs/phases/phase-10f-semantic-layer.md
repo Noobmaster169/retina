@@ -2,8 +2,14 @@
 
 **Parked on 2026-09-20 by the user's decision.** The chat harness (10d) and the interactive chat
 (10e) come first, and skills are expected to cover most of what this was for. Nothing below has
-been revised since; re-read it against 10d and 10e as built before starting, because both will
-have moved the chat tools and prompts it extends.
+been revised since.
+
+**Read `docs/phases/phase-10f-handover.md` section 6 before this file.** 10d and 10e are both
+built and merged now, and that section is the re-reading this header asks for: what of the table
+below they already answer, the two numbers here that are taken (this spec's migrations `016` and
+`017` are now `017` and `018`; its prompt `chat/v3` is now `v4`), what 10f changes under 10e's
+conversation memory, and the one measurement that decides whether the concept machinery is
+justified at all.
 
 Written 2026-09-20 for the engineer who builds it, against the code on
 `phase-10-analytics-and-chat`. Read `CLAUDE.md`, then `phase-10-handover.md`, then

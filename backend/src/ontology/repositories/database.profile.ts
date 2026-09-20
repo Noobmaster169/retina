@@ -24,7 +24,9 @@ export interface ColumnProfile {
   nulls: number;
   min: string | null;
   max: string | null;
-  top: { value: string | null; count: number }[];
+  /** The text the values were ranked against, or null when they are ranked by frequency. */
+  near: string | null;
+  top: { value: string | null; count: number; score: number | null }[];
 }
 
 export type ProfileOutcome = { ok: true; profile: ColumnProfile } | { ok: false; reason: string };
@@ -32,7 +34,22 @@ export type ProfileOutcome = { ok: true; profile: ColumnProfile } | { ok: false;
 /** Types with an order worth reporting. A text column's min and max are alphabetical noise. */
 const ORDERED = /^(smallint|integer|bigint|numeric|real|double precision|date|timestamp)/;
 
-export async function profileColumn(db: Queryable, relation: string, column: string): Promise<ProfileOutcome> {
+/**
+ * With `near`, the values closest to a text rather than the most frequent.
+ *
+ * This is the answer to a column value that was mistyped or half-remembered:
+ * a profile of a column with thousands of distinct values shows thirty of
+ * them, and the one the person meant is rarely in the top thirty.
+ *
+ * `public.similarity` in full, because `retina_ro`'s search path is
+ * `analytics, core, pg_catalog` and pg_trgm lives in public.
+ */
+export async function profileColumn(
+  db: Queryable,
+  relation: string,
+  column: string,
+  near: string | null = null,
+): Promise<ProfileOutcome> {
   const [schema, table, ...rest] = relation.split(".");
   if (!schema || !table || rest.length > 0) {
     return { ok: false, reason: `"${relation}" is not a schema-qualified relation such as core.emails` };
@@ -71,10 +88,19 @@ export async function profileColumn(db: Queryable, relation: string, column: str
               count(*) filter (where ${col} is null)::text as nulls, ${bounds}
          from ${from}`,
     ),
-    db.query<{ value: string | null; n: string }>(
-      `select left(${col}::text, ${VALUE_WIDTH}) as value, count(*)::text as n
-         from ${from} group by 1 order by count(*) desc, 1 asc limit ${TOP_VALUES}`,
-    ),
+    near === null
+      ? db.query<{ value: string | null; n: string; score: number | null }>(
+          `select left(${col}::text, ${VALUE_WIDTH}) as value, count(*)::text as n, null::real as score
+             from ${from} group by 1 order by count(*) desc, 1 asc limit ${TOP_VALUES}`,
+        )
+      : db.query<{ value: string | null; n: string; score: number | null }>(
+          `select left(${col}::text, ${VALUE_WIDTH}) as value, count(*)::text as n,
+                  max(public.similarity(${col}::text, $1::text)) as score
+             from ${from} where ${col} is not null
+            group by 1 having max(public.similarity(${col}::text, $1::text)) > 0.1
+            order by score desc, count(*) desc, 1 asc limit ${TOP_VALUES}`,
+          [near],
+        ),
   ]);
 
   const head = totals.rows[0];
@@ -89,7 +115,8 @@ export async function profileColumn(db: Queryable, relation: string, column: str
       nulls: Number(head.nulls),
       min: head.min,
       max: head.max,
-      top: top.rows.map((row) => ({ value: row.value, count: Number(row.n) })),
+      near,
+      top: top.rows.map((row) => ({ value: row.value, count: Number(row.n), score: row.score === null ? null : Number(row.score) })),
     },
   };
 }

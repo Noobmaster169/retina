@@ -80,9 +80,11 @@ async function main(): Promise<void> {
         today,
         stickySkills: [],
         pickedSkills: [],
+        // Each question is asked in its own turn, so there is nothing earlier to remember.
+        memory: "",
       },
     );
-    const item = scoreTurn(question, result, { steps: llm.taken(), runId });
+    const item = scoreTurn(question, result, { steps: llm.taken(), runId, removedMoves: result.removedMoves });
     scored.push(item);
     turns[question.id] = { question: question.question, reading: result.reading, answer: result.answer, calls: result.toolCalls.map((call) => ({ tool: call.tool, args: call.args, ok: call.ok, preview: call.preview })), checks: item.checks };
     console.log(line(item, (Date.now() - started) / 1000));

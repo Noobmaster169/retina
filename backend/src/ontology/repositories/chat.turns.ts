@@ -1,4 +1,14 @@
-import type { ChatGraph, ChatSkillUse, ChatToolCall, ChatTurn, ProposedAction } from "../../contracts";
+import type {
+  ChatGraph,
+  ChatNextMove,
+  ChatOutcome,
+  ChatSkillUse,
+  ChatToolCall,
+  ChatTurn,
+  ClarifyingQuestion,
+  GroundedThing,
+  ProposedAction,
+} from "../../contracts";
 import type { Queryable } from "../../db";
 
 /**
@@ -6,7 +16,7 @@ import type { Queryable } from "../../db";
  * conversations themselves and re-exports this, so callers still say `chat.turns`.
  */
 
-interface TurnRow {
+export interface TurnRow {
   id: string;
   role: "user" | "assistant" | "tool";
   content: string;
@@ -30,9 +40,30 @@ interface AssistantExtras {
   reading: string;
   skillsUsed: ChatSkillUse[];
   adhoc: boolean;
+  outcome: ChatOutcome;
+  checked: string[];
+  next: ChatNextMove[];
+  clarify: ClarifyingQuestion | null;
+  /** CHAT.md's version on the turn that ran, beside the skills'. */
+  standingVersion: number;
+  /** What this turn grounded, which the turns after it remember by name. Read by chat.memory.ts. */
+  grounded: GroundedThing[];
 }
 
-const NO_EXTRAS: AssistantExtras = { toolCalls: [], graph: null, proposal: null, reading: "", skillsUsed: [], adhoc: false };
+const NO_EXTRAS: AssistantExtras = {
+  toolCalls: [],
+  graph: null,
+  proposal: null,
+  reading: "",
+  skillsUsed: [],
+  adhoc: false,
+  outcome: "answered",
+  checked: [],
+  next: [],
+  clarify: null,
+  standingVersion: 0,
+  grounded: [],
+};
 
 function extrasOf(row: TurnRow): AssistantExtras {
   const held = row.tool_result as Partial<AssistantExtras> | null;
@@ -40,7 +71,7 @@ function extrasOf(row: TurnRow): AssistantExtras {
   return { ...NO_EXTRAS, ...Object.fromEntries(Object.entries(held ?? {}).filter(([, value]) => value !== undefined)) };
 }
 
-function toTurn(row: TurnRow): ChatTurn {
+export function toTurn(row: TurnRow): ChatTurn {
   const extras = row.role === "assistant" ? extrasOf(row) : NO_EXTRAS;
   return {
     id: Number(row.id),
@@ -53,6 +84,10 @@ function toTurn(row: TurnRow): ChatTurn {
     reading: extras.reading,
     skillsUsed: extras.skillsUsed,
     adhoc: extras.adhoc,
+    outcome: extras.outcome,
+    checked: extras.checked,
+    next: extras.next,
+    clarify: extras.clarify,
     createdAt: row.created_at.toISOString(),
   };
 }
@@ -111,6 +146,12 @@ export interface NewAssistantTurn {
   reading: string;
   skillsUsed: ChatSkillUse[];
   adhoc: boolean;
+  outcome: ChatOutcome;
+  checked: string[];
+  next: ChatNextMove[];
+  clarify: ClarifyingQuestion | null;
+  standingVersion: number;
+  grounded: GroundedThing[];
 }
 
 export async function addAssistantTurn(

@@ -736,7 +736,10 @@ lessons            (id bigserial pk, step text, text text, source_review_action_
                     check (status in ('candidate','approved','rejected','shipped','rolled_back')),
                     eval_before numeric, eval_after numeric, approved_by text, created_at)
 chat_conversations (id uuid pk, title text, created_by text, created_at)
-chat_turns         (id bigserial pk, conversation_id fk, role text, content text, tool_calls jsonb, created_at)
+chat_turns         (id bigserial pk, conversation_id fk, role text, content text, tool_name text,
+                    tool_args jsonb, tool_result jsonb, duration_ms int, sql_used text[],
+                    llm_call_ids bigint[], in_reply_to fk -> chat_turns(id), created_at,
+                    check ((role = 'tool') = (tool_name is not null)))
 ```
 
 Shipment-level entities (`shipments`, `parties`, `ports`, `carriers`) are populated from
@@ -868,7 +871,9 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 | `GET /queues` | superseded by `GET /runs/:id/queues` above, which is run scoped and carries the slots as well as the counts. A global view has no reader: every screen that asks is looking at one run |
 | `POST /chat/conversations` | `{ title?, runId?, emailId?, actor }`. `runId` and `emailId` are the conversation's scope, which the rail draws as its `Reading` chips: a default the agent may widen when a question asks something wider, never a filter it cannot see past |
 | `GET /chat/conversations?runId=`, `GET /chat/:id`, `DELETE /chat/:id` | list, the thread with its turns, delete. A turn carries its tool calls, its result graph and the SQL it ran, so reloading a conversation brings the evidence back with the sentence |
-| `POST /chat/:id/messages` | `{ content, actor }` runs one turn and answers `{ turn, exhausted }`. The question is stored before the model is asked, so a turn that fails halfway still leaves the person's words on the page. No streaming; the frontend route handler declares `maxDuration = 300` and the client times out just under it |
+| `POST /chat/:id/messages` | `{ content, actor, skills? }` runs one turn and answers `{ turn, exhausted }`. `skills` is up to three names the person picked in the composer, refused with 400 when the registry does not know one, and injected exactly as an event-injected skill is. The question is stored before the model is asked, so a turn that fails halfway still leaves the person's words on the page. No streaming; the frontend route handler declares `maxDuration = 300` and the client times out just under it. Aborting the request stops the turn between steps, and what it had is still stored |
+| `GET /chat/:id/turns?after=<id>` | every turn newer than one id, **including the `role: tool` rows** a turn writes as each call finishes. The only read that returns them. The page polls it once a second while its own POST is in flight, which is how the steps appear one by one |
+| `GET /chat/skills` | the skill cards for the composer's `/` menu: `{ name, version, when }`. The bodies are never sent; they are for the agent |
 | `GET /ontology/types` | the five types the rail offers, with live counts and `built`: Emails, Ports, Parties, Shipments, Carriers. The last two are never built, because nothing in the seven fields yields a booking or a vessel, and the rail draws them dashed. The other seven `ObjectType`s are real and are reached through an object rather than browsed; `client` in particular folds into `party`, since a sender domain and a consignee are the same company read two ways |
 | `GET /ontology/:type`, `GET /ontology/:type/:id`, `/:id/detail`, `/:id/graph?hops=1\|2` | the index of a resolved kind; one object in the one shape every type shares; the four parts a resolved thing opens into; and one email's graph as nodes and named edges. The graph carries no coordinates: the layout is one pure function in the frontend with a table-driven test |
 | `GET /database/tables`, `/tables/:schema/:name?limit=&offset=`, `/tables/:schema/:name/rows/:id` | every relation of `core` and `analytics` with an exact count; a page of one with typed columns and the SQL that produced it; one row as fields plus what points at it by foreign key. Identifiers are read out of `pg_catalog` and checked against a pattern before they reach a query; this path composes its own SQL and takes nothing a caller wrote, which is why it does not use the RO pool |
@@ -891,7 +896,7 @@ a caller retries a call that can never succeed. `agents/structured.ts:toOutputSc
 `TerminalError` naming the fix instead. Any future step with two shapes does the same: one object
 with the discriminant as a field, narrowed after it parses.
 
-The prompt is `agents/prompts/chat/v2.md`; the schema documentation it is given is
+The prompt is `agents/prompts/chat/v3.md`; the schema documentation it is given is
 `agents/chat/schema-docs.md`, hand written, one block per view with its grain, its columns, every
 closed set of values, and example questions with the SQL that answers them. Every loop
 iteration is one `llm_calls` row with `step = chat` and **`run_id = null`**, even when the
@@ -918,6 +923,12 @@ the question: the person picked a skill, the agent loaded one, a call was refuse
 guard or came up empty (`ground-names`), the conversation is about an email (`explain-an-email`) or
 a run (`pick-the-run`), a skill was loaded earlier in the conversation. At most three.
 
+Phase 10e adds two facts and two skills to that list. A lookup that came up empty also injects
+`near-misses`; a lookup that returned candidates of **more than one kind** injects `ask-back`.
+Several candidates of one kind are deliberately not an ambiguity: a short company name matching four
+companies of one group means all four, which is what `ground-names` already says. `find_entity` is
+the only tool that sets `ambiguous`, from the kinds it returned and nothing else.
+
 **The literal guard** (`grounding.ts`, pure). `run_sql` and the text arguments of `run_recipe` are
 refused when they filter on a string the agent was never shown: not in `CHAT.md`, the schema notes,
 the orientation, a skill, the agent's own earlier answers or a tool result on this turn. The
@@ -926,8 +937,61 @@ uuids, intervals and format strings pass, and so does a string that is exactly a
 email id or sender (`entitySearch.knownValues`). Over MCP there is no turn, so the guard stands down.
 
 The turn stores `reading` (one sentence on how the question was read), `skillsUsed`
-(`name, version, how`) and `adhoc` (it needed SQL of its own, which is the backlog for the next
-recipe) on the assistant turn's `tool_result`, beside the tool calls and the graph.
+(`name, version, how`), `adhoc` (it needed SQL of its own, which is the backlog for the next
+recipe), `standingVersion` (which `CHAT.md` produced the answer) and `grounded` on the assistant
+turn's `tool_result`, beside the tool calls and the graph.
+
+### 11.1a What an answer claims, and what it offers next (phase 10e)
+
+The final step carries four more fields, all defaulted, all on one flat object.
+
+| Field | What it is |
+|---|---|
+| `outcome` | `answered`, `none_found`, `partial` or `needs_input`. Not an error state: `none_found` is a correct answer about something that is not in the data |
+| `checked` | where it looked, in the reader's words. Required when the outcome is `none_found` |
+| `next` | up to four chips, each `{ kind, label, prompt, thing, count, basis }`. `prompt` is a whole question, so clicking a chip is the same as typing it and needs no route |
+| `clarify` | `{ question, options }`, two to five options. Required when the outcome is `needs_input` |
+
+**An alternative is real or it is not offered.** `agents/chat/next-moves.ts` (pure, table-tested)
+drops any move whose `thing` and `count` did not come back **on one row** of a tool result on that
+turn. It checks `FinishedCall.grounds`, which is what the data returned, and never `text`, which
+also echoes what was asked for: a check against text would let the agent recommend Jakarta on the
+strength of having asked about Jakarta. Row by row and not over the whole text, because a query
+listing every port and a query counting one email would otherwise ground any pairing at all. The
+prose around a chip is not checked, and cannot be.
+
+**A claim that carries an obligation is handed back once.** `none_found` with no `checked`, or
+`needs_input` with no `clarify`, is returned to the agent with the reason, exactly as a tool step
+naming no tool is. A second offence is settled in code: the outcome falls back to `answered`, the
+unsupported claim is dropped and the prose is stored as written.
+
+**General knowledge may relate, never report** (`CHAT.md` v2). The model may use what it knows to
+connect the person's term to values a tool just listed: which of these ports are near a place, which
+of these companies are one group. It may not state a fact about this mailbox from memory, and a move
+its own knowledge chose carries `basis: "general_knowledge"`, which the chip marks.
+
+### 11.1b Live steps, stop, and what a conversation remembers (phase 10e)
+
+**Steps are rows as they happen.** The loop takes an `onStep` callback and the route writes one
+`role = 'tool'` row per finished call, with `in_reply_to` set to the question it serves
+(`016_chat_live.sql`). `GET /chat/:id/turns?after=<id>` is the only read that returns those rows;
+`chat.turns()`, `chat.recentTurns()` and `turn_count` all still leave them out, so a thread read
+afterwards is unchanged and the model is never handed its own steps twice. The page polls it once a
+second while its own POST is in flight. A step's calls run together, so `onStep` fires once per step
+with up to four calls, and it is awaited: a write that lands late shows the steps out of order.
+
+**Stopping is the client aborting the POST.** Express reports that as `close` before a response was
+sent; the loop reads the flag **between** steps and returns what it had with `outcome: "partial"`. A
+model call already in flight is left to finish, because abandoning it would leave an `llm_calls` row
+no turn accounts for. The turn is stored either way, so the browser re-reads `?after=` for a few
+seconds to pick up whatever landed.
+
+**Conversation memory** (`agents/chat/memory.ts`, pure; `chat.memory.ts` reads it) gives the next
+turn the things earlier turns grounded as `(kind, canonical, spellings)`, the runs their recipes
+were bound to, and the last turn's open clarifying question. **By name and never by id**:
+`entities.replaceAll` deletes and reinserts, so every id changes on a refresh, and a canonical is
+one indexed lookup away. It is for the model only and is **not** part of `shown`: nothing from an
+earlier turn grounds a literal, or a filter could be grounded on the person's own question.
 
 ### 11.2 Tools
 
@@ -941,7 +1005,7 @@ prompt and into the bad-arguments message. A tool that throws comes back as a re
 | `list_entities` | `{ kind, contains?, limit? }` | the things of a kind, or those with a spelling containing a word, which is how a country's ports are found |
 | `get_entity` | `{ id }` | every spelling and how it joined, mentions by field, distinct emails and runs |
 | `search_emails` | `{ text, runId?, limit? }` | `websearch_to_tsquery('simple', ...)` over `core.emails.search`, subject `ilike` as fallback, with a snippet |
-| `profile_column` | `{ relation, column }` | counts and the thirty most frequent values. The column must exist in `information_schema` as the connection sees it, and both names pass `safeIdentifier` before they are quoted |
+| `profile_column` | `{ relation, column, near? }` | counts and the thirty most frequent values, or with `near` the thirty closest to a text, ranked by `public.similarity` (written in full: pg_trgm lives in `public`, off `retina_ro`'s search path). The column must exist in `pg_catalog` and be readable by the connection, and both names pass `safeIdentifier` before they are quoted |
 | `load_skill` | `{ name }` | a skill's body and its recipes' signatures; it then stays with the conversation |
 | `describe_schema` | `{ schema?, table? }` | `pg_catalog` through the RO pool, not `information_schema`, which holds no row for a materialised view and would report the whole `analytics` schema as empty |
 | `run_sql` | `{ sql, purpose }` | `agents/chat/sql-guard.ts`, pure and table-tested: comments stripped first, must start with `select` or `with`, one statement, no `;` inside, a banned-word list as words, `limit 200` appended when the query ends without one, 200 rows and 20 kB out. Every ambiguity resolves towards refusal, a banned word inside a string literal included |

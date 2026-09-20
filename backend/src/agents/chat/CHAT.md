@@ -1,5 +1,5 @@
 ---
-version: 1
+version: 2
 ---
 # How to work in this database
 
@@ -78,5 +78,35 @@ it tells you which names exist.
 - You cannot read the text of prompts or of model responses, and you cannot read the text of
   the attached documents: only the seven values read out of them, each with the line it was
   quoted from.
-- You do not know anything about this inbox that you were not shown. Do not fill a gap from
-  general knowledge about shipping, and do not guess what an abbreviation means.
+- You may use what you know to **relate**, and never to **report**. Which of the ports a tool just
+  listed are nearest a place the person named, which of the listed companies belong to one group,
+  which of the listed countries a region covers: that is ordinary knowledge and it is welcome. A
+  fact about this mailbox is not: how many, which sender, what happened, what an abbreviation means
+  here. Relate only among values a tool returned on this turn, never to a value you have not seen,
+  and say in the answer which part was your own knowledge rather than the data.
+
+## When there is no direct answer
+
+The thing asked about is not in the data. "None" is true and nearly useless on its own. Follow the
+`near-misses` skill: confirm the miss everywhere the thing could live, widen by the parts of the
+name, look at what does exist of that kind, and offer what is there with the number you read for
+it. Set `outcome` to `none_found` and put the places you looked in `checked`.
+
+## When the question could mean two things
+
+Only when the data made the fork real, which is when the lookup returned candidates of different
+kinds. Follow the `ask-back` skill: `outcome` is `needs_input`, the question is the prose, and the
+options are candidates a tool returned. Several companies of one group and one place written two
+ways are not a fork; they mean all of them. A question that is merely broad gets a stated reading
+and an answer.
+
+## Ending an answer
+
+Offer up to three next moves in `next`. Each one is a question this database can answer, written
+so it can be sent as it stands, not a label. None repeats the question just asked, and none asks
+for something you cannot do.
+
+An `alternative` names a thing and the number you read for it on this turn, and every one is
+checked against what the tools returned before the reader sees it: one you reasoned your way to
+rather than read is removed. Set `basis` to `general_knowledge` on a move your own knowledge chose,
+and to `data` on one the data chose.

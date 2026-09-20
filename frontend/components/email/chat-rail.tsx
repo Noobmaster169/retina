@@ -1,6 +1,7 @@
 "use client";
 
 import { Composer } from "@/components/chat/composer";
+import { LiveSteps } from "@/components/chat/live-steps";
 import { Turn } from "@/components/chat/turn";
 import { useChat } from "@/components/chat/use-chat";
 import { Icon } from "@/components/ui/icons";
@@ -85,14 +86,21 @@ export function ChatRail({ scope, opening, suggestions, runId, emailId }: ChatRa
           {opening}
         </p>
         {chat.turns.map((turn, index) => (
-          <Turn key={turn.id} turn={turn} exhausted={chat.exhausted && index === chat.turns.length - 1} />
+          <Turn
+            key={turn.id}
+            turn={turn}
+            exhausted={chat.exhausted && index === chat.turns.length - 1}
+            onAsk={chat.ask}
+            answered={index < chat.turns.length - 1 || chat.pending}
+          />
         ))}
-        {chat.pending ? <p className="text-small text-ink-faint">Reading this email and what it has been taught.</p> : null}
+        {chat.pending ? <LiveSteps steps={chat.steps} since={chat.since} /> : null}
         {chat.error ? <p className="rounded-md bg-fault-tint px-2.5 py-2 text-small text-fault">{chat.error}</p> : null}
       </div>
 
       <Composer
         onAsk={chat.ask}
+        onStop={chat.stop}
         pending={chat.pending}
         suggestions={chat.turns.length === 0 ? suggestions : []}
         placeholder="Tell Retina what is wrong"

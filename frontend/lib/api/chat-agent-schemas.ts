@@ -81,6 +81,36 @@ export const ProposedAction = z.object({
 });
 export type ProposedAction = z.infer<typeof ProposedAction>;
 
+/**
+ * How an answer ended. Not an error state: `none_found` is a correct answer to
+ * a question about something that is not in the data, and the page draws it in
+ * the same tone as any other.
+ */
+export const ChatOutcome = z.enum(["answered", "none_found", "partial", "needs_input"]);
+export type ChatOutcome = z.infer<typeof ChatOutcome>;
+
+/**
+ * One chip under the prose. `prompt` is a full question rather than a label, so
+ * clicking it is the same as typing it. An alternative's `thing` and `count`
+ * were checked against what the tools returned before the turn was stored;
+ * `basis` says whether the model's own knowledge chose it, which the chip marks.
+ */
+export const ChatNextMove = z.object({
+  kind: z.enum(["alternative", "follow_up"]),
+  label: z.string(),
+  prompt: z.string(),
+  thing: z.string().nullable().default(null),
+  count: z.number().int().nullable().default(null),
+  basis: z.enum(["data", "general_knowledge"]),
+});
+export type ChatNextMove = z.infer<typeof ChatNextMove>;
+
+export const ClarifyingQuestion = z.object({
+  question: z.string(),
+  options: z.array(z.string()).min(2).max(5),
+});
+export type ClarifyingQuestion = z.infer<typeof ClarifyingQuestion>;
+
 export const ChatSkillUse = z.object({
   name: z.string(),
   version: z.number().int(),
@@ -102,6 +132,11 @@ export const ChatTurn = z.object({
   skillsUsed: z.array(ChatSkillUse).default([]),
   /** The turn needed SQL the agent wrote itself: a question no recipe covers yet. */
   adhoc: z.boolean().default(false),
+  outcome: ChatOutcome.default("answered"),
+  /** Where it looked, in the reader's words. Set when the outcome is `none_found` or `partial`. */
+  checked: z.array(z.string()).default([]),
+  next: z.array(ChatNextMove).default([]),
+  clarify: ClarifyingQuestion.nullable().default(null),
   createdAt: z.string(),
 });
 export type ChatTurn = z.infer<typeof ChatTurn>;
@@ -129,6 +164,27 @@ export type ChatConversationList = z.infer<typeof ChatConversationList>;
 
 export const ChatThread = z.object({ conversation: ChatConversation, turns: z.array(ChatTurn) });
 export type ChatThread = z.infer<typeof ChatThread>;
+
+/**
+ * The turns newer than one id, which is what the page polls while a turn runs.
+ *
+ * The only response that carries `role: "tool"` turns. Each is one finished
+ * call, drawn as a line of the live steps and dropped when the assistant turn
+ * lands, which carries the same calls in full.
+ */
+export const ChatTurnsAfter = z.object({ turns: z.array(ChatTurn) });
+export type ChatTurnsAfter = z.infer<typeof ChatTurnsAfter>;
+
+/** One skill as the composer's menu lists it. The body is never sent: it is for the agent, not the reader. */
+export const ChatSkillCard = z.object({
+  name: z.string(),
+  version: z.number().int(),
+  when: z.string(),
+});
+export type ChatSkillCard = z.infer<typeof ChatSkillCard>;
+
+export const ChatSkillCards = z.object({ skills: z.array(ChatSkillCard) });
+export type ChatSkillCards = z.infer<typeof ChatSkillCards>;
 
 export const ChatAnswer = z.object({
   turn: ChatTurn,

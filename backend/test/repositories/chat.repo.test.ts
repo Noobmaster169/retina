@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { chat } from "../../src/ontology/repositories";
+import { chat, chatLive } from "../../src/ontology/repositories";
 import { inRollback } from "../db";
 
 /**
@@ -63,10 +63,62 @@ describe("a conversation's turns", () => {
         reading: "",
         skillsUsed: [],
         adhoc: false,
+        outcome: "answered",
+        checked: [],
+        next: [],
+        clarify: null,
+        standingVersion: 1,
+        grounded: [],
       });
       const recent = await chat.recentTurns(tx, conversation.id, 20);
       expect(recent.map((turn) => turn.role)).toEqual(["user", "assistant"]);
       expect(recent[1].sqlUsed).toEqual(["select 1"]);
+    });
+  });
+});
+
+describe("a turn's steps while it runs", () => {
+  const assistant = (answer: string) => ({
+    answer, sqlUsed: [], toolCalls: [], graph: null, proposal: null, reading: "", skillsUsed: [],
+    adhoc: false, outcome: "answered" as const, checked: [], next: [], clarify: null,
+    standingVersion: 2, grounded: [],
+  });
+
+  it("returns only rows newer than the id asked for, tool rows included", async () => {
+    await inRollback(async (tx) => {
+      const conversation = await chat.create(tx, { actor: "a test" });
+      const asked = await chat.addUserTurn(tx, conversation.id, "a question");
+      await chatLive.addToolTurn(tx, conversation.id, asked.id, {
+        tool: "find_entity", args: { text: "Alpha" }, thought: "Grounding the name.",
+        ok: true, preview: "2 candidates", durationMs: 12,
+      });
+      const answered = await chat.addAssistantTurn(tx, conversation.id, assistant("an answer"));
+
+      const after = await chatLive.turnsAfter(tx, conversation.id, asked.id);
+      expect(after.map((turn) => turn.role)).toEqual(["tool", "assistant"]);
+      expect(after[0].toolCalls[0]).toMatchObject({ tool: "find_entity", preview: "", thought: "Grounding the name." });
+      expect(after[0].toolCalls[0].args).toEqual({ text: "Alpha" });
+      expect(after[0].toolCalls[0].durationMs).toBe(12);
+
+      // Nothing is newer than the answer, which is how the page knows to stop polling.
+      expect(await chatLive.turnsAfter(tx, conversation.id, answered.id)).toEqual([]);
+    });
+  });
+
+  it("keeps its steps out of the thread and out of the turn count", async () => {
+    await inRollback(async (tx) => {
+      const conversation = await chat.create(tx, { actor: "a test" });
+      const asked = await chat.addUserTurn(tx, conversation.id, "a question");
+      for (const tool of ["find_entity", "run_recipe"] as const) {
+        await chatLive.addToolTurn(tx, conversation.id, asked.id, {
+          tool, args: {}, thought: "", ok: true, preview: "", durationMs: 1,
+        });
+      }
+      await chat.addAssistantTurn(tx, conversation.id, assistant("an answer"));
+
+      expect((await chat.turns(tx, conversation.id)).map((turn) => turn.role)).toEqual(["user", "assistant"]);
+      expect((await chat.recentTurns(tx, conversation.id, 20)).map((turn) => turn.role)).toEqual(["user", "assistant"]);
+      expect((await chat.find(tx, conversation.id))?.turnCount).toBe(2);
     });
   });
 });

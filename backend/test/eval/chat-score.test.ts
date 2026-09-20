@@ -15,7 +15,8 @@ function call(tool: Call["tool"], args: Record<string, unknown> = {}, extra: Par
 function turn(answer: string, toolCalls: Call[], extra: Partial<TurnResult> = {}): TurnResult {
   return {
     answer, reading: "", sqlUsed: [], toolCalls, graph: { nodes: [], edges: [] }, skillsUsed: [],
-    adhoc: toolCalls.some((item) => item.tool === "run_sql" && item.ok), exhausted: false, ...extra,
+    adhoc: toolCalls.some((item) => item.tool === "run_sql" && item.ok), exhausted: false,
+    outcome: "answered", checked: [], next: [], clarify: null, grounded: [], removedMoves: 0, ...extra,
   };
 }
 
@@ -82,22 +83,22 @@ describe("scoreTurn", () => {
     { name: "running out of steps fails whatever else held", expect: {}, turn: turn("I could not finish", [], { exhausted: true }), passed: false },
   ];
   it.each(cases)("$name", ({ expect: expectations, turn: result, passed }) => {
-    expect(scoreTurn(question(expectations), result, { steps: 2, runId: RUN }).passed).toBe(passed);
+    expect(scoreTurn(question(expectations), result, { steps: 2, runId: RUN, removedMoves: 0 }).passed).toBe(passed);
   });
 
   it("holds a turn to its step limit", () => {
     const limited = question({ maxSteps: 2 });
-    expect(scoreTurn(limited, turn("x", []), { steps: 2, runId: RUN }).passed).toBe(true);
-    expect(scoreTurn(limited, turn("x", []), { steps: 3, runId: RUN }).passed).toBe(false);
+    expect(scoreTurn(limited, turn("x", []), { steps: 2, runId: RUN, removedMoves: 0 }).passed).toBe(true);
+    expect(scoreTurn(limited, turn("x", []), { steps: 3, runId: RUN, removedMoves: 0 }).passed).toBe(false);
   });
 });
 
 describe("summarise", () => {
   it("reports the share answered from recipes alone, the median steps, and which turns were adhoc", () => {
     const scored = [
-      scoreTurn(ChatQuestion.parse({ id: "a", question: "?" }), turn("x", [recipeCall("lanes", {})]), { steps: 2, runId: RUN }),
-      scoreTurn(ChatQuestion.parse({ id: "b", question: "?" }), turn("x", [call("run_sql", { sql: "select 1" })]), { steps: 4, runId: RUN }),
-      scoreTurn(ChatQuestion.parse({ id: "c", question: "?" }), turn("x", []), { steps: 1, runId: RUN }),
+      scoreTurn(ChatQuestion.parse({ id: "a", question: "?" }), turn("x", [recipeCall("lanes", {})]), { steps: 2, runId: RUN, removedMoves: 0 }),
+      scoreTurn(ChatQuestion.parse({ id: "b", question: "?" }), turn("x", [call("run_sql", { sql: "select 1" })]), { steps: 4, runId: RUN, removedMoves: 0 }),
+      scoreTurn(ChatQuestion.parse({ id: "c", question: "?" }), turn("x", []), { steps: 1, runId: RUN, removedMoves: 0 }),
     ];
     expect(summarise(scored)).toMatchObject({ questions: 3, passed: 3, medianSteps: 2, adhoc: ["b"], noQuery: 1 });
     // One of the two turns that queried used recipes alone; the turn that ran nothing is left out of the share.
@@ -108,9 +109,15 @@ describe("summarise", () => {
 describe("the question set that ships", () => {
   const set = ChatQuestionSet.parse(JSON.parse(readFileSync(join(__dirname, "../../eval/chat-questions.json"), "utf8")));
 
-  it("has thirty questions with distinct ids, five of them plain", () => {
-    expect(set).toHaveLength(30);
-    expect(new Set(set.map((item) => item.id)).size).toBe(30);
+  it("has forty-five questions with distinct ids, five plain and fifteen interactive", () => {
+    expect(set).toHaveLength(45);
+    expect(new Set(set.map((item) => item.id)).size).toBe(45);
     expect(set.filter((item) => item.tags.includes("plain"))).toHaveLength(5);
+    expect(set.filter((item) => item.tags.includes("interactive"))).toHaveLength(15);
+  });
+
+  it("keeps the interactive questions off specific email ids, so a fresh seed asks the same thing", () => {
+    const interactive = set.filter((item) => item.tags.includes("interactive"));
+    for (const item of interactive) expect(item.question).not.toMatch(/email_\d+/);
   });
 });
