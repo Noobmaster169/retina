@@ -37,20 +37,20 @@ export function troubleOf(health: HealthReport | null, queues: RunQueuesView | n
   // A queue is rate limited exactly when an upstream refused, so naming the
   // queue is the useful half even when every health check still reads up: the
   // check ran a moment ago and the refusal happened since.
-  const holding = heldQueues.length === 2 ? "both queues are" : `${heldQueues[0]} is`;
+  const holding = heldQueues.length === 2 ? "both queues have" : `${heldQueues[0]} has`;
   if (down) {
     const [key] = down;
     return {
       what: NAMES[key] ?? key,
       detail:
         heldQueues.length > 0
-          ? `UpstreamError: ${NAMES[key] ?? key} refused, ${holding} rate limited, retryable: true`
-          : `${NAMES[key] ?? key} is not answering its health check`,
+          ? `${holding} paused for thirty seconds. Held jobs keep their attempts, so nothing has failed.`
+          : `It is not answering its health check. Nothing has paused yet.`,
     };
   }
   return {
-    what: "an upstream",
-    detail: `RateLimitError: ${holding} held after an upstream refused, retryable: true`,
+    what: "A dependency",
+    detail: `${holding} paused for thirty seconds. Held jobs keep their attempts, so nothing has failed.`,
   };
 }
 

@@ -58,22 +58,19 @@ export function EmailPage({ runId, initialTrace, message, subject, initialList }
       active="inbox"
       runId={runId}
       counts={{ inbox: initialList.total, review: trace.review ? 1 : 0 }}
-      wantsWidth={documentsOpen}
     >
-      {!documentsOpen ? (
-        <EmailList
-          runId={runId}
-          emails={initialList.emails}
-          selectedId={trace.emailId}
-          active={listTab}
-          onTab={setListTab}
-          tabs={[
-            { value: "differences", label: "Differences", count: differing },
-            { value: "review", label: "Needs you", count: trace.review ? 1 : 0 },
-            { value: "all", label: "All", count: initialList.total },
-          ]}
-        />
-      ) : null}
+      <EmailList
+        runId={runId}
+        emails={initialList.emails}
+        selectedId={trace.emailId}
+        active={listTab}
+        onTab={setListTab}
+        tabs={[
+          { value: "differences", label: "Differences", count: differing },
+          { value: "review", label: "Needs you", count: trace.review ? 1 : 0 },
+          { value: "all", label: "All", count: initialList.total },
+        ]}
+      />
 
       <Tabs value={tab} onValueChange={setTab} className="flex min-w-0 grow flex-col border-r border-hairline">
         <header className="flex h-16 shrink-0 items-center gap-2.5 border-b border-hairline px-6">

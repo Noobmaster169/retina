@@ -1,14 +1,12 @@
 "use client";
 
-import { AnimatePresence, motion } from "motion/react";
-
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icons";
+import { Tooltip } from "@/components/ui/tooltip";
 import { RunStatus, RunSummary } from "@/lib/api/runs-schemas";
 import { CONTROLS, type RunActions } from "@/app/runs/[id]/use-run-actions";
 import { runName } from "@/components/shell/run-name";
 import { formatDuration } from "@/lib/duration";
-import { panel } from "@/lib/motion";
 
 /**
  * The one display line on this page, and the controls beside it. Below it, the
@@ -74,6 +72,7 @@ export function RunHeader({ run, trouble, summary, actions }: RunHeaderProps) {
           </p>
         </div>
         <span className="grow" />
+        {trouble ? <TroubleChip trouble={trouble} /> : null}
         {controls.map((action) => (
           <Button
             key={action}
@@ -111,28 +110,34 @@ export function RunHeader({ run, trouble, summary, actions }: RunHeaderProps) {
         </div>
       ) : null}
 
-      <AnimatePresence initial={false}>
-        {trouble ? (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={panel}
-            className="shrink-0 overflow-hidden px-6"
-          >
-            <div
-              role="status"
-              className="mb-4 flex max-w-[470px] items-center gap-2.5 rounded-lg border border-differ-line bg-differ-tint px-3 py-2.5"
-            >
-              <Icon name="warning" size={15} className="shrink-0 text-differ" />
-              <div className="min-w-0">
-                <div className="text-small font-medium text-differ-ink">{trouble.what} is refusing work</div>
-                <div className="truncate font-mono text-mono-xs text-differ">{trouble.detail}</div>
-              </div>
-            </div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
     </>
+  );
+}
+
+/**
+ * A dependency refusing work, stated beside the controls rather than in a
+ * banner under them. The banner was 68px of layout that appeared and
+ * disappeared on a thirty second cycle, and every time it did, the whole page
+ * moved. What it said fits in a chip and a tooltip.
+ */
+function TroubleChip({ trouble }: { trouble: Trouble }) {
+  return (
+    <Tooltip
+      label={
+        <>
+          <span className="block font-medium text-ink">{trouble.what} is refusing work.</span>
+          <span className="mt-1 block">{trouble.detail}</span>
+        </>
+      }
+    >
+      <span
+        role="status"
+        tabIndex={0}
+        className="inline-flex h-[34px] shrink-0 cursor-default items-center gap-2 rounded-md bg-differ-tint px-3 text-strong font-medium text-differ"
+      >
+        <Icon name="warning" size={14} className="shrink-0" />
+        <span className="max-w-[180px] truncate">{trouble.what}</span>
+      </span>
+    </Tooltip>
   );
 }

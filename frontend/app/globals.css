@@ -162,6 +162,29 @@ body {
   );
 }
 
+/*
+ * The indeterminate loader on a card that is working. Section 9 of
+ * docs/05-design.md bans a loop, with one exception it now names: a stage
+ * whose progress has no denominator. "8 of 8 slots busy" is not a fraction of
+ * anything finished, so a determinate bar there would be drawing a number that
+ * does not exist. A sweep says "working" and claims nothing.
+ *
+ * A stage that does have a denominator keeps its determinate bar.
+ */
+@keyframes sweep {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(320%);
+  }
+}
+
+.sweep {
+  width: 32%;
+  animation: sweep 1500ms cubic-bezier(0.45, 0, 0.35, 1) infinite;
+}
+
 /* 9: the value changed wash. Instant value, 600ms fade, never a count-up. */
 @keyframes wash {
   from {
@@ -183,5 +206,16 @@ body {
     transition-duration: 1ms !important;
     animation-duration: 1ms !important;
     animation-iteration-count: 1 !important;
+  }
+
+  /*
+   * The blanket rule above would run the sweep once in a millisecond and leave
+   * it parked off the end of its track, so the bar would read as empty. A
+   * filled track says the same thing without moving.
+   */
+  .sweep {
+    width: 100%;
+    animation: none !important;
+    transform: none;
   }
 }

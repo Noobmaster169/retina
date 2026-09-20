@@ -8,7 +8,7 @@ import { QueueView } from "@/lib/api/queues-schemas";
 import { panel, rowEnter } from "@/lib/motion";
 
 import { Elapsed, ElapsedText } from "./elapsed";
-import { HeldNotice } from "./held-notice";
+import { HeldChip } from "./held-notice";
 
 /**
  * One queue, one row per email holding a slot. A list is a list: the two
@@ -30,12 +30,10 @@ interface QueuePanelProps {
   drained: string;
   /** A count the panel's foot states above its sentence, the way the board gives sorting its backlog. */
   standing?: { label: string; count: number };
-  /** How long a call of this kind usually takes, so the elapsed rule has a scale. */
-  typicalMs: number;
   className?: string;
 }
 
-export function QueuePanel({ title, queue, runId, note, drained, standing, typicalMs, className = "" }: QueuePanelProps) {
+export function QueuePanel({ title, queue, runId, note, drained, standing, className = "" }: QueuePanelProps) {
   const held = queue.heldUntil !== null;
   const empty = !held && queue.slots.length === 0 && queue.waiting === 0;
   return (
@@ -43,16 +41,28 @@ export function QueuePanel({ title, queue, runId, note, drained, standing, typic
       <PanelHead
         title={title}
         aside={
-          <span className={`font-mono text-mono-sm ${held ? "text-differ" : "text-ink-tertiary"}`}>
-            {queue.active} / {queue.concurrency}
+          <span className="flex items-center gap-2">
+            {held ? <HeldChip until={queue.heldUntil ?? ""} queue={queue.name} still={queue.slots.length} /> : null}
+            <span className={`font-mono text-mono-sm ${held ? "text-differ" : "text-ink-tertiary"}`}>
+              {queue.active} / {queue.concurrency}
+            </span>
           </span>
         }
       />
 
       <div className="flex min-h-0 grow flex-col overflow-y-auto">
-      {held ? <HeldNotice until={queue.heldUntil ?? ""} queue={queue.name} still={queue.slots.length} /> : null}
-
-      {held && queue.slots.length === 0 ? null : empty ? (
+      {held && queue.slots.length === 0 ? (
+        // The pause itself is stated in the header; the body only has to say
+        // that there is nothing to look at while it lasts.
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={panel}
+          className="mx-4 mt-0.5 max-w-[46ch] border-t border-hairline-faint pt-3 text-small leading-[18px] text-ink-tertiary"
+        >
+          Nothing is running. The queue starts nothing new until it retries, and what was waiting is still waiting.
+        </motion.p>
+      ) : empty ? (
         // An empty panel is replaced, not padded. Four dashed slots standing in
         // for four busy ones was rejected in review: say what happened instead.
         <motion.p
@@ -82,7 +92,7 @@ export function QueuePanel({ title, queue, runId, note, drained, standing, typic
                 <span className="w-[74px] shrink-0 font-mono text-mono-sm">{slot.emailId}</span>
                 <span className="min-w-0 truncate text-small text-ink-secondary">{slot.step}</span>
                 <span className="grow" />
-                <Elapsed since={slot.startedAt} typicalMs={typicalMs} />
+                <Elapsed since={slot.startedAt} />
               </Link>
             </motion.div>
           ))}

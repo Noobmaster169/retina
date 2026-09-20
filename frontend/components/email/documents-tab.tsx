@@ -35,8 +35,8 @@ export function DocumentsTab({ trace, rows }: DocumentsTabProps) {
   return (
     <div className="flex min-h-0 grow flex-col">
       <div className="flex min-h-0 grow overflow-hidden">
-        <nav className="flex w-[196px] shrink-0 flex-col border-r border-hairline" aria-label="The seven fields">
-          <div className="flex h-10 shrink-0 items-center px-4">
+        <nav className="flex w-[152px] shrink-0 flex-col border-r border-hairline" aria-label="The seven fields">
+          <div className="flex h-10 shrink-0 items-center px-3">
             <span className="text-small font-medium text-ink-tertiary">The seven fields</span>
           </div>
           {rows.map((row) => {
@@ -48,7 +48,7 @@ export function DocumentsTab({ trace, rows }: DocumentsTabProps) {
                 type="button"
                 onClick={() => setSelected(row.judgement.field)}
                 aria-current={active}
-                className={`relative h-[46px] shrink-0 border-t border-hairline-faint px-4 text-left transition-colors duration-150 hover:bg-sunken ${
+                className={`relative h-[46px] shrink-0 border-t border-hairline-faint px-3 text-left transition-colors duration-150 hover:bg-sunken ${
                   active ? "bg-sunken shadow-[inset_2px_0_0_0_var(--ink)]" : ""
                 }`}
               >
@@ -66,7 +66,7 @@ export function DocumentsTab({ trace, rows }: DocumentsTabProps) {
             );
           })}
           <span className="grow" />
-          <p className="border-t border-hairline px-4 py-3 text-caption leading-[17px] text-ink-tertiary">
+          <p className="border-t border-hairline px-3 py-3 text-caption leading-[17px] text-ink-tertiary">
             The model judged each field on its own. Code only collected the ones it called different.
           </p>
         </nav>
@@ -91,7 +91,7 @@ export function DocumentsTab({ trace, rows }: DocumentsTabProps) {
       </div>
 
       <footer className="flex shrink-0 gap-5 border-t border-hairline px-[22px] py-3">
-        <div className="w-[196px] shrink-0 pr-5">
+        <div className="w-[152px] shrink-0 pr-4">
           <div className="text-small font-medium text-ink-tertiary">What the judge said</div>
           <div className="mt-1.5 flex items-center gap-2">
             <span
@@ -143,7 +143,7 @@ function Column({
 }) {
   return (
     <div className={`flex min-w-0 grow basis-0 flex-col ${bordered ? "border-r border-hairline" : ""}`}>
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-hairline bg-surface px-4">
+      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-hairline bg-surface px-3">
         <span className="inline-flex h-[19px] shrink-0 items-center rounded-xs border border-hairline bg-canvas px-1.5 font-mono text-[10px] text-ink-secondary">
           {label}
         </span>
@@ -162,11 +162,8 @@ function Column({
               key={row.judgement.field}
               layout
               transition={panel}
-              className={`flex min-h-[22px] items-start gap-3 px-4 py-1 ${active ? "bg-[#FFFBF0]" : ""}`}
+              className={`flex min-h-[22px] items-start px-3 py-1 ${active ? "bg-[#FFFBF0]" : ""}`}
             >
-              <span className="w-4 shrink-0 pt-px text-right font-mono text-[10px] text-ink-faint">
-                {rows.indexOf(row) + 1}
-              </span>
               <span className="min-w-0 font-mono text-mono-sm leading-[18px] text-ink-tertiary">
                 {value === null ? (
                   <span className="text-ink-faint">nothing to compare</span>

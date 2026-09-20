@@ -85,8 +85,9 @@ Section 4.4 gives them separate hues and separate shapes and never lets them sha
 6. **Density is the courtesy, in a list.** A documentation clerk checking forty drafts wants forty
    rows on screen, not eight. Default row height is 36px, and a list is one column with one row per
    thing. Density is not an excuse to put everything on the page at once: see principle 8.
-7. **Motion only where something is genuinely live.** Nothing in the product loops. Everything
-   else changes in 120ms and stops.
+7. **Motion only where something is genuinely live.** Nothing in the product loops decoratively;
+   the one loop is the indeterminate sweep on a stage with no denominator, and section 9 says why.
+   Everything else changes in 120ms and stops.
 8. **Abstraction over exposure.** The system knows more than the screen should say. A JSON blob, a
    model name, a token count, a dollar cost and a prompt version are true and are almost never what
    the person in front of the screen needs. Show the reading in plain English, the evidence beside
@@ -281,7 +282,8 @@ along a row or under a card. A count is a number and a proportion is a bar, and 
 axis.
 
 - **Progress under a card** on the run page: 4px, `--signal` when that stage is live, `--ink-faint`
-  when it is done, `--verdict-differ` when it is backing up.
+  when it is done, `--verdict-differ` when it is backing up. A stage counting slots rather than
+  finished work sweeps instead of filling: section 9.
 - **A share along a row** in the outcomes list: 5px on a `--surface-sunken` track, in the hue of
   the outcome it belongs to.
 - **Elapsed in a slot**: a 2px rule along the bottom edge of the row, `#BBD2F5`, showing how long
@@ -457,10 +459,22 @@ The system is still. An instrument that jitters is an instrument you do not trus
 | Overlay and scrim | 200ms | same |
 | Row entering the live feed | 160ms, fade plus 4px rise | `ease-out` |
 
-**Nothing loops.** The pulsing live dot this file used to specify is gone with every other dot.
-Live is drawn structurally instead: a card that is working takes a `--signal` 1px border and a
-`--signal` progress bar, and a row that is working takes the 2px elapsed rule along its bottom
-edge. Both are legible in a screenshot, which a pulse is not.
+**Nothing loops, with one exception.** The pulsing live dot this file used to specify is gone
+with every other dot. Live is drawn structurally: a card that is working takes a `--signal` 1px
+border, and a row that is working takes the 2px elapsed rule along its bottom edge, which grows
+against a real clock rather than stepping on the poll.
+
+The exception, settled in phase 7 with the user: **a stage whose progress has no denominator gets
+an indeterminate sweep.** "8 of 8 slots busy" is not a fraction of anything finished, and a
+determinate bar there draws a number that does not exist. A 32 percent segment sweeping the track
+over 1500ms says "working" and claims nothing, which is the honest drawing. A stage that does have
+a denominator (`136 of 220 checked`) keeps its determinate bar, and that bar glides over 1100ms so
+it is still moving between two second polls rather than settling in 300ms and waiting.
+
+The rule this leaves is narrower than "nothing loops" and is the one that was meant: **nothing
+loops decoratively.** A loop that encodes "there is no number here" is carrying information; a
+pulse beside a word that already says `Running` is not. Under `prefers-reduced-motion: reduce` the
+sweep becomes a filled track, which says the same thing without moving.
 
 **The value changed wash.** When a number updates during a live run it does not count up and does
 not animate. It changes instantly, and its row takes a `--signal` tint background that fades out
@@ -513,6 +527,7 @@ settled this design; they are not hypothetical.
 - Purple gradients, sparkle glyphs, or any other visual marker of "this part is AI". The whole
   product is AI. Marking it is noise, and it undercuts the claim that this is infrastructure.
 - Animating a number upward on a live counter.
+- A determinate bar on a stage with no denominator. It draws a proportion of nothing; section 9.
 - A second gate, a second nav pattern, or a second table style.
 
 ## 12. Migrating the current tokens

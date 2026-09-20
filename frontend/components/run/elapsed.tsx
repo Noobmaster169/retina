@@ -22,27 +22,23 @@ const TICK_MS = 100;
 interface ElapsedProps {
   /** When the worker took the job, as an instant. Null when BullMQ recorded none. */
   since: string | null;
-  /** How long a call of this kind usually takes, so the rule along the row has a scale. */
-  typicalMs: number;
 }
 
-export function Elapsed({ since, typicalMs }: ElapsedProps) {
-  const at = since === null ? null : Date.parse(since);
-  const ms = useElapsed(at);
+export function Elapsed({ since }: ElapsedProps) {
+  const ms = useElapsed(since === null ? null : Date.parse(since));
   if (ms === null) return null;
   return (
     <>
       <span className="font-mono text-micro tabular-nums text-ink-tertiary">{words(ms)}</span>
       {/*
-        The rule grows with the clock rather than in steps, which is the whole
-        "this is live" signal on a row. Section 9 bans a loop, and this is not
-        one: it is a measurement, and it stops when the job does.
+        The row sweeps for the same reason a card does: a model call has no
+        denominator, and the rule used to grow against a "typical" duration,
+        which was a denominator invented for the drawing. The time beside it is
+        the real measurement; this only says the row is working.
       */}
-      <span
-        className="absolute bottom-0 left-0 h-0.5 bg-signal-line transition-none"
-        style={{ width: `${Math.min(100, (ms / typicalMs) * 100)}%` }}
-        aria-hidden="true"
-      />
+      <span className="absolute inset-x-0 bottom-0 h-0.5 overflow-hidden" aria-hidden="true">
+        <span className="sweep block h-0.5 rounded-full bg-signal-line" />
+      </span>
     </>
   );
 }

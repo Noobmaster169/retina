@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import useSWR from "swr";
 
 import { HealthReport } from "@/lib/api/queues-schemas";
@@ -32,15 +32,9 @@ interface AppShellProps {
   children: ReactNode;
   /** The run this page is about. Null on the run list, which takes the newest. */
   runId?: string | null;
-  /**
-   * A pane asking for the rail's width. Flipping it closes the rail and
-   * flipping it back reopens it, unless the person has since decided
-   * otherwise: their click on the rail's own control always wins.
-   */
-  wantsWidth?: boolean;
 }
 
-export function AppShell({ active, counts, children, runId = null, wantsWidth = false }: AppShellProps) {
+export function AppShell({ active, counts, children, runId = null }: AppShellProps) {
   const { data: list } = useSWR("/api/runs", parsedFetcher(RunList), {
     refreshInterval: RUNS_MS,
     keepPreviousData: true,
@@ -52,13 +46,16 @@ export function AppShell({ active, counts, children, runId = null, wantsWidth = 
 
   const runs = list?.runs ?? [];
   const current = pick(runs, runId);
-  const rail = useRailWidth(wantsWidth);
+  // The rail is open or closed because a person said so, and for no other
+  // reason. It used to close itself for a pane that wanted the width, which
+  // made switching a tab move the navigation.
+  const [railOpen, setRailOpen] = useState(true);
 
   return (
     <div className="flex h-dvh overflow-hidden bg-canvas text-ink">
       <Rail
-        open={rail.open}
-        onToggle={rail.toggle}
+        open={railOpen}
+        onToggle={() => setRailOpen((was) => !was)}
         active={active}
         counts={counts}
         current={current}
@@ -74,27 +71,4 @@ export function AppShell({ active, counts, children, runId = null, wantsWidth = 
 function pick(runs: RunSummary[], runId: string | null): RunSummary | null {
   if (runId) return runs.find((run) => run.id === runId) ?? null;
   return runs[0] ?? null;
-}
-
-function useRailWidth(wantsWidth: boolean) {
-  const [open, setOpen] = useState(!wantsWidth);
-  const [override, setOverride] = useState(false);
-  const previous = useRef(wantsWidth);
-
-  useEffect(() => {
-    if (previous.current === wantsWidth) return;
-    previous.current = wantsWidth;
-    // A new request supersedes an earlier manual choice: the person asked for
-    // this pane, not for the rail they set two screens ago.
-    setOverride(false);
-    setOpen(!wantsWidth);
-  }, [wantsWidth]);
-
-  return {
-    open: override ? open : !wantsWidth,
-    toggle: () => {
-      setOverride(true);
-      setOpen((was) => !was);
-    },
-  };
 }

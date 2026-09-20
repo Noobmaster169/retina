@@ -184,6 +184,45 @@ of the card it belongs to and a wide group of chips cannot push the last card of
 A held queue keeps its working rows: a rate limit stops new jobs starting and the ones already in
 flight carry on, and hiding them said the queue had stopped dead.
 
+**The indeterminate loader, and what section 9 now says.** A stage whose progress has no
+denominator gets a looping sweep instead of a determinate bar: "8 of 8 slots busy" is not a
+fraction of anything finished, and a bar that filled to 100 percent there was drawing a number
+that does not exist. The same applies to a queue slot row, whose rule used to grow against a
+"typical" call duration, which was a denominator invented for the drawing; the elapsed time beside
+it is the real measurement. A stage that does have a denominator keeps its bar.
+
+`05-design.md` section 9 said "nothing loops" and now says "nothing loops decoratively", which is
+the rule that was meant: a loop encoding "there is no number here" carries information, and a pulse
+beside a word that already says `Running` does not. Under `prefers-reduced-motion` the sweep is a
+filled track.
+
+Both bars stay mounted and cross-fade rather than one replacing the other. A CSS animation restarts
+from its first frame every time its element is created, so a card flickering in and out of `live`
+for a moment left the loader frozen at the left edge.
+
+**Smaller things the same pass fixed.**
+
+- Creating a run goes straight to its overview. Starting a run is asking to watch it, not asking
+  to find its row in a list.
+- The pause a dependency causes is a chip in the panel header with a tooltip, not a block the size
+  of four rows in the panel body. "Rate limited" is BullMQ's word for it and a misleading one:
+  nothing throttles throughput, `failure-policy.ts` catches a `DependencyUnavailableError` and
+  tells the queue to start nothing new for thirty seconds. The copy says "paused" now, everywhere.
+- The trouble banner on the run header is a chip beside the controls. It was 68px of layout
+  appearing and disappearing on a thirty second cycle, and the whole page moved each time.
+- Switching to `Both documents` no longer takes the rail and the email list away. `AppShell` lost
+  `wantsWidth` entirely: the rail is open or closed because a person said so and for no other
+  reason. The documents pane buys its width back inside itself instead, from the field column and
+  the line-number gutter.
+
+**A real finding, for phase 9 rather than this one.** BullMQ runs `CLASSIFY_CONCURRENCY` (8) plus
+`COMPARE_CONCURRENCY` (4) jobs at once, and all twelve contend for the same eight model slots that
+`llmSlots(LLM_MAX_CONCURRENCY)` hands out, because `LLM_MAX_CONCURRENCY` defaults to
+`CLASSIFY_CONCURRENCY` alone. Eight classify jobs can hold every slot, so four compare jobs sit
+blocked in the semaphore. That is exactly the shape of what the run page keeps showing: sorting
+unaffected, checking held. Either the two concurrencies should be budgeted against one number, or
+`LLM_MAX_CONCURRENCY` should be their sum and `proxy.yaml`'s `max_concurrency` raised with it.
+
 **Known, and left for phase 9.** A run whose ingest has finished reads `completed` while its
 queues are still full, and the API refuses both pause and cancel in that state, so the run page
 offers neither. That is the API's rule and the page is drawing it honestly; stopping a run that is

@@ -1,10 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icons";
+import { z } from "zod";
+
 import type { PromptStep } from "@/lib/api/runs-schemas";
 import { panel } from "@/lib/motion";
 
@@ -18,6 +21,9 @@ import { DEFAULT, useRunOptions } from "./use-run-options";
  * `05-design.md` section 2.1 principle 8 warns about: every one of them is
  * true, and none of them is what someone starting a run is deciding.
  */
+
+/** The only part of the new run's summary this form reads: where to send you. */
+const Created = z.object({ id: z.string() });
 
 type Scope = "dev" | "holdout" | "all" | "first";
 
@@ -49,7 +55,12 @@ const STEPS: { step: PromptStep; label: string }[] = [
   { step: "field-judge", label: "Field judge" },
 ];
 
+/**
+ * `onCreated` still refreshes the list behind the redirect, so coming back to
+ * this page shows the new run rather than a list from before it existed.
+ */
 export function NewRunForm({ onCreated }: { onCreated: () => void }) {
+  const router = useRouter();
   const options = useRunOptions();
   const [scope, setScope] = useState<Scope>("dev");
   const [count, setCount] = useState("20");
@@ -86,17 +97,27 @@ export function NewRunForm({ onCreated }: { onCreated: () => void }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body()),
       });
+      const answer: unknown = await response.json().catch(() => null);
       if (!response.ok) {
-        const refused: unknown = await response.json().catch(() => null);
-        const message = typeof refused === "object" && refused !== null && "error" in refused ? String(refused.error) : null;
+        const message = typeof answer === "object" && answer !== null && "error" in answer ? String(answer.error) : null;
         setError(message ?? `Request failed with ${response.status}`);
+        setPending(false);
         return;
       }
       onCreated();
+      // Starting a run is asking to watch it, so this goes straight to the
+      // overview rather than leaving someone on a list to find the row that
+      // just appeared. `pending` stays set: the button should not look ready
+      // again while the route is still resolving.
+      const created = Created.safeParse(answer);
+      if (created.success) {
+        router.push(`/runs/${created.data.id}`);
+        return;
+      }
+      setPending(false);
     } catch (cause) {
       console.error("[runs] create failed:", cause);
       setError("Could not reach the server.");
-    } finally {
       setPending(false);
     }
   }

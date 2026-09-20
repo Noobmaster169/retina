@@ -1,59 +1,75 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion } from "motion/react";
 
+import { Tooltip } from "@/components/ui/tooltip";
 import type { QueueName } from "@/lib/api/queues-schemas";
 
 /**
- * A queue that a dependency has stopped. This is the empty state worth
- * designing: rather than four dashed boxes standing in for four busy slots,
- * the panel says what is held, when it retries, and hands the rest of its
- * space to the queue piling up behind it.
+ * A queue a dependency has stopped, said in the panel's header rather than in
+ * its body. It was a block the size of four rows, which pushed the work the
+ * panel is for off the screen to explain something that is usually over in
+ * thirty seconds.
  *
- * It is amber and not red on purpose. failure-policy.ts rate limits the queue
- * and puts every held job back with its attempts untouched, so nothing has
- * failed and nothing has been spent. Red is for a job that gave up.
+ * "Rate limited" is BullMQ's word for it and it is a misleading one: nothing
+ * here throttles throughput. `failure-policy.ts` catches a
+ * `DependencyUnavailableError` and tells the queue to start nothing new for
+ * thirty seconds, putting the job that hit it back with its attempts
+ * untouched. It is a circuit breaker, and without it every job would spend its
+ * three attempts within seconds of an outage and the run's emails would fail
+ * for good. The chip says "paused" and the tooltip says the rest.
+ *
+ * Amber and not red: nothing has failed and nothing has been spent. Red is for
+ * a job that gave up.
  */
 
 const WHAT: Record<QueueName, string> = {
-  classify: "Sorting is held",
-  compare: "Checking is held",
+  classify: "Sorting",
+  compare: "Checking",
 };
 
-export function HeldNotice({ until, queue, still = 0 }: { until: string; queue: QueueName; still?: number }) {
+interface HeldChipProps {
+  until: string;
+  queue: QueueName;
+  /** Slots that took their job before the pause and are still working. */
+  still: number;
+}
+
+export function HeldChip({ until, queue, still }: HeldChipProps) {
   const seconds = useSecondsUntil(until);
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.18, ease: [0.2, 0, 0, 1] }}
-      role="status"
-      className="mx-4 mt-0.5 rounded-lg border border-differ-line bg-differ-tint px-3 py-3"
+    <Tooltip
+      label={
+        <>
+          <span className="block font-medium text-ink">{WHAT[queue]} is paused, not failing.</span>
+          <span className="mt-1 block">
+            A dependency refused, so the queue starts nothing new for thirty seconds and the job that hit it went back
+            with its attempts untouched. Without that, every job would spend all three attempts within seconds of an
+            outage and the run&apos;s emails would fail for good.
+          </span>
+          {still > 0 ? (
+            <span className="mt-1 block">
+              The {still === 1 ? "email" : `${still} emails`} below took a slot before the pause and{" "}
+              {still === 1 ? "is" : "are"} still working.
+            </span>
+          ) : null}
+        </>
+      }
     >
-      <div className="flex items-baseline gap-2">
-        <span className="text-strong font-medium text-differ-ink">{WHAT[queue]}</span>
-        <span className="grow" />
-        <span className="font-mono text-micro text-differ">
-          {seconds > 0 ? `retry in ${seconds}s` : "retrying now"}
-        </span>
-      </div>
-      <p className="mt-1.5 text-small leading-[18px] text-differ-ink">
-        The queue is rate limited for thirty seconds, so nothing new starts. Held jobs go back with their attempts
-        untouched, and nothing is spent waiting.
-        {still > 0
-          ? ` The ${still === 1 ? "one email" : `${still} emails`} below took a slot before the limit and ${still === 1 ? "is" : "are"} still working.`
-          : ""}
-      </p>
-    </motion.div>
+      <span
+        role="status"
+        tabIndex={0}
+        className="inline-flex h-[22px] shrink-0 cursor-default items-center gap-1.5 rounded-sm bg-differ-tint px-2 text-caption font-medium text-differ"
+      >
+        paused
+        <span className="font-mono text-mono-xs tabular-nums">{seconds > 0 ? `${seconds}s` : "retrying"}</span>
+      </span>
+    </Tooltip>
   );
 }
 
 /**
  * The retry counts down between polls rather than jumping every two seconds.
- * It is a clock and not a value that changed, so it is the one number on the
- * page allowed to move on its own.
- *
  * The deadline is absolute, which is why the contract carries an instant: a
  * poll is already a second or two old by the time it is drawn, and counting
  * down from the duration it carried would be wrong by exactly that.

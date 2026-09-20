@@ -102,6 +102,7 @@ function Lane({ title, queue, concurrency }: { title: string; queue: string; con
 
 function Card({ card, index }: { card: StageCard; index: number }) {
   const skin = CARD[card.state];
+  const live = card.state === "live";
   return (
     <motion.div
       initial={{ opacity: 0, y: 4 }}
@@ -128,12 +129,25 @@ function Card({ card, index }: { card: StageCard; index: number }) {
         <span className="min-w-0 truncate text-caption text-ink-tertiary">{card.unit}</span>
       </div>
       <span className="grow" />
-      <div className="h-1 overflow-hidden rounded-full bg-active">
-        <motion.div
-          className={`h-1 rounded-full ${skin.bar}`}
+      {/*
+        Both bars stay mounted and cross-fade. Swapping one for the other
+        unmounted the sweep, and a CSS animation restarts from its first frame
+        every time its element is created: a card that flickered in and out of
+        `live` for a moment left the loader frozen at the left edge.
+      */}
+      <div className="relative h-1 overflow-hidden rounded-full bg-active">
+        <motion.span
+          className={`absolute inset-y-0 left-0 rounded-full transition-opacity duration-300 ${skin.bar} ${live ? "opacity-0" : "opacity-100"}`}
           initial={false}
           animate={{ width: `${card.pct}%` }}
           transition={{ duration: 1.1, ease: [0.25, 0.8, 0.3, 1] }}
+          aria-hidden="true"
+        />
+        {/* Every slot busy is not a fraction of anything finished, so a working
+            stage sweeps rather than claiming a proportion it does not have. */}
+        <span
+          className={`sweep absolute inset-y-0 left-0 rounded-full transition-opacity duration-300 ${skin.bar} ${live ? "opacity-100" : "opacity-0"}`}
+          aria-hidden="true"
         />
       </div>
     </motion.div>
