@@ -66,9 +66,12 @@ export const findEntity: ChatTool<Input> = {
         { relation: "core.emails", count: elsewhere.emailsMentioning },
       ],
       entities: candidates.slice(0, 6).map((candidate) => candidate.canonical),
+      // A row at a time, with each name's counts beside it: an alternative the
+      // answer offers is kept only where one row carried both the thing and the
+      // number, so splitting them here would drop every real suggestion.
       grounds: [
-        ...candidates.flatMap((candidate) => [candidate.canonical, candidate.matched]),
-        ...elsewhere.senderDomains.map((domain) => domain.domain),
+        ...candidates.map((c) => [c.id, c.kind, c.canonical, c.matched, c.mentions, c.emails].join("\t")),
+        ...elsewhere.senderDomains.map((domain) => `${domain.domain}\t${domain.emails}`),
         ...elsewhere.subjects,
       ].join("\n"),
       empty: exact === 0,

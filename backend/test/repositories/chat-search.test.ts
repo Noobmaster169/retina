@@ -98,6 +98,29 @@ describe("profiling a column", () => {
     });
   });
 
+  it("with near, ranks the values by closeness rather than by frequency", async () => {
+    await inRollback(async (tx) => {
+      await seedInbox(tx);
+      // The spelling a person would reach for, and not one that is stored: this is the
+      // half-remembered value the ranking exists to find.
+      const outcome = await databaseProfile.profileColumn(tx, "core.entities", "canonical", "BETA HARBOR LEMURIA");
+      expect(outcome.ok).toBe(true);
+      if (!outcome.ok) return;
+      expect(outcome.profile.near).toBe("BETA HARBOR LEMURIA");
+      expect(outcome.profile.top[0].value).toBe(BETA);
+      expect(outcome.profile.top[0].score).toBeGreaterThan(0.5);
+    });
+  });
+
+  it("with near, returns nothing rather than the whole column when nothing is close", async () => {
+    await inRollback(async (tx) => {
+      await seedInbox(tx);
+      const outcome = await databaseProfile.profileColumn(tx, "core.entities", "canonical", "qqqqzzzzxxxx");
+      expect(outcome.ok).toBe(true);
+      if (outcome.ok) expect(outcome.profile.top).toEqual([]);
+    });
+  });
+
   it.each([
     { name: "a relation with no schema", relation: "emails", column: "subject", reason: /schema-qualified/ },
     { name: "another schema", relation: "pg_catalog.pg_authid", column: "rolpassword", reason: /only the core and analytics/ },
@@ -203,6 +226,8 @@ describe("as retina_ro, the role the chat reads as", () => {
     await expect(emailSearch.searchEmails(ro(), "draft", null, 5)).resolves.toHaveProperty("total");
     await expect(emailSearch.elsewhere(ro(), "Vital Solutions")).resolves.toHaveProperty("senderDomains");
     await expect(databaseProfile.profileColumn(ro(), "core.emails", "sender_domain")).resolves.toHaveProperty("ok", true);
+    // pg_trgm lives in public, which is off retina_ro's search path, so this is the query that fails first if it is not written in full.
+    await expect(databaseProfile.profileColumn(ro(), "core.emails", "sender_domain", "exmaple.com")).resolves.toHaveProperty("ok", true);
     await expect(orientation.snapshot(ro(), null)).resolves.toHaveProperty("watermark");
   });
 

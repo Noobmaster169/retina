@@ -9,7 +9,7 @@ describe("argsSignature", () => {
     ["find_entity", '{ text: string, kind?: "port" | "party" }'],
     ["list_entities", '{ kind: "port" | "party", contains?: string, limit?: number }'],
     ["get_entity", "{ id: string | number }"],
-    ["profile_column", "{ relation: string, column: string }"],
+    ["profile_column", "{ relation: string, column: string, near?: string | null }"],
     ["load_skill", "{ name: string }"],
     ["run_sql", "{ sql: string, purpose: string }"],
     ["run_recipe", "{ name: string, params?: { name: value, ... } }"],

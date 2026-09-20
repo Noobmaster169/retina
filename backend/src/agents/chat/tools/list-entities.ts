@@ -37,7 +37,9 @@ export const listEntities: ChatTool<ListInput> = {
       preview: `${total} ${what}`,
       touched: [{ relation: "core.entities", count: total }],
       entities: rows.slice(0, 6).map((row) => row.canonical),
-      grounds: rows.map((row) => row.canonical).join("\n"),
+      // A row at a time, so each name keeps its counts: an alternative is kept
+      // only where one row carried both the thing and the number.
+      grounds: rows.map((row) => [row.id, row.canonical, row.mentions, row.emails].join("\t")).join("\n"),
       empty: total === 0,
     };
   },
