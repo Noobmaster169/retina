@@ -1,4 +1,12 @@
 @import "tailwindcss";
+/*
+ * React Flow's own stylesheet, which the Links canvas needs: the viewport
+ * transform, the edge layer and the pane live in it, and without them panning
+ * and zooming do nothing. It is a dependency's CSS and not ours, which is why
+ * it is imported here rather than beside the component: this file stays the
+ * one place any stylesheet enters the product.
+ */
+@import "@xyflow/react/dist/base.css";
 
 /*
  * Air: a white ground with hairlines, ink at four weights, and five hues that
@@ -218,4 +226,47 @@ body {
     animation: none !important;
     transform: none;
   }
+}
+
+
+/*
+ * Its defaults assume a diagram editor. Everything below turns those off so a
+ * node is drawn by our own component and our own tokens: no library border,
+ * no library selection shadow, and the focus ring of section 4.7 rather than
+ * a second one beside it.
+ */
+.react-flow__node {
+  border: none;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+  color: inherit;
+  cursor: default;
+}
+
+.react-flow__node.selected > a,
+.react-flow__node.selected > div {
+  box-shadow: var(--focus-ring);
+}
+
+.react-flow__handle {
+  border: none;
+  background: transparent;
+  min-width: 0;
+  min-height: 0;
+}
+
+.react-flow__attribution {
+  background: transparent;
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+
+.react-flow__pane {
+  cursor: grab;
+}
+
+.react-flow__pane.dragging {
+  cursor: grabbing;
 }
