@@ -5,7 +5,7 @@ import { callTool, TOOL_NAMES, TOOLS, type ToolContext } from "./agents/chat/too
 import { closePool, closeRoPool, getPool, getRoPool } from "./db";
 
 /**
- * The chat's four tools, over stdio, for a teammate working in Claude Code.
+ * The chat's tools, over stdio, for a teammate working in Claude Code.
  *
  * It serves the same `TOOLS` registry the chat page does rather than declaring
  * its own, so the guardrail, the row caps and the read-only role are identical
@@ -22,6 +22,8 @@ const server = new McpServer({ name: "retina", version: "0.1.0" });
 const context: ToolContext = {
   pool: getPool(),
   roPool: getRoPool(),
+  // No conversation, so no scope, and no `shown`: a person wrote the SQL, so the
+  // literal guard stands down. The write guard and the read-only role do not.
   // No conversation, so no scope. A question asked here names its own run, and
   // a tool that wants the latest one looks it up the same way it would.
   runId: null,

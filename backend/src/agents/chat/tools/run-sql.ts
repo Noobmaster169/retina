@@ -1,7 +1,9 @@
 import { z } from "zod";
 
-import type { SqlResult } from "../../../contracts";
-import { guardSql, MAX_RESULT_BYTES, MAX_ROWS } from "../sql-guard";
+import { refusalFor } from "../grounding";
+import { guardSql } from "../sql-guard";
+import { guesses, nearestTo } from "./grounded";
+import { asText, cellsOf, firstColumn, toResult } from "./sql-result";
 import { type ChatTool, refused, type ToolContext, type ToolOutcome } from "./types";
 
 /**
@@ -32,39 +34,12 @@ export function relationsIn(sql: string): string[] {
   return [...new Set(found)];
 }
 
-/** Postgres hands back dates, numerics and arrays as their own types; the page and the model both want text. */
-function render(value: unknown): string | null {
-  if (value === null || value === undefined) return null;
-  if (value instanceof Date) return value.toISOString();
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
-}
-
-/** Tab separated, because a model reads a table better than it reads JSON and it costs a third of the tokens. */
-function asText(result: SqlResult, purpose: string): string {
-  const header = result.columns.join("\t");
-  const body = result.rows.map((row) => row.map((cell) => cell ?? "").join("\t")).join("\n");
-  const note = result.truncated ? `\n(cut at ${result.rows.length} rows; say so in the answer)` : "";
-  return `${purpose}\n${result.rowCount} rows in ${result.durationMs} ms\n\n${header}\n${body}${note}`;
-}
-
-/** Drops rows from the end until the rendered result fits. A model given 200 kB of JSON answers worse, not better. */
-function fit(result: SqlResult): SqlResult {
-  let rows = result.rows;
-  let truncated = result.truncated;
-  while (rows.length > 0 && JSON.stringify(rows).length > MAX_RESULT_BYTES) {
-    rows = rows.slice(0, Math.max(1, Math.floor(rows.length / 2)));
-    truncated = true;
-  }
-  return { ...result, rows, truncated };
-}
-
 export const runSql: ChatTool<Input> = {
   name: "run_sql",
   description:
-    "Runs one read-only SQL query and returns its rows. Prefer the analytics views over core tables. " +
-    "Only select and with are allowed; a limit is added when you do not give one. Always use this rather " +
-    "than stating a number from memory.",
+    "Runs one read-only SQL query you wrote and returns its rows. Use it only when no recipe fits. " +
+    "Only select and with are allowed; a limit is added when you do not give one. A filter on a string " +
+    "you have not been shown is refused: ground it first, or search with like.",
   schema: Input,
   shape: Input.shape,
 
@@ -75,6 +50,11 @@ export const runSql: ChatTool<Input> = {
 
     const verdict = guardSql(input.sql);
     if (!verdict.ok) return refused(verdict.reason);
+
+    // A filter on a string nothing has shown the agent is a filter on a guess,
+    // and its empty result would read as a finding. Refused before it runs.
+    const guessed = await guesses(ctx, { sql: verdict.sql });
+    if (guessed.length > 0) return { ...refused(refusalFor(guessed)), sql: verdict.sql, ungrounded: guessed };
 
     const started = Date.now();
     let rows: Record<string, unknown>[];
@@ -91,22 +71,17 @@ export const runSql: ChatTool<Input> = {
     }
     const durationMs = Date.now() - started;
 
-    const columns = fields.map((field) => field.name);
-    const capped = rows.slice(0, MAX_ROWS);
-    const result = fit({
-      columns,
-      rows: capped.map((row) => columns.map((column) => render(row[column]))),
-      rowCount: rows.length,
-      truncated: rows.length > capped.length,
-      durationMs,
-    });
-
+    const result = toResult(rows, fields, durationMs);
     const relations = relationsIn(verdict.sql);
-    const firstColumn = result.rows.map((row) => row[0]).filter((cell): cell is string => cell !== null);
+    // An empty result from a grounded query is an answer; the nearest names say
+    // whether a better-spelt question was one step away.
+    const near = result.rowCount === 0 ? await nearestTo(ctx, verdict.sql) : "";
 
     return {
       ok: true,
-      text: asText(result, input.purpose),
+      text: near ? `${asText(result, input.purpose)}
+
+${near}` : asText(result, input.purpose),
       preview: `${result.rowCount} ${result.rowCount === 1 ? "row" : "rows"} in ${durationMs} ms`,
       sql: verdict.sql,
       result,
@@ -114,7 +89,9 @@ export const runSql: ChatTool<Input> = {
       touched: relations.length > 0
         ? relations.map((relation) => ({ relation, count: result.rowCount }))
         : [{ relation: "the query named no table", count: result.rowCount }],
-      entities: [...new Set(firstColumn)].slice(0, 6),
+      entities: firstColumn(result),
+      grounds: cellsOf(result),
+      empty: result.rowCount === 0,
     };
   },
 };

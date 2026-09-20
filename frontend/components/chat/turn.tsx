@@ -1,6 +1,7 @@
 import type { ChatTurn } from "@/lib/api/chat-agent-schemas";
 
 import { ActionCard } from "./action-card";
+import { Reading } from "./reading";
 import { ResultGraph } from "./result-graph";
 import { SqlBlock } from "./sql-block";
 import { ToolsUsed } from "./tools-used";
@@ -32,6 +33,8 @@ export function Turn({ turn, exhausted = false }: { turn: ChatTurn; exhausted?: 
   return (
     <div className="space-y-3">
       {turn.graph ? <ResultGraph graph={turn.graph} /> : null}
+
+      <Reading turn={turn} />
 
       <p className="max-w-[72ch] text-body leading-[21px] whitespace-pre-wrap text-ink">{turn.content}</p>
 

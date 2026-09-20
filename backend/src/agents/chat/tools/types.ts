@@ -2,6 +2,7 @@ import type { Pool } from "pg";
 import type { z } from "zod";
 
 import type { ChatToolName, SqlResult } from "../../../contracts";
+import type { Queryable } from "../../../db";
 
 /**
  * What every tool is: a name, a sentence the prompt shows the model, a zod
@@ -21,10 +22,17 @@ export interface ToolContext {
    */
   pool: Pool;
   /** Where model-written SQL runs. Null when DATABASE_RO_URL is unset; the tool says so. */
-  roPool: Pool | null;
+  roPool: Queryable | null;
   /** The conversation's scope. A default for a question that names no run, never a filter it cannot widen. */
   runId: string | null;
   emailId: string | null;
+  /**
+   * Everything the harness has put in front of the agent on this turn: the
+   * standing texts, the orientation, and every tool result so far. The literal
+   * guard reads it. Absent over MCP, where a person writes the SQL and there
+   * is no turn; the guard then stands down.
+   */
+  shown?: string;
 }
 
 /**
@@ -53,6 +61,21 @@ export interface ToolOutcome {
   touched: { relation: string; count: number }[];
   /** The things the answer is about, for the graph's rightmost column. */
   entities: string[];
+  /** Set by `run_recipe`: which standard query ran, from which skill, with what. */
+  recipe?: { name: string; version: number; skill: string; params: Record<string, unknown> };
+  /**
+   * What the data returned, and nothing else: result cells, stored names, subjects, snippets.
+   * The literal guard reads this, never `text`, because `text` also carries what was asked for
+   * (the name looked up, a query's purpose, a refusal quoting the refused string), and a guess
+   * that counted as shown once it had been echoed would defeat the guard in one step.
+   */
+  grounds?: string;
+  /** The call looked and found nothing, or nothing exact. The harness injects the skill for that. */
+  empty?: boolean;
+  /** Set when the literal guard refused the call: the strings it would not filter on. */
+  ungrounded?: string[];
+  /** Set by `load_skill`: the skill now in front of the agent, which stays there for the conversation. */
+  skill?: string;
 }
 
 export interface ChatTool<I> {

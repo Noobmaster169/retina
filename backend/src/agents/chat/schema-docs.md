@@ -32,13 +32,29 @@ not on these lists does not exist.
 - `category_decided_by`: `llm`, `verifier`, `human`. Which layer settled the category.
   There is no `rule`: no hand-written rule decides a category in this system, on purpose.
 
+Ours, not the organisers', and just as closed:
+
+- `core.comparisons.decided_by`: `llm`, `human`
+- `core.email_runs.outcome`: `not_comparable`, `OK`, `MISMATCH`, or one of the four review reasons
+- `core.entities.kind`: `port`, `party`
+- `core.entity_names.joined_by`: `kept` (the spelling seen most), `judge` (the field judge called it the same), `human`
+- `core.extractions.role` and `core.documents.role`: `SI`, `BL`, `UNKNOWN`
+- `core.documents.doc_type`: `SI`, `BL`, `INVOICE`, `PACKING_LIST`, `COO`, `OTHER`
+- `core.review_cases.kind`: `review`, `failure`; `status`: `open`, `resolved`
+- `core.review_actions.kind`: `confirm`, `correct_field`, `reclassify`, `note`, `upload`, `retry`, `reopen`
+- `core.llm_calls.step`: `classify`, `classify-verify`, `triage`, `doc-type`, `extract`, `extract-verify`, `field-judge`, `chat`
+- `core.runs.status`: `created`, `running`, `paused`, `completed`, `cancelled`, `failed`
+- `core.documents.format`: `txt`, `pdf`, `docx`, `xlsx`, `unknown`
+- `core.clients.kind`: `customer`, `internal`, `forwarder`, `spam`
+- `core.attachments.origin`: `source`, `human`
+
 ## analytics.fact_email_outcome
 
 One row per email per run. Grain `(run_id, email_id)`. Start here.
 
 - `run_id`, `email_id`, `email_run_id`
 - `sender_domain`, `client_tier` (1 first, 5 last; 3 where nobody ranked the sender), `client_name`
-- `subject`, `tonnage_mt` (null for an email that names no tonnage)
+- `subject`, `tonnage_mt` (a number some subject lines carry; not the documented weight, and null on most emails)
 - `category` — the human correction where one exists, else the model's. Use this one.
 - `model_category` — what the model said, ignoring any correction. Use only to compare the two.
 - `category_decided_by`, `comparison_decided_by`
@@ -105,7 +121,21 @@ documents. A spelling joins one only because the field judge said it denotes
 the same thing; `core.entity_names.joined_by` says which, and there is no
 lookup table anywhere in this system.
 
+`core.entity_mentions` has one row per extracted field per email run
+(`entity_id`, `extraction_field_id`, `email_run_id`, `field`, `value`). An
+email replayed in five runs has five sets, so an email count is
+`count(distinct email_id)` through `core.email_runs`, never a count of
+mentions. Entity ids are rebuilt when the things refresh: take them from a tool
+result on this turn.
+
+`core.emails.search` is a text-search column over subject and body. The
+`search_emails` tool reads it for you; in SQL it is
+`search @@ websearch_to_tsquery('simple', 'words')`.
+
 ## Example questions, and the SQL that answers them
+
+A recipe covers most standard questions and is the first choice. These are for what the recipes do
+not reach, and they show the views.
 
 **Which client had the most mismatches in the latest run, and on which field?**
 

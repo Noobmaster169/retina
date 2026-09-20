@@ -636,6 +636,48 @@ corrected where it described the old behaviour:
   there, not an interface, and `getRun` / `listRunEmails` / the four organisers' enums were
   deleted as unused: the run page brings them back from `git show d68ed1b^`.
 
+### Phase 10d: the chat harness (built 2026-09-20, local)
+
+Spec and what changed while building: `docs/phases/phase-10d-chat-harness.md`, "As built". 10e
+(interactive chat) and 10f (semantic layer) are specified and not started; 10f is parked.
+
+Exit checklist:
+- [x] A new conversation's first turn carries `CHAT.md`, the orientation, the skill cards and every
+      recipe signature; the orientation is stored on the conversation and recomputed only when the
+      watermark moves (`chat-search.test.ts`, `chat-loop.test.ts`).
+- [x] A filter on a name the agent was never shown is refused before it runs, and the refusal names
+      the tools that ground it (`grounding.test.ts`, 28 cases; loop test on a seeded inbox).
+- [x] Two names in one question are grounded in one step (loop test: two model calls for two
+      lookups and the answer).
+- [x] Every recipe has a test, declares its columns, passes `guardSql`, runs as `retina_ro`, and
+      shows its SQL and arguments on the turn (20 recipes, `recipes.test.ts`).
+- [x] `CHAT.md`, the prompt, every skill and every recipe name nothing from the inbox
+      (`chat-harness.test.ts`, 33 texts against 58 phrases).
+- [x] The seven tools are in `TOOLS`, so MCP serves them, and each reports `touched` and `entities`.
+- [x] `CLAUDE.md`'s SQL rule, `03-infra-deep.md` section 11, `schema-docs.md` and the frontend zod
+      mirror updated; type-check, tests and lint clean; no new file over 200 lines.
+- [ ] At least 70% of `eval:chat` turns answer from recipes alone, and the median model calls per
+      turn: **the full 30 questions are the user's to run** (`cd backend && pnpm eval:chat`). It
+      spends tokens: a question is two to four sonnet calls.
+
+Live, on the local stack, six questions through sonnet (run `7a6e83bd`, 3 emails):
+"What shipments involve April Paper Trading?" took 3 steps and 51 s: `find_entity` returned four
+candidates, it took the two it meant, ran `emails_for_entities` and `emails_by_sender_domain`, and
+reported the sender domain as separate evidence. "Which ports in India appear?" took 2 steps
+through `list_entities` with `contains`, and remarked unprompted that one port carries another
+port's code. "How many mismatches in this run?" answered from the orientation in 1 step, 10 s.
+"What are the busiest lanes?" took 2 steps through the `lanes` recipe. No guard refusals, no own
+SQL. Two defects were found this way and fixed; see "As built".
+
+Reviewed from a clean context after the build: sixteen findings, the serious one being that the
+literal guard could be defeated by a tool's own echo of what was asked. All of them and what was
+left alone, with reasons, are in the spec under "The review pass". 806 backend tests after it.
+
+Seen and left: on one call sonnet sent `{"action":"final","answer":"test"}`, a placeholder, as its
+whole step, the same family as the `$PARAMETER_NAME` first attempts noted under "Found while
+building". An empty final answer is now handed back; a non-empty placeholder is not detectable
+without a rule about what an answer looks like, so it is left. It did not recur on a rerun.
+
 ## Scores
 | Phase | Holdout final | Full final | Stage1 | Stage3 | E2E | Notes |
 |---|---|---|---|---|---|---|

@@ -9,7 +9,19 @@ import { z } from "zod";
  * model for prose, this one asks the analyst about the database.
  */
 
-export const ChatToolName = z.enum(["describe_schema", "run_sql", "get_email", "explain_decision"]);
+export const ChatToolName = z.enum([
+  "run_recipe",
+  "find_entity",
+  "list_entities",
+  "get_entity",
+  "search_emails",
+  "profile_column",
+  "load_skill",
+  "run_sql",
+  "describe_schema",
+  "get_email",
+  "explain_decision",
+]);
 export type ChatToolName = z.infer<typeof ChatToolName>;
 
 export const SqlResult = z.object({
@@ -31,6 +43,11 @@ export const ChatToolCall = z.object({
   sql: z.string().nullable(),
   result: SqlResult.nullable(),
   durationMs: z.number().int(),
+  /** Set for `run_recipe`: the standard query that ran, the skill it belongs to, and its arguments. */
+  recipe: z
+    .object({ name: z.string(), version: z.number().int().default(1), skill: z.string(), params: z.record(z.string(), z.unknown()) })
+    .nullable()
+    .default(null),
 });
 export type ChatToolCall = z.infer<typeof ChatToolCall>;
 
@@ -64,6 +81,14 @@ export const ProposedAction = z.object({
 });
 export type ProposedAction = z.infer<typeof ProposedAction>;
 
+export const ChatSkillUse = z.object({
+  name: z.string(),
+  version: z.number().int(),
+  /** `injected` by the harness on something it saw, `loaded` by the agent, `picked` by the person. */
+  how: z.enum(["injected", "loaded", "picked"]),
+});
+export type ChatSkillUse = z.infer<typeof ChatSkillUse>;
+
 export const ChatTurn = z.object({
   id: z.number().int(),
   role: z.enum(["user", "assistant", "tool"]),
@@ -72,6 +97,11 @@ export const ChatTurn = z.object({
   sqlUsed: z.array(z.string()),
   graph: ChatGraph.nullable(),
   proposal: ProposedAction.nullable(),
+  /** One sentence on how the agent read the question. Empty on a person's turn and on older turns. */
+  reading: z.string().default(""),
+  skillsUsed: z.array(ChatSkillUse).default([]),
+  /** The turn needed SQL the agent wrote itself: a question no recipe covers yet. */
+  adhoc: z.boolean().default(false),
   createdAt: z.string(),
 });
 export type ChatTurn = z.infer<typeof ChatTurn>;
