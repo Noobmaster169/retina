@@ -131,6 +131,8 @@ export async function values(db: Queryable, entityId: string): Promise<StoredVal
     first_email: string | null;
     last_email: string | null;
     fields: string[];
+    attributes: Record<string, string | null>;
+    attributes_source: Record<string, { source?: string }>;
   }>(
     `select e.kind, e.canonical, e.mention_count, e.name_count, e.first_seen_at, e.last_seen_at,
             (select er.email_id from core.entity_mentions m
@@ -142,7 +144,8 @@ export async function values(db: Queryable, entityId: string): Promise<StoredVal
                join core.emails em on em.email_id = er.email_id
               where m.entity_id = e.id order by em.first_seen_at desc limit 1) as last_email,
             (select coalesce(array_agg(distinct m.field order by m.field), '{}')
-               from core.entity_mentions m where m.entity_id = e.id) as fields
+               from core.entity_mentions m where m.entity_id = e.id) as fields,
+            e.attributes, e.attributes_source
        from core.entities e where e.id = $1::bigint and e.merged_into is null`,
     [entityId],
   );
@@ -163,6 +166,16 @@ export async function values(db: Queryable, entityId: string): Promise<StoredVal
     { key: "first_seen_in", valueType: "pk", value: row.first_email, writtenBy: "the source", tone: null },
     { key: "last_seen", valueType: "date", value: row.last_seen_at?.toISOString() ?? null, writtenBy: "the source", tone: null },
     { key: "last_seen_in", valueType: "pk", value: row.last_email, writtenBy: "the source", tone: null },
+    // What the profile step decided this thing is. Every one of them was
+    // written by a model, and the source says whether it read it in our mail
+    // or knew it already, which is the distinction the whole layer turns on.
+    ...Object.entries(row.attributes).map(([key, value]) => ({
+      key: row.attributes_source[key]?.source === "mail" ? `${key} (from our mail)` : `${key} (general knowledge)`,
+      valueType: "abc" as const,
+      value,
+      writtenBy: "a model" as const,
+      tone: null,
+    })),
   ];
 }
 

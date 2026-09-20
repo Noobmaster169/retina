@@ -1,5 +1,8 @@
 import type { IconName } from "@/components/ui/icons";
+import type { EntityKind } from "@/lib/api/semantic-schemas";
 import type { ObjectType } from "@/lib/api/ontology-schemas";
+
+const RESOLVED = ["port", "party", "carrier", "person", "commodity", "vessel"] as const;
 
 /**
  * One glyph per object type, shared by the graph, the rail and the link cards.
@@ -46,9 +49,9 @@ export const LABEL_OF: Record<ObjectType, string> = {
   vessel: "Vessel",
 };
 
-/** The two resolved kinds, which are the only ones with an index of their own. */
-export function isResolved(type: ObjectType): type is "port" | "party" {
-  return type === "port" || type === "party";
+/** The resolved kinds, which are the ones with an index of their own. `shipment` is designed and not built. */
+export function isResolved(type: ObjectType): type is EntityKind {
+  return (RESOLVED as readonly ObjectType[]).includes(type);
 }
 
 /** An id set in mono: the things that are identifiers rather than names. */

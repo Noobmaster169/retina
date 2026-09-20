@@ -17,7 +17,9 @@ describe("GET /ontology/types", () => {
     const types: { type: string; built: boolean; table: string | null; count: number }[] = response.body.types;
     const planned = types.filter((type) => !type.built).map((type) => type.type);
     // The exit checklist: the planned types are exactly the ones with no table.
-    expect(planned.sort()).toEqual(["carrier", "shipment"]);
+    // Only shipment is left: a carrier, a vessel, a commodity and a person are
+    // all read out of the mail now, so only the one thing nothing sources stays dashed.
+    expect(planned.sort()).toEqual(["shipment"]);
     for (const type of types) expect(type.built).toBe(type.table !== null);
 
     const email = types.find((type) => type.type === "email");

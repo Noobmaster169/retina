@@ -130,15 +130,41 @@ export const DESCRIPTORS: TypeDescriptor[] = [
     plural: "Shipments",
     table: null,
     blurb:
-      "A booking. Designed and not built: nothing in the organisers' seven fields yields one, so there is no honest way to fill it yet.",
+      "A booking across its instruction, its draft and its invoice query. Designed and not built: core.email_shipments holds one row per email, and nothing yet groups them into one shipment.",
     navigable: true,
   },
   {
     type: "carrier",
     label: "Carrier",
     plural: "Carriers",
-    table: null,
-    blurb: "A line. Designed and not built, for the same reason a shipment is not.",
+    table: "core.entities",
+    blurb:
+      "A shipping line, read out of a subject line or a document by the shipment reader. Resolved the same way a port is, and by a model, not a list of carrier names.",
+    navigable: true,
+  },
+  {
+    type: "vessel",
+    label: "Vessel",
+    plural: "Vessels",
+    table: "core.entities",
+    blurb: "A ship, read where the mail names one. A voyage of it is a column on the shipment, not a thing of its own.",
+    navigable: true,
+  },
+  {
+    type: "commodity",
+    label: "Commodity",
+    plural: "Commodities",
+    table: "core.entities",
+    blurb: "What is being shipped, as the mail describes it. Everything this mailbox carries is paper; nothing here assumes that.",
+    navigable: true,
+  },
+  {
+    type: "person",
+    label: "Person",
+    plural: "People",
+    table: "core.entities",
+    blurb:
+      "Somebody who sent, signed or was written to. Two sightings become one person only where a model cited the address or the header that ties them.",
     navigable: true,
   },
 ];
@@ -154,29 +180,29 @@ export function isBuilt(type: ObjectType): boolean {
   return descriptorFor(type).table !== null;
 }
 
-/** The five the ontology rail offers. See `TypeDescriptor.navigable`. */
+/** The types the ontology rail offers. See `TypeDescriptor.navigable`. */
 export const NAVIGABLE = DESCRIPTORS.filter((descriptor) => descriptor.navigable);
 
 /**
  * The navigable types with their live counts.
  *
- * One query per relation rather than a union, because `port` and `party` share
- * a table and need a filter that the others do not, and a union that carried
- * that filter would be harder to read than five counts.
+ * Two queries: the emails, and one grouped count over the resolved things. A
+ * kind with no rows reads 0 and stays in the rail, because an empty index is
+ * an answer and a missing one is a question.
  */
 export async function listTypes(db: Queryable): Promise<ObjectTypeSummary[]> {
-  const { rows } = await db.query<Record<string, string>>(
-    `select (select count(*) from core.emails)::text as email,
-            (select count(*) from core.entities where kind = 'port' and merged_into is null)::text as port,
-            (select count(*) from core.entities where kind = 'party' and merged_into is null)::text as party`,
+  const emails = await db.query<{ n: string }>("select count(*)::text as n from core.emails");
+  const things = await db.query<{ kind: string; n: string }>(
+    "select kind, count(*)::text as n from core.entities where merged_into is null group by kind",
   );
-  const counts = rows[0];
+  const counts: Record<string, number> = { email: Number(emails.rows[0].n) };
+  for (const row of things.rows) counts[row.kind] = Number(row.n);
 
   return NAVIGABLE.map((descriptor) => ({
     type: descriptor.type,
     label: descriptor.plural,
     table: descriptor.table,
-    count: Number(counts[descriptor.type] ?? 0),
+    count: counts[descriptor.type] ?? 0,
     built: descriptor.table !== null,
   }));
 }
