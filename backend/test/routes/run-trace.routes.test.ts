@@ -3,16 +3,13 @@ import { randomUUID } from "node:crypto";
 import request from "supertest";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
-import { createApp } from "../../src/app";
-import type { HealthReport } from "../../src/contracts";
 import { closePool, getPool } from "../../src/db";
 import { subsetIds } from "../../src/eval/id-lists";
 import { classifications, emailRuns, emails, llmCalls, runs } from "../../src/ontology/repositories";
 import { MemoryLiveCalls } from "../../src/live/__fakes__/memory.live-calls";
 import { MemoryRunQueues } from "../../src/queues/__fakes__/memory.run-queues";
-import { FakeScorer } from "../../src/scorer/__fakes__/fake.scorer";
-import { MemoryStore } from "../../src/storage/__fakes__/memory.store";
 import { TEST_ENV } from "../../vitest.config";
+import { testApp } from "../app";
 import { uniqueEmailId } from "../db";
 
 // The proxy's alias list, without a proxy.
@@ -25,18 +22,7 @@ vi.mock("../../src/llm", () => ({
 }));
 
 const TEAM = { authorization: `Bearer ${TEST_ENV.TEAM_API_KEY}` };
-const UP: HealthReport = { status: "ok", checks: { postgres: "up", redis: "up", minio: "up", inbox: "up", docExtract: "up" } };
-
-function app(live?: MemoryLiveCalls) {
-  return createApp({
-    pool: getPool(),
-    runQueues: new MemoryRunQueues(),
-    store: new MemoryStore(),
-    scorer: new FakeScorer(),
-    health: async () => UP,
-    live,
-  });
-}
+const app = (live?: MemoryLiveCalls) => testApp({ live });
 
 afterAll(closePool);
 
@@ -80,7 +66,7 @@ describe("POST /runs, choosing what and how", () => {
     ["a subset that is not one", { subset: "everything" }, /invalid body/],
   ])("refuses %s before queueing anything", async (_name, body, message) => {
     const queues = new MemoryRunQueues();
-    const refusing = createApp({ pool: getPool(), runQueues: queues, store: new MemoryStore(), scorer: new FakeScorer(), health: async () => UP });
+    const refusing = testApp({ runQueues: queues });
 
     const response = await request(refusing).post("/runs").set(TEAM).send(body);
 
@@ -102,9 +88,13 @@ describe("POST /runs, choosing what and how", () => {
 });
 
 describe("GET /runs", () => {
-  it("says how parallel a run is, from the env", async () => {
+  // The llm cap is both concurrencies added up, not the classify one alone.
+  // Eight classify jobs used to be able to hold every model slot while four
+  // compare jobs sat blocked in the semaphore, which the run page drew as
+  // sorting unaffected and checking paused.
+  it("says how parallel a run is, from the env, with the model cap covering both queues", async () => {
     const response = await request(app()).get("/runs").set(TEAM);
-    expect(response.body.concurrency).toEqual({ classify: 8, llm: 8 });
+    expect(response.body.concurrency).toEqual({ classify: 8, llm: 12 });
   });
 });
 

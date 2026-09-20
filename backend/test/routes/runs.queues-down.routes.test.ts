@@ -1,28 +1,18 @@
 import request from "supertest";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
-import { createApp } from "../../src/app";
 import { closePool, getPool } from "../../src/db";
 import { RetryableError } from "../../src/lib/errors";
 import { runs } from "../../src/ontology/repositories";
 import { MemoryRunQueues } from "../../src/queues/__fakes__/memory.run-queues";
-import { FakeScorer } from "../../src/scorer/__fakes__/fake.scorer";
-import { MemoryStore } from "../../src/storage/__fakes__/memory.store";
 import { TEST_ENV } from "../../vitest.config";
+import { testApp } from "../app";
 
 const TEAM = { authorization: `Bearer ${TEST_ENV.TEAM_API_KEY}` };
 
 let runQueues: MemoryRunQueues;
 
-function app() {
-  return createApp({
-    pool: getPool(),
-    runQueues,
-    store: new MemoryStore(),
-    scorer: new FakeScorer(),
-    health: async () => ({ status: "ok", checks: { postgres: "up", redis: "up", minio: "up", inbox: "up", docExtract: "up" } }),
-  });
-}
+const app = () => testApp({ runQueues });
 
 async function created(): Promise<string> {
   return (await request(app()).post("/runs").set(TEAM).send({})).body.id;

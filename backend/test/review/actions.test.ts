@@ -96,6 +96,21 @@ describe("correct_field", () => {
     });
   });
 
+  it("re-queues at the priority the email already has, not at a default", async () => {
+    await inRollback(async (tx) => {
+      const { runId, emailId, caseId } = await parked(tx);
+      // A tier-1 client's email, as ingest would have queued it.
+      await tx.query("update core.email_runs set priority = 150 where run_id = $1 and email_id = $2", [runId, emailId]);
+      const at = deps(tx);
+
+      await applyAction(at, caseId, { kind: "correct_field", actor: "kai", field: "gross_weight_kg", side: "BL", value: "131058" });
+
+      // Without this, a correction on a tier-1 email joins a burst at 600 and
+      // waits behind every tier-3 email that happens to be in the queue.
+      expect(at.queues.reruns[0].options.priority).toBe(150);
+    });
+  });
+
   it("refuses a field on a side that has not been read", async () => {
     await inRollback(async (tx) => {
       const { runId, emailId } = await classified(tx, [{ filename: "e_SI.txt", role: "SI" }]);

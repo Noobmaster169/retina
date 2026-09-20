@@ -5,7 +5,9 @@ import type { Pool } from "pg";
 
 import { withTx } from "../db";
 import { attachments, emailRuns, emails } from "../ontology/repositories";
-import { type ClassifyJob, DEFAULT_PRIORITY, JOB_NAMES, type JobAdder, jobOptions } from "../queues/names";
+import { type ClassifyJob, JOB_NAMES, type JobAdder, jobOptions } from "../queues/names";
+import { computePriority } from "../queues/priority";
+import type { PriorityCache } from "../queues/priority-cache";
 import { keys, type ObjectStore } from "../storage";
 import { parseTonnage, roleFromName, senderDomain } from "./email-facts";
 import type { Source } from "./source";
@@ -15,10 +17,27 @@ export interface IngestDeps {
   source: Source;
   store: ObjectStore;
   classify: JobAdder<ClassifyJob>;
+  /** Where the sender's tier is read at enqueue. A miss is the default tier, never a failure to queue. */
+  priority: PriorityCache;
+}
+
+/**
+ * What this email is worth to the queue: its client's tier, broken by the
+ * tonnage in its subject. Read from the row rather than recomputed, so a
+ * rerun and a first run of the same email agree, and so a tier changed after
+ * ingest does not silently reorder work already in flight.
+ */
+async function priorityFor(deps: IngestDeps, runId: string, emailId: string): Promise<number> {
+  const stored = await emailRuns.priorityOf(deps.pool, runId, emailId);
+  if (stored !== null) return stored;
+  const email = await emails.get(deps.pool, emailId);
+  if (!email) return computePriority({ tier: null, tonnageMt: null });
+  return computePriority({ tier: await deps.priority.tierOf(email.senderDomain), tonnageMt: email.tonnageMt });
 }
 
 export async function enqueueClassify(deps: IngestDeps, runId: string, emailId: string): Promise<void> {
-  await deps.classify.add(JOB_NAMES.classify, { runId, emailId }, jobOptions(runId, emailId, DEFAULT_PRIORITY));
+  const priority = await priorityFor(deps, runId, emailId);
+  await deps.classify.add(JOB_NAMES.classify, { runId, emailId }, jobOptions(runId, emailId, priority));
 }
 
 /** Copies the email's attachments into object storage and returns the rows that describe them. */
@@ -57,6 +76,13 @@ async function copyIn(deps: IngestDeps, runId: string, emailId: string): Promise
   // Before the transaction opens, so a slow inbox or object store never holds
   // a pooled connection or a row lock.
   const stored = await storeAttachments(deps, runId, emailId, record.attachments);
+  // Also before it: with Redis reconnecting, a cache read waits for the
+  // reconnect, and inside the transaction that would hold a pooled connection
+  // and a row lock for as long as the outage lasts.
+  const priority = computePriority({
+    tier: await deps.priority.tierOf(senderDomain(record.from)),
+    tonnageMt: parseTonnage(record.subject),
+  });
 
   await withTx(deps.pool, async (tx) => {
     // The upsert locks the email row, so two callers on one email take turns and the second finds the row below.
@@ -72,7 +98,7 @@ async function copyIn(deps: IngestDeps, runId: string, emailId: string): Promise
     });
     if (await emailRuns.exists(tx, runId, emailId)) return;
     for (const attachment of stored) await attachments.insert(tx, attachment);
-    await emailRuns.insert(tx, { runId, emailId, stage: "ingested", priority: DEFAULT_PRIORITY });
+    await emailRuns.insert(tx, { runId, emailId, stage: "ingested", priority });
   });
 }
 

@@ -3,30 +3,24 @@ import { randomUUID } from "node:crypto";
 import request from "supertest";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
-import { createApp } from "../../src/app";
 import type { HealthReport } from "../../src/contracts";
 import { closePool, getPool } from "../../src/db";
 import { RetryableError } from "../../src/lib/errors";
 import { emailRuns, emails, runs } from "../../src/ontology/repositories";
 import { MemoryRunQueues } from "../../src/queues/__fakes__/memory.run-queues";
-import { FakeScorer } from "../../src/scorer/__fakes__/fake.scorer";
-import { MemoryStore } from "../../src/storage/__fakes__/memory.store";
 import { TEST_ENV } from "../../vitest.config";
+import { allUp, testApp, withDown } from "../app";
 import { uniqueEmailId } from "../db";
 
 const TEAM = { authorization: `Bearer ${TEST_ENV.TEAM_API_KEY}` };
-const ALL_UP: HealthReport = { status: "ok", checks: { postgres: "up", redis: "up", minio: "up", inbox: "up", docExtract: "up" } };
-
 let runQueues: MemoryRunQueues;
 let health: HealthReport;
 
-function app() {
-  return createApp({ pool: getPool(), runQueues, store: new MemoryStore(), scorer: new FakeScorer(), health: async () => health });
-}
+const app = () => testApp({ runQueues, health: async () => health });
 
 beforeEach(() => {
   runQueues = new MemoryRunQueues();
-  health = ALL_UP;
+  health = allUp();
 });
 afterAll(closePool);
 
@@ -47,18 +41,27 @@ describe("GET /health", () => {
   it("needs no key and reports every check", async () => {
     const response = await request(app()).get("/health");
     expect(response.status).toBe(200);
-    expect(response.body).toEqual(ALL_UP);
+    expect(response.body).toEqual(health);
   });
 
   it("stays 200 when degraded, so a MinIO outage does not roll a deploy back", async () => {
-    health = { status: "degraded", checks: { ...ALL_UP.checks, minio: "down" } };
+    health = withDown("minio");
     const response = await request(app()).get("/health");
     expect(response.status).toBe(200);
     expect(response.body.status).toBe("degraded");
   });
 
-  it("is 503 when the database is down", async () => {
-    health = { status: "degraded", checks: { ...ALL_UP.checks, postgres: "down" } };
+  it("stays 200 when the worker heartbeat is stale, so a worker restart does not roll a deploy back", async () => {
+    health = withDown("worker");
+    const response = await request(app()).get("/health");
+    expect(response.status).toBe(200);
+    expect(response.body.checks.worker).toEqual({ status: "down", heartbeatAt: null });
+  });
+
+  it("is 503 when the database or Redis is down, which is what auto-deploy rolls back on", async () => {
+    health = withDown("postgres");
+    expect((await request(app()).get("/health")).status).toBe(503);
+    health = withDown("redis");
     expect((await request(app()).get("/health")).status).toBe(503);
   });
 });

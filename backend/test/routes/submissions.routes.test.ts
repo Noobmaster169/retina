@@ -3,15 +3,14 @@ import { randomUUID } from "node:crypto";
 import request from "supertest";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
-import { createApp } from "../../src/app";
 import type { Category } from "../../src/contracts";
 import { closePool, getPool } from "../../src/db";
 import { classifications, emailRuns, emails, runs } from "../../src/ontology/repositories";
-import { MemoryRunQueues } from "../../src/queues/__fakes__/memory.run-queues";
 import { FakeScorer } from "../../src/scorer/__fakes__/fake.scorer";
 import { UpstreamError } from "../../src/lib/errors";
 import { MemoryStore } from "../../src/storage/__fakes__/memory.store";
 import { TEST_ENV } from "../../vitest.config";
+import { testApp } from "../app";
 import { uniqueEmailId } from "../db";
 
 const TEAM = { authorization: `Bearer ${TEST_ENV.TEAM_API_KEY}` };
@@ -19,15 +18,7 @@ const TEAM = { authorization: `Bearer ${TEST_ENV.TEAM_API_KEY}` };
 let store: MemoryStore | null;
 let scorer: FakeScorer;
 
-function app() {
-  return createApp({
-    pool: getPool(),
-    runQueues: new MemoryRunQueues(),
-    store,
-    scorer,
-    health: async () => ({ status: "ok", checks: { postgres: "up", redis: "up", minio: "up", inbox: "up", docExtract: "up" } }),
-  });
-}
+const app = () => testApp({ store, scorer });
 
 /** A committed run with one email per given category. `null` is an email still being classified. */
 async function runWith(

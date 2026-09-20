@@ -198,3 +198,19 @@ export async function rerunCount(db: Queryable, emailRunId: string): Promise<num
   const { rows } = await db.query<{ rerun_count: number }>("select rerun_count from core.email_runs where id = $1", [emailRunId]);
   return rows[0]?.rerun_count ?? 0;
 }
+
+/**
+ * What this email was queued at. Null when the run has never seen it.
+ *
+ * The number is read back rather than recomputed wherever a job is added
+ * again: a rerun then keeps the tier the email already had, instead of
+ * queueing a tier-1 client's correction behind a burst because the cache
+ * changed in between.
+ */
+export async function priorityOf(db: Queryable, runId: string, emailId: string): Promise<number | null> {
+  const { rows } = await db.query<{ priority: number }>(
+    "select priority from core.email_runs where run_id = $1 and email_id = $2",
+    [runId, emailId],
+  );
+  return rows[0]?.priority ?? null;
+}

@@ -6,7 +6,9 @@ import { closePool, getPool } from "./db";
 import { checkHealth } from "./health";
 import { childLogger } from "./lib/logger";
 import { redisLiveCalls } from "./live";
-import { closeRedis } from "./queues/connection";
+import { closeRedis, getRedis } from "./queues/connection";
+import { lastBeat } from "./queues/heartbeat";
+import { redisPriorityCache } from "./queues/priority-cache";
 import { closeQueues } from "./queues/queues";
 import { bullRunQueues } from "./queues/run-queues";
 import { inboxScorer } from "./scorer/scorer";
@@ -32,12 +34,23 @@ function storeOrNull(): ObjectStore | null {
 const pool = getPool();
 const store = storeOrNull();
 const live = redisLiveCalls();
+const runQueues = bullRunQueues();
 const app = createApp({
   pool,
-  runQueues: bullRunQueues(),
+  runQueues,
   store,
   scorer: inboxScorer(config.EMAIL_SERVER_URL),
-  health: () => checkHealth({ pool, store }),
+  priority: redisPriorityCache(getRedis()),
+  health: () =>
+    checkHealth({
+      pool,
+      store,
+      // Both read Redis, and /health is the one route that must answer while
+      // Redis is away. checkHealth swallows what these throw; here they only
+      // have to say where the answer comes from.
+      worker: () => lastBeat(getRedis()),
+      queues: () => runQueues.counts(),
+    }),
   live,
 });
 

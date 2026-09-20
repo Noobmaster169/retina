@@ -1,18 +1,12 @@
 import request from "supertest";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { createApp } from "../../src/app";
-import type { HealthReport } from "../../src/contracts";
-import { closePool, getPool } from "../../src/db";
-import { MemoryRunQueues } from "../../src/queues/__fakes__/memory.run-queues";
-import { FakeScorer } from "../../src/scorer/__fakes__/fake.scorer";
-import { MemoryStore } from "../../src/storage/__fakes__/memory.store";
+import { closePool } from "../../src/db";
 import { TEST_ENV } from "../../vitest.config";
+import { testApp } from "../app";
 
 const TEAM = { authorization: `Bearer ${TEST_ENV.TEAM_API_KEY}` };
-const UP: HealthReport = { status: "ok", checks: { postgres: "up", redis: "up", minio: "up", inbox: "up", docExtract: "up" } };
-const app = () =>
-  createApp({ pool: getPool(), runQueues: new MemoryRunQueues(), store: new MemoryStore(), scorer: new FakeScorer(), health: async () => UP });
+const app = () => testApp();
 
 afterAll(closePool);
 

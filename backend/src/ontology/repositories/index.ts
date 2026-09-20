@@ -1,5 +1,6 @@
 export * as attachments from "./attachments.repo";
 export * as classifications from "./classifications.repo";
+export * as clients from "./clients.repo";
 export * as comparisons from "./comparisons.repo";
 export * as documents from "./documents.repo";
 export * as emailRuns from "./email-runs.repo";

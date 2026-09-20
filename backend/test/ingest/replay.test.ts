@@ -7,6 +7,7 @@ import { MemorySource } from "../../src/ingest/__fakes__/memory.source";
 import type { IngestDeps } from "../../src/ingest/ingest-email";
 import { replayRun } from "../../src/ingest/replay";
 import { emailRuns, runs } from "../../src/ontology/repositories";
+import { MemoryPriorityCache } from "../../src/queues/__fakes__/memory.priority-cache";
 import { RecordingAdder } from "../../src/queues/__fakes__/recording.adder";
 import type { ClassifyJob } from "../../src/queues/names";
 import { MemoryStore } from "../../src/storage/__fakes__/memory.store";
@@ -27,6 +28,7 @@ function inbox(size: number) {
     source: new MemorySource(records),
     store: new MemoryStore(),
     classify,
+    priority: new MemoryPriorityCache(),
   };
   return { ids, deps, classify };
 }
