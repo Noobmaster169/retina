@@ -1460,6 +1460,14 @@ the same branch. The behaviour changes are the first three.
   added sit behind every port and party until those are done. Everything is profiled eventually
   and the 24 hour floor stops it churning, but the first day after a backfill a question about a
   person is answered from a name alone.
+- **`planSighting`'s same-case branch is a lowercasing rule, and the spec blessed it.** Work item
+  4 says an exact or same-case hit "is a cache of a judgement already made, not a rule", which is
+  true of the exact branch and only half true of the other: a judge accepted `MOMBASA, KENYA`, not
+  `mombasa, kenya`, and `resolve.ts` bans lowercasing in the same words this leans on. It was
+  built as the spec wrote it. Dropping it is cheap and worth measuring: the first sighting of each
+  case-variant would cost one `entity-resolve` call, after which that exact spelling is stored and
+  every later sighting takes the exact branch. `pnpm eval:chat --set ontology` is what should say
+  whether the calls buy anything.
 - **`entity-resolve`'s confidence is stored and nothing thresholds it.** The 25 email run joined
   `Deswita` to `Deswita Elvyani` at 0.55 and `NHAVA SHEVA` to `NHAVA SHEVA, INDIA (INNSA)` at 0.50.
   The first is the case the prompt warns against: two sightings of a person are one person only
