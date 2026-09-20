@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { motion } from "motion/react";
 
 import { Bar, Panel, PanelFoot, PanelHead } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
+import type { RunActions } from "@/app/runs/[id]/use-run-actions";
 import { RunSummary } from "@/lib/api/runs-schemas";
 import { stagger } from "@/lib/motion";
 
@@ -19,12 +21,13 @@ import { stagger } from "@/lib/motion";
 
 interface ScorePanelProps {
   run: RunSummary;
+  actions: RunActions;
   className?: string;
 }
 
-export function ScorePanel({ run, className = "" }: ScorePanelProps) {
+export function ScorePanel({ run, actions, className = "" }: ScorePanelProps) {
   const submission = run.lastSubmission;
-  if (!submission || submission.finalScore === null) return <NotSubmitted run={run} className={className} />;
+  if (!submission || submission.finalScore === null) return <NotSubmitted run={run} actions={actions} className={className} />;
 
   const scores = submission.scores;
   const parts = scores
@@ -68,6 +71,8 @@ export function ScorePanel({ run, className = "" }: ScorePanelProps) {
       </div>
       <span className="grow" />
       <PanelFoot className="flex items-center gap-2 py-3">
+        <LocalEvalControl run={run} actions={actions} />
+        <span className="grow" />
         <span className="text-caption text-ink-tertiary">
           submitted {new Date(submission.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
         </span>
@@ -76,8 +81,36 @@ export function ScorePanel({ run, className = "" }: ScorePanelProps) {
   );
 }
 
+/**
+ * The local harness, which scores the same submission against the answer key
+ * on this machine. Dev only: `eval/` is the one place allowed to read
+ * `ground_truth.json`, and on the box the route answers 404.
+ */
+function LocalEvalControl({ run, actions }: { run: RunSummary; actions: RunActions }) {
+  if (actions.local === "unavailable") {
+    return <span className="text-caption text-ink-tertiary">No answer key on this machine.</span>;
+  }
+  if (actions.local) {
+    return (
+      <Link href={`/runs/${run.id}/results`} className="text-small text-ink hover:underline">
+        {actions.local.wrongCategory} sorted wrong, email by email
+      </Link>
+    );
+  }
+  return (
+    <Button
+      variant="secondary"
+      disabled={actions.pending !== null || run.finishedEmails === 0}
+      onClick={() => void actions.evaluate()}
+      className="h-8 text-small"
+    >
+      {actions.pending === "eval" ? "Scoring" : "Score it here"}
+    </Button>
+  );
+}
+
 /** Nothing has been sent to the scorer yet. The panel says what would happen, not nothing. */
-function NotSubmitted({ run, className }: { run: RunSummary; className: string }) {
+function NotSubmitted({ run, actions, className }: { run: RunSummary; actions: RunActions; className: string }) {
   return (
     <Panel className={`overflow-hidden ${className}`}>
       <PanelHead title="Score" aside={<span className="text-small text-ink-tertiary">not submitted</span>} />
@@ -89,10 +122,15 @@ function NotSubmitted({ run, className }: { run: RunSummary; className: string }
       </div>
       <span className="grow" />
       <PanelFoot className="flex items-center gap-2 py-3">
-        <Button variant="secondary" disabled={!run.processingDone} className="h-8 text-small">
-          Submit run
+        <Button
+          variant="secondary"
+          disabled={actions.pending !== null || run.finishedEmails === 0}
+          onClick={() => void actions.submit(false)}
+          className="h-8 text-small"
+        >
+          {actions.pending === "submit" ? "Submitting" : "Submit run"}
         </Button>
-        {run.processingDone ? null : <span className="text-caption text-ink-tertiary">while emails are still moving</span>}
+        <LocalEvalControl run={run} actions={actions} />
       </PanelFoot>
     </Panel>
   );

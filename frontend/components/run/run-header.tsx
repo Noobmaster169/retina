@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icons";
 import { RunStatus, RunSummary } from "@/lib/api/runs-schemas";
+import { CONTROLS, type RunActions } from "@/app/runs/[id]/use-run-actions";
 import { formatDuration } from "@/lib/duration";
 import { panel } from "@/lib/motion";
 
@@ -26,6 +27,7 @@ interface RunHeaderProps {
   trouble: Trouble | null;
   /** How the two queues read right now, in one sentence under the title. */
   summary: string;
+  actions: RunActions;
 }
 
 const STATUS_TINT: Record<RunStatus, string> = {
@@ -55,8 +57,9 @@ export function statusWord(run: RunSummary, degraded: boolean): { word: string; 
   return { word, tint: STATUS_TINT[run.status] };
 }
 
-export function RunHeader({ run, trouble, summary }: RunHeaderProps) {
+export function RunHeader({ run, trouble, summary, actions }: RunHeaderProps) {
   const done = run.processingDone;
+  const controls = CONTROLS[run.status];
   return (
     <>
       <div className="flex shrink-0 items-center gap-4 px-6 py-5">
@@ -71,13 +74,42 @@ export function RunHeader({ run, trouble, summary }: RunHeaderProps) {
           </p>
         </div>
         <span className="grow" />
-        <Button variant="secondary" disabled>
-          {done ? "Start a run like this" : "Pause"}
-        </Button>
-        <Button variant="primary" disabled>
-          {done ? "Submit again" : "Submit run"}
+        {controls.map((action) => (
+          <Button
+            key={action}
+            variant="secondary"
+            disabled={actions.pending !== null}
+            onClick={() => void actions.control(action)}
+            className="capitalize"
+          >
+            {actions.pending === action ? `${action.slice(0, -1)}ing` : action}
+          </Button>
+        ))}
+        <Button
+          variant="primary"
+          disabled={actions.pending !== null || run.finishedEmails === 0}
+          onClick={() => void actions.submit(false)}
+        >
+          {actions.pending === "submit" ? "Submitting" : run.lastSubmission ? "Submit again" : "Submit run"}
         </Button>
       </div>
+
+      {actions.error ? (
+        <div className="shrink-0 px-6 pb-3">
+          <p role="alert" className="max-w-[68ch] border-l-2 border-fault pl-3 text-small text-fault">
+            {actions.error}
+            {actions.unfinished === null ? null : (
+              <button
+                type="button"
+                onClick={() => void actions.submit(true)}
+                className="ml-2 underline underline-offset-2"
+              >
+                {actions.unfinished > 0 ? `Submit anyway, ${actions.unfinished} unfinished` : "Submit anyway"}
+              </button>
+            )}
+          </p>
+        </div>
+      ) : null}
 
       <AnimatePresence initial={false}>
         {trouble ? (

@@ -1,136 +1,130 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { motion } from "motion/react";
 
-import type { RunAction, RunStatus, RunSummary, Stage } from "@/lib/api-client";
+import { statusWord } from "@/components/run/run-header";
+import { Bar } from "@/components/ui/panel";
+import type { RunSummary } from "@/lib/api/runs-schemas";
 import { formatDuration } from "@/lib/duration";
 
-import { ScoreCell } from "./score-cell";
+/**
+ * One run, on two lines. The whole row is the link, because section 10 asks
+ * every table row to be one; nothing else on it is clickable, so there is
+ * nothing to miss and nothing to hit by accident.
+ *
+ * What ended up where is the organisers' enums, quiet and in their own order.
+ * A run with no verdicts yet shows its stages instead, which is the only thing
+ * it knows.
+ */
 
-const STAGES: Stage[] = ["ingested", "classifying", "classified", "comparing", "review", "done", "failed"];
+export function RunRow({ run }: { run: RunSummary }) {
+  const status = statusWord(run, false);
+  const finished = run.totalEmails ? (run.finishedEmails / run.totalEmails) * 100 : 0;
 
-const ACTIONS: Record<RunStatus, RunAction[]> = {
-  created: ["pause", "cancel"],
-  running: ["pause", "cancel"],
-  paused: ["resume", "cancel"],
-  completed: [],
-  cancelled: [],
-  failed: [],
-};
+  return (
+    <tr className="group relative border-b border-hairline-faint transition-colors duration-150 hover:bg-sunken">
+      <Cell>
+        {/* One link, stretched over the row: section 10 asks every table row to
+            be a link, and a link per cell would make the row six tab stops. */}
+        <Link href={`/runs/${run.id}`} className="block after:absolute after:inset-0 after:content-['']">
+          <span className="block text-strong group-hover:underline">{started(run)}</span>
+          <span className="mt-0.5 block font-mono text-mono-sm text-ink-tertiary">{run.id.slice(0, 8)}</span>
+        </Link>
+      </Cell>
 
-const STATUS_TONE: Record<RunStatus, string> = {
-  created: "text-ink-tertiary",
-  running: "text-ink",
-  paused: "text-amber-700",
-  completed: "text-ink",
-  cancelled: "text-ink-tertiary",
-  failed: "text-fault",
-};
+      <Cell>
+        <span className={`inline-flex h-[22px] items-center rounded-sm px-2 text-caption font-medium ${status.tint}`}>
+          {status.word}
+        </span>
+      </Cell>
 
-function startedLabel(run: RunSummary): string {
+      <Cell>
+        <span className="font-mono text-mono-sm tabular-nums text-ink-tertiary">
+          {run.ratePerSecond === 0 ? "burst" : `${run.ratePerSecond}/s`}
+        </span>
+      </Cell>
+
+      <Cell>
+        <div className="flex items-center gap-2.5">
+          <Bar pct={finished} tone={run.processingDone ? "var(--ink-faint)" : "var(--signal)"} height={4} />
+          <span className="shrink-0 font-mono text-mono-sm tabular-nums">
+            {run.finishedEmails} / {run.totalEmails ?? "?"}
+          </span>
+        </div>
+        <span className="mt-1 block text-caption tabular-nums text-ink-tertiary">
+          {run.elapsedMs === null ? "not started" : `${run.processingDone ? "took" : "running for"} ${formatDuration(run.elapsedMs)}`}
+        </span>
+      </Cell>
+
+      <Cell>
+        <Outcomes run={run} />
+      </Cell>
+
+      <Cell className="text-right">
+        <Score run={run} />
+      </Cell>
+    </tr>
+  );
+}
+
+function Cell({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <td className={`py-3 pr-4 align-top ${className}`}>{children}</td>;
+}
+
+/** The enums verbatim, and nothing coloured that has no verdict. */
+function Outcomes({ run }: { run: RunSummary }) {
+  const ends = [
+    { key: "OK", count: run.outcomes.ok, ink: "text-match" },
+    { key: "MISMATCH", count: run.outcomes.mismatch, ink: "text-differ" },
+    { key: "needs a person", count: run.review.open, ink: "text-review" },
+    { key: "failed", count: run.stageCounts.failed, ink: "text-fault" },
+  ].filter((end) => end.count > 0);
+
+  if (ends.length === 0) {
+    const moving = run.finishedEmails === 0 && !run.processingDone;
+    return <span className="text-small text-ink-tertiary">{moving ? "still sorting" : "nothing to check"}</span>;
+  }
+
+  return (
+    <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      {ends.map((end) => (
+        <motion.span
+          key={end.key}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.14 }}
+          className="flex items-baseline gap-1.5"
+        >
+          <span className={`font-mono text-mono-xs ${end.ink}`}>{end.key}</span>
+          <span className="text-small font-medium tabular-nums">{end.count}</span>
+        </motion.span>
+      ))}
+    </span>
+  );
+}
+
+function Score({ run }: { run: RunSummary }) {
+  const last = run.lastSubmission;
+  if (!last || last.finalScore === null) {
+    return <span className="text-small text-ink-tertiary">not submitted</span>;
+  }
+  return (
+    <>
+      <span className="font-mono text-mono tabular-nums">{last.finalScore.toFixed(4)}</span>
+      <span className="mt-0.5 block text-caption text-ink-tertiary">
+        over {last.nEmails}
+        {last.forced ? ", forced" : ""}
+      </span>
+    </>
+  );
+}
+
+function started(run: RunSummary): string {
   return new Date(run.startedAt ?? run.createdAt).toLocaleString(undefined, {
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-    second: "2-digit",
   });
-}
-
-interface Props {
-  run: RunSummary;
-  onChanged: () => void;
-}
-
-export function RunRow({ run, onChanged }: Props) {
-  const [pending, setPending] = useState<RunAction | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const percent = run.totalEmails ? Math.round((run.finishedEmails / run.totalEmails) * 100) : 0;
-
-  async function act(action: RunAction) {
-    setPending(action);
-    setError(null);
-    try {
-      const response = await fetch(`/api/runs/${run.id}/${action}`, { method: "POST" });
-      if (!response.ok) {
-        const body = (await response.json().catch(() => ({}))) as { error?: string };
-        setError(body.error ?? `Request failed with ${response.status}`);
-      }
-      onChanged();
-    } catch (cause) {
-      console.error("[runs] action failed:", cause);
-      setError("Could not reach the server.");
-    } finally {
-      setPending(null);
-    }
-  }
-
-  return (
-    <tr className="border-b border-hairline align-top">
-      <td className="py-3 pr-4 whitespace-nowrap">
-        <Link href={`/runs/${run.id}`} className="hover:text-ink hover:underline">
-          {startedLabel(run)}
-        </Link>
-        <div className="font-mono text-xs text-ink-tertiary">{run.id.slice(0, 8)}</div>
-      </td>
-      <td className={`py-3 pr-4 font-medium ${STATUS_TONE[run.status]}`}>{run.status}</td>
-      <td className="py-3 pr-4 whitespace-nowrap tabular-nums text-ink-tertiary">
-        {run.ratePerSecond === 0 ? "burst" : `${run.ratePerSecond}/s`}
-      </td>
-      <td className="py-3 pr-4">
-        <div className="flex items-center gap-3">
-          <div
-            role="progressbar"
-            aria-label="Emails finished"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={percent}
-            className="h-1.5 w-28 overflow-hidden rounded-full bg-active"
-          >
-            <div className="h-full bg-ink transition-[width] duration-500" style={{ width: `${percent}%` }} />
-          </div>
-          <span className="whitespace-nowrap tabular-nums">
-            {run.finishedEmails} / {run.totalEmails ?? "?"}
-          </span>
-        </div>
-        {run.elapsedMs !== null && (
-          <div className="mt-1 text-xs tabular-nums text-ink-tertiary">
-            {run.processingDone ? "took" : "running for"} {formatDuration(run.elapsedMs)}
-          </div>
-        )}
-      </td>
-      <td className="py-3 pr-4">
-        <ul className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-ink-tertiary">
-          {STAGES.filter((stage) => run.stageCounts[stage] > 0).map((stage) => (
-            <li key={stage} className={stage === "failed" ? "text-fault" : undefined}>
-              {stage} <span className="tabular-nums text-ink">{run.stageCounts[stage]}</span>
-            </li>
-          ))}
-        </ul>
-        {error && (
-          <p role="alert" className="mt-1 text-xs text-fault">
-            {error}
-          </p>
-        )}
-      </td>
-      <td className="py-3 pr-4">
-        <ScoreCell run={run} onChanged={onChanged} />
-      </td>
-      <td className="py-3 text-right whitespace-nowrap">
-        {ACTIONS[run.status].map((action) => (
-          <button
-            key={action}
-            type="button"
-            disabled={pending !== null}
-            onClick={() => void act(action)}
-            className="ml-2 rounded-md border border-hairline px-2.5 py-1 text-xs capitalize hover:border-ink hover:text-ink disabled:opacity-50"
-          >
-            {pending === action ? "…" : action}
-          </button>
-        ))}
-      </td>
-    </tr>
-  );
 }

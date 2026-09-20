@@ -68,6 +68,27 @@ and nowhere else. Phase 11 takes the rectangle back.
   parameter, which failed every compare with `bind message supplies 9 parameters`. Caught on a
   real run, not by a test, because the repository tests fake the insert.
 
+**The runs list, rebuilt after review.** It first got a mechanical token migration and kept its
+phase 6 structure, which broke the language in five ways at once: uppercase table headers (retired
+in 5.1), dollar costs and model call counts on a list (section 11 puts those on the run page's
+machinery view and nowhere else), raw queue counters with `CLASSIFY_CONCURRENCY` and
+`LLM_MAX_CONCURRENCY` named on screen, status as plain text rather than a chip, and ten prompt and
+model dropdowns exposed before anything else on the page.
+
+It is now a list: one two-line row per run, the whole row a link, status as a chip, what ended up
+where in the organisers' enums, and the score right aligned in mono. Starting a run is `Emails`,
+`Pace` and a button, with the eight experiment dropdowns behind a disclosure.
+
+Its per row controls moved to the run page, where the canvas drew them and where phase 7 had left
+them disabled although the routes work. `use-run-actions.ts` holds pause, resume, cancel, submit
+and the local eval; the header carries whichever controls the run's status allows, and the score
+panel carries submit and `Score it here`. All five checked against the live API.
+
+**Known, and left for phase 9.** A run whose ingest has finished reads `completed` while its
+queues are still full, and the API refuses both pause and cancel in that state, so the run page
+offers neither. That is the API's rule and the page is drawing it honestly; stopping a run that is
+still working wants a backend change, not a button.
+
 **Fixed under phase 7, outside its scope.** A run whose ingest finished read as `Completed` while
 its queues were still full: `status` is the ingest's and `processingDone` is the pipeline's. The
 chip now says Running until `processingDone`.

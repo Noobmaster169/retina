@@ -17,6 +17,7 @@ import { RunSummary } from "@/lib/api/runs-schemas";
 import { parsedFetcher } from "@/lib/poll";
 
 import { runSummaryLine, troubleOf } from "./reading";
+import { useRunActions } from "./use-run-actions";
 
 /**
  * The run page in its three states, which are one page and not three: a
@@ -31,7 +32,7 @@ const HEALTH_MS = 10_000;
 
 export function RunPage({ initialRun }: { initialRun: RunSummary }) {
   const id = initialRun.id;
-  const { data: run = initialRun } = useSWR(`/api/runs/${id}`, parsedFetcher(RunSummary), {
+  const { data: run = initialRun, mutate } = useSWR(`/api/runs/${id}`, parsedFetcher(RunSummary), {
     fallbackData: initialRun,
     refreshInterval: initialRun.processingDone ? 0 : LIVE_MS,
     keepPreviousData: true,
@@ -46,6 +47,7 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
     keepPreviousData: true,
   });
 
+  const actions = useRunActions(id, () => void mutate());
   const trouble = troubleOf(health, queues ?? null);
   const status = statusWord(run, trouble !== null);
 
@@ -59,7 +61,7 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
           </span>
         </TopBar>
 
-        <RunHeader run={run} trouble={trouble} summary={runSummaryLine(run, queues ?? null)} />
+        <RunHeader run={run} trouble={trouble} summary={runSummaryLine(run, queues ?? null)} actions={actions} />
 
         <div className="flex min-h-0 grow flex-col gap-4 px-6 pb-6">
           {queues ? (
@@ -105,7 +107,7 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
                   className="w-[372px] shrink-0"
                 />
                 <MachineryPanel run={run} className="w-[372px] shrink-0" />
-                <ScorePanel run={run} className="min-w-0 grow" />
+                <ScorePanel run={run} actions={actions} className="min-w-0 grow" />
               </>
             )}
           </div>
