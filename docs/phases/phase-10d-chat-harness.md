@@ -33,6 +33,53 @@ wins and this list says how:
   tool's argument shape is now derived from its schema into the prompt and the refusal, and
   `run_recipe` takes flat parameters. A tool that throws comes back as a refusal.
 
+### The review pass (2026-09-20)
+
+A reviewer given only the branch, `CLAUDE.md` and this spec, with none of the building session's
+context. Sixteen findings; what changed:
+
+- **The guard could be walked round.** A tool's text echoes what was asked for (`Looking for
+  "..."`, a query's `purpose`, the refusal quoting the refused string), so after the lookup
+  `CHAT.md` itself tells the agent to make, the guess counted as shown. Every tool now reports
+  `grounds`, what the data returned and nothing else, and the guard reads only that. The agent's
+  earlier answers no longer ground a name; a stored spelling is grounded by the database.
+- **`like 'Acme Co'` is an equality.** A `like` or `ilike` needs a `%` or `_` to pass. Literals in
+  a `case` branch, the select list, a `coalesce` fallback, a jsonb key and `at time zone` are
+  output or keys, and are no longer refused. A dollar tag may carry digits.
+- **`profile_column` could not see a materialised view**, which is every view the schema notes
+  tell the agent to start from: `information_schema.columns` lists none. It reads the catalog
+  with `has_column_privilege` now.
+- **Recipes carry a version** (`-- version:` in the header, on the turn, on the page), which work
+  item 5 asked for and the first build left out. `judged_emails` filtered on a rationale every row
+  has, gap rows included; it needs a value on both sides now, and so does the orientation's
+  count. The two mismatch recipes require status `MISMATCH`, so they agree with the screens.
+- **Every recipe has a correctness test** against rows whose answer is known
+  (`recipes.seeded.test.ts`); the first build checked columns only for seventeen of twenty.
+- **The scorer** could not see a recipe call whose parameters sat beside its name, which is the
+  form the model uses, so `grounds_first` passed vacuously. The recipe share is now of turns that
+  queried at all, and a turn that ran nothing, ran out of steps or used its own SQL does not
+  count for it.
+- **The orientation's watermark** now moves on a new run, a new email and a person's correction.
+  Before, a run created a moment ago left the text naming the old latest run while `run_recipe`
+  defaulted to the new one.
+- Smaller: `tonnage_mt` is warned about in `CHAT.md` and the schema notes, not only in a skill;
+  a loaded skill is shown once, not twice; `run_id: null` means the default run; the schema
+  notes list three more closed sets; `profile_column` says when its values were cut.
+
+Not changed, and why:
+
+- **No row in `core.prompt_versions` for `chat`.** That table pins a run's prompts, and a chat
+  turn belongs to no run. `llm_calls.prompt_version` records `v2` on every step.
+- **`findCandidates` scores every spelling**, so the two `entity_names` indexes of migration 015
+  serve `list_entities` and the recipes' `ilike`, not `find_entity`. Fine at hundreds of
+  spellings; at hundreds of thousands it needs `set local pg_trgm.word_similarity_threshold` and
+  the `<%` operator inside a transaction. Under Deferred.
+- **`lower(canonical) = 'acme co'` is refused** even after the canonical was shown, because the
+  guard matches case. Matching without case would let a wrong-case enum through to an empty
+  result. The agent filters on ids, so this costs little.
+- **The empty-result diagnosis names the nearest stored names, not the run and its size**: the
+  tool cannot know which run a model-written query meant. The orientation already says it.
+
 ## Goal
 
 A chat session starts knowing where it is. Before its first answer the agent has been told how
@@ -373,6 +420,14 @@ questions**, and both numbers go in `PROGRESS.md`.
       updated in the same commits; type-check, tests and lint clean; no file over 200 lines.
 
 ## Deferred
+
+- **A turn's prompt is never trimmed.** A call can return 20 kB and a turn can make dozens. It has
+  not been a problem at two to four calls a turn; if it becomes one, keep the last few results
+  whole and the older ones as their previews.
+- **Two posts to one conversation at once** are not locked against each other, which predates this
+  phase: the second sees the first's question as history. The composer disables itself while a
+  turn is pending, so it takes two tabs.
+- `find_entity` does not use an index; see "Not changed" above.
 
 - `word_similarity > 0.3`, eight candidates, four calls per step, the 60 and 40 caps in the
   orientation: starting values, to be measured on `eval:chat`.

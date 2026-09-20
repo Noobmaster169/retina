@@ -44,6 +44,9 @@ Ours, not the organisers', and just as closed:
 - `core.review_actions.kind`: `confirm`, `correct_field`, `reclassify`, `note`, `upload`, `retry`, `reopen`
 - `core.llm_calls.step`: `classify`, `classify-verify`, `triage`, `doc-type`, `extract`, `extract-verify`, `field-judge`, `chat`
 - `core.runs.status`: `created`, `running`, `paused`, `completed`, `cancelled`, `failed`
+- `core.documents.format`: `txt`, `pdf`, `docx`, `xlsx`, `unknown`
+- `core.clients.kind`: `customer`, `internal`, `forwarder`, `spam`
+- `core.attachments.origin`: `source`, `human`
 
 ## analytics.fact_email_outcome
 
@@ -51,7 +54,7 @@ One row per email per run. Grain `(run_id, email_id)`. Start here.
 
 - `run_id`, `email_id`, `email_run_id`
 - `sender_domain`, `client_tier` (1 first, 5 last; 3 where nobody ranked the sender), `client_name`
-- `subject`, `tonnage_mt` (null for an email that names no tonnage)
+- `subject`, `tonnage_mt` (a number some subject lines carry; not the documented weight, and null on most emails)
 - `category` — the human correction where one exists, else the model's. Use this one.
 - `model_category` — what the model said, ignoring any correction. Use only to compare the two.
 - `category_decided_by`, `comparison_decided_by`

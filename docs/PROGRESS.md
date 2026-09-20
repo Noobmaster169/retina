@@ -669,6 +669,10 @@ port's code. "How many mismatches in this run?" answered from the orientation in
 "What are the busiest lanes?" took 2 steps through the `lanes` recipe. No guard refusals, no own
 SQL. Two defects were found this way and fixed; see "As built".
 
+Reviewed from a clean context after the build: sixteen findings, the serious one being that the
+literal guard could be defeated by a tool's own echo of what was asked. All of them and what was
+left alone, with reasons, are in the spec under "The review pass". 806 backend tests after it.
+
 Seen and left: on one call sonnet sent `{"action":"final","answer":"test"}`, a placeholder, as its
 whole step, the same family as the `$PARAMETER_NAME` first attempts noted under "Found while
 building". An empty final answer is now handed back; a non-empty placeholder is not detectable

@@ -241,12 +241,15 @@ describe("the harness around the loop", () => {
   });
 
   it("says what was near when a grounded query comes back empty", async () => {
-    const { result } = await turn(
+    const { result, requests } = await turn(
       [calls(sql("select id from core.entities where canonical ilike 'ACME FAR WEST%'")), final("None.")],
       { seed: true },
     );
     expect(result.toolCalls[0].ok).toBe(true);
     expect(result.toolCalls[0].result?.rowCount).toBe(0);
+    // The agent is told what it was one letter away from, with the id to use.
+    expect(requests[1].user).toContain("Stored names near 'ACME FAR WEST%':");
+    expect(requests[1].user).toContain(`${ACME_FE} (party)`);
     expect(result.skillsUsed.map((skill) => skill.name)).toContain("ground-names");
   });
 

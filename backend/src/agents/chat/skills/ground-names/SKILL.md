@@ -33,7 +33,7 @@ Do this, in order:
 What goes wrong here:
 
 - Ids are rebuilt when the resolved things refresh. An id is good for this turn. On a later
-  turn, find the name again; it is one indexed call.
+  turn, find the name again; it is one call.
 - `core.entity_mentions` holds one row per extracted field per email run. An email replayed in
   five runs has five sets. Count `distinct email_id`, or fix the run. The recipes already do.
 - A value on a draft bill of lading may be one the comparison judged different from the

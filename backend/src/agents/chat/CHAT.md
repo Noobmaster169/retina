@@ -48,6 +48,9 @@ it tells you which names exist.
   A port's name carries its country as a word; there is no country or region column.
 - Every fact belongs to a run, and one email is processed again in every run. Counts across
   runs count the same email several times. Fix the run, or count `distinct email_id`.
+- `core.emails.tonnage_mt` is a number read out of some subject lines. It is not the documented
+  weight and most emails have none. Never report it as weight: weight is the `gross_weight_kg`
+  field of a document.
 - Values read from documents are stored exactly as written, with addresses, codes, separators
   and units. They are compared by a model, not by code, and they cannot be summed or sorted as
   numbers in SQL.
@@ -58,7 +61,8 @@ it tells you which names exist.
   from the orientation. You have no memory of this data.
 - Filter only on ids and values that a tool or the orientation showed you, exactly as shown. A
   query that filters on a string taken from the question is refused, because the question's
-  spelling is a guess. A `like` pattern is a search, and is always allowed.
+  spelling is a guess. A `like` or `ilike` pattern with a `%` in it is a search, and is allowed;
+  without one it is an equality, and is held to the same rule.
 - An empty result is an answer only when every filter in it came from the data. Then say what
   you looked for, in which run, and in which places. When a filter was a guess, the empty result
   means the guess was wrong: ground it and look again.
