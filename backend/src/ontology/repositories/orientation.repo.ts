@@ -39,12 +39,21 @@ async function counted(db: Queryable, sql: string, params: unknown[]): Promise<C
   return rows.map((row) => ({ label: row.label ?? "(none)", count: Number(row.n) }));
 }
 
-/** Moves whenever a run progresses or the resolver rebuilds, which are the two things the snapshot reads. */
+/**
+ * Moves whenever anything the snapshot reports could have moved: a run created or progressing,
+ * an email ingested, a person's correction, the resolver rebuilding. A new run with no email yet
+ * matters most: without it the text would name the old latest run while `run_recipe` defaults
+ * to the new one.
+ */
 export async function watermark(db: Queryable): Promise<string> {
   const { rows } = await db.query<{ mark: string }>(
     `select concat_ws('|',
+              (select count(*) from core.runs),
+              (select count(*) from core.emails),
               (select count(*) from core.email_runs),
               (select coalesce(max(finished_at), 'epoch') from core.email_runs),
+              (select count(*) from core.email_runs where stage in ('done', 'review', 'failed')),
+              (select coalesce(max(created_at), 'epoch') from core.review_actions),
               (select coalesce(max(resolved_at), 'epoch') from core.entities)) as mark`,
   );
   return rows[0].mark;
@@ -86,7 +95,7 @@ export async function snapshot(db: Queryable, scopedRunId: string | null): Promi
          from core.field_diffs fd
          join core.comparisons cmp on cmp.id = fd.comparison_id
          join core.email_runs er on er.id = cmp.email_run_id
-        where er.run_id = $1::uuid`,
+        where er.run_id = $1::uuid and not fd.missing and fd.confidence is not null`,
       [runId],
     ),
     listing(db, "port", null, ALL_PORTS_UP_TO),

@@ -62,6 +62,7 @@ export interface Scored {
   steps: number;
   recipes: string[];
   adhoc: boolean;
+  exhausted: boolean;
   guardRefusals: number;
 }
 
@@ -75,9 +76,10 @@ function isGuardRefusal(call: TurnResult["toolCalls"][number]): boolean {
 function filters(call: TurnResult["toolCalls"][number]): boolean {
   if (call.tool === "run_sql") return /'[^']*\p{L}[^']*'/u.test(String(call.args.sql ?? ""));
   if (call.tool !== "run_recipe") return false;
-  const params = z.record(z.string(), z.unknown()).safeParse(call.args.params);
-  if (!params.success) return false;
-  return Object.entries(params.data).some(([name, value]) => name !== "run_id" && (Array.isArray(value) || typeof value === "string"));
+  // A recipe's parameters may sit inside `params` or beside `name`; the tool takes both, so this reads both.
+  const nested = z.record(z.string(), z.unknown()).safeParse(call.args.params);
+  const { name: _name, params: _params, ...flat } = call.args;
+  return Object.entries({ ...flat, ...(nested.success ? nested.data : {}) }).some(([name, value]) => name !== "run_id" && (Array.isArray(value) || typeof value === "string"));
 }
 
 function groundsFirst(calls: TurnResult["toolCalls"]): Check {
@@ -122,6 +124,7 @@ export function scoreTurn(question: ChatQuestion, turn: TurnResult, context: { s
     steps: context.steps,
     recipes,
     adhoc: turn.adhoc,
+    exhausted: turn.exhausted,
     guardRefusals: refusals,
   };
 }
@@ -129,8 +132,10 @@ export function scoreTurn(question: ChatQuestion, turn: TurnResult, context: { s
 export interface Summary {
   questions: number;
   passed: number;
-  /** Turns that answered from recipes alone, as a share of all turns. */
+  /** Turns that ran at least one recipe, none of their own SQL, and finished, as a share of the turns that queried at all. */
   recipeOnlyShare: number;
+  /** Turns answered with no query, from the orientation. Not counted for or against the recipes. */
+  noQuery: number;
   medianSteps: number;
   guardRefusals: number;
   adhoc: string[];
@@ -139,10 +144,13 @@ export interface Summary {
 export function summarise(scored: Scored[]): Summary {
   const steps = scored.map((item) => item.steps).sort((a, b) => a - b);
   const middle = Math.floor(steps.length / 2);
+  // A turn that ran nothing says nothing about whether a recipe covered the question.
+  const queried = scored.filter((item) => item.recipes.length > 0 || item.adhoc || item.exhausted);
   return {
     questions: scored.length,
     passed: scored.filter((item) => item.passed).length,
-    recipeOnlyShare: scored.length === 0 ? 0 : scored.filter((item) => !item.adhoc).length / scored.length,
+    recipeOnlyShare: queried.length === 0 ? 0 : queried.filter((item) => item.recipes.length > 0 && !item.adhoc && !item.exhausted).length / queried.length,
+    noQuery: scored.length - queried.length,
     medianSteps: steps.length === 0 ? 0 : steps.length % 2 === 1 ? steps[middle] : (steps[middle - 1] + steps[middle]) / 2,
     guardRefusals: scored.reduce((sum, item) => sum + item.guardRefusals, 0),
     adhoc: scored.filter((item) => item.adhoc).map((item) => item.id),

@@ -90,7 +90,7 @@ async function main(): Promise<void> {
 
   const summary = summarise(scored);
   console.log(
-    `\n${summary.passed} of ${summary.questions} passed. Answered from recipes alone: ${(summary.recipeOnlyShare * 100).toFixed(0)}%. ` +
+    `\n${summary.passed} of ${summary.questions} passed. Of the turns that queried, answered from recipes alone: ${(summary.recipeOnlyShare * 100).toFixed(0)}%; ${summary.noQuery} needed no query. ` +
       `Median steps: ${summary.medianSteps}. Guard refusals: ${summary.guardRefusals}.` +
       (summary.adhoc.length > 0 ? `\nNeeded its own SQL, so candidates for a recipe: ${summary.adhoc.join(", ")}` : ""),
   );

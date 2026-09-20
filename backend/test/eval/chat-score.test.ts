@@ -39,6 +39,12 @@ describe("scoreTurn", () => {
       passed: false,
     },
     {
+      name: "a recipe whose parameters sit beside its name is seen as filtering too",
+      expect: { behaviours: ["grounds_first"] },
+      turn: turn("Two.", [call("run_recipe", { name: "emails_for_entities", entity_ids: [12] })]),
+      passed: false,
+    },
+    {
       name: "own SQL with a name literal and no lookup is not grounded",
       expect: { behaviours: ["grounds_first"] },
       turn: turn("None.", [call("run_sql", { sql: "select 1 from core.entities where canonical = 'Acme'" })]),
@@ -93,8 +99,9 @@ describe("summarise", () => {
       scoreTurn(ChatQuestion.parse({ id: "b", question: "?" }), turn("x", [call("run_sql", { sql: "select 1" })]), { steps: 4, runId: RUN }),
       scoreTurn(ChatQuestion.parse({ id: "c", question: "?" }), turn("x", []), { steps: 1, runId: RUN }),
     ];
-    expect(summarise(scored)).toMatchObject({ questions: 3, passed: 3, medianSteps: 2, adhoc: ["b"] });
-    expect(summarise(scored).recipeOnlyShare).toBeCloseTo(2 / 3);
+    expect(summarise(scored)).toMatchObject({ questions: 3, passed: 3, medianSteps: 2, adhoc: ["b"], noQuery: 1 });
+    // One of the two turns that queried used recipes alone; the turn that ran nothing is left out of the share.
+    expect(summarise(scored).recipeOnlyShare).toBeCloseTo(1 / 2);
   });
 });
 
