@@ -1,15 +1,53 @@
-# Phase 10f: The semantic layer (parked)
+# Phase 10f: The semantic layer (built)
 
-**Parked on 2026-09-20 by the user's decision.** The chat harness (10d) and the interactive chat
-(10e) come first, and skills are expected to cover most of what this was for. Nothing below has
-been revised since.
+**Built on 2026-09-21 and merged to `main`.** It was parked on 2026-09-20 and unparked by the
+user, who also settled the two decisions section "Decisions the user has to make" leaves open.
+`docs/phases/phase-10f-handover.md` section 6 is the re-reading against 10d and 10e that the
+old header asked for, and it is still worth reading first.
 
-**Read `docs/phases/phase-10f-handover.md` section 6 before this file.** 10d and 10e are both
-built and merged now, and that section is the re-reading this header asks for: what of the table
-below they already answer, the two numbers here that are taken (this spec's migrations `016` and
-`017` are now `017` and `018`; its prompt `chat/v3` is now `v4`), what 10f changes under 10e's
-conversation memory, and the one measurement that decides whether the concept machinery is
-justified at all.
+## What the repo does that this file did not say
+
+`CLAUDE.md` rule 5: where a design doc and the repo disagree, the repo wins for what is built and
+the doc is corrected. These are the corrections.
+
+- **Migrations.** `016` was taken by 10e. The layer is `017_semantic_expand.sql`,
+  `018_semantic_tables.sql`, `019_concept_backfill.sql` (the `backfill_wanted` flag),
+  `020_entity_name_lookup.sql`, `021_entities_ranked.sql` and `022_entity_names_knn.sql`. The last
+  three are indexes `pnpm ontology:bench` asked for; see "What the bench found" below.
+- **Prompts.** The chat prompt is `chat/v4`, not `v3`, and `CHAT.md` went to v3, not v2.
+- **`joinSql` does carry a literal**, or it would: `verdict = 'yes'` is a string literal and 10d's
+  guard would have refused it. `concept_verdicts.matched` is a stored generated column equal to
+  `verdict = 'yes'`, so the subquery is `... and matched` and carries no literal at all.
+- **A turn's readings are on `ChatTurn`, not on `ChatAnswer`.** The thread is read back after a
+  reload, and a total stated as a lower bound has to still read as one.
+- **The survivor of a merge is the entity with more mentions**, with the cluster's most-seen
+  spelling as the tiebreak. Work item 1 states both rules and they can disagree; the mention count
+  wins, because what a kept id buys is the profile and the verdicts written against it and those
+  describe the evidence, not the spelling.
+- **`reconcile` has a fourth output, `drop`**: an entity no cluster claims any more has lost every
+  spelling it held, so it is deleted with its profile and its verdicts. Without it the table grows
+  monotonically with things a deleted run left behind.
+- **`resolveEntities` takes sightings**, a third argument of spellings with no extraction field
+  behind them. Without it a party named only in an SI request's prose forms no cluster, and
+  `reconcile` would drop it on the next pass.
+- **Ranking is two queries, not one `order by ts_rank`.** See "What the bench found".
+- **`refresh-profiles` and `backfill-concepts` are scheduled tasks, not a `concept-backfill`
+  queue.** One queue was enough; `core.concepts.backfill_wanted` says which concept is worth
+  finishing, which is what `needComplete` and a second asking write.
+
+## What the bench found
+
+`pnpm ontology:bench` at 200,000 things and 2,000,000 sightings, on the development box:
+
+- One full `resolveAll`: 6.0 s to load, 2.6 s to resolve and plan. **The incremental form stays
+  Deferred**, with that number as its reason: a pass every five minutes at nine seconds is not
+  the thing to fix, and at a million things it would still be under a minute.
+- It found three missing indexes, which is what it is for. The exact-spelling lookup was a
+  sequential scan (`020`), topping the candidate list up was a sequential scan and a top-N sort
+  (`021`), and the candidate search was 760 ms because a similarity threshold of 0.3 matched a
+  tenth of the table. `022` replaces that threshold with a nearest-neighbour search on a GiST
+  index, which stops after fifty rows at any size: a tool that shows eight candidates wants the
+  nearest few, not everything over a line.
 
 Written 2026-09-20 for the engineer who builds it, against the code on
 `phase-10-analytics-and-chat`. Read `CLAUDE.md`, then `phase-10-handover.md`, then
@@ -653,8 +691,12 @@ the honest `complete: false` matters more than any ranking trick.
 - **Merging two entities a person says are one, and splitting one.** `joined_by = 'human'`
   exists and nothing writes it; it needs the action-card contract that phase 11 owns.
 
-## Decisions the user has to make before the build starts
+## Decisions the user made before the build started
 
-1. `ONTOLOGY_KNOWLEDGE` default: `mail+model` as written, or `mail` only.
-2. Whether person entities get a `general` section at all. Proposed: never; a person's profile
-   is work facts from the mail only.
+1. `ONTOLOGY_KNOWLEDGE` defaults to `mail+model`. A profile's `general` section is stored with the
+   label "General knowledge, unverified" and a confidence of its own, and `CHAT.md` v3 lets the
+   agent repeat what it says **with that label** and never extend it. That is what reconciles it
+   with v2's rule that general knowledge may relate and never report: a labelled claim about the
+   world is not a claim about this mailbox.
+2. A person never gets a `general` section, under either setting. `generalAllowed()` in
+   `queues/refresh-profiles.ts` is the one place that decides it.
