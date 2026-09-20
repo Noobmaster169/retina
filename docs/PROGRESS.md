@@ -638,6 +638,9 @@ corrected where it described the old behaviour:
 
 ### Phase 10d: the chat harness (built 2026-09-20, local)
 
+**Picking up 10e: start at `docs/phases/phase-10e-handover.md`.** Its section 2 lists six things
+in the 10e spec that no longer match what 10d built.
+
 Spec and what changed while building: `docs/phases/phase-10d-chat-harness.md`, "As built". 10e
 (interactive chat) and 10f (semantic layer) are specified and not started; 10f is parked.
 
