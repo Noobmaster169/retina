@@ -33,7 +33,7 @@ export function RunsTable({ initialList, initialError }: Props) {
       <NewRunForm onCreated={() => void mutate()} />
 
       {data && (
-        <p className="mt-6 text-sm text-muted">
+        <p className="mt-6 text-sm text-ink-tertiary">
           <span className="font-medium text-ink">Parallel</span> {data.concurrency.classify} emails at once,{" "}
           {data.concurrency.llm} model calls in flight. Set by <code>CLASSIFY_CONCURRENCY</code> and{" "}
           <code>LLM_MAX_CONCURRENCY</code> in the backend env.
@@ -41,7 +41,7 @@ export function RunsTable({ initialList, initialError }: Props) {
       )}
 
       {queues && (
-        <dl className="mt-2 flex flex-wrap gap-x-8 gap-y-1 text-sm text-muted">
+        <dl className="mt-2 flex flex-wrap gap-x-8 gap-y-1 text-sm text-ink-tertiary">
           {(["classify", "compare"] as const).map((name) => (
             <div key={name} className="flex gap-2">
               <dt className="font-medium text-ink">{name} queue</dt>
@@ -53,18 +53,18 @@ export function RunsTable({ initialList, initialError }: Props) {
         </dl>
       )}
 
-      {runs.length > 0 && !queues && <p className="mt-6 text-sm text-muted">Queue counts are unavailable right now.</p>}
+      {runs.length > 0 && !queues && <p className="mt-6 text-sm text-ink-tertiary">Queue counts are unavailable right now.</p>}
 
       {message && (
-        <p role="alert" className="mt-4 border-l-2 border-red-700 pl-3 text-sm text-red-700">
+        <p role="alert" className="mt-4 border-l-2 border-fault pl-3 text-sm text-fault">
           {message}
         </p>
       )}
 
-      <div className="mt-4 overflow-x-auto border-t border-line">
+      <div className="mt-4 overflow-x-auto border-t border-hairline">
         <table className="w-full min-w-[64rem] text-left text-sm">
-          <thead className="text-xs uppercase tracking-wide text-muted">
-            <tr className="border-b border-line">
+          <thead className="text-xs uppercase tracking-wide text-ink-tertiary">
+            <tr className="border-b border-hairline">
               <th className="py-2 pr-4 font-medium">Started</th>
               <th className="py-2 pr-4 font-medium">Status</th>
               <th className="py-2 pr-4 font-medium">Rate</th>
@@ -83,7 +83,7 @@ export function RunsTable({ initialList, initialError }: Props) {
           </tbody>
         </table>
         {runs.length === 0 && !message && (
-          <p className="py-10 text-center text-sm text-muted">No runs yet. Start one above.</p>
+          <p className="py-10 text-center text-sm text-ink-tertiary">No runs yet. Start one above.</p>
         )}
       </div>
     </>

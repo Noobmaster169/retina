@@ -32,11 +32,11 @@ export function ChatPanel({ models }: { models: ModelInfo[] }) {
   return (
     <form onSubmit={submit} className="flex flex-col gap-4">
       <label className="flex flex-col gap-1 text-sm">
-        <span className="text-muted">Model</span>
+        <span className="text-ink-tertiary">Model</span>
         <select
           value={model}
           onChange={(e) => setModel(e.target.value)}
-          className="rounded-lg border border-line bg-surface px-3 py-2"
+          className="rounded-lg border border-hairline bg-canvas px-3 py-2"
         >
           {models.map((m) => (
             <option key={m.id} value={m.id}>
@@ -45,19 +45,19 @@ export function ChatPanel({ models }: { models: ModelInfo[] }) {
           ))}
         </select>
         {selected?.provider === "claudecli" && (
-          <span className="text-xs text-muted">
+          <span className="text-xs text-ink-tertiary">
             Runs through the Claude Code subscription; the first call can take several seconds.
           </span>
         )}
       </label>
 
       <label className="flex flex-col gap-1 text-sm">
-        <span className="text-muted">Prompt</span>
+        <span className="text-ink-tertiary">Prompt</span>
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           rows={5}
-          className="rounded-lg border border-line bg-surface px-3 py-2 outline-none focus:border-brand"
+          className="rounded-lg border border-hairline bg-canvas px-3 py-2 outline-none focus:border-brand"
         />
       </label>
 
@@ -69,12 +69,12 @@ export function ChatPanel({ models }: { models: ModelInfo[] }) {
         {pending ? "Thinking…" : "Send"}
       </button>
 
-      {error && <p className="text-sm text-red-700">{error}</p>}
+      {error && <p className="text-sm text-fault">{error}</p>}
 
       {result && (
-        <section className="rounded-xl border border-line bg-surface p-4">
+        <section className="rounded-xl border border-hairline bg-canvas p-4">
           <pre className="whitespace-pre-wrap font-sans text-sm">{result.text}</pre>
-          <p className="mt-3 text-xs text-muted">
+          <p className="mt-3 text-xs text-ink-tertiary">
             {result.model ?? model} · {result.usage.inputTokens} in / {result.usage.outputTokens} out
             {result.costUsd !== null && ` · $${result.costUsd.toFixed(4)}`}
             {result.stopReason && ` · ${result.stopReason}`}

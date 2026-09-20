@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
+import { AppShell } from "@/components/shell/app-shell";
+import { Search, TopBar } from "@/components/shell/top-bar";
 import { listRuns, type RunList } from "@/lib/api-client";
 
 import { RunsTable } from "./runs-table";
@@ -8,7 +9,7 @@ import { RunsTable } from "./runs-table";
 // Reads the backend on every request; there is nothing here to prerender.
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = { title: "Runs · Retina" };
+export const metadata: Metadata = { title: "Runs · Retina SDOC" };
 
 async function loadRuns(): Promise<{ list: RunList | null; backendError: string | null }> {
   try {
@@ -23,21 +24,22 @@ export default async function RunsPage() {
   const { list, backendError } = await loadRuns();
 
   return (
-    <div className="flex min-h-dvh flex-col bg-surface">
-      <header className="flex items-center gap-4 border-b border-line bg-paper px-5 py-3">
-        <Link href="/" className="text-base font-semibold tracking-tight">
-          Retina Mail
-        </Link>
-        <span className="text-sm text-muted">Runs</span>
-      </header>
-      <main className="mx-auto w-full max-w-6xl flex-1 px-5 py-6">
-        <h1 className="text-xl font-semibold tracking-tight">Runs</h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted">
-          A run replays the inbox through the pipeline. Each one keeps its own results, so two can be compared on the
-          same emails.
-        </p>
-        <RunsTable initialList={list} initialError={backendError} />
-      </main>
-    </div>
+    <AppShell active="runs" counts={{ runs: list?.runs.length }}>
+      <div className="flex min-w-0 grow flex-col">
+        <TopBar crumbs={[{ label: "Runs" }]}>
+          <Search />
+        </TopBar>
+        <main className="min-h-0 grow overflow-y-auto px-7 pb-8">
+          <div className="py-5">
+            <h1 className="font-display text-display font-normal tracking-[-0.01em]">Runs</h1>
+            <p className="mt-0.5 max-w-[68ch] text-body text-ink-tertiary">
+              A run replays the inbox through the pipeline. Each one keeps its own results, so two can be compared on
+              the same emails.
+            </p>
+          </div>
+          <RunsTable initialList={list} initialError={backendError} />
+        </main>
+      </div>
+    </AppShell>
   );
 }

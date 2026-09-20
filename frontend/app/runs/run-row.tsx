@@ -20,12 +20,12 @@ const ACTIONS: Record<RunStatus, RunAction[]> = {
 };
 
 const STATUS_TONE: Record<RunStatus, string> = {
-  created: "text-muted",
-  running: "text-accent-ink",
+  created: "text-ink-tertiary",
+  running: "text-ink",
   paused: "text-amber-700",
   completed: "text-ink",
-  cancelled: "text-muted",
-  failed: "text-red-700",
+  cancelled: "text-ink-tertiary",
+  failed: "text-fault",
 };
 
 function startedLabel(run: RunSummary): string {
@@ -68,15 +68,15 @@ export function RunRow({ run, onChanged }: Props) {
   }
 
   return (
-    <tr className="border-b border-line align-top">
+    <tr className="border-b border-hairline align-top">
       <td className="py-3 pr-4 whitespace-nowrap">
-        <Link href={`/runs/${run.id}`} className="hover:text-accent-ink hover:underline">
+        <Link href={`/runs/${run.id}`} className="hover:text-ink hover:underline">
           {startedLabel(run)}
         </Link>
-        <div className="font-mono text-xs text-muted">{run.id.slice(0, 8)}</div>
+        <div className="font-mono text-xs text-ink-tertiary">{run.id.slice(0, 8)}</div>
       </td>
       <td className={`py-3 pr-4 font-medium ${STATUS_TONE[run.status]}`}>{run.status}</td>
-      <td className="py-3 pr-4 whitespace-nowrap tabular-nums text-muted">
+      <td className="py-3 pr-4 whitespace-nowrap tabular-nums text-ink-tertiary">
         {run.ratePerSecond === 0 ? "burst" : `${run.ratePerSecond}/s`}
       </td>
       <td className="py-3 pr-4">
@@ -87,30 +87,30 @@ export function RunRow({ run, onChanged }: Props) {
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={percent}
-            className="h-1.5 w-28 overflow-hidden rounded-full bg-sel"
+            className="h-1.5 w-28 overflow-hidden rounded-full bg-active"
           >
-            <div className="h-full bg-accent transition-[width] duration-500" style={{ width: `${percent}%` }} />
+            <div className="h-full bg-ink transition-[width] duration-500" style={{ width: `${percent}%` }} />
           </div>
           <span className="whitespace-nowrap tabular-nums">
             {run.finishedEmails} / {run.totalEmails ?? "?"}
           </span>
         </div>
         {run.elapsedMs !== null && (
-          <div className="mt-1 text-xs tabular-nums text-muted">
+          <div className="mt-1 text-xs tabular-nums text-ink-tertiary">
             {run.processingDone ? "took" : "running for"} {formatDuration(run.elapsedMs)}
           </div>
         )}
       </td>
       <td className="py-3 pr-4">
-        <ul className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted">
+        <ul className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-ink-tertiary">
           {STAGES.filter((stage) => run.stageCounts[stage] > 0).map((stage) => (
-            <li key={stage} className={stage === "failed" ? "text-red-700" : undefined}>
+            <li key={stage} className={stage === "failed" ? "text-fault" : undefined}>
               {stage} <span className="tabular-nums text-ink">{run.stageCounts[stage]}</span>
             </li>
           ))}
         </ul>
         {error && (
-          <p role="alert" className="mt-1 text-xs text-red-700">
+          <p role="alert" className="mt-1 text-xs text-fault">
             {error}
           </p>
         )}
@@ -125,7 +125,7 @@ export function RunRow({ run, onChanged }: Props) {
             type="button"
             disabled={pending !== null}
             onClick={() => void act(action)}
-            className="ml-2 rounded-md border border-line px-2.5 py-1 text-xs capitalize hover:border-accent hover:text-accent-ink disabled:opacity-50"
+            className="ml-2 rounded-md border border-hairline px-2.5 py-1 text-xs capitalize hover:border-ink hover:text-ink disabled:opacity-50"
           >
             {pending === action ? "…" : action}
           </button>

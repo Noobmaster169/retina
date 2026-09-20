@@ -91,7 +91,7 @@ export function NewRunForm({ onCreated }: Props) {
   }
 
   return (
-    <form onSubmit={submit} className="mt-6 flex flex-wrap items-end gap-4 border-y border-line py-4">
+    <form onSubmit={submit} className="mt-6 flex flex-wrap items-end gap-4 border-y border-hairline py-4">
       <LabelledSelect name="scope" label="Emails" choices={SCOPES} value={scope} onChange={(v) => setScope(v as Scope)} />
       {scope === "first" && <LabelledSelect name="count" label="How many" choices={COUNTS} value={count} onChange={setCount} />}
       <LabelledSelect name="pace" label="Pace" choices={PACES} value={pace} onChange={setPace} />
@@ -109,17 +109,17 @@ export function NewRunForm({ onCreated }: Props) {
       <button
         type="submit"
         disabled={pending}
-        className="rounded-md border border-accent-ink/25 bg-accent px-3.5 py-2 text-sm font-medium text-white hover:bg-accent-ink disabled:opacity-60"
+        className="rounded-md border border-hairline-strong bg-ink px-3.5 py-2 text-sm font-medium text-white hover:bg-ink disabled:opacity-60"
       >
         {pending ? "Starting…" : "New run"}
       </button>
-      <p className="basis-full text-xs text-muted">
+      <p className="basis-full text-xs text-ink-tertiary">
         All at once queues every email immediately, and the backend works through them as many at a time as its
         concurrency allows. Prompt and model are for experiments: the defaults are the active prompts on sonnet.
         Classify v5 reads the attachments&apos; text as well as the email; pin it to try that.
       </p>
       {(error ?? options.error) && (
-        <p role="alert" className="basis-full text-sm text-red-700">
+        <p role="alert" className="basis-full text-sm text-fault">
           {error ?? `Could not load the prompt and model choices: ${options.error}`}
         </p>
       )}

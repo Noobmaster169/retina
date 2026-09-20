@@ -22,7 +22,7 @@ export function EmailView({ email, previews, backHref }: Props) {
 
   return (
     <article className="mx-auto w-full max-w-3xl px-5 py-6 sm:px-8">
-      <Link href={backHref} className="mb-4 inline-block text-sm text-muted hover:text-ink lg:hidden">
+      <Link href={backHref} className="mb-4 inline-block text-sm text-ink-tertiary hover:text-ink lg:hidden">
         ← Inbox
       </Link>
 
@@ -37,14 +37,14 @@ export function EmailView({ email, previews, backHref }: Props) {
         </span>
         <div className="min-w-0 text-sm">
           <p className="truncate font-medium">{email.from}</p>
-          <p className="text-muted">{email.email_id}</p>
+          <p className="text-ink-tertiary">{email.email_id}</p>
         </div>
       </div>
 
       <pre className="mt-6 font-sans text-[15px] leading-relaxed whitespace-pre-wrap break-words">{email.body}</pre>
 
       {email.attachments.length > 0 && (
-        <section aria-label="Attachments" className="mt-8 border-t border-line pt-5">
+        <section aria-label="Attachments" className="mt-8 border-t border-hairline pt-5">
           <h2 className="text-sm font-medium">
             <Paperclip /> {email.attachments.length === 1 ? "1 attachment" : `${email.attachments.length} attachments`}
           </h2>
@@ -53,19 +53,19 @@ export function EmailView({ email, previews, backHref }: Props) {
               const name = attachmentName(path);
               const preview = previews[name];
               return (
-                <li key={path} className="rounded-md border border-line">
+                <li key={path} className="rounded-md border border-hairline">
                   <div className="flex items-center justify-between gap-3 px-4 py-2.5">
                     <span className="truncate text-sm font-medium">{name}</span>
                     <a
                       href={`/attachments/${encodeURIComponent(name)}`}
                       download={name}
-                      className="shrink-0 text-sm text-accent-ink hover:underline"
+                      className="shrink-0 text-sm text-ink hover:underline"
                     >
                       Download
                     </a>
                   </div>
                   {preview !== undefined && (
-                    <pre className="max-h-96 overflow-auto border-t border-line bg-paper px-4 py-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
+                    <pre className="max-h-96 overflow-auto border-t border-hairline bg-sunken px-4 py-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
                       {preview}
                     </pre>
                   )}

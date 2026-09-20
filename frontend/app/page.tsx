@@ -10,7 +10,7 @@ export default async function InboxPage({ searchParams }: PageProps<"/">) {
 
   return (
     <MailShell page={page} backendError={backendError} params={params} selectedId={null}>
-      <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-muted">
+      <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-ink-tertiary">
         {page ? <p>Select a message to read it.</p> : null}
       </div>
     </MailShell>

@@ -15,11 +15,11 @@ const COLUMNS: { check: CheckName; label: string; show: (a: Answer) => string }[
 ];
 
 function Cell({ ok, answer, truth }: { ok: boolean | null; answer: string; truth: string }) {
-  if (ok === null) return <td className="py-2 pr-3 text-xs text-muted">not scored</td>;
+  if (ok === null) return <td className="py-2 pr-3 text-xs text-ink-tertiary">not scored</td>;
   return (
-    <td className={`py-2 pr-3 text-xs ${ok ? "" : "bg-red-50"}`}>
-      <div className={ok ? "text-accent-ink" : "font-semibold text-red-700"}>{answer}</div>
-      {!ok && <div className="text-muted">truth: {truth}</div>}
+    <td className={`py-2 pr-3 text-xs ${ok ? "" : "bg-fault-tint"}`}>
+      <div className={ok ? "text-ink" : "font-semibold text-fault"}>{answer}</div>
+      {!ok && <div className="text-ink-tertiary">truth: {truth}</div>}
     </td>
   );
 }
@@ -37,17 +37,17 @@ export function VerdictTable({ verdicts }: { verdicts: EmailVerdict[] }) {
       <div className="flex flex-wrap items-center gap-4 text-sm">
         <span>
           <span className="font-semibold tabular-nums">{verdicts.length - wrong}</span> of {verdicts.length} emails right on
-          every scored check, <span className="font-semibold tabular-nums text-red-700">{wrong}</span> with something wrong
+          every scored check, <span className="font-semibold tabular-nums text-fault">{wrong}</span> with something wrong
         </span>
-        <label className="flex items-center gap-2 text-muted">
+        <label className="flex items-center gap-2 text-ink-tertiary">
           <input type="checkbox" checked={onlyWrong} onChange={(e) => setOnlyWrong(e.target.checked)} />
           only the wrong ones
         </label>
       </div>
-      <div className="mt-3 overflow-x-auto border-t border-line">
+      <div className="mt-3 overflow-x-auto border-t border-hairline">
         <table className="w-full min-w-[56rem] text-left text-sm">
-          <thead className="text-xs uppercase tracking-wide text-muted">
-            <tr className="border-b border-line">
+          <thead className="text-xs uppercase tracking-wide text-ink-tertiary">
+            <tr className="border-b border-hairline">
               <th className="py-2 pr-3 font-medium">Email</th>
               {COLUMNS.map((c) => (
                 <th key={c.check} className="py-2 pr-3 font-medium">
@@ -59,10 +59,10 @@ export function VerdictTable({ verdicts }: { verdicts: EmailVerdict[] }) {
           </thead>
           <tbody>
             {shown.map((v) => (
-              <tr key={v.emailId} className="border-b border-line align-top">
+              <tr key={v.emailId} className="border-b border-hairline align-top">
                 <td className="py-2 pr-3">
                   <div className="font-mono text-xs">{v.emailId}</div>
-                  <div className="text-xs text-muted">
+                  <div className="text-xs text-ink-tertiary">
                     {v.inHoldout ? "holdout" : "train"}
                     {v.submitted ? "" : ", no answer"}
                   </div>
@@ -72,9 +72,9 @@ export function VerdictTable({ verdicts }: { verdicts: EmailVerdict[] }) {
                 ))}
                 <td className="py-2 text-xs">
                   {v.checks.endToEnd === null ? (
-                    <span className="text-muted">not scored</span>
+                    <span className="text-ink-tertiary">not scored</span>
                   ) : (
-                    <span className={v.checks.endToEnd ? "text-accent-ink" : "font-semibold text-red-700"}>
+                    <span className={v.checks.endToEnd ? "text-ink" : "font-semibold text-fault"}>
                       {v.checks.endToEnd ? "right" : "wrong"}
                     </span>
                   )}

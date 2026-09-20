@@ -20,7 +20,7 @@ export function MailList({ page, params, selectedId }: { page: EmailPage; params
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center text-sm">
         <p className="font-medium">No messages match “{params.q}”.</p>
-        <Link href={`/${inboxQuery(params, { q: undefined, page: 1 })}`} className="text-accent-ink hover:underline">
+        <Link href={`/${inboxQuery(params, { q: undefined, page: 1 })}`} className="text-ink hover:underline">
           Clear the search
         </Link>
       </div>
@@ -33,30 +33,30 @@ export function MailList({ page, params, selectedId }: { page: EmailPage; params
         {page.emails.map((email) => {
           const selected = email.id === selectedId;
           return (
-            <li key={email.id} className="border-b border-line">
+            <li key={email.id} className="border-b border-hairline">
               <Link
                 href={`/mail/${email.id}${inboxQuery(params)}`}
                 aria-current={selected ? "page" : undefined}
                 className={`block border-l-[3px] px-4 py-2.5 ${
-                  selected ? "border-ink bg-sel" : "border-transparent hover:bg-paper"
+                  selected ? "border-ink bg-active" : "border-transparent hover:bg-sunken"
                 }`}
               >
                 <div className="flex items-baseline justify-between gap-3">
                   <span className="truncate text-sm font-medium">{senderName(email.from)}</span>
                   {email.attachmentCount > 0 && (
-                    <span className="shrink-0 text-xs text-muted" title={`${email.attachmentCount} attachments`}>
+                    <span className="shrink-0 text-xs text-ink-tertiary" title={`${email.attachmentCount} attachments`}>
                       <Paperclip /> {email.attachmentCount}
                     </span>
                   )}
                 </div>
                 <p className="mt-0.5 truncate text-sm">{email.subject}</p>
-                <p className="mt-0.5 truncate text-xs text-muted">{email.snippet}</p>
+                <p className="mt-0.5 truncate text-xs text-ink-tertiary">{email.snippet}</p>
               </Link>
             </li>
           );
         })}
       </ol>
-      <nav aria-label="Pages" className="flex items-center justify-between border-t border-line px-4 py-2 text-xs text-muted">
+      <nav aria-label="Pages" className="flex items-center justify-between border-t border-hairline px-4 py-2 text-xs text-ink-tertiary">
         <span className="tabular-nums">
           {first}–{last} of {page.total}
         </span>

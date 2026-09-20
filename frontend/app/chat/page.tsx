@@ -23,18 +23,18 @@ export default async function Home() {
 
   return (
     <main className="mx-auto w-full max-w-2xl px-5 py-10 sm:px-8">
-      <Link href="/" className="text-sm text-muted hover:text-ink">
+      <Link href="/" className="text-sm text-ink-tertiary hover:text-ink">
         ← Inbox
       </Link>
       <h1 className="mt-4 text-xl font-semibold">Ask a model</h1>
-      <p className="mt-1 text-sm text-muted">
+      <p className="mt-1 text-sm text-ink-tertiary">
         Goes through the backend on the Monash box to the llm-proxy and a model.
       </p>
       <div className="mt-8">
         {backendError ? (
-          <div className="rounded-xl border border-dashed border-line px-5 py-12 text-center text-sm">
+          <div className="rounded-xl border border-dashed border-hairline px-5 py-12 text-center text-sm">
             <p className="font-medium">Backend unreachable</p>
-            <p className="mt-1 text-muted">{backendError}</p>
+            <p className="mt-1 text-ink-tertiary">{backendError}</p>
           </div>
         ) : (
           <ChatPanel models={models} />

@@ -7,7 +7,7 @@ import type { RunSummary } from "@/lib/api-client";
 import { LocalEval } from "@/lib/local-eval";
 
 const BUTTON =
-  "rounded-md border border-line px-2.5 py-1 text-xs hover:border-accent hover:text-accent-ink disabled:opacity-50";
+  "rounded-md border border-hairline px-2.5 py-1 text-xs hover:border-ink hover:text-ink disabled:opacity-50";
 
 const score = (value: number) => value.toFixed(4);
 
@@ -70,14 +70,14 @@ export function ScoreCell({ run, onChanged }: Props) {
       {last?.finalScore != null ? (
         <div>
           <span className="text-base font-semibold tabular-nums text-ink">{score(last.finalScore)}</span>
-          <span className="ml-2 text-muted">
+          <span className="ml-2 text-ink-tertiary">
             over {last.nEmails} emails{last.forced ? ", forced" : ""}
           </span>
-          <Link href={`/runs/${run.id}/results`} className="ml-2 text-accent-ink hover:underline">
+          <Link href={`/runs/${run.id}/results`} className="ml-2 text-ink hover:underline">
             see results
           </Link>
           {last.scores && (
-            <dl className="mt-0.5 flex flex-wrap gap-x-3 text-muted">
+            <dl className="mt-0.5 flex flex-wrap gap-x-3 text-ink-tertiary">
               <div>
                 <dt className="inline">stage 1 </dt>
                 <dd className="inline tabular-nums text-ink">{score(last.scores.stage1MacroF1)}</dd>
@@ -100,19 +100,19 @@ export function ScoreCell({ run, onChanged }: Props) {
           )}
         </div>
       ) : (
-        <span className="text-muted">Not submitted</span>
+        <span className="text-ink-tertiary">Not submitted</span>
       )}
 
-      <div className="tabular-nums text-muted">
+      <div className="tabular-nums text-ink-tertiary">
         {run.llm.calls} model calls{run.llm.failedCalls > 0 ? `, ${run.llm.failedCalls} failed` : ""} · $
         {run.llm.costUsd.toFixed(2)} at API prices
       </div>
 
       {local && local !== "unavailable" && (
-        <div className="tabular-nums text-muted">
+        <div className="tabular-nums text-ink-tertiary">
           local eval: this run {score(local.run.stage1MacroF1)} stage 1 over {local.run.nEmails}, holdout{" "}
           {score(local.holdout.stage1MacroF1)} over {local.holdout.nEmails}, {local.wrongCategory} wrong{" "}
-          <Link href={`/runs/${run.id}/results`} className="text-accent-ink hover:underline">
+          <Link href={`/runs/${run.id}/results`} className="text-ink hover:underline">
             email by email
           </Link>
         </div>
@@ -135,7 +135,7 @@ export function ScoreCell({ run, onChanged }: Props) {
       </div>
 
       {error && (
-        <p role="alert" className="text-red-700">
+        <p role="alert" className="text-fault">
           {error}
         </p>
       )}

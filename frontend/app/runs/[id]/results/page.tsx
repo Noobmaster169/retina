@@ -41,24 +41,24 @@ export default async function ResultsPage({ params }: PageProps<"/runs/[id]/resu
   const { submission, report, failed } = await load(id);
 
   return (
-    <div className="flex min-h-dvh flex-col bg-surface">
-      <header className="flex items-center gap-4 border-b border-line bg-paper px-5 py-3">
-        <Link href="/runs" className="text-sm text-muted hover:text-accent-ink">
+    <div className="flex min-h-dvh flex-col bg-canvas">
+      <header className="flex items-center gap-4 border-b border-hairline bg-sunken px-5 py-3">
+        <Link href="/runs" className="text-sm text-ink-tertiary hover:text-ink">
           Runs
         </Link>
-        <Link href={`/runs/${id}`} className="font-mono text-sm text-muted hover:text-accent-ink">
+        <Link href={`/runs/${id}`} className="font-mono text-sm text-ink-tertiary hover:text-ink">
           {id.slice(0, 8)}
         </Link>
         <span className="text-sm">Results</span>
       </header>
       <main className="mx-auto w-full max-w-7xl flex-1 px-5 py-6">
-        {failed && <p role="alert" className="border-l-2 border-red-700 pl-3 text-sm text-red-700">{failed}</p>}
+        {failed && <p role="alert" className="border-l-2 border-fault pl-3 text-sm text-fault">{failed}</p>}
 
         <section>
           <h1 className="text-xl font-semibold tracking-tight">The organisers&apos; scorer</h1>
           {submission?.scoreboard ? (
             <>
-              <p className="mt-1 text-sm text-muted">
+              <p className="mt-1 text-sm text-ink-tertiary">
                 Submitted {new Date(submission.createdAt).toLocaleString()} with {submission.nEmails} emails
                 {submission.forced ? ", forced before every email had finished" : ""}. It scores the whole inbox: an email the
                 run did not answer counts as GENERAL.
@@ -68,7 +68,7 @@ export default async function ResultsPage({ params }: PageProps<"/runs/[id]/resu
               </div>
             </>
           ) : (
-            <p className="mt-2 text-sm text-muted">Not submitted yet. Submit the run from the runs list to score it.</p>
+            <p className="mt-2 text-sm text-ink-tertiary">Not submitted yet. Submit the run from the runs list to score it.</p>
           )}
         </section>
 
@@ -76,7 +76,7 @@ export default async function ResultsPage({ params }: PageProps<"/runs/[id]/resu
           <h2 className="text-xl font-semibold tracking-tight">Against the answer key, email by email</h2>
           {report ? (
             <>
-              <p className="mt-1 text-sm text-muted">
+              <p className="mt-1 text-sm text-ink-tertiary">
                 Scored on this machine over the run&apos;s own {report.run.n_emails} emails, the same way the organisers
                 score. The scorer only reports totals, so this is where each email&apos;s answer meets its truth.
               </p>
@@ -88,7 +88,7 @@ export default async function ResultsPage({ params }: PageProps<"/runs/[id]/resu
               </div>
             </>
           ) : (
-            <p className="mt-2 text-sm text-muted">
+            <p className="mt-2 text-sm text-ink-tertiary">
               Only on a machine whose backend has the answer key (EVAL_GROUND_TRUTH_PATH). The deployed backend never does.
             </p>
           )}

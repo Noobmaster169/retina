@@ -1,0 +1,106 @@
+"use client";
+
+import { AnimatePresence, motion } from "motion/react";
+
+import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icons";
+import { RunStatus, RunSummary } from "@/lib/api/runs-schemas";
+import { formatDuration } from "@/lib/duration";
+import { panel } from "@/lib/motion";
+
+/**
+ * The one display line on this page, and the controls beside it. Below it, the
+ * trouble banner: present only when a dependency has actually refused work,
+ * and absent entirely otherwise rather than reserved as an empty strip.
+ */
+
+export interface Trouble {
+  /** The dependency that refused, by its own name. */
+  what: string;
+  /** The error as it was thrown, in mono. The one place on this page an exception is shown verbatim. */
+  detail: string;
+}
+
+interface RunHeaderProps {
+  run: RunSummary;
+  trouble: Trouble | null;
+  /** How the two queues read right now, in one sentence under the title. */
+  summary: string;
+}
+
+const STATUS_TINT: Record<RunStatus, string> = {
+  created: "bg-sunken text-ink-secondary",
+  running: "bg-signal-tint text-signal",
+  paused: "bg-sunken text-ink-secondary",
+  completed: "bg-match-tint text-match",
+  cancelled: "bg-sunken text-ink-secondary",
+  failed: "bg-fault-tint text-fault",
+};
+
+/**
+ * What the chip in the top bar says.
+ *
+ * `status` is the ingest's, not the pipeline's: a run reads `completed` the
+ * moment the last email is enqueued, with every queue still full. So the chip
+ * says Running until `processingDone`, which is the field that means what a
+ * person reading the word would take it to mean.
+ *
+ * `Degraded` is a reading of the run rather than a status the backend stores.
+ */
+export function statusWord(run: RunSummary, degraded: boolean): { word: string; tint: string } {
+  const working = !run.processingDone && (run.status === "running" || run.status === "completed");
+  if (degraded && working) return { word: "Degraded", tint: "bg-fault-tint text-fault" };
+  if (working) return { word: "Running", tint: STATUS_TINT.running };
+  const word = run.status.charAt(0).toUpperCase() + run.status.slice(1);
+  return { word, tint: STATUS_TINT[run.status] };
+}
+
+export function RunHeader({ run, trouble, summary }: RunHeaderProps) {
+  const done = run.processingDone;
+  return (
+    <>
+      <div className="flex shrink-0 items-center gap-4 px-6 py-5">
+        <div className="min-w-0">
+          <h1 className="font-display text-display font-normal tracking-[-0.01em]">
+            {run.totalEmails === null ? "A run" : `${run.totalEmails} emails`}
+          </h1>
+          <p className="mt-0.5 text-body text-ink-tertiary">
+            {run.ratePerSecond === 0 ? "all at once" : `${run.ratePerSecond} a second`}
+            {run.elapsedMs === null ? ", not started yet. " : `, ${formatDuration(run.elapsedMs)}${done ? " in total. " : " in. "}`}
+            {summary}
+          </p>
+        </div>
+        <span className="grow" />
+        <Button variant="secondary" disabled>
+          {done ? "Start a run like this" : "Pause"}
+        </Button>
+        <Button variant="primary" disabled>
+          {done ? "Submit again" : "Submit run"}
+        </Button>
+      </div>
+
+      <AnimatePresence initial={false}>
+        {trouble ? (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={panel}
+            className="shrink-0 overflow-hidden px-6"
+          >
+            <div
+              role="status"
+              className="mb-4 flex max-w-[470px] items-center gap-2.5 rounded-lg border border-differ-line bg-differ-tint px-3 py-2.5"
+            >
+              <Icon name="warning" size={15} className="shrink-0 text-differ" />
+              <div className="min-w-0">
+                <div className="text-small font-medium text-differ-ink">{trouble.what} is refusing work</div>
+                <div className="truncate font-mono text-mono-xs text-differ">{trouble.detail}</div>
+              </div>
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </>
+  );
+}

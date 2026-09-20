@@ -144,6 +144,8 @@ export const DocumentView = z.object({
   scanned: z.boolean(),
   unreadable: z.boolean(),
   warnings: z.array(z.string()),
+  /** Mean OCR word confidence per page, in page order. Empty for a document with a text layer. */
+  pageConfidence: z.array(z.number()),
 });
 export type DocumentView = z.infer<typeof DocumentView>;
 

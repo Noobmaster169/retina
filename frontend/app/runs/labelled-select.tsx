@@ -18,13 +18,13 @@ interface Props {
 export function LabelledSelect({ name, label, choices, value, onChange, disabled }: Props) {
   return (
     <label className="flex flex-col gap-1 text-sm">
-      <span className="text-muted">{label}</span>
+      <span className="text-ink-tertiary">{label}</span>
       <select
         name={name}
         value={value}
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
-        className="rounded-md border border-line bg-paper px-3 py-2 text-sm focus:border-accent focus:bg-surface disabled:opacity-60"
+        className="rounded-md border border-hairline bg-sunken px-3 py-2 text-sm focus:border-hairline-strong focus:bg-canvas disabled:opacity-60"
       >
         {choices.map((choice) => (
           <option key={choice.value} value={choice.value} title={choice.hint}>
