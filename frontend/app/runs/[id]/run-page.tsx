@@ -80,6 +80,7 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
                   queue={queues.classify}
                   runId={id}
                   typicalMs={5000}
+                  standing={{ label: "Not yet read", count: run.stageCounts.ingested }}
                   drained="Every email has been read. Only a comparison request crossed into the second queue, and that queue is still working."
                   note="Every email is read by a model. Only a comparison request crosses into the second queue."
                   className="w-[372px] shrink-0"
@@ -89,6 +90,7 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
                   queue={queues.compare}
                   runId={id}
                   typicalMs={9000}
+                  standing={{ label: "Waiting for a slot", count: queues.compare.waiting }}
                   drained="Nothing is waiting for a check. Every pair that crossed has been judged; the rest of the inbox never needed one."
                   note="Both queues draw on the same model slots, so a busy sort slows a check."
                   className="w-[372px] shrink-0"

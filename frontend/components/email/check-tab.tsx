@@ -6,7 +6,7 @@ import type { EmailTrace } from "@/lib/api/trace-schemas";
 
 import { checkSentence } from "./field-reading";
 import { FieldRow, type FieldRowData } from "./field-row";
-import { MessageCard, type Message } from "./message-card";
+import { type FileSizes, MessageCard, type Message } from "./message-card";
 import { Reading, type ReadingFact, Seam } from "./seam";
 
 /**
@@ -22,9 +22,10 @@ import { Reading, type ReadingFact, Seam } from "./seam";
 interface CheckTabProps {
   trace: EmailTrace;
   message: Message;
+  sizes: FileSizes;
 }
 
-export function CheckTab({ trace, message }: CheckTabProps) {
+export function CheckTab({ trace, message, sizes }: CheckTabProps) {
   const comparison = trace.comparison;
   const [open, setOpen] = useState<string | null>(comparison?.defectFields[0] ?? null);
   const rows = rowsOf(trace);
@@ -32,7 +33,7 @@ export function CheckTab({ trace, message }: CheckTabProps) {
   return (
     <div className="px-6">
       <div className="pt-4">
-        <MessageCard message={message} />
+        <MessageCard message={message} sizes={sizes} />
       </div>
       <Seam />
       <Reading facts={factsOf(trace)}>{readingOf(trace)}</Reading>

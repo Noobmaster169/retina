@@ -57,7 +57,7 @@ export function troubleOf(health: HealthReport | null, queues: RunQueuesView | n
 /** What the two queues are doing, in one sentence under the title. */
 export function runSummaryLine(run: RunSummary, queues: RunQueuesView | null): string {
   if (run.processingDone) {
-    const crossed = queues ? ` ${queues.handoff.needCheck} of the ${run.totalEmails ?? run.finishedEmails} crossed into the second queue.` : "";
+    const crossed = queues ? ` ${queues.handoff.needCheck} of them crossed into the second queue.` : "";
     return `Both queues are empty.${crossed}`;
   }
   if (!queues) return "Reading the queues.";

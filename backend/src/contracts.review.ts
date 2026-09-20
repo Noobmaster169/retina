@@ -52,6 +52,8 @@ export const DocumentView = z.object({
    * not say that.
    */
   pageConfidence: z.array(z.number()),
+  /** The file's size, which the message card states beside its name. */
+  bytes: z.number(),
 });
 export type DocumentView = z.infer<typeof DocumentView>;
 

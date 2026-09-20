@@ -27,12 +27,14 @@ interface QueuePanelProps {
   note: string;
   /** What to say when the queue has drained but the run is still going. */
   drained: string;
+  /** A count the panel's foot states above its sentence, the way the board gives sorting its backlog. */
+  standing?: { label: string; count: number };
   /** How long a call of this kind usually takes, so the elapsed rule has a scale. */
   typicalMs: number;
   className?: string;
 }
 
-export function QueuePanel({ title, queue, runId, note, drained, typicalMs, className = "" }: QueuePanelProps) {
+export function QueuePanel({ title, queue, runId, note, drained, standing, typicalMs, className = "" }: QueuePanelProps) {
   const held = queue.heldUntil !== null;
   const empty = !held && queue.slots.length === 0 && queue.waiting === 0;
   return (
@@ -110,6 +112,13 @@ export function QueuePanel({ title, queue, runId, note, drained, typicalMs, clas
       </div>
 
       <PanelFoot>
+        {standing ? (
+          <div className="mb-2 flex items-center">
+            <span className="text-small text-ink-tertiary">{standing.label}</span>
+            <span className="grow" />
+            <span className="text-strong font-semibold tabular-nums">{standing.count}</span>
+          </div>
+        ) : null}
         <p className="text-small leading-[18px] text-ink-tertiary">{note}</p>
       </PanelFoot>
     </Panel>

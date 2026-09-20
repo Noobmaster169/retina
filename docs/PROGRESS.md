@@ -84,6 +84,41 @@ them disabled although the routes work. `use-run-actions.ts` holds pause, resume
 and the local eval; the header carries whichever controls the run's status allows, and the score
 panel carries submit and `Score it here`. All five checked against the live API.
 
+**A fidelity pass against the canvas, board by board.** The first build was read against the
+boards from memory; a side by side at 1440x900 found real gaps, and these were closed:
+
+- The lane map was missing the three outcome chips at the end of the second lane and both drop
+  rules that hang them under their card. The cards were 81px and unequal; they are 88px and equal
+  now, with the arrows at the drawn 34px. The hung groups are positioned rather than laid out, so
+  a wide group of chips can never widen its column and push the last card off the panel.
+- The run page's display line was the email count. The board names the run, so it does too:
+  `Morning run`, from when it started, with the count moved into the subtitle where the board has
+  it. The email page's rail carries the same name over a progress bar, as the board draws it.
+- Each queue panel's foot gained the standing count the board gives it.
+- The message card states each attachment's size. `core.attachments.bytes` was already stored and
+  `DocumentView` dropped it; the documents query already joined that table, so it was one column.
+- The email list leads with `Differences`, as the board does, not `All`.
+- The chat's opening turn was one line where the board's is a reading. It now says what differs
+  and which agreeing fields the judge had to think about, which is what that pane is for.
+
+**What still differs from the boards, and why.** Four of these are the canvas drawing a later
+phase, and two are data the organisers' dataset does not carry:
+
+- The board puts a time on every list row (`2m`, `4m`) and a date on the message header
+  (`14 Mar, 08:12`). The inbox returns `email_id`, `from`, `subject`, `body` and `attachments` and
+  nothing else: there is no timestamp anywhere in the dataset. Those are the designer's invention
+  and are not reproduced.
+- The board's rail carries a `Views` group of saved queries. Phase 10.
+- The board's `Links to` strip names ontology records (`Client`, `Shipment`, `Same client,
+  differed`). Those tables are phase 10b and are drawn `planned` on the canvas on purpose.
+- The board's chat holds a conversation and a violet `correct_field` card. The chat is phase 10a
+  and the write path behind that card is phase 8; the column is drawn and inert, which is what the
+  handover asked for.
+- The board's action bar is live. Phase 8.
+- The board's rail shows four destinations on the email page and six on the run page. The build
+  keeps the six everywhere, because one rail that does not change under you is the rule and the
+  two boards disagree with each other.
+
 **Known, and left for phase 9.** A run whose ingest has finished reads `completed` while its
 queues are still full, and the API refuses both pause and cancel in that state, so the run page
 offers neither. That is the API's rule and the page is drawing it honestly; stopping a run that is

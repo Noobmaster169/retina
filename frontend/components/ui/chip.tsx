@@ -76,7 +76,7 @@ export function Fact({ label, value, tone = "neutral" }: { label: string; value:
     signal: "text-signal",
   };
   return (
-    <span className="inline-flex h-[22px] items-center gap-1.5 rounded-sm border border-hairline bg-canvas px-2 text-caption text-ink-secondary">
+    <span className="inline-flex h-[22px] items-center gap-1 whitespace-nowrap rounded-sm border border-hairline bg-canvas px-2 text-caption text-ink-secondary">
       {label}
       <span className={`font-mono text-mono-xs ${ink[tone]}`}>{value}</span>
     </span>

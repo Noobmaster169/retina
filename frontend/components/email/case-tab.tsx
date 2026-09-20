@@ -7,7 +7,7 @@ import { EvidenceWell } from "@/components/ui/marked-span";
 import type { DocumentView, EmailTrace, ReviewCaseView } from "@/lib/api/trace-schemas";
 import { stagger } from "@/lib/motion";
 
-import { MessageCard, type Message } from "./message-card";
+import { type FileSizes, MessageCard, type Message } from "./message-card";
 import { Reading, Seam } from "./seam";
 
 /**
@@ -23,15 +23,16 @@ import { Reading, Seam } from "./seam";
 interface CaseTabProps {
   trace: EmailTrace;
   message: Message;
+  sizes: FileSizes;
   review: ReviewCaseView;
 }
 
-export function CaseTab({ trace, message, review }: CaseTabProps) {
+export function CaseTab({ trace, message, sizes, review }: CaseTabProps) {
   const unread = trace.documents.find((document) => document.unreadable) ?? trace.documents.at(-1);
   return (
     <div className="px-6">
       <div className="pt-4">
-        <MessageCard message={message} />
+        <MessageCard message={message} sizes={sizes} />
       </div>
       <Seam />
       <Reading facts={factsOf(trace, review)}>{readingOf(trace)}</Reading>

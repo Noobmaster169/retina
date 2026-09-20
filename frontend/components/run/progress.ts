@@ -31,7 +31,10 @@ export interface LaneMap {
   cards: StageCard[];
   /** How many of the sorted emails cross into the second queue. Drawn on the arrow between the lanes. */
   crossing: number;
+  /** What stopped at the first queue, drawn on a drop rule under `Sorted`. */
   notComparable: number;
+  /** Where the checked pairs came out, drawn on a drop rule under `Checked`. */
+  ends: { key: string; count: number; tone: "match" | "differ" | "review" | "fault" }[];
 }
 
 function pct(part: number, whole: number): number {
@@ -60,6 +63,13 @@ export function laneMap(run: RunSummary, queues: RunQueuesView): LaneMap {
   return {
     crossing: needCheck,
     notComparable: queues.handoff.notComparable,
+    ends: [
+      { key: "OK", count: run.outcomes.ok, tone: "match" },
+      { key: "MISMATCH", count: run.outcomes.mismatch, tone: "differ" },
+      ...(run.stageCounts.failed > 0
+        ? ([{ key: "failed", count: run.stageCounts.failed, tone: "fault" }] as const)
+        : ([{ key: "needs a person", count: run.review.open, tone: "review" }] as const)),
+    ],
     cards: [
       {
         key: "arriving",

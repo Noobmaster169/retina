@@ -16,6 +16,8 @@ export interface NewDocument {
 }
 
 export interface StoredDocument extends NewDocument {
+  /** The file's size on disk, from its attachment row. The message card states it beside the name. */
+  bytes: number;
   id: string;
   filename: string;
   objectKey: string;
@@ -49,10 +51,11 @@ interface DocumentRow {
   unreadable: boolean;
   warnings: string[];
   page_confidence: number[];
+  bytes: number;
 }
 
 const COLUMNS = `d.id, d.email_run_id, d.attachment_id, a.filename, a.object_key, a.content_type, d.role, d.doc_type,
-  d.doc_type_confidence, d.doc_type_rationale, d.format, d.text_object_key, d.pages, d.scanned, d.unreadable, d.warnings, d.page_confidence`;
+  d.doc_type_confidence, d.doc_type_rationale, d.format, d.text_object_key, d.pages, d.scanned, d.unreadable, d.warnings, d.page_confidence, a.bytes`;
 
 function toDocument(row: DocumentRow): StoredDocument {
   return {
@@ -73,6 +76,7 @@ function toDocument(row: DocumentRow): StoredDocument {
     unreadable: row.unreadable,
     warnings: row.warnings,
     pageConfidence: row.page_confidence ?? [],
+    bytes: row.bytes,
   };
 }
 
@@ -91,6 +95,7 @@ export function toView(doc: StoredDocument, typeVerdict: TypeVerdict): DocumentV
     unreadable: doc.unreadable,
     warnings: doc.warnings,
     pageConfidence: doc.pageConfidence,
+    bytes: doc.bytes,
   };
 }
 

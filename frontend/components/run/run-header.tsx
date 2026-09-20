@@ -57,18 +57,31 @@ export function statusWord(run: RunSummary, degraded: boolean): { word: string; 
   return { word, tint: STATUS_TINT[run.status] };
 }
 
+/**
+ * What to call a run. The contract has no name field, so the one display line
+ * this page gets names it by when it started, which is how a person refers to
+ * one anyway: the morning run, yesterday's overnight run. The id stays in the
+ * breadcrumb, where an identifier belongs.
+ */
+function runName(run: RunSummary): string {
+  const at = run.startedAt ?? run.createdAt;
+  const hour = new Date(at).getHours();
+  const part = hour < 5 ? "Overnight" : hour < 12 ? "Morning" : hour < 17 ? "Afternoon" : "Evening";
+  const today = new Date().toDateString() === new Date(at).toDateString();
+  return today ? `${part} run` : `${part} run, ${new Date(at).toLocaleDateString(undefined, { day: "numeric", month: "short" })}`;
+}
+
 export function RunHeader({ run, trouble, summary, actions }: RunHeaderProps) {
   const done = run.processingDone;
   const controls = CONTROLS[run.status];
   return (
     <>
-      <div className="flex shrink-0 items-center gap-4 px-6 py-5">
+      <div className="flex h-[88px] shrink-0 items-center gap-4 px-6">
         <div className="min-w-0">
-          <h1 className="font-display text-display font-normal tracking-[-0.01em]">
-            {run.totalEmails === null ? "A run" : `${run.totalEmails} emails`}
-          </h1>
+          <h1 className="font-display text-display font-normal tracking-[-0.01em]">{runName(run)}</h1>
           <p className="mt-0.5 text-body text-ink-tertiary">
-            {run.ratePerSecond === 0 ? "all at once" : `${run.ratePerSecond} a second`}
+            {run.totalEmails === null ? "Counting the inbox" : `${run.totalEmails} emails`}
+            {run.ratePerSecond === 0 ? " all at once" : ` at ${run.ratePerSecond} a second`}
             {run.elapsedMs === null ? ", not started yet. " : `, ${formatDuration(run.elapsedMs)}${done ? " in total. " : " in. "}`}
             {summary}
           </p>

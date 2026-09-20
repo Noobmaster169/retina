@@ -18,6 +18,7 @@ import { EmailTrace, RunEmailsPage } from "@/lib/api/trace-schemas";
 import { parsedFetcher } from "@/lib/poll";
 
 import { ActionBar } from "./action-bar";
+import { EmailRail } from "./email-rail";
 import { chatScope, openingLine, statusOf } from "./email-reading";
 
 /**
@@ -38,7 +39,7 @@ interface EmailPageProps {
 
 export function EmailPage({ runId, initialTrace, message, subject, initialList }: EmailPageProps) {
   const [tab, setTab] = useState("check");
-  const [listTab, setListTab] = useState("all");
+  const [listTab, setListTab] = useState("differences");
   const terminal = ["done", "failed", "review"].includes(initialTrace.stage);
 
   const { data: trace = initialTrace } = useSWR(
@@ -48,6 +49,7 @@ export function EmailPage({ runId, initialTrace, message, subject, initialList }
   );
 
   const rows = rowsOf(trace);
+  const sizes = Object.fromEntries(trace.documents.map((document) => [document.filename, document.bytes]));
   const status = statusOf(trace);
   const differing = trace.comparison?.defectFields.length ?? 0;
   const documentsOpen = tab === "documents";
@@ -57,6 +59,7 @@ export function EmailPage({ runId, initialTrace, message, subject, initialList }
       active="inbox"
       counts={{ inbox: initialList.total, review: trace.review ? 1 : 0 }}
       wantsWidth={documentsOpen}
+      rail={<EmailRail runId={runId} />}
     >
       {!documentsOpen ? (
         <EmailList
@@ -66,9 +69,9 @@ export function EmailPage({ runId, initialTrace, message, subject, initialList }
           active={listTab}
           onTab={setListTab}
           tabs={[
-            { value: "all", label: "All", count: initialList.total },
             { value: "differences", label: "Differences", count: differing },
             { value: "review", label: "Needs you", count: trace.review ? 1 : 0 },
+            { value: "all", label: "All", count: initialList.total },
           ]}
         />
       ) : null}
@@ -100,9 +103,9 @@ export function EmailPage({ runId, initialTrace, message, subject, initialList }
         <div className="flex min-h-0 grow flex-col overflow-y-auto">
           <TabPanel value="check" className="focus-visible:outline-none">
             {trace.review ? (
-              <CaseTab trace={trace} message={message} review={trace.review} />
+              <CaseTab trace={trace} message={message} sizes={sizes} review={trace.review} />
             ) : (
-              <CheckTab trace={trace} message={message} />
+              <CheckTab trace={trace} message={message} sizes={sizes} />
             )}
           </TabPanel>
           <TabPanel value="documents" className="flex min-h-0 grow flex-col focus-visible:outline-none">

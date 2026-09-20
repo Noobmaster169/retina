@@ -17,8 +17,18 @@ export interface Message {
   attachments: string[];
 }
 
+/** How big each file turned out to be, by name. The parser knows; the inbox does not. */
+export type FileSizes = Record<string, number>;
+
+function size(bytes: number | undefined): string | null {
+  if (bytes === undefined) return null;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
 /** The sender's own words, as they arrived. Nothing here is stripped, cleaned or summarised. */
-export function MessageCard({ message, to = "ops@aprilasia.com" }: { message: Message; to?: string }) {
+export function MessageCard({ message, sizes = {}, to = "ops@aprilasia.com" }: { message: Message; sizes?: FileSizes; to?: string }) {
   return (
     <article className="overflow-hidden rounded-lg border border-hairline-strong">
       <header className="flex items-center gap-2.5 border-b border-hairline bg-surface px-3.5 py-2.5">
@@ -42,7 +52,12 @@ export function MessageCard({ message, to = "ops@aprilasia.com" }: { message: Me
                 className="flex min-w-0 shrink grow basis-0 items-center gap-2 rounded-md border border-hairline px-2.5 py-2"
               >
                 <Icon name="doc" size={14} className="shrink-0 text-ink-faint" />
-                <span className="min-w-0 truncate font-mono text-micro">{basename(path)}</span>
+                <span className="min-w-0">
+                  <span className="block truncate font-mono text-micro">{basename(path)}</span>
+                  {size(sizes[basename(path)]) ? (
+                    <span className="block text-micro text-ink-tertiary">{size(sizes[basename(path)])}</span>
+                  ) : null}
+                </span>
               </span>
             ))}
           </div>
