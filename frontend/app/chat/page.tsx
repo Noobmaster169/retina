@@ -1,45 +1,28 @@
-import Link from "next/link";
+import type { Metadata } from "next";
 
-import { ChatPanel } from "@/components/chat-panel";
-import { listModels, type ModelInfo } from "@/lib/api-client";
+import { Placeholder } from "@/components/shell/placeholder";
 
-// Reads the backend on every request; there is nothing here to prerender.
-export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "Ask Retina · Retina SDOC" };
 
-// The chat server action runs inside this route's function on Vercel, and a
-// cold local model can take a minute or more. 300s is the Hobby plan ceiling;
-// lib/api-client.ts times out just under it so the user sees a message rather
-// than a platform error.
-export const maxDuration = 300;
-
-export default async function Home() {
-  let models: ModelInfo[] = [];
-  let backendError: string | null = null;
-  try {
-    models = await listModels();
-  } catch (error) {
-    backendError = error instanceof Error ? error.message : "Backend unreachable";
-  }
-
+export default function ChatPage() {
   return (
-    <main className="mx-auto w-full max-w-2xl px-5 py-10 sm:px-8">
-      <Link href="/" className="text-sm text-ink-tertiary hover:text-ink">
-        ← Inbox
-      </Link>
-      <h1 className="mt-4 text-xl font-semibold">Ask a model</h1>
-      <p className="mt-1 text-sm text-ink-tertiary">
-        Goes through the backend on the Monash box to the llm-proxy and a model.
+    <Placeholder
+      active="chat"
+      icon="chat"
+      title="Ask Retina"
+      crumbs={["Ask Retina"]}
+      phase="phase 10"
+      blurb="A conversation that can read the whole model and answer from it, rather than one email at a time."
+      holds={[
+        "The turns, with the scope chips naming exactly what the conversation can see.",
+        "The proposed action, drawn before anything is written, with Apply and remember against Just this once.",
+        "The SQL a question produced, in a block a person can read.",
+      ]}
+    >
+      <p className="mt-4 max-w-[560px] text-small leading-[18px] text-ink-tertiary">
+        The 340px column on the email page is the same conversation scoped to one email. It is drawn there
+        already, with its composer off and a sentence saying why.
       </p>
-      <div className="mt-8">
-        {backendError ? (
-          <div className="rounded-xl border border-dashed border-hairline px-5 py-12 text-center text-sm">
-            <p className="font-medium">Backend unreachable</p>
-            <p className="mt-1 text-ink-tertiary">{backendError}</p>
-          </div>
-        ) : (
-          <ChatPanel models={models} />
-        )}
-      </div>
-    </main>
+    </Placeholder>
   );
 }

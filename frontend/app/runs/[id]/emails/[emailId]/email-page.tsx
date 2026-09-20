@@ -56,7 +56,7 @@ export function EmailPage({ runId, initialTrace, message, subject, initialList }
 
   return (
     <AppShell
-      active="inbox"
+      active="runs"
       counts={{ inbox: initialList.total, review: trace.review ? 1 : 0 }}
       wantsWidth={documentsOpen}
       rail={<EmailRail runId={runId} />}

@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { AppShell } from "@/components/shell/app-shell";
+import { Search, TopBar } from "@/components/shell/top-bar";
 import { type EvalReport, getEvalReport, getRun, listSubmissions, type SubmissionList } from "@/lib/api-client";
 
 import { ScoreboardView } from "./scoreboard-view";
@@ -13,7 +14,7 @@ const RUN_ID = /^[0-9a-f-]{36}$/;
 
 export async function generateMetadata({ params }: PageProps<"/runs/[id]/results">): Promise<Metadata> {
   const { id } = await params;
-  return { title: `Results ${id.slice(0, 8)} · Retina` };
+  return { title: `Results ${id.slice(0, 8)} · Retina SDOC` };
 }
 
 interface Loaded {
@@ -41,24 +42,25 @@ export default async function ResultsPage({ params }: PageProps<"/runs/[id]/resu
   const { submission, report, failed } = await load(id);
 
   return (
-    <div className="flex min-h-dvh flex-col bg-canvas">
-      <header className="flex items-center gap-4 border-b border-hairline bg-sunken px-5 py-3">
-        <Link href="/runs" className="text-sm text-ink-tertiary hover:text-ink">
-          Runs
-        </Link>
-        <Link href={`/runs/${id}`} className="font-mono text-sm text-ink-tertiary hover:text-ink">
-          {id.slice(0, 8)}
-        </Link>
-        <span className="text-sm">Results</span>
-      </header>
-      <main className="mx-auto w-full max-w-7xl flex-1 px-5 py-6">
-        {failed && <p role="alert" className="border-l-2 border-fault pl-3 text-sm text-fault">{failed}</p>}
+    <AppShell active="runs" counts={{ review: run.review.open }}>
+      <div className="flex min-w-0 grow flex-col">
+        <TopBar
+          crumbs={[
+            { label: "Runs", href: "/runs" },
+            { label: id.slice(0, 8), href: `/runs/${id}`, mono: true },
+            { label: "Results" },
+          ]}
+        >
+          <Search />
+        </TopBar>
+        <main className="min-h-0 grow overflow-y-auto px-7 pb-8">
+        {failed && <p role="alert" className="mt-5 border-l-2 border-fault pl-3 text-small text-fault">{failed}</p>}
 
-        <section>
-          <h1 className="text-xl font-semibold tracking-tight">The organisers&apos; scorer</h1>
+        <section className="pt-5">
+          <h1 className="font-display text-display font-normal tracking-[-0.01em]">The organisers&apos; scorer</h1>
           {submission?.scoreboard ? (
             <>
-              <p className="mt-1 text-sm text-ink-tertiary">
+              <p className="mt-0.5 max-w-[68ch] text-body text-ink-tertiary">
                 Submitted {new Date(submission.createdAt).toLocaleString()} with {submission.nEmails} emails
                 {submission.forced ? ", forced before every email had finished" : ""}. It scores the whole inbox: an email the
                 run did not answer counts as GENERAL.
@@ -68,15 +70,15 @@ export default async function ResultsPage({ params }: PageProps<"/runs/[id]/resu
               </div>
             </>
           ) : (
-            <p className="mt-2 text-sm text-ink-tertiary">Not submitted yet. Submit the run from the runs list to score it.</p>
+            <p className="mt-2 max-w-[68ch] text-small text-ink-tertiary">Not submitted yet. Submit the run from the runs list to score it.</p>
           )}
         </section>
 
         <section className="mt-10">
-          <h2 className="text-xl font-semibold tracking-tight">Against the answer key, email by email</h2>
+          <h2 className="text-title font-semibold tracking-[-0.01em]">Against the answer key, email by email</h2>
           {report ? (
             <>
-              <p className="mt-1 text-sm text-ink-tertiary">
+              <p className="mt-0.5 max-w-[68ch] text-body text-ink-tertiary">
                 Scored on this machine over the run&apos;s own {report.run.n_emails} emails, the same way the organisers
                 score. The scorer only reports totals, so this is where each email&apos;s answer meets its truth.
               </p>
@@ -88,12 +90,13 @@ export default async function ResultsPage({ params }: PageProps<"/runs/[id]/resu
               </div>
             </>
           ) : (
-            <p className="mt-2 text-sm text-ink-tertiary">
+            <p className="mt-2 max-w-[68ch] text-small text-ink-tertiary">
               Only on a machine whose backend has the answer key (EVAL_GROUND_TRUTH_PATH). The deployed backend never does.
             </p>
           )}
         </section>
-      </main>
-    </div>
+        </main>
+      </div>
+    </AppShell>
   );
 }

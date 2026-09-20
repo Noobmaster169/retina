@@ -30,9 +30,8 @@ const CARD: Record<CardState, { border: string; tint: string; icon: string; bar:
   done: { border: "border-hairline", tint: "bg-active", icon: "text-ink-tertiary", bar: "bg-ink-faint" },
 };
 
-/** The card each lane ends on, and so the column each drop rule hangs from. */
+/** The card the first lane ends on, and so the one the crossing count sits after. */
 const SORTED = 2;
-const CHECKED = 5;
 
 interface LaneMapProps {
   map: LaneMap;

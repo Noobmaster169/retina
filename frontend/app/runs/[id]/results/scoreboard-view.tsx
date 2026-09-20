@@ -1,84 +1,118 @@
+import { Bar, Panel, PanelHead } from "@/components/ui/panel";
 import type { Scoreboard } from "@/lib/api/scoring-schemas";
+
+/**
+ * A scoreboard as the organisers' scorer reports it. Built from the same
+ * panels, bars and scale as every other surface: this page predates the design
+ * language and was the last thing still drawn its own way.
+ *
+ * The confusion matrix is the one grid of numbers in the product, and it earns
+ * it: rows are the truth, columns the answer, and the only coloured cell is one
+ * off the diagonal, which is a category the run got wrong.
+ */
 
 const CATEGORIES = ["BL_COMPARISON", "SI_REQUEST", "INVOICE_QUERY", "GENERAL", "SPAM"];
 const score = (n: number) => n.toFixed(4);
 
-function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <div className="min-w-36">
-      <dt className="text-xs uppercase tracking-wide text-ink-tertiary">{label}</dt>
-      <dd className="mt-0.5 text-lg font-semibold tabular-nums">{value}</dd>
-      {hint && <dd className="text-xs text-ink-tertiary">{hint}</dd>}
-    </div>
-  );
-}
-
-/** A scoreboard as the organisers' scorer reports it: the three scored stages, escalation, and the confusion matrix. */
 export function ScoreboardView({ board }: { board: Scoreboard }) {
   const { stage1, stage3, reliability, end_to_end: e2e, weights } = board;
-  return (
-    <div>
-      <dl className="flex flex-wrap gap-x-10 gap-y-4 border-y border-hairline py-4">
-        <Stat label="Final score" value={score(board.final_score)} hint={`over ${board.n_emails} emails`} />
-        <Stat label={`Stage 1 macro-F1 (${weights.stage1})`} value={score(stage1.macro_f1)} hint={`accuracy ${score(stage1.accuracy)}`} />
-        <Stat
-          label={`Stage 3 defect-F1 (${weights.stage3})`}
-          value={score(stage3.defect_f1)}
-          hint={`precision ${score(stage3.defect_precision)}, recall ${score(stage3.defect_recall)}, ${stage3.doc_total} comparable`}
-        />
-        <Stat label={`End to end (${weights.end_to_end})`} value={score(e2e.rate)} hint={`${e2e.success} of ${e2e.total} defects fully right`} />
-        <Stat
-          label="Escalation"
-          value={`${score(reliability.escalation_recall)} recall`}
-          hint={`${score(reliability.escalation_precision)} precision, ${reliability.pred_review} escalated of ${reliability.gold_review} due`}
-        />
-      </dl>
+  const parts = [
+    { key: "stage 1", label: "macro F1 over the five categories", value: stage1.macro_f1, weight: weights.stage1 },
+    { key: "stage 3", label: "defect F1 over the comparable pairs", value: stage3.defect_f1, weight: weights.stage3 },
+    { key: "end to end", label: "every check right on one email", value: e2e.rate, weight: weights.end_to_end },
+  ];
 
-      <div className="mt-4 grid gap-6 lg:grid-cols-2">
-        <div className="overflow-x-auto">
-          <h3 className="text-sm font-semibold">Stage 1 confusion: rows are the truth, columns the answer</h3>
-          <table className="mt-2 text-right text-xs tabular-nums">
-            <thead className="text-ink-tertiary">
-              <tr>
-                <th className="py-1 pr-3 text-left font-medium" />
-                {CATEGORIES.map((c) => (
-                  <th key={c} className="py-1 pr-3 font-medium">
-                    {c}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {CATEGORIES.map((actual) => (
-                <tr key={actual} className="border-t border-hairline">
-                  <th className="py-1 pr-3 text-left font-medium">{actual}</th>
-                  {CATEGORIES.map((predicted) => {
-                    const n = stage1.confusion[actual]?.[predicted] ?? 0;
-                    const tone = n === 0 ? "text-ink-tertiary" : actual === predicted ? "text-ink font-semibold" : "text-fault font-semibold";
-                    return (
-                      <td key={predicted} className={`py-1 pr-3 ${tone}`}>
-                        {n}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+  return (
+    <div className="flex flex-col gap-4">
+      <Panel>
+        <PanelHead
+          title="Final score"
+          aside={<span className="text-small text-ink-tertiary">over {board.n_emails} emails</span>}
+        />
+        <div className="px-4 pb-1">
+          <span className="font-display text-display-lg tracking-[-0.015em] tabular-nums">{score(board.final_score)}</span>
         </div>
-        <div>
-          <h3 className="text-sm font-semibold">Escalation by reason: caught of due</h3>
-          <ul className="mt-2 text-sm">
+        <div className="px-4 pb-3">
+          {parts.map((part) => (
+            <div key={part.key} className="flex h-[34px] items-center gap-2.5">
+              <span className="w-[78px] shrink-0 text-small text-ink-secondary">{part.key}</span>
+              <span className="w-[230px] shrink-0 truncate text-caption text-ink-tertiary">{part.label}</span>
+              <Bar pct={part.value * 100} tone="var(--signal)" />
+              <span className="w-12 shrink-0 text-right font-mono text-mono-sm tabular-nums">{score(part.value)}</span>
+              <span className="w-10 shrink-0 text-right text-micro tabular-nums text-ink-tertiary">
+                {part.weight.toFixed(2)}
+              </span>
+            </div>
+          ))}
+        </div>
+      </Panel>
+
+      <div className="flex flex-wrap gap-4">
+        <Panel className="min-w-[420px] grow basis-0">
+          <PanelHead title="Stage 1" note="rows are the truth, columns the answer" />
+          <div className="overflow-x-auto px-4 pb-4">
+            <table className="text-right font-mono text-mono-xs tabular-nums">
+              <thead>
+                <tr className="text-ink-tertiary">
+                  <th className="py-1 pr-3 text-left font-normal" />
+                  {CATEGORIES.map((category) => (
+                    <th key={category} className="py-1 pr-3 font-normal">
+                      {category}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {CATEGORIES.map((actual) => (
+                  <tr key={actual} className="border-t border-hairline-faint">
+                    <th className="py-1 pr-3 text-left font-normal text-ink-secondary">{actual}</th>
+                    {CATEGORIES.map((predicted) => {
+                      const n = stage1.confusion[actual]?.[predicted] ?? 0;
+                      const tone =
+                        n === 0 ? "text-ink-faint" : actual === predicted ? "text-ink" : "bg-fault-tint text-fault";
+                      return (
+                        <td key={predicted} className={`px-1.5 py-1 ${tone}`}>
+                          {n}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="mt-2.5 max-w-[46ch] text-caption leading-[17px] text-ink-tertiary">
+              Accuracy {score(stage1.accuracy)}. Anything off the diagonal is an email sorted into the wrong category.
+            </p>
+          </div>
+        </Panel>
+
+        <Panel className="min-w-[320px] grow basis-0">
+          <PanelHead
+            title="Escalation"
+            aside={
+              <span className="font-mono text-mono-sm tabular-nums text-ink-tertiary">
+                {score(reliability.escalation_recall)}
+              </span>
+            }
+          />
+          <div className="px-4">
             {Object.entries(reliability.per_reason).map(([reason, { total, caught }]) => (
-              <li key={reason} className="flex justify-between border-t border-hairline py-1">
-                <span>{reason}</span>
-                <span className={`tabular-nums ${caught < total ? "text-fault" : "text-ink"}`}>
+              <div key={reason} className="flex h-[31px] items-center gap-2.5 border-t border-hairline-faint">
+                <span className="w-[140px] shrink-0 font-mono text-micro text-review">{reason}</span>
+                <Bar pct={total === 0 ? 0 : (caught / total) * 100} tone="var(--verdict-review)" />
+                <span
+                  className={`w-14 shrink-0 text-right text-small tabular-nums ${caught < total ? "text-fault" : "text-ink"}`}
+                >
                   {caught} of {total}
                 </span>
-              </li>
+              </div>
             ))}
-          </ul>
-        </div>
+          </div>
+          <p className="border-t border-hairline px-4 py-3 text-caption leading-[17px] text-ink-tertiary">
+            {reliability.pred_review} escalated of {reliability.gold_review} due, at{" "}
+            {score(reliability.escalation_precision)} precision. Stage 3 saw {stage3.doc_total} comparable pairs.
+          </p>
+        </Panel>
       </div>
     </div>
   );

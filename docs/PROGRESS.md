@@ -119,6 +119,33 @@ phase, and two are data the organisers' dataset does not carry:
   keeps the six everywhere, because one rail that does not change under you is the rule and the
   two boards disagree with each other.
 
+**One shell over every route.** The first build left the phase 1 pages where they were, so the
+rail's own destinations either 404ed or dropped a person into a different product: `/` was the
+standalone Averis inbox in its own shell, `/mail/[id]` a second email page, `/chat` a phase 1 chat,
+and `/review`, `/database` and `/ontology` did not exist at all. That is fixed:
+
+- The phase 1 mail stack is deleted: `mail-shell`, `mail-list`, `email-view`, `chat-panel`,
+  `paperclip-icon`, `lib/inbox.ts`, `app/actions/ai.ts`, `app/mail/` and `app/attachments/`. The
+  email page under a run replaces all of it. `/files/*key` comes back in phase 8 for the uploads.
+- `/` redirects to `/runs`. Retina opens on its runs; there is no landing page.
+- `/inbox`, `/review`, `/database`, `/ontology` and `/chat` are one `Placeholder` component in the
+  same shell, the same rail and the same type: what will be there, which phase builds it, and a
+  line saying nothing is broken. A destination the rail offers always resolves.
+- `/runs/[id]/results` moved into the shell, and its two components were rebuilt on the panels,
+  bars and scale everything else uses rather than left as migrated phase 2 markup.
+- `/login` was still referencing `bg-brand` and `border-brand`, tokens Air does not define, so its
+  button and focus ring rendered as nothing. Rebuilt: the mark, the display face, one field.
+- `app/not-found.tsx` keeps the shell. Walking off the end of the product should not look like
+  leaving it.
+- The password gate named `/chat` and `/runs` because the inbox was a separate public page. It now
+  covers everything but `/login`, the API handlers and Next's assets. One gate, one matcher.
+- The email page marks `Runs` in the rail, not `Inbox`: it lives at `/runs/[id]/emails/[emailId]`
+  and the rail should say where you are.
+
+Every route was then swept: all twelve answer, all twelve carry the rail and the display face,
+and nothing in `frontend/` uses a Tailwind default type size, a grey that is not an Air token, a
+drop shadow or an uppercase label.
+
 **Known, and left for phase 9.** A run whose ingest has finished reads `completed` while its
 queues are still full, and the API refuses both pause and cancel in that state, so the run page
 offers neither. That is the API's rule and the page is drawing it honestly; stopping a run that is

@@ -19,7 +19,7 @@ export interface Destination {
 
 export const DESTINATIONS: Destination[] = [
   { key: "runs", label: "Runs", icon: "home", href: "/runs" },
-  { key: "inbox", label: "Inbox", icon: "mail", href: "/" },
+  { key: "inbox", label: "Inbox", icon: "mail", href: "/inbox", planned: "phase 8" },
   { key: "review", label: "Needs a person", icon: "doc", href: "/review", planned: "phase 8" },
   { key: "database", label: "Database", icon: "table", href: "/database", planned: "phase 10" },
   { key: "ontology", label: "Ontology", icon: "graph", href: "/ontology", planned: "phase 10" },
