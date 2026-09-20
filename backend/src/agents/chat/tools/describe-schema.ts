@@ -32,6 +32,7 @@ export const describeSchema: ChatTool<Input> = {
     "Lists the columns and types of the analytics and core tables. Use it when the documentation in this " +
     "prompt does not say whether a column exists, rather than guessing a name and reading the error.",
   schema: Input,
+  shape: Input.shape,
 
   async run(input, ctx: ToolContext): Promise<ToolOutcome> {
     if (!ctx.roPool) {

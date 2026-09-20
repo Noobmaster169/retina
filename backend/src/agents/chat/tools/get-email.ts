@@ -24,6 +24,7 @@ export const getEmail: ChatTool<Input> = {
     "The summary of one email: its category, how sure the model was, its comparison status, which of the " +
     "seven fields differed, and whether a person touched it. Give runId only when the question names a run.",
   schema: Input,
+  shape: Input.shape,
 
   async run(input, ctx: ToolContext): Promise<ToolOutcome> {
     const runId = input.runId ?? ctx.runId ?? (await latestRunFor(ctx.pool, input.emailId));

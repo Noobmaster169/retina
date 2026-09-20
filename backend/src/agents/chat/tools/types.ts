@@ -60,6 +60,15 @@ export interface ChatTool<I> {
   /** One or two sentences. Goes straight into the prompt, so it is written for a model to act on. */
   description: string;
   schema: z.ZodType<I>;
+  /**
+   * The same schema's fields, which `src/mcp.ts` registers a tool with.
+   *
+   * Stated rather than reached for off `schema`, because `z.ZodType` has no
+   * `shape` and widening the field to `ZodObject` would give up the link
+   * between the schema and the input type `run` is handed. One word per tool
+   * against a cast at the only place that needs it.
+   */
+  shape: z.ZodRawShape;
   run(input: I, ctx: ToolContext): Promise<ToolOutcome>;
 }
 

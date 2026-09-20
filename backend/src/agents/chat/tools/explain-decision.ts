@@ -91,6 +91,7 @@ export const explainDecision: ChatTool<Input> = {
     "value read from each document with its quote and whether that quote was found, every field judgement " +
     "with its reasoning, why it escalated, and what a person did. Use it for `explain email_x` questions.",
   schema: Input,
+  shape: Input.shape,
 
   async run(input, ctx: ToolContext): Promise<ToolOutcome> {
     const runId = input.runId ?? ctx.runId ?? (await latestRunFor(ctx.pool, input.emailId));

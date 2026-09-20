@@ -66,6 +66,7 @@ export const runSql: ChatTool<Input> = {
     "Only select and with are allowed; a limit is added when you do not give one. Always use this rather " +
     "than stating a number from memory.",
   schema: Input,
+  shape: Input.shape,
 
   async run(input, ctx: ToolContext): Promise<ToolOutcome> {
     if (!ctx.roPool) {

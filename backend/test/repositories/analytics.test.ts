@@ -108,6 +108,16 @@ describe("the retina_ro role", () => {
     await (roPool as NonNullable<typeof roPool>).query("select count(*) from analytics.dim_client");
   });
 
+  it("can read the resolved ontology, which a later migration had to grant", async () => {
+    // Migration 011 grants table by table and ran before 013 created these
+    // three, so the agent was told about tables it could not read and got
+    // `permission denied for table entities`. 014 fixed it; this holds it.
+    const roPool = getRoPool() as NonNullable<ReturnType<typeof getRoPool>>;
+    for (const table of ["core.entities", "core.entity_names", "core.entity_mentions"]) {
+      await roPool.query(`select count(*) from ${table}`);
+    }
+  });
+
   it("cannot read llm_calls.request, and cannot write anything", async () => {
     const roPool = getRoPool() as NonNullable<ReturnType<typeof getRoPool>>;
     // The prompt text and the model's raw answer are the two columns a chat
