@@ -14,8 +14,11 @@ import type { Queryable } from "../../db";
  * another round trip.
  */
 
-/** Enough to read. Past this the graph stops being a picture and becomes a hairball. */
-const MAX_CONTEXT = 4;
+/**
+ * Enough to read. Past this the graph stops being a picture and becomes a
+ * hairball, and a tall context column shrinks everything else to fit.
+ */
+const MAX_CONTEXT = 3;
 const MAX_DIFFERENCES = 6;
 
 interface Rows {

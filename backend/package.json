@@ -17,7 +17,8 @@
     "eval:score": "node --env-file-if-exists=.env --import tsx src/eval/run-eval.ts",
     "eval:sample": "node --env-file-if-exists=.env --import tsx src/eval/sample.cli.ts",
     "eval:examples": "node --env-file-if-exists=.env --import tsx src/eval/examples.cli.ts",
-    "load-test": "node --env-file-if-exists=.env --import tsx scripts/load-test.ts"
+    "load-test": "node --env-file-if-exists=.env --import tsx scripts/load-test.ts",
+    "derive": "node --env-file-if-exists=.env --import tsx scripts/derive.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",

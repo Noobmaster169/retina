@@ -173,6 +173,29 @@ export async function find(db: Queryable, id: string): Promise<EntityRow | null>
   return rows[0] ? toRow(rows[0]) : null;
 }
 
+/**
+ * Whether the resolved things still match what the extractor has stored.
+ *
+ * Its own check, not the analytics watermark. The views are created already
+ * populated, so on a fresh database they are level with core while these three
+ * tables are empty, and gating the resolver on the views' staleness meant it
+ * would never run until something else moved. Two derived things, two checks.
+ *
+ * Counting mentions against the values that should produce one catches both a
+ * new extraction and a resolver that has never run. A re-judged pair that
+ * merges two clusters without adding a value is the case this misses, and the
+ * five minute tick after the next email covers it.
+ */
+export async function isStale(db: Queryable): Promise<boolean> {
+  const { rows } = await db.query<{ want: string; have: string }>(
+    `select (select count(*) from core.extraction_fields ef
+              where ef.field = any($1::text[]) and coalesce(ef.human_value, ef.value) is not null)::text as want,
+            (select count(*) from core.entity_mentions)::text as have`,
+    [ENTITY_FIELDS],
+  );
+  return rows[0].want !== rows[0].have;
+}
+
 /** How many of each kind exist, for the rail's counts. A kind with none reads 0 rather than being absent. */
 export async function countsByKind(db: Queryable): Promise<Record<EntityKind, number>> {
   const { rows } = await db.query<{ kind: EntityKind; n: string }>(

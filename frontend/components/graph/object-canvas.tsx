@@ -33,12 +33,28 @@ const EDGE_TYPES = { named: NamedEdge };
 /** The clamp docs/design/ontology-patterns.md section 3.4 sets. Past it, either nothing or everything is legible. */
 const ZOOM = { min: 0.5, max: 2 };
 
+/**
+ * How the canvas opens.
+ *
+ * `minZoom` here is not the clamp above: it is the floor on the opening fit,
+ * so a graph too wide for the pane opens at a size the labels can be read at
+ * and is panned, rather than opening as a legible diagram of nothing. That is
+ * also why `Fit` is a button and not a promise the page keeps by itself.
+ */
+const FIT = { padding: 0.08, minZoom: 0.75, maxZoom: 1.1 };
+
 interface ObjectCanvasProps {
   graph: ObjectGraph;
   runId: string;
   /** Which node the inspector is showing, drawn with the focus ring on the canvas. */
   selectedId: string | null;
   onSelect(id: string): void;
+  /**
+   * Bumped by the header's `Fit`. A number rather than a ref because the
+   * control lives in the top bar and the viewport lives inside the provider,
+   * and a counter crosses that boundary without either side holding the other.
+   */
+  fitSignal: number;
 }
 
 /** Where a node leads. Only the things with a page of their own get one. */
@@ -49,7 +65,7 @@ function hrefFor(node: ObjectGraph["nodes"][number], runId: string): string | nu
   return null;
 }
 
-function Canvas({ graph, runId, selectedId, onSelect }: ObjectCanvasProps) {
+function Canvas({ graph, runId, selectedId, onSelect, fitSignal }: ObjectCanvasProps) {
   const { fitView } = useReactFlow();
 
   const { nodes, edges } = useMemo(() => {
@@ -83,12 +99,12 @@ function Canvas({ graph, runId, selectedId, onSelect }: ObjectCanvasProps) {
     return { nodes: flowNodes, edges: flowEdges };
   }, [graph, runId, selectedId]);
 
-  // Refit when the graph itself changes, which is what the `Two hops` control
-  // does. Not on selection: moving the viewport because someone clicked a node
-  // is the drift this page promises not to have.
+  // Refit when the graph itself changes, which is what `Two hops` does, and
+  // when someone asks. Not on selection: moving the viewport because a person
+  // clicked a node is the drift this page promises not to have.
   useEffect(() => {
-    fitView({ padding: 0.12, maxZoom: 1 });
-  }, [fitView, graph]);
+    fitView(FIT);
+  }, [fitView, graph, fitSignal]);
 
   return (
     <ReactFlow
@@ -98,7 +114,7 @@ function Canvas({ graph, runId, selectedId, onSelect }: ObjectCanvasProps) {
       edgeTypes={EDGE_TYPES}
       onNodeClick={(_event, node) => onSelect(node.id)}
       fitView
-      fitViewOptions={{ padding: 0.12, maxZoom: 1 }}
+      fitViewOptions={FIT}
       minZoom={ZOOM.min}
       maxZoom={ZOOM.max}
       nodesDraggable={false}

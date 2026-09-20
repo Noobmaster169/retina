@@ -35,7 +35,7 @@ export interface Layout {
 
 const NODE_HEIGHT = 58;
 const ROW_GAP = 26;
-const COLUMN_GAP = 64;
+const COLUMN_GAP = 56;
 const PADDING = 28;
 
 /**
@@ -46,8 +46,8 @@ const PADDING = 28;
  * page and a client domain is the shortest. Anything further out takes the
  * default.
  */
-const WIDTH_BY_DEPTH: Record<number, number> = { [-1]: 184, 0: 196, 1: 220, 2: 220, 3: 176 };
-const DEFAULT_WIDTH = 196;
+const WIDTH_BY_DEPTH: Record<number, number> = { [-1]: 176, 0: 188, 1: 208, 2: 208, 3: 168 };
+const DEFAULT_WIDTH = 188;
 
 function widthAt(depth: number): number {
   return WIDTH_BY_DEPTH[depth] ?? DEFAULT_WIDTH;

@@ -38,15 +38,16 @@ export async function resolveAll(db: Pool): Promise<number> {
 }
 
 /**
- * Brings everything derived level with `core`, when `core` has moved.
+ * Brings everything derived level with `core`, each on its own check.
  *
- * Staleness is the analytics watermark, which also covers the resolver: a new
- * mention arrives with the email run that produced it, and a new verdict with
- * the comparison, so nothing can change the resolver's input without moving
- * that mark.
+ * Two checks and not one, which cost a deployment to learn: a materialized
+ * view is created already populated, so on a fresh database the views are
+ * level with core while the resolved tables are empty. Gating the resolver on
+ * the views' watermark meant it would never run until something else moved,
+ * and the ontology pages opened empty with nothing wrong anywhere.
  */
 export async function refreshIfStale(db: Pool): Promise<RefreshResult> {
-  if (!(await analytics.isStale(db))) return { views: false, entities: null };
-  await analytics.refresh(db);
-  return { views: true, entities: await resolveAll(db) };
+  const [viewsStale, entitiesStale] = await Promise.all([analytics.isStale(db), entities.isStale(db)]);
+  if (viewsStale) await analytics.refresh(db);
+  return { views: viewsStale, entities: entitiesStale ? await resolveAll(db) : null };
 }
