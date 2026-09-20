@@ -22,7 +22,8 @@ export interface StructuredCall<T> {
   input: Record<string, string | string[]>;
   schema: z.ZodType<T>;
   project: string;
-  runId: string;
+  /** Null for a call that belongs to no run: the chat agent's loop is the only one. */
+  runId: string | null;
   emailRunId?: string;
 }
 
@@ -131,9 +132,10 @@ export async function callStructured<T>(deps: StructuredDeps, call: StructuredCa
       attempt,
     };
 
-    // Streamed only where someone can watch it: an email's call, with a live store.
+    // Streamed only where someone can watch it: an email's call of a run, with
+    // a live store. A call that belongs to no run has no run page to stream to.
     const preview =
-      deps.live && call.emailRunId
+      deps.live && call.emailRunId && call.runId
         ? livePreview(deps.live, {
             emailRunId: call.emailRunId,
             runId: call.runId,
