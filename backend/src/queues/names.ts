@@ -10,6 +10,13 @@ export const JOB_NAMES = {
   classify: "classify-email",
   compare: "compare-email",
   ontology: "read-shipment",
+  // Two maintenance jobs on the same queue. They do model work, so they belong
+  // on a queue sized for it and not on the clock's own queue, which runs at
+  // concurrency 1 and also carries the heartbeat: a profile pass that took
+  // minutes there would let the heartbeat's key expire and `/health` would
+  // report a working worker as dead.
+  profiles: "refresh-profiles",
+  concepts: "backfill-concepts",
 } as const;
 
 /** `epoch` is the run's ingest epoch when the job was added. A job from before it existed holds 0. */
@@ -45,6 +52,12 @@ export type CompareJob = z.infer<typeof CompareJob>;
  */
 export const OntologyJob = z.object({ emailId: z.string().min(1), emailRunId: z.number().int().positive() });
 export type OntologyJob = z.infer<typeof OntologyJob>;
+
+/** A maintenance pass carries no ids: the task's own name is the whole job. */
+export type MaintenancePass = Record<string, never>;
+
+/** Everything the ontology queue carries. The worker tells them apart by `job.name`. */
+export type OntologyWork = OntologyJob | MaintenancePass;
 
 /**
  * What a job is worth when nothing said. Every email job is added with a real
@@ -82,6 +95,17 @@ export function rerunJobOptions(runId: string, emailId: string, rerun: number, p
  */
 export const ONTOLOGY_PRIORITY = 2000;
 
+/**
+ * A maintenance pass, enqueued by the clock and run by the ontology worker.
+ *
+ * The job id is the task's own name, so a tick that lands while the last one
+ * is still running is a no-op rather than a second pass over the same rows.
+ * One attempt: the next tick is the retry, and it is ten minutes away.
+ */
+export function maintenanceJobOptions(name: string): JobsOptions {
+  return { attempts: 1, removeOnComplete: true, removeOnFail: { age: 3600 }, jobId: name, priority: ONTOLOGY_PRIORITY };
+}
+
 export function ontologyJobOptions(emailId: string): JobsOptions {
   return {
     attempts: 3,
@@ -106,3 +130,6 @@ export function ingestJobOptions(id: string): JobsOptions {
 export interface JobAdder<T> {
   add(name: string, data: T, options: JobsOptions): Promise<unknown>;
 }
+
+/** What the clock needs of the ontology queue: somewhere to put a maintenance pass. */
+export type MaintenanceAdder = JobAdder<MaintenancePass>;

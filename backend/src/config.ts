@@ -130,6 +130,17 @@ const Env = z.object({
   CANDIDATE_CAP: z.coerce.number().int().positive().default(5000),
   PROFILE_BATCH: z.coerce.number().int().positive().default(50),
   PROFILE_FLOOR_HOURS: z.coerce.number().int().nonnegative().default(24),
+  /**
+   * How long a maintenance pass may hold an ontology slot before it stops and
+   * leaves the rest to the next tick.
+   *
+   * A profile call takes tens of seconds and a batch is fifty of them, so
+   * without this one pass would hold half the queue for half an hour and no
+   * email's reading would run in that time. Four minutes against a ten minute
+   * tick leaves the queue free most of the time and still gets through the
+   * batch over a few ticks.
+   */
+  MAINTENANCE_BUDGET_MS: z.coerce.number().int().positive().default(240_000),
 
   // The proxy serves twelve `claude -p` calls at a time (max_concurrency in proxy/proxy.yaml),
   // which is these two added up, because that is how many scored jobs run at once. More workers

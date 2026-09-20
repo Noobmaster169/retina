@@ -1,13 +1,13 @@
 import { Queue } from "bullmq";
 
 import { getRedis } from "./connection";
-import { type ClassifyJob, type CompareJob, type IngestJob, type OntologyJob, QUEUES } from "./names";
+import { type ClassifyJob, type CompareJob, type IngestJob, type OntologyWork, QUEUES } from "./names";
 
 export interface Queues {
   ingest: Queue<IngestJob>;
   classify: Queue<ClassifyJob>;
   compare: Queue<CompareJob>;
-  ontology: Queue<OntologyJob>;
+  ontology: Queue<OntologyWork>;
 }
 
 let queues: Queues | undefined;
@@ -19,7 +19,7 @@ export function getQueues(): Queues {
     ingest: new Queue<IngestJob>(QUEUES.ingest, { connection }),
     classify: new Queue<ClassifyJob>(QUEUES.classify, { connection }),
     compare: new Queue<CompareJob>(QUEUES.compare, { connection }),
-    ontology: new Queue<OntologyJob>(QUEUES.ontology, { connection }),
+    ontology: new Queue<OntologyWork>(QUEUES.ontology, { connection }),
   };
   return queues;
 }

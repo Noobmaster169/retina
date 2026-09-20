@@ -41,7 +41,7 @@ const workers = startWorkers(
 // The worker owns the clock, not the api: the api runs behind a load balancer
 // in principle and one of two replicas writing the heartbeat would say the
 // worker is alive when it is not.
-const schedulers = await startSchedulers({ pool, redis, priority, llm, aging: [queues.classify, queues.compare] });
+const schedulers = await startSchedulers({ pool, redis, priority, aging: [queues.classify, queues.compare] });
 log.info(
   {
     classify: config.CLASSIFY_CONCURRENCY,

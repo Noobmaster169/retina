@@ -16,8 +16,10 @@ import { recordJobFailure } from "./record-failure";
 import { ClassifyJob, CompareJob, DEFAULT_PRIORITY, IngestJob, type JobAdder, JOB_NAMES, OntologyJob, ontologyJobOptions, QUEUES } from "./names";
 import { processClassify } from "./processors/classify.processor";
 import { processCompare } from "./processors/compare.processor";
+import { backfillConcepts } from "./backfill-concepts";
 import { processOntology } from "./processors/ontology.processor";
 import { queueOntology } from "./queue-ontology";
+import { refreshProfiles } from "./refresh-profiles";
 
 const log = childLogger({ module: "workers" });
 
@@ -157,7 +159,12 @@ export function startWorkers(deps: WorkerDeps, connection: Redis): RunningWorker
   // a scored email. An outage pauses it exactly as it pauses the other two.
   const ontology = new Worker(
     QUEUES.ontology,
-    (job) => {
+    async (job) => {
+      // Three job names on one queue: one email's reading, and the two
+      // maintenance passes the clock enqueues rather than running itself.
+      if (job.name === JOB_NAMES.profiles) return void (await refreshProfiles(deps));
+      if (job.name === JOB_NAMES.concepts) return void (await backfillConcepts(deps));
+
       const data = parse(OntologyJob, job);
       const pauser = deps.ontology;
       const read = () => processOntology({ ...deps, tx: transactor(deps.pool) }, data);

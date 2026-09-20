@@ -38,8 +38,16 @@ export async function refreshProfiles(deps: RefreshProfilesDeps): Promise<number
   if (ids.length === 0) return 0;
 
   const prompt = loadPrompt("entity-profile", PROFILE_PROMPT, config.LLM_MODEL_ENTITY_PROFILE);
+  const until = Date.now() + config.MAINTENANCE_BUDGET_MS;
   let written = 0;
   for (const id of ids) {
+    // The batch is an upper bound and the clock is the real one: the rest of
+    // it is still stale and the next tick takes it, while an email waiting for
+    // its reading does not wait half an hour behind this.
+    if (Date.now() > until) {
+      log.info({ written, left: ids.length - written }, "the profile pass ran out of time; the next tick continues it");
+      break;
+    }
     const dossier = await entityDossier.loadDossier(deps.pool, id);
     // Merged or dropped between the list and here. Nothing to describe.
     if (!dossier) continue;
