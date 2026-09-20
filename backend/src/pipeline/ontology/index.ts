@@ -1,3 +1,4 @@
+export { type ExistingEntity, reconcile, type ReconcilePlan } from "./reconcile";
 export {
   type EntityKind,
   type JoinedBy,
