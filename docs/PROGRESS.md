@@ -1,18 +1,145 @@
 # Progress
 
-Current phase: 8, not started. **Phase 7 is merged to `main`.** Its exit checklist is green but for
-two items marked `[~]` in `docs/04-phases.md`, both recorded under "Deferred" below.
+Current phase: 9, not started. **Phase 8 is built on `phase-08-review-inbox` and its exit checklist
+is green.** Phase 7 is merged to `main`; its two `[~]` items are still under "Deferred" below.
 
-**Start at `docs/phases/phase-08-handover.md`.** Its first four sections are the design session's;
-the rest is what phase 7's implementation established, including the shell contract, the contracts
-it added, the design decisions settled with the user, and a list of traps that each cost a real
-amount of time. Read it before `phase-07-handover.md`, which is still right about intent and out of
-date about the API.
+**Start at `docs/phases/phase-09-handover.md`.** Phase 8's own sections are below; the shell
+contract, the design decisions settled with the user and the traps that cost real time are still in
+`docs/phases/phase-08-handover.md`, and all of it still applies.
 
 Phase 6 is built and tested; left for the user there: the holdout run and the full 520 run that
 decide its exit checklist's score lines (`pnpm eval:score --run <id> --holdout`), and phase 5's
 open items (the box check of doc-extract, the classify `v5` holdout). Phase 4's open items (the
 few-shot `v4` holdout, the model comparison) are still the user's.
+
+## Phase 8
+
+The human in the loop path is real. A reviewer sees every escalated case with its evidence,
+confirms or corrects it, uploads a document, reclassifies it, leaves a note, or retries a job that
+failed, and every one of those is stored as a labelled example for phase 11.
+
+**Built.**
+
+- Migration `008_review_actions.sql`: `core.review_actions` (append only, the seven kinds as a
+  check constraint and the organisers' seven fields as another), `attachments.review_case_id`,
+  `email_runs.rerun_count`, and `comparisons.decided_by`. All additive, every added column with a
+  default, so a rollback to phase 7 reads none of them.
+- `src/review/`: `actions.ts` holds the transaction, the state guards and the answer; `effects.ts`
+  is one function per kind; `upload.ts` sniffs the bytes and stores the file; `rerun.ts` spends the
+  rerun count and enqueues. The api's `GET /review`, `GET /review/stats`, `GET /review/:id`,
+  `POST /review/:id/actions` and `POST /review/:id/upload`, plus `GET /files/*key`.
+- Failure cases. `queues/record-failure.ts` is what a failed job leaves behind: an attempt counted
+  while one remains, and on the last one a failed email and a case with `kind = failure` and no
+  review reason. It is its own module rather than a closure in `workers.ts` so it can be tested
+  without Redis.
+- `/runs/[id]/review`: the queue at 300px, case rows at 46px grouped under the reason that raised
+  them with the failures in their own group at the foot, and the case pane beside it. Which case is
+  open lives in the URL, so one can be handed to someone.
+- **One case component set.** `components/email/email-pane.tsx` is the email page's middle column,
+  lifted out of `app/runs/[id]/emails/[emailId]/` so the review queue opens the same pane. The
+  email page is now the shell, the list and that pane; `git diff` shows no second review component.
+- The action bar is live, in the order of `03-infra-deep.md` section 5.5. What a control needs
+  beyond a click (a note, a category, a file, the reviewer's name) opens as a strip above the bar,
+  never over the case.
+- `Correct a field` edits inline on the comparison row, both sides offered, the quote still on
+  screen. There is no correct-value field anywhere and no button that writes to one side as right.
+- Every write raises a toast carrying the api's own sentence and, where a rerun was queued, what it
+  set off. `ToastHost` lives in `AppShell`, which is the one component on every screen.
+
+**New contracts**, each mirrored in `frontend/lib/api/` and in `03-infra-deep.md` sections 5.5, 8
+and 10:
+
+- `contracts.actions.ts`: the action kinds, the per-kind body as a zod discriminated union, the
+  queue's row, the stats, and what an action answers with.
+- `ReviewCaseView` gains `id`, `kind`, a nullable `reason`, `resolvedAt`, `resolvedBy` and its
+  `actions`. The case pane writes without asking a second question first.
+- `DocumentView.origin`, so the case pane can say which file a person supplied.
+- `ClassificationView.humanCategory`. Every screen reads `humanCategory ?? finalCategory`, as the
+  submission builder already did.
+- `RunQueues.rerun`, the one seam a person's correction needs into the queues, with the memory fake
+  recording what would have been added.
+
+**Three real bugs this phase found, none of them in its own new code.**
+
+- **A corrected value kept the model's quote.** `withHumanValues` replaced the value and left
+  `source_quote`, so the judge was shown `235,550 KG` quoted from a line reading
+  `Gross Weight(KGS): N/A` and called it a placeholder. The correction re-ran and the case came
+  straight back with the same reason. A human value now replaces the quote, the placeholder and the
+  confidence together, and `extractions.human-values.test.ts` holds it.
+- **`pageConfidence` is 0 to 100, not 0 to 1.** doc-extract reports tesseract's own scale and phase
+  7's contract comment said 0 to 1, so the case pane drew a scan at 86.9 as `8695%`. The contract
+  now states the scale and the three screens that divided by it are corrected.
+- **`UPDATE ... RETURNING` gives the new row.** Both `setHumanValue` and `setHumanCategory` read
+  what stood before in a CTE now. Without it every action row said the old value was the new one,
+  which is the one thing phase 11 needs from them.
+
+**Settled while building, and worth not reopening.**
+
+- The queue is the blueprint's case row (46px, the email id, the subject, the reason chip, the age)
+  and not the 86px mail row. `phase-08-handover.md` section 9 calls it "`EmailList` filtered";
+  `design/screen-blueprints.md` section 7, which `04-phases.md` cites, is more specific and it
+  wins. A case is not a message: the reason and the age are what a person chooses on, and the
+  sender's initials are not.
+- A failure case is red, not violet. Section 4.4 keeps violet for uncertainty handed to a person
+  and red for a job that failed, and never lets the two share a badge.
+- The stack of a failed job is stored on the case and is not drawn. What a person can act on is the
+  stage, the attempts and the message; a stack trace on screen is exposure, not information.
+- The reviewer's name is asked at the first write, not on arrival, and it is read through
+  `useSyncExternalStore` rather than into state in an effect: the browser owns it, two panes open at
+  once see the same name, and eslint's `set-state-in-effect` rule is right about why.
+
+**Checked against the canvas**, at 1440x900 in a browser, on run `09bbd120` (12 edge-case emails,
+10 open cases): the queue, a `missing_value` case corrected inline, an `unreadable` case, a
+`missing_attachment` case, and a failure case with its retry. The case pane matches
+`EmailReview.dc.html` panel for panel; the action bar matches it button for button, with
+`Correct a field` added where there are fields to correct.
+
+**Exit checklist**, all checked live on runs `09bbd120` and `3acde761`:
+
+- [x] Correcting the blank weight on `email_516` re-ran compare and the case closed: status `OK`,
+      `resolved_by = Kai`, `gross_weight_kg` same on both sides.
+- [x] Uploading an SI and a BL to `email_508` (`missing_attachment`, nothing attached) produced a
+      full comparison: `MISMATCH` on consignee and notify_party, case resolved, both documents
+      `origin = human`.
+- [x] A permanent doc-extract failure created a failure case within seconds
+      (`kind = failure`, no reason, stage `compare`); retry after the service was reachable again
+      ended the email `done` / `OK` and closed the case. Note the spec's wording: *stopping*
+      doc-extract does not do this, it pauses the queue, which is `failure-policy.ts` working as
+      phase 5 built it.
+- [x] The submission after review reflects the human decisions: `email_516` `OK`, `email_508`
+      `MISMATCH` with its fields, `email_501` still `NEEDS_REVIEW` / `wrong_doc_type` after a
+      confirm. `decided_by` stays `llm` because the organisers' enum has only `rule` and `llm`; ours
+      is `comparisons.decided_by`, which the submission never carries.
+- [x] Every action is in `review_actions` with its actor and its old and new values.
+- [x] A second escalation on the same email updates the open case in place; the unique index and
+      `review-cases.repo.test.ts` both hold it.
+- [x] The case pane is phase 7's component with a different tab selected. `git diff` shows
+      `case-tab.tsx` split and extended, and no second review component set.
+- [x] A correction never writes a correct value: both sides are offered, `human_value` is stored per
+      document, and the pair is judged again from both.
+- [x] Every action raises a toast naming what was written and what was re-queued.
+
+**Tests.** 491 in `backend/` (44 new: the action semantics, the reruns that resolve and re-escalate,
+the failure cases, the review and files routes, triage's preference for a human upload, and the
+human-value substitution), 40 in `frontend/`. Type-check clean in both, `pnpm lint` clean.
+
+**Deferred.**
+
+- The chat's proposed action card. It describes exactly this write path and nothing routes a chat
+  turn into a `review_action`; the contract for that still does not exist. Raise it before phase 10
+  builds the chat, as `phase-08-handover.md` section 3 says.
+- Rendered page images for an unreadable case. `/files/*key` now exists and `docExtract.render`
+  already writes the PNGs, so this is a `<img>` and a key away; the page is still a hatched block.
+  Still `[~]` in `04-phases.md`.
+- **The action bar on an email that was never escalated.** `EmailCheck.dc.html` draws it live on a
+  MISMATCH, and every write path in this phase is addressed by a case id: `review_cases` exist only
+  for escalations, so a MISMATCH that needs nobody has nothing to write to. The same gap as the
+  chat's action card, and the same answer: the contract has to say what an action against an email
+  run rather than a case would be, before a screen offers one. The bar is present and disabled on
+  those emails, with one sentence saying why.
+- `GET /review/stats` is built, tested and not yet drawn. The queue's own group counts say enough
+  for one run; the numbers it adds (resolved today, median time to resolve) belong on a screen
+  about the queue rather than in it.
 
 ## Phase 7
 

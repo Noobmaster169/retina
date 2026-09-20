@@ -6,5 +6,7 @@ export const keys = {
   text: (runId: string, emailId: string, filename: string) => `runs/${runId}/emails/${emailId}/text/${filename}.txt`,
   /** The prefix doc-extract writes a PDF's page images under, one `{n}.png` each. */
   pages: (runId: string, emailId: string, filename: string) => `runs/${runId}/emails/${emailId}/pages/${filename}`,
+  /** A document a reviewer supplied, under the case that asked for it. */
+  upload: (caseId: string, filename: string) => `uploads/${caseId}/${filename}`,
   submission: (runId: string, timestamp: string) => `submissions/${runId}/${timestamp}.json`,
 };

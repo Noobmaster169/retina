@@ -1,11 +1,11 @@
-import type { Queue } from "bullmq";
+import type { JobsOptions, Queue } from "bullmq";
 
 import type { QueueCounts } from "../contracts";
 import { RetryableError } from "../lib/errors";
 import { runIdOfJob } from "../lib/ids";
 import { withTimeout } from "../lib/time";
 import { redisIsDown } from "./connection";
-import { ingestJobOptions, JOB_NAMES } from "./names";
+import { type ClassifyJob, ingestJobOptions, JOB_NAMES } from "./names";
 import { getQueues } from "./queues";
 
 /** What the run routes need from the queues. */
@@ -15,6 +15,12 @@ export interface RunQueues {
   counts(): Promise<{ classify: QueueCounts; compare: QueueCounts }>;
   /** Drops the run's jobs that have not started. Returns how many. */
   removeWaiting(runId: string): Promise<number>;
+  /**
+   * Sends one email back through a queue after a person corrected it. The
+   * options carry the rerun's own job id: the original is kept for a day after
+   * it completes and BullMQ refuses a second under the same one.
+   */
+  rerun(queue: "classify" | "compare", data: ClassifyJob, options: JobsOptions): Promise<void>;
 }
 
 // With Redis down a command waits for the reconnect forever. An HTTP request cannot.
@@ -66,6 +72,9 @@ export function bullRunQueues(): RunQueues {
         "queue counts",
       );
       return { classify: classifyCounts, compare: compareCounts };
+    },
+    async rerun(queue, data, options) {
+      await bounded(() => getQueues()[queue].add(JOB_NAMES[queue], data, options), `rerun on ${queue}`);
     },
     async removeWaiting(runId) {
       const { classify, compare } = getQueues();

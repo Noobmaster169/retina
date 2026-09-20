@@ -91,3 +91,11 @@ export async function outcomesForRuns(db: Queryable, runIds: string[]): Promise<
   }
   return (runId) => outcomes.get(runId) ?? noOutcomes();
 }
+
+/**
+ * Which layer settled this comparison. Ours, not the organisers': their
+ * `decided_by` is `rule` or `llm` and the submission never carries this one.
+ */
+export async function setDecidedBy(db: Queryable, emailRunId: string, decidedBy: "llm" | "human"): Promise<void> {
+  await db.query("update core.comparisons set decided_by = $2 where email_run_id = $1", [emailRunId, decidedBy]);
+}

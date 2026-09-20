@@ -94,12 +94,20 @@ export function toView(stored: StoredExtraction): ExtractionView {
   return { filename: stored.filename, role: stored.role, verified: stored.verified, promptVersion: stored.promptVersion, model: stored.model, fields };
 }
 
-/** Human values win: what the pipeline reads for each field. */
+/**
+ * Human values win: what the pipeline reads for each field.
+ *
+ * The quote goes with the value it described. A person's reading is not the
+ * one the model took off that line, and leaving the old quote beside it told
+ * the judge that "235,550 KG" was quoted from a line reading "N/A", which is
+ * exactly the placeholder the correction was made to answer.
+ */
 export function withHumanValues(stored: StoredExtraction): ExtractedFields {
   const fields = { ...stored.fields };
   for (const field of ComparisonField.options) {
     const human = stored.humanValues[field];
-    if (human !== undefined) fields[field] = { ...fields[field], value: human, placeholder: null };
+    if (human === undefined) continue;
+    fields[field] = { value: human, placeholder: null, source_quote: null, confidence: 1, note: "read off the document by a person" };
   }
   return fields;
 }
@@ -180,4 +188,36 @@ export async function listForEmailRun(db: Queryable, emailRunId: string): Promis
     rows.map((row) => row.id),
   );
   return rows.map((row) => toStored(row, fields.get(row.id) ?? []));
+}
+
+/**
+ * A person's reading of one field of one document. It is stored beside the
+ * model's and never over it: the model's answer is what the eval measures, and
+ * a correction is a second fact about the same document rather than a repair
+ * of the first. `withHumanValues` is what makes it win downstream.
+ *
+ * Returns the value that stood before, for the action's old value. Null when
+ * the document has not been read yet, which is when there is nothing to correct.
+ */
+export async function setHumanValue(
+  db: Queryable,
+  emailRunId: string,
+  role: "SI" | "BL",
+  field: ComparisonField,
+  value: string,
+): Promise<{ oldValue: string | null } | null> {
+  // RETURNING on an update gives the new row, so what stood before is read in
+  // a CTE first. The action row is only worth keeping if it says what changed.
+  const { rows } = await db.query<{ old_value: string | null }>(
+    `with was as (
+       select f.id, coalesce(f.human_value, f.value) as old_value
+         from core.extraction_fields f join core.extractions x on x.id = f.extraction_id
+        where x.email_run_id = $1 and x.role = $2 and f.field = $3
+     )
+     update core.extraction_fields f set human_value = $4
+       from was where f.id = was.id
+       returning was.old_value`,
+    [emailRunId, role, field, value],
+  );
+  return rows[0] ? { oldValue: rows[0].old_value } : null;
 }

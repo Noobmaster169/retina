@@ -98,3 +98,38 @@ export async function filenamesFor(db: Queryable, runId: string, emailIds: strin
   for (const row of rows) found.set(row.email_id, [...(found.get(row.email_id) ?? []), row.filename]);
   return found;
 }
+
+/**
+ * A document a person supplied for a case. `origin = 'human'` is what triage
+ * reads to prefer it over the file the sender attached for the same role, and
+ * the case id is what ties it back to why it was asked for.
+ */
+export async function insertFromPerson(db: Queryable, attachment: NewAttachment & { reviewCaseId: string }): Promise<string> {
+  const { rows } = await db.query<{ id: string }>(
+    `insert into core.attachments
+       (run_id, email_id, filename, source_path, role, origin, object_key, content_type, bytes, sha256, review_case_id)
+     values ($1, $2, $3, $4, $5, 'human', $6, $7, $8, $9, $10)
+     on conflict (run_id, email_id, filename) do update set
+       role = excluded.role,
+       origin = 'human',
+       object_key = excluded.object_key,
+       content_type = excluded.content_type,
+       bytes = excluded.bytes,
+       sha256 = excluded.sha256,
+       review_case_id = excluded.review_case_id
+     returning id`,
+    [
+      attachment.runId,
+      attachment.emailId,
+      attachment.filename,
+      attachment.sourcePath,
+      attachment.role,
+      attachment.objectKey,
+      attachment.contentType,
+      attachment.bytes,
+      attachment.sha256,
+      attachment.reviewCaseId,
+    ],
+  );
+  return rows[0].id;
+}

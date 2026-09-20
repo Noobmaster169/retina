@@ -324,13 +324,16 @@ exists. Phase 10 specifies that; phase 8 ships every action from the action bar.
 
 **Exit checklist.**
 
-- [ ] Correcting a weight on a `missing_value` case re-runs compare and the case closes with the new status.
-- [ ] Uploading a BL to a `missing_attachment` case produces a full comparison.
-- [ ] Stopping doc-extract mid run creates failure cases; retry after restart clears them.
-- [ ] Submission after review reflects human decisions.
-- [ ] The case pane is phase 7's component with a different tab selected; `git diff` shows no second review component set.
-- [ ] A correction never writes to one document as the correct value: the UI records what a person says and the product still reports symmetric difference.
-- [ ] Every action raises a toast naming what was written and what was re-queued.
+- [x] Correcting a weight on a `missing_value` case re-runs compare and the case closes with the new status.
+- [x] Uploading a BL to a `missing_attachment` case produces a full comparison.
+- [x] A job that fails for good creates a failure case; retry clears it. **Stopping doc-extract does not:
+      `failure-policy.ts` reads an unreachable dependency as an outage and pauses the queue with the job's
+      attempts untouched, which is phase 5 working as designed. What reaches the failure handler is a
+      permanent failure, such as doc-extract answering 404 for a key.**
+- [x] Submission after review reflects human decisions.
+- [x] The case pane is phase 7's component with a different tab selected; `git diff` shows no second review component set.
+- [x] A correction never writes to one document as the correct value: the UI records what a person says and the product still reports symmetric difference.
+- [x] Every action raises a toast naming what was written and what was re-queued.
 
 ## Phase 9: Priority, concurrency, ops
 

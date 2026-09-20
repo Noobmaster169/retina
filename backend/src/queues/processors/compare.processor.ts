@@ -1,6 +1,6 @@
 import { identifyDocument, type LlmClient, promptFor, TriageOutput, triageRequest } from "../../agents";
 import { config } from "../../config";
-import type { PromptSet } from "../../contracts";
+import type { PromptSet, Stage } from "../../contracts";
 import type { Queryable } from "../../db";
 import type { DocExtractClient } from "../../doc-extract";
 import { TerminalError } from "../../lib/errors";
@@ -16,6 +16,7 @@ import { escalate } from "./escalate";
 import type { EmailRunIds } from "./ids";
 import { type ParsedDocument, parseDocuments } from "./parse-documents";
 import { promptSetOf } from "./prompt-set-of";
+import { resolveCase } from "./resolve-case";
 
 const log = childLogger({ module: "compare.processor" });
 
@@ -29,6 +30,9 @@ export interface CompareDeps {
 }
 
 const TEXT_CUT = "\n[the text was cut here for length]";
+
+/** Where a rerun may pick an email up from: every stage an email can be sitting in when a person acts on it. */
+const RESTARTABLE: Stage[] = ["classified", "comparing", "review", "done", "failed"];
 
 /** The model's word on what each readable document is. A document already typed is not asked about again. */
 async function typeDocuments(deps: CompareDeps, set: PromptSet, docs: ParsedDocument[], ids: EmailRunIds): Promise<ParsedDocument[]> {
@@ -90,18 +94,19 @@ async function escalateStructure(
   ids: EmailRunIds,
   docs: ParsedDocument[],
   outcome: { reason: Parameters<typeof escalate>[2]; detail: Record<string, unknown> },
+  fresh: boolean,
 ): Promise<void> {
   const pages = outcome.reason === "unreadable" ? await renderPages(deps, docs, ids) : [];
   const detail = { ...outcome.detail, pages };
   if (outcome.reason === "unreadable" && outcome.detail.scanned === true) {
-    await escalateScanned(deps, ids, detail, await provisionalResult(deps, set, ids, docs));
+    await escalateScanned(deps, ids, detail, await provisionalResult(deps, set, ids, docs, fresh));
     return;
   }
   await escalate(deps.pool, ids, outcome.reason, detail);
 }
 
 /** Parse, type, check the structure, then compare or record why not. Returns early when the run was cancelled meanwhile. */
-async function compareOnce(deps: CompareDeps, run: Run, ids: EmailRunIds): Promise<void> {
+async function compareOnce(deps: CompareDeps, run: Run, ids: EmailRunIds, fresh: boolean): Promise<void> {
   const set = await promptSetOf(deps.pool, run);
   const files = await attachments.listForEmail(deps.pool, run.id, ids.emailId);
   const docs = files.length > 0 ? await typeDocuments(deps, set, await parseDocuments(deps, ids, files), ids) : [];
@@ -110,12 +115,13 @@ async function compareOnce(deps: CompareDeps, run: Run, ids: EmailRunIds): Promi
 
   const outcome = checkStructure(docs, request);
   if (outcome.kind === "review") {
-    await escalateStructure(deps, set, ids, docs, outcome);
+    await escalateStructure(deps, set, ids, docs, outcome, fresh);
     return;
   }
   if (outcome.kind === "awaiting_draft") {
     await comparisons.upsert(deps.pool, { emailRunId: ids.emailRunId, status: "OK", reviewReason: null, detail: outcome.detail });
     await emailRuns.moveStage(deps.pool, ids.runId, ids.emailId, ["comparing"], "done", { outcome: "OK", finished: true });
+    await resolveCase(deps.pool, ids);
     log.info({ runId: ids.runId, emailId: ids.emailId, stage: "compare", outcome: outcome.kind }, "compared");
     return;
   }
@@ -125,7 +131,7 @@ async function compareOnce(deps: CompareDeps, run: Run, ids: EmailRunIds): Promi
       "the file names had the pair the other way round; the model's reading decided",
     );
   }
-  await compareDocuments(deps, set, ids, docs, outcome);
+  await compareDocuments(deps, set, ids, docs, outcome, fresh);
 }
 
 /**
@@ -133,9 +139,14 @@ async function compareOnce(deps: CompareDeps, run: Run, ids: EmailRunIds): Promi
  * escalations, and for a pair that can be compared the field extraction, the
  * judge and the verdict. A job can run twice; every write here is idempotent
  * and every stage move names the stages it may start from.
+ *
+ * `rerunFrom` is a person asking for this email again after correcting it.
+ * That is the only way an email already at `review`, `done` or `failed` is
+ * picked up: the pipeline's own jobs may not drag a finished email backwards,
+ * and a person may.
  */
 export async function processCompare(deps: CompareDeps, data: CompareJob): Promise<void> {
-  const { runId, emailId } = data;
+  const { runId, emailId, rerunFrom } = data;
   const run = await runs.get(deps.pool, runId);
   if (!run) throw new TerminalError(`run ${runId} does not exist`);
   if (run.status === "cancelled") return;
@@ -144,6 +155,7 @@ export async function processCompare(deps: CompareDeps, data: CompareJob): Promi
   if (!emailRunId) throw new TerminalError(`email ${emailId} is not in run ${runId}`);
 
   // From `classified` or `comparing` only: a second pass over a finished email changes nothing.
-  if (!(await emailRuns.moveStage(deps.pool, runId, emailId, ["classified", "comparing"], "comparing"))) return;
-  await compareOnce(deps, run, { runId, emailId, emailRunId });
+  const from: Stage[] = rerunFrom ? RESTARTABLE : ["classified", "comparing"];
+  if (!(await emailRuns.moveStage(deps.pool, runId, emailId, from, "comparing"))) return;
+  await compareOnce(deps, run, { runId, emailId, emailRunId }, rerunFrom !== undefined);
 }

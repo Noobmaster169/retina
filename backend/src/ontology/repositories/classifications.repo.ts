@@ -112,6 +112,7 @@ const Rationale = z.object({
 export async function view(db: Queryable, emailRunId: string): Promise<ClassificationView | null> {
   const { rows } = await db.query<{
     final_category: Category;
+    human_category: Category | null;
     decided_by: DecidedBy;
     gen_category: Category;
     gen_confidence: string;
@@ -121,7 +122,7 @@ export async function view(db: Queryable, emailRunId: string): Promise<Classific
     model: string | null;
     prompt_version: string | null;
   }>(
-    `select final_category, decided_by, gen_category, gen_confidence, ver_category, ver_confidence,
+    `select final_category, human_category, decided_by, gen_category, gen_confidence, ver_category, ver_confidence,
             rationale, model, prompt_version
        from core.classifications where email_run_id = $1`,
     [emailRunId],
@@ -131,6 +132,7 @@ export async function view(db: Queryable, emailRunId: string): Promise<Classific
   const why = Rationale.parse(row.rationale ?? {});
   return {
     finalCategory: row.final_category,
+    humanCategory: row.human_category,
     decidedBy: row.decided_by,
     generator: { category: row.gen_category, confidence: Number(row.gen_confidence), rationale: why.generator },
     verifier: row.ver_category
@@ -145,4 +147,28 @@ export async function view(db: Queryable, emailRunId: string): Promise<Classific
     model: row.model,
     promptVersion: row.prompt_version,
   };
+}
+
+/**
+ * A person's category. Stored beside the model's rather than over it, because
+ * the model's answer is the eval's subject and a correction is a second fact
+ * about the same email. `human_value ?? value` is the rule everywhere; here it
+ * is `human_category ?? final_category`, read by the submission builder.
+ *
+ * Returns the category the model had settled on, for the action's old value.
+ */
+export async function setHumanCategory(db: Queryable, emailRunId: string, category: Category): Promise<Category | null> {
+  // RETURNING on an update gives the new row, so what stood before is read in
+  // a CTE first. The action row is only worth keeping if it says what changed.
+  const { rows } = await db.query<{ was: Category | null }>(
+    `with was as (
+       select id, coalesce(human_category, final_category) as category
+         from core.classifications where email_run_id = $1
+     )
+     update core.classifications c set human_category = $2, decided_by = 'human'
+       from was where c.id = was.id
+       returning was.category as was`,
+    [emailRunId, category],
+  );
+  return rows[0]?.was ?? null;
 }

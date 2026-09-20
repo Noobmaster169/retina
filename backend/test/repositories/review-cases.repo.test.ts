@@ -7,16 +7,72 @@ async function parked(tx: Parameters<typeof seedRun>[0]) {
   const run = await seedRun(tx);
   const emailId = await seedEmail(tx);
   await emailRuns.insert(tx, { runId: run.id, emailId, stage: "comparing", priority: 600 });
-  return { runId: run.id, emailRunId: (await emailRuns.idOf(tx, run.id, emailId)) as string };
+  return { runId: run.id, emailId, emailRunId: (await emailRuns.idOf(tx, run.id, emailId)) as string };
 }
 
 describe("reviewCases", () => {
-  it("opens one case per email run: a second open on the same run changes nothing", async () => {
+  it("raises one case per email run: a second escalation changes the standing one in place", async () => {
     await inRollback(async (tx) => {
       const { emailRunId } = await parked(tx);
-      expect(await reviewCases.open(tx, { emailRunId, reason: "unreadable", stage: "compare", detail: { files: [] } })).toBe(true);
-      expect(await reviewCases.open(tx, { emailRunId, reason: "wrong_doc_type", stage: "compare", detail: {} })).toBe(false);
-      expect(await reviewCases.latestFor(tx, emailRunId)).toMatchObject({ reason: "unreadable", status: "open", detail: { files: [] } });
+      const first = await reviewCases.raise(tx, { emailRunId, reason: "unreadable", stage: "compare", detail: { files: [] } });
+      expect(first.opened).toBe(true);
+
+      const second = await reviewCases.raise(tx, { emailRunId, reason: "wrong_doc_type", stage: "compare", detail: { note: "an invoice" } });
+      expect(second.opened).toBe(false);
+      expect(second.id).toBe(first.id);
+      expect(await reviewCases.latestFor(tx, emailRunId)).toMatchObject({
+        id: first.id,
+        kind: "review",
+        reason: "wrong_doc_type",
+        status: "open",
+        detail: { note: "an invoice" },
+        actions: [],
+      });
+    });
+  });
+
+  it("a job that failed becomes the open case, and carries no review reason", async () => {
+    await inRollback(async (tx) => {
+      const { emailRunId } = await parked(tx);
+      await reviewCases.raise(tx, { emailRunId, reason: "unreadable", stage: "compare", detail: {} });
+      const failure = await reviewCases.openFailure(tx, { emailRunId, stage: "compare", detail: { message: "doc-extract is down" } });
+
+      expect(failure.opened).toBe(false);
+      expect(await reviewCases.latestFor(tx, emailRunId)).toMatchObject({ kind: "failure", reason: null, status: "open" });
+    });
+  });
+
+  it("resolves the open case and puts it back, one open case at a time throughout", async () => {
+    await inRollback(async (tx) => {
+      const { emailRunId } = await parked(tx);
+      const { id } = await reviewCases.raise(tx, { emailRunId, reason: "missing_value", stage: "compare", detail: {} });
+
+      expect(await reviewCases.resolve(tx, emailRunId, "kai")).toBe(id);
+      expect(await reviewCases.openIdFor(tx, emailRunId)).toBeNull();
+      expect(await reviewCases.view(tx, id)).toMatchObject({ status: "resolved", resolvedBy: "kai" });
+
+      expect(await reviewCases.reopen(tx, id)).toBe(true);
+      expect(await reviewCases.openIdFor(tx, emailRunId)).toBe(id);
+      expect(await reviewCases.reopen(tx, id)).toBe(false);
+    });
+  });
+
+  it("identifies a case by the email run it hangs off", async () => {
+    await inRollback(async (tx) => {
+      const { runId, emailId, emailRunId } = await parked(tx);
+      const { id } = await reviewCases.raise(tx, { emailRunId, reason: "unreadable", stage: "compare", detail: {} });
+
+      expect(await reviewCases.identify(tx, id)).toEqual({
+        id,
+        emailRunId,
+        runId,
+        emailId,
+        kind: "review",
+        reason: "unreadable",
+        stage: "compare",
+        status: "open",
+      });
+      expect(await reviewCases.identify(tx, "0")).toBeNull();
     });
   });
 
@@ -24,7 +80,7 @@ describe("reviewCases", () => {
     await inRollback(async (tx) => {
       const a = await parked(tx);
       const b = await parked(tx);
-      await reviewCases.open(tx, { emailRunId: a.emailRunId, reason: "missing_attachment", stage: "compare", detail: {} });
+      await reviewCases.raise(tx, { emailRunId: a.emailRunId, reason: "missing_attachment", stage: "compare", detail: {} });
 
       const counts = await reviewCases.openCountsForRuns(tx, [a.runId, b.runId]);
       expect(counts(a.runId)).toEqual({

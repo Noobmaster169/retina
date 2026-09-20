@@ -78,6 +78,12 @@ const Opinion = z.object({ category: Category, confidence: z.number(), rationale
 /** How an email's category was settled: each reader's answer, and the one that stood. */
 export const ClassificationView = z.object({
   finalCategory: Category,
+  /**
+   * A person's category, where one was recorded. It stands beside the model's
+   * rather than over it: the model's answer is what the eval measures, and the
+   * submission reads `humanCategory ?? finalCategory`. So does every screen.
+   */
+  humanCategory: Category.nullable(),
   decidedBy: DecidedBy,
   generator: Opinion,
   /** Null when the generator was sure enough that the verifier did not run. */

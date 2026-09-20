@@ -2,6 +2,7 @@ import express, { type NextFunction, type Request, type Response } from "express
 import type { Pool } from "pg";
 
 import { requireCaller } from "./auth";
+import { transactor } from "./db";
 import type { HealthReport } from "./contracts";
 import { RetryableError, UpstreamError } from "./lib/errors";
 import { childLogger } from "./lib/logger";
@@ -12,6 +13,8 @@ import { aiRouter } from "./routes/ai.routes";
 import { promptsRouter } from "./routes/prompts.routes";
 import { emailsRouter } from "./routes/emails.routes";
 import { evalRouter } from "./routes/eval.routes";
+import { filesRouter } from "./routes/files.routes";
+import { reviewRouter } from "./routes/review.routes";
 import type { LiveCalls } from "./live";
 import { runQueuesRouter } from "./routes/run-queues.routes";
 import { runTraceRouter } from "./routes/run-trace.routes";
@@ -54,6 +57,8 @@ export function createApp(deps: AppDeps): express.Express {
   app.use("/runs", runQueuesRouter(deps));
   app.use("/runs", runTraceRouter(deps));
   app.use("/runs", submissionsRouter(deps));
+  app.use("/review", reviewRouter({ db: deps.pool, tx: transactor(deps.pool), store: deps.store, queues: deps.runQueues }));
+  app.use("/files", filesRouter(deps));
   app.use("/eval", evalRouter(deps));
 
   app.use(

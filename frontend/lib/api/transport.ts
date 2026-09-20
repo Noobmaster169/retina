@@ -16,17 +16,22 @@ function config(): { baseUrl: string; secret: string } {
 
 export async function request(path: string, init: RequestInit & { timeoutMs?: number } = {}): Promise<Response> {
   const { baseUrl, secret } = config();
-  const { timeoutMs = 15_000, ...rest } = init;
+  const { timeoutMs = 15_000, headers, ...rest } = init;
+  const base: Record<string, string> = {
+    authorization: `Bearer ${secret}`,
+    "content-type": "application/json",
+    // The backend is behind a free ngrok tunnel, which answers an HTML
+    // interstitial instead of the API when it thinks a browser is calling.
+    // This header turns that off; without it a JSON parse fails with markup.
+    "ngrok-skip-browser-warning": "1",
+  };
+  // A multipart body carries its own content type, with the boundary fetch
+  // generated. Naming one here would describe a body that is not there and
+  // the backend would find no file in it.
+  if (rest.body instanceof FormData) delete base["content-type"];
   return fetch(`${baseUrl}${path}`, {
     ...rest,
-    headers: {
-      authorization: `Bearer ${secret}`,
-      "content-type": "application/json",
-      // The backend is behind a free ngrok tunnel, which answers an HTML
-      // interstitial instead of the API when it thinks a browser is calling.
-      // This header turns that off; without it a JSON parse fails with markup.
-      "ngrok-skip-browser-warning": "1",
-    },
+    headers: { ...base, ...(headers as Record<string, string> | undefined) },
     signal: AbortSignal.timeout(timeoutMs),
     cache: "no-store",
   });

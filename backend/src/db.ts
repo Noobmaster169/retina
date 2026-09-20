@@ -29,6 +29,17 @@ export async function closePool(): Promise<void> {
   await closing.end();
 }
 
+/**
+ * Runs work in one transaction. A seam rather than a call, so a test can hand
+ * in one that is already inside the transaction it rolls back, and the code
+ * under test does not have to know which it got.
+ */
+export type Transactor = <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>;
+
+export function transactor(db: Pool): Transactor {
+  return (fn) => withTx(db, fn);
+}
+
 /** Runs `fn` in one transaction: committed if it returns, rolled back if it throws. */
 export async function withTx<T>(db: Pool, fn: (tx: PoolClient) => Promise<T>): Promise<T> {
   const client = await db.connect();

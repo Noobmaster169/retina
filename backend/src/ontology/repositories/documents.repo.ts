@@ -25,6 +25,8 @@ export interface StoredDocument extends NewDocument {
   docType: DocType | null;
   docTypeConfidence: number | null;
   docTypeRationale: string | null;
+  /** From its attachment row: `human` is a file a reviewer supplied for a case, and it fills its place ahead of the sender's. */
+  origin: "source" | "human";
 }
 
 export interface DocTypeVerdict {
@@ -52,10 +54,11 @@ interface DocumentRow {
   warnings: string[];
   page_confidence: number[];
   bytes: number;
+  origin: "source" | "human";
 }
 
 const COLUMNS = `d.id, d.email_run_id, d.attachment_id, a.filename, a.object_key, a.content_type, d.role, d.doc_type,
-  d.doc_type_confidence, d.doc_type_rationale, d.format, d.text_object_key, d.pages, d.scanned, d.unreadable, d.warnings, d.page_confidence, a.bytes`;
+  d.doc_type_confidence, d.doc_type_rationale, d.format, d.text_object_key, d.pages, d.scanned, d.unreadable, d.warnings, d.page_confidence, a.bytes, a.origin`;
 
 function toDocument(row: DocumentRow): StoredDocument {
   return {
@@ -77,12 +80,14 @@ function toDocument(row: DocumentRow): StoredDocument {
     warnings: row.warnings,
     pageConfidence: row.page_confidence ?? [],
     bytes: row.bytes,
+    origin: row.origin,
   };
 }
 
 /** The verdict comes from the compare pipeline, which reads the documents together; a row on its own cannot tell. */
 export function toView(doc: StoredDocument, typeVerdict: TypeVerdict): DocumentView {
   return {
+    origin: doc.origin,
     filename: doc.filename,
     role: doc.role,
     docType: doc.docType,
@@ -148,4 +153,15 @@ export async function listForEmailRun(db: Queryable, emailRunId: string): Promis
     [emailRunId],
   );
   return rows.map(toDocument);
+}
+
+/**
+ * Forgets what was read from one attachment, so the next pass parses it again.
+ * A person who uploads a file over one that is already there has supplied
+ * different bytes under the same name, and the reading that was kept is of the
+ * file that is gone. Its extraction goes with it, corrections included: those
+ * were about the document that was replaced.
+ */
+export async function forget(db: Queryable, attachmentId: string): Promise<void> {
+  await db.query("delete from core.documents where attachment_id = $1", [attachmentId]);
 }

@@ -8,8 +8,9 @@ precisely enough that the dashboard and auto-deploy can trust it.
 
 ## Prerequisites
 
-Phase 8 merged. `LLM_MAX_CONCURRENCY` semaphore from phase 4 in place. `worker:heartbeat`
-key written since phase 7.
+Phase 8 merged. `LLM_MAX_CONCURRENCY` semaphore from phase 4 in place. **The `worker:heartbeat`
+key does not exist yet**: nothing in `backend/src/` writes one and `health.ts` checks postgres,
+redis, minio, inbox and docExtract only. Writing it is this phase's work, not something inherited.
 
 ## Scope
 
@@ -21,7 +22,8 @@ lessons (phase 11).
 
 ### 1. Clients
 
-Seed migration `008_clients_seed.sql`: insert every sender domain seen in the dataset with a
+Seed migration `009_clients_seed.sql` (phase 8 took `008` for `008_review_actions.sql`, and
+`db/migrate.mjs` applies by filename, so a duplicate number is a migration that never runs): insert every sender domain seen in the dataset with a
 kind and default tier. Internal: `aprilasia.com`, `april.com.my` (kind `internal`, tier 3).
 Customers and forwarders: `fujitogrp.com`, `psabdp.com`, `algurg.ae`, `safqa.co.ke`,
 `roxcel.at`, `ifpla.com`, `vitalsolutions.sg` (kind `customer`, tier 3). Tiers only order the
@@ -73,7 +75,7 @@ depending on the BullMQ version installed).
 |---|---|---|
 | `refresh-priority-cache` | 1 h and at worker boot | `clients` → `client:priority` hash |
 | `age-waiting-jobs` | 60 s | work item 3 |
-| `heartbeat` | 10 s | `SET worker:heartbeat <iso> EX 60` (moved here from the ad hoc write) |
+| `heartbeat` | 10 s | `SET worker:heartbeat <iso> EX 60`. New in this phase; there is no ad hoc write to move |
 | `expire-counters` | 1 h | `EXPIRE run:{id}:counters 604800` for finished runs |
 
 Phase 10 adds `refresh-analytics`; phase 11 adds `draft-lessons`.

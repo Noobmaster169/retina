@@ -448,16 +448,54 @@ reason: the email is `failed`, and its case is `kind = failure` with a null reas
 
 ### 5.5 Review actions
 
-| Action | Writes | Then |
-|---|---|---|
-| confirm | `review_actions(kind=confirm)`, case closed | stage `done` |
-| correct field | `review_actions(kind=correct_field, field, old, new)`, `extraction_fields.human_value` | enqueue `compare` with `rerunFrom: compare` |
-| reclassify | `review_actions(kind=reclassify)`, `classifications.human_category` | enqueue `classify`? No: set category directly, and enqueue `compare` if new category is `BL_COMPARISON` |
-| add note | `review_actions(kind=note, text)` | none |
-| upload attachment | object under `uploads/{caseId}/`, `attachments` row with `origin=human` | enqueue `compare` with `rerunFrom: triage` |
-| retry | new job with `rerunFrom` = failed stage | case stays open until the rerun completes |
+Built in phase 8. Every action is one transaction, then the rerun it asks for, then the case read
+back. The action row is written in the same transaction as what it describes, because it is the
+record of what a person said and phase 11 drafts lessons from it; the rerun is enqueued only after
+that commits, so a job never names a row nobody wrote.
 
-Human values win: normalise and compare read `human_value ?? value`.
+| Action | Body | Writes | Then |
+|---|---|---|---|
+| `confirm` | `{ note? }` | action row; case resolved; `comparisons.decided_by = 'human'` | stage `done`. The reported status stays `NEEDS_REVIEW` with its reason: confirming records that a person agreed the email needs one |
+| `correct_field` | `{ field, side, value, note? }` | action row with old and new; `extraction_fields.human_value` for that role and field | enqueue `compare` with `rerunFrom: "compare"`. The case stays open; the rerun settles it |
+| `reclassify` | `{ category, note? }` | action row; `classifications.human_category`, `decided_by = 'human'` | `BL_COMPARISON`: enqueue `compare` (`rerunFrom: "triage"`). Otherwise `comparisons` upsert `OK` with `detail.reclassified`, `field_diffs` cleared, stage `done` with outcome `not_comparable`, case resolved |
+| `note` | `{ note }` | action row | none |
+| `upload` | multipart `file`, `role`, `note?` | object under `uploads/{caseId}/{filename}`; `attachments` row with `origin = 'human'`, `role`, `review_case_id`; the replaced file's `documents` row dropped so the new bytes are parsed; action row | enqueue `compare` with `rerunFrom: "triage"` |
+| `retry` | `{ note? }` | action row; `email_runs.rerun_count + 1` | enqueue the failed stage's queue with `rerunFrom` set (`classify` for a classify failure, `triage` for a compare one) |
+| `reopen` | `{ note }` | action row; case `open`; stage `review` | none |
+
+Every action carries `actor`, the reviewer's name, which the api requires non-empty. There are no
+user accounts in this build; the UI types it once and keeps it in `localStorage`.
+
+**What a rerun is.** `rerunFrom` on a `classify` or `compare` job is a person asking for the email
+again. Its presence is the only thing that lets a job pick an email up from `review`, `done` or
+`failed`; the pipeline's own jobs may never drag a finished email backwards. It also stops the
+judge reusing the answer it gave before the correction, which would ignore the correction it was
+asked for. The job id is `{runId}__{emailId}__r{n}` from `email_runs.rerun_count`, because the
+original job is kept for a day after it completes and BullMQ refuses a second under the same id.
+Not `:r{n}`: BullMQ rejects a custom id containing a colon.
+
+**What settles the case.** The action never does, except where there is nothing left to run. A
+stage that ends without an escalation resolves the open case in the name of whoever set the rerun
+off (`review_actions.actor`, newest first); a stage that escalates again updates the standing case's
+reason and detail in place, because one open case per email run is a unique index.
+
+**Human values win, and they win whole.** Extract and compare read `human_value ?? value`, and a
+corrected field also drops the model's `source_quote`, its placeholder and its confidence: the
+quote described the value it replaced, and leaving it told the judge that a corrected weight was
+quoted from a line reading `N/A`.
+
+**Triage prefers a document a person supplied.** `resolveRoles` fills each place with a
+human-origin file ahead of the sender's own, and demotes the loser to `UNKNOWN` so it travels with
+the pair rather than competing for its place. A person uploads because what arrived could not be
+used; the upload is the answer to that, not a second candidate.
+
+**A failure is not a review reason.** The BullMQ `failed` handler, on the final attempt, fails the
+email and opens a case with `kind = 'failure'` and no reason, carrying the message, the first five
+stack lines, the attempts and the job id. The submission builder emits the email as incomplete
+rather than escalated, and the only action that answers it is `retry`. An *unreachable* doc-extract
+never gets here: `failure-policy.ts` reads that as an outage and pauses the queue with the job's
+attempts untouched. What reaches here is a permanent failure, such as doc-extract answering 404 for
+a key, or an answer that never fits its schema.
 
 ## 6. doc-extract service
 
@@ -589,12 +627,16 @@ clients            (domain text pk, name text, tier smallint default 3, kind tex
 emails             (email_id text pk, from_addr text, sender_domain text, subject text, body text,
                     tonnage_mt int, raw jsonb, first_seen_at)
 email_runs         (id bigserial pk, run_id fk, email_id fk, stage text, priority int, attempt int,
-                    outcome text, started_at, finished_at, unique(run_id, email_id))
+                    rerun_count int default 0,   -- how many times a person sent it back; the rerun's job id carries it
+                    outcome text, error text, started_at, finished_at, unique(run_id, email_id))
 attachments        (id bigserial pk, email_id fk, run_id fk, filename text, role text, origin text default 'source',
+                    review_case_id fk null,      -- the case a human-origin file was supplied for
                     object_key text, content_type text, bytes int, sha256 text)
 documents          (id bigserial pk, email_run_id fk, attachment_id fk, role text, doc_type text,
                     doc_type_confidence numeric, doc_type_rationale text, format text, text_object_key text,
-                    pages int, scanned bool, unreadable bool, warnings jsonb, unique(email_run_id, attachment_id))
+                    pages int, scanned bool, unreadable bool, warnings jsonb,
+                    page_confidence numeric[],   -- mean OCR word confidence per page, 0 to 100, tesseract's own scale
+                    unique(email_run_id, attachment_id))
 classifications    (id bigserial pk, email_run_id fk unique,
                     gen_category text, gen_confidence numeric, ver_category text, ver_confidence numeric,
                     final_category text, human_category text, decided_by text, rationale jsonb, prompt_version text)
@@ -612,8 +654,11 @@ review_cases       (id bigserial pk, email_run_id fk, kind text check (kind in (
                     reason text (the organisers' four; set exactly when kind = 'review'), stage text, detail jsonb,
                     status text check (status in ('open','resolved')), opened_at, resolved_at, resolved_by text;
                     one open case per email_run)
-review_actions     (id bigserial pk, review_case_id fk, kind text, field text, old_value text, new_value text,
-                    note text, actor text, created_at)
+review_actions     (id bigserial pk, review_case_id fk, email_run_id fk,
+                    kind text check (kind in ('confirm','correct_field','reclassify','note','upload','retry','reopen')),
+                    field text (the seven), side text check (side in ('SI','BL')),
+                    old_value text, new_value text, note text, actor text not null, created_at;
+                    append only: a correction later reopened is two rows, never one changed one)
 llm_calls          (id bigserial pk, email_run_id fk null, step text, model text, prompt_version text,
                     request jsonb, response jsonb, input_tokens int, output_tokens int, cost_usd numeric,
                     latency_ms int, ok bool, error text, created_at)
@@ -629,7 +674,8 @@ chat_turns         (id bigserial pk, conversation_id fk, role text, content text
 Shipment-level entities (`shipments`, `parties`, `ports`, `carriers`) are populated from
 verified extractions in a later phase; the columns above are enough for scoring, review, and
 explainability. Indexes: `email_runs(run_id, stage)`, `review_cases(status)`,
-`llm_calls(email_run_id)`, `emails(sender_domain)`.
+`llm_calls(email_run_id)`, `emails(sender_domain)`, `review_actions(email_run_id)`,
+`review_actions(kind, created_at)`.
 
 ### 8.2 `analytics`
 
@@ -698,15 +744,17 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 | `GET /runs/:id/emails/:emailId/trace` | one email: stage, error, how its category was settled (each reader's category, confidence, reasoning, counter-cases, verifier error), its documents (the role the filename claims, the model's type with confidence and rationale, format, pages, scanned, unreadable, warnings, `pageConfidence`: the mean OCR word confidence per page in page order, empty for a document with a text layer), its open review case, its `extractions` (per document: the place it filled, whether the verifier ran, the seven fields with value, placeholder, quote, confidence, evidence and any human value), its `comparison` (status, reason, defect fields, every field's judgement), the call running now, and every finished call oldest first with system prompt, input, answer text, parsed answer, tokens, cost, latency |
 | `GET /prompts` | each prompt step's versions on disk, newest first, with the active one, the model the file names and any notes; the runs page offers exactly these |
 | `GET /emails/:runId/:emailId` | full trace: email, attachments, classification, extractions with fields, comparison, diffs, review case, llm_calls summary |
-| `GET /review?status=open` | review inbox |
-| `POST /review/:id/actions` | `{ kind, field?, value?, note? }` |
-| `POST /review/:id/upload` | multipart attachment |
+| `GET /review?status=&reason=&kind=&runId=&page=&pageSize=` | the review inbox, oldest first: each case with its email's subject and sender, the reason, `openedAt` as an instant, and how many actions it has had with who last wrote one. `status` defaults to `open` |
+| `GET /review/stats?runId=` | open by reason, how many are failures, resolved today, and the median time to resolve over the last week |
+| `GET /review/:id` | one case with its full history |
+| `POST /review/:id/actions` | `{ kind, actor, ...fields }`, validated per kind by a zod discriminated union. Answers the case as the queue shows it, the action row, which queue a rerun went to, and one sentence naming what was written. 409 when the case is not in a state for that kind |
+| `POST /review/:id/upload` | multipart (`multer` memory storage, 20 MB cap, extensions `txt pdf docx xlsx`), fields `actor`, `role`, `note?`. The bytes are sniffed against the name the file claims (`%PDF-`, the zip `PK` of an Office file, decodable UTF-8); a mismatch is 409, not a document stored and found unreadable three stages later |
 | `GET /queues` | superseded by `GET /runs/:id/queues` above, which is run scoped and carries the slots as well as the counts. A global view has no reader: every screen that asks is looking at one run |
 | `GET /clients`, `PUT /clients/:domain` | tiers |
 | `POST /chat/conversations`, `POST /chat/:id/messages`, `GET /chat/:id` | chat agent |
 | `GET /eval/runs/:id` | holdout, full-set and this-run scoreboards computed locally, plus `emails`: each email of the run, its answer beside the truth, check by check on the scorer's definitions (`EmailVerdict`), shown at `/runs/[id]/results`. Dev only; 404 on the VPS where ground truth is absent |
 | `GET /lessons`, `POST /lessons/:id/approve|reject` | gated self-improvement |
-| `GET /files/*key` | stream object |
+| `GET /files/*key` | stream one object: an original attachment, a rendered page, or a document a reviewer supplied. Read only, and a key with a traversal segment is refused rather than resolved |
 
 Contract types live in `backend/src/contracts.ts` and are copied into
 `frontend/lib/api-client.ts`, as the template already does for `/ai/chat`.

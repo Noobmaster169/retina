@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { ComparisonView, ExtractionView } from "./comparison-schemas";
+import { ReviewActionView, ReviewCaseKind } from "./review-schemas";
 import { ComparisonField, Outcome, ReviewReason, Stage } from "./runs-schemas";
 
 export * from "./comparison-schemas";
@@ -108,6 +109,8 @@ const Opinion = z.object({ category: Category, confidence: z.number(), rationale
 /** How an email's category was settled: each reader's answer, and the one that stood. */
 export const ClassificationView = z.object({
   finalCategory: Category,
+  /** A person's category, where one was recorded. Every screen reads `humanCategory ?? finalCategory`. */
+  humanCategory: Category.nullable(),
   decidedBy: DecidedBy,
   generator: Opinion,
   verifier: Opinion.extend({ counterCases: z.string().nullable() }).nullable(),
@@ -144,20 +147,33 @@ export const DocumentView = z.object({
   scanned: z.boolean(),
   unreadable: z.boolean(),
   warnings: z.array(z.string()),
-  /** Mean OCR word confidence per page, in page order. Empty for a document with a text layer. */
+  /** Mean OCR word confidence per page, 0 to 100, in page order. Empty for a document with a text layer. */
   pageConfidence: z.array(z.number()),
   /** The file's size, which the message card states beside its name. */
   bytes: z.number(),
+  /** `human` is a document a reviewer supplied for a case. It fills its place ahead of the sender's own. */
+  origin: z.enum(["source", "human"]),
 });
 export type DocumentView = z.infer<typeof DocumentView>;
 
-/** Why the email is waiting for a person, with what the stage found. */
+/**
+ * Why the email is waiting for a person, with what the stage found and what
+ * has been done about it. `id` is what the action routes are addressed by, so
+ * the case pane can write without asking a second question first.
+ */
 export const ReviewCaseView = z.object({
-  reason: ReviewReason,
+  id: z.string(),
+  kind: ReviewCaseKind,
+  /** Null exactly when the kind is `failure`: a job that failed is not one of the organisers' reasons. */
+  reason: ReviewReason.nullable(),
   stage: z.string(),
   status: z.enum(["open", "resolved"]),
   detail: z.record(z.string(), z.unknown()),
   openedAt: z.string(),
+  resolvedAt: z.string().nullable(),
+  resolvedBy: z.string().nullable(),
+  /** Oldest first, as a history reads. */
+  actions: z.array(ReviewActionView),
 });
 export type ReviewCaseView = z.infer<typeof ReviewCaseView>;
 
