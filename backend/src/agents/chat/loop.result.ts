@@ -5,6 +5,7 @@ import type {
   ChatToolCall,
   ClarifyingQuestion,
   GroundedThing,
+  SemanticReading,
 } from "../../contracts";
 import { buildGraph } from "./graph";
 import type { How } from "./inject";
@@ -39,6 +40,8 @@ export interface TurnResult {
   clarify: ClarifyingQuestion | null;
   /** The resolved things this turn grounded, for the turns after it to remember by name. */
   grounded: GroundedThing[];
+  /** Every term this turn had to give a meaning to, in the order it did. */
+  semantic: SemanticReading[];
   /**
    * How many alternatives were dropped because their thing or their number did
    * not come back from a tool on this turn.
@@ -111,6 +114,7 @@ export function assemble(so: TurnSoFar, final: FinalStep): TurnResult {
     next: kept,
     clarify: claims.clarify,
     grounded: groundedIn(so.calls),
+    semantic: so.calls.flatMap((call) => call.semantic),
     removedMoves: final.next.length - kept.length,
     exhausted: final.exhausted,
   };

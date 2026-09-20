@@ -1,7 +1,8 @@
 import type { Pool } from "pg";
 import type { z } from "zod";
 
-import type { ChatToolName, GroundedThing, SqlResult } from "../../../contracts";
+import type { ChatToolName, GroundedThing, SemanticReading, SqlResult } from "../../../contracts";
+import type { LlmClient } from "../../llm-client";
 import type { Queryable } from "../../../db";
 
 /**
@@ -23,6 +24,13 @@ export interface ToolContext {
   pool: Pool;
   /** Where model-written SQL runs. Null when DATABASE_RO_URL is unset; the tool says so. */
   roPool: Queryable | null;
+  /**
+   * For the one tool that makes model calls of its own: `find_entities` defines
+   * a term and judges things against it. Absent over MCP, where a person is the
+   * agent and there is nothing to spend tokens on their behalf; that tool then
+   * says so rather than failing.
+   */
+  llm?: LlmClient;
   /** The conversation's scope. A default for a question that names no run, never a filter it cannot widen. */
   runId: string | null;
   emailId: string | null;
@@ -83,6 +91,13 @@ export interface ToolOutcome {
   ungrounded?: string[];
   /** Set by `load_skill`: the skill now in front of the agent, which stays there for the conversation. */
   skill?: string;
+  /**
+   * Set by `find_entities`: the term it gave a meaning to, and how completely.
+   *
+   * It reaches the turn and the page, because a total over a set that was only
+   * partly judged is a lower bound and the reader has to be told so.
+   */
+  semantic?: SemanticReading[];
   /**
    * The resolved things this call put in front of the agent, for the
    * conversation to remember by name.

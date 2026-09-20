@@ -67,6 +67,7 @@ describe("a conversation's turns", () => {
         checked: [],
         next: [],
         clarify: null,
+        semantic: [],
         standingVersion: 1,
         grounded: [],
       });
@@ -80,7 +81,7 @@ describe("a conversation's turns", () => {
 describe("a turn's steps while it runs", () => {
   const assistant = (answer: string) => ({
     answer, sqlUsed: [], toolCalls: [], graph: null, proposal: null, reading: "", skillsUsed: [],
-    adhoc: false, outcome: "answered" as const, checked: [], next: [], clarify: null,
+    adhoc: false, outcome: "answered" as const, checked: [], next: [], clarify: null, semantic: [],
     standingVersion: 2, grounded: [],
   });
 

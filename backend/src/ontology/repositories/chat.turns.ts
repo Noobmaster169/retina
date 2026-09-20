@@ -155,6 +155,8 @@ export interface NewAssistantTurn {
   checked: string[];
   next: ChatNextMove[];
   clarify: ClarifyingQuestion | null;
+  /** Every term the turn had to give a meaning to. Empty on a turn that needed none. */
+  semantic: SemanticReading[];
   standingVersion: number;
   grounded: GroundedThing[];
 }

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { EntityKind } from "../contracts";
+import type { JudgeSubject } from "../pipeline/ontology";
 import { WORKER_PROJECT } from "./classify";
 import type { Prompt } from "./prompts/registry";
 import { callStructured, type StructuredDeps, type StructuredResult } from "./structured";
@@ -63,15 +64,6 @@ export type ConceptVerdict = z.infer<typeof Verdict>;
  */
 export function judgeSchema(ids: number[]): z.ZodType<Record<string, ConceptVerdict>> {
   return z.object(Object.fromEntries(ids.map((id) => [String(id), Verdict])));
-}
-
-export interface JudgeSubject {
-  id: number;
-  name: string;
-  attributes: Record<string, string | null>;
-  summary: string;
-  observed: string;
-  general: string | null;
 }
 
 export interface JudgeInput {

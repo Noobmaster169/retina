@@ -200,7 +200,7 @@ describe("sticky skills", () => {
       const conversation = await chat.create(tx, { actor: "a test" });
       await chat.addAssistantTurn(tx, conversation.id, {
         answer: "an answer", sqlUsed: [], toolCalls: [], graph: null, proposal: null, reading: "", adhoc: false,
-        outcome: "answered", checked: [], next: [], clarify: null, standingVersion: 1, grounded: [],
+        outcome: "answered", checked: [], next: [], clarify: null, semantic: [], standingVersion: 1, grounded: [],
         skillsUsed: [
           { name: "time-questions", version: 1, how: "loaded" },
           { name: "ground-names", version: 1, how: "injected" },
@@ -246,7 +246,7 @@ describe("what a conversation remembers", () => {
   const turn = (over: Record<string, unknown>) => ({
     answer: "an answer", sqlUsed: [], toolCalls: [], graph: null, proposal: null, reading: "",
     skillsUsed: [], adhoc: false, outcome: "answered" as const, checked: [], next: [],
-    clarify: null, standingVersion: 2, grounded: [], ...over,
+    clarify: null, semantic: [], standingVersion: 2, grounded: [], ...over,
   });
 
   it("carries the names grounded earlier, most recent first, one per canonical", async () => {

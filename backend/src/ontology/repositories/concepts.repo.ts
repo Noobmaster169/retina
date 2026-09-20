@@ -134,3 +134,22 @@ export async function tally(db: Queryable, conceptId: string): Promise<Record<"y
   for (const row of rows) counts[row.verdict] = Number(row.n);
   return counts;
 }
+
+/** Marks a concept worth finishing in the background. A one-off phrase never gets this. */
+export async function wantBackfill(db: Queryable, id: string): Promise<void> {
+  await db.query("update core.concepts set backfill_wanted = true where id = $1::bigint", [id]);
+}
+
+export async function doneBackfilling(db: Queryable, id: string): Promise<void> {
+  await db.query("update core.concepts set backfill_wanted = false where id = $1::bigint", [id]);
+}
+
+/** The concepts asked to be finished, oldest first, for the scheduled backfill. */
+export async function wantingBackfill(db: Queryable, limit = 1): Promise<Concept[]> {
+  const { rows } = await db.query<ConceptRow>(
+    `select id::text as id, entity_kind, phrase, definition, search_terms, asked_count
+       from core.concepts where backfill_wanted order by id limit $1::int`,
+    [limit],
+  );
+  return rows.map(toConcept);
+}

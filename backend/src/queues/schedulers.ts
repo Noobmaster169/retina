@@ -7,6 +7,7 @@ import { childLogger } from "../lib/logger";
 import { refreshIfStale } from "../ontology/derived";
 import { clients } from "../ontology/repositories";
 import { ageWaitingJobs } from "./aging";
+import { backfillConcepts, BACKFILL_EVERY_MS } from "./backfill-concepts";
 import { beat, HEARTBEAT_EVERY_MS } from "./heartbeat";
 import { QUEUES } from "./names";
 import type { PriorityCache } from "./priority-cache";
@@ -34,6 +35,7 @@ export const SCHEDULED = {
   heartbeat: "heartbeat",
   refreshAnalytics: "refresh-analytics",
   refreshProfiles: "refresh-profiles",
+  backfillConcepts: "backfill-concepts",
 } as const;
 
 const EVERY_HOUR_MS = 60 * 60 * 1000;
@@ -49,6 +51,7 @@ const EVERY: Record<string, number> = {
   // The profile job does model work, so it runs less often than the derived
   // refresh and takes at most PROFILE_BATCH things per tick.
   [SCHEDULED.refreshProfiles]: EVERY_TEN_MINUTES_MS,
+  [SCHEDULED.backfillConcepts]: BACKFILL_EVERY_MS,
 };
 
 export interface SchedulerDeps {
@@ -110,6 +113,11 @@ async function runTask(deps: SchedulerDeps, name: string): Promise<void> {
   if (name === SCHEDULED.refreshProfiles) {
     if (!deps.llm) return void log.warn({ task: name }, "no model client, so no profile was written");
     await refreshProfiles({ pool: deps.pool, llm: deps.llm });
+    return;
+  }
+  if (name === SCHEDULED.backfillConcepts) {
+    if (!deps.llm) return void log.warn({ task: name }, "no model client, so no concept was backfilled");
+    await backfillConcepts({ pool: deps.pool, llm: deps.llm });
     return;
   }
   // A name from an older image whose scheduler this worker inherited. Logged

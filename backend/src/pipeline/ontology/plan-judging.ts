@@ -63,3 +63,20 @@ export function batches(ids: number[], size: number): number[][] {
   for (let at = 0; at < ids.length; at += size) out.push(ids.slice(at, at + size));
   return out;
 }
+
+/**
+ * What the judge is shown about one thing.
+ *
+ * Here rather than beside the call, because a repository assembles it and an
+ * adapter may not import another adapter's types. The two knowledge sources
+ * stay apart all the way to the prompt: `observed` is what our mail shows and
+ * `general` is the model's own, marked unverified wherever it is read.
+ */
+export interface JudgeSubject {
+  id: number;
+  name: string;
+  attributes: Record<string, string | null>;
+  summary: string;
+  observed: string;
+  general: string | null;
+}

@@ -30,4 +30,4 @@ export {
 export { type NameHit, planSighting, type SightingPlan } from "./resolve-sighting";
 export { buildDossier, type Dossier, type DossierInput, LIMITS } from "./dossier";
 export { renderProfile, type RenderedProfile } from "./profile-md";
-export { batches, type Candidate, type HeldVerdict, type JudgingPlan, planJudging } from "./plan-judging";
+export { batches, type Candidate, type HeldVerdict, type JudgeSubject, type JudgingPlan, planJudging } from "./plan-judging";

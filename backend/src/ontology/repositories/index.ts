@@ -7,6 +7,7 @@ export * as chatState from "./chat.state";
 export * as classifications from "./classifications.repo";
 export * as clients from "./clients.repo";
 export * as comparisons from "./comparisons.repo";
+export * as conceptCandidates from "./concept-candidates.repo";
 export * as concepts from "./concepts.repo";
 export * as database from "./database.repo";
 export * as databaseProfile from "./database.profile";

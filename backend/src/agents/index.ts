@@ -6,7 +6,6 @@ export {
   type DefineInput,
   type JudgeInput as ConceptJudgeInput,
   judgeConcept,
-  type JudgeSubject,
 } from "./concepts";
 export { DocTypeOutput, identifyDocument } from "./doc-type";
 export { type ExtractInput, extractFields, type ExtractionRole, ExtractOutput, verifyExtraction } from "./extract";

@@ -71,7 +71,7 @@ async function main(): Promise<void> {
     llm.reset();
     const started = Date.now();
     const result = await runTurn(
-      { llm: llm.client, pool, tools: { pool, roPool, ...scope } },
+      { llm: llm.client, pool, tools: { pool, roPool, llm: llm.client, ...scope } },
       {
         question: question.question,
         history: [],

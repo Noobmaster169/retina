@@ -14,6 +14,7 @@ import { SemanticReading } from "./semantic-schemas";
 export const ChatToolName = z.enum([
   "run_recipe",
   "find_entity",
+  "find_entities",
   "list_entities",
   "get_entity",
   "search_emails",
