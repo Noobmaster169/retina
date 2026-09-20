@@ -1,6 +1,13 @@
 import { z } from "zod";
 
-import { ChatNextMove, ChatOutcome, type ChatToolCall, type ChatToolName, ClarifyingQuestion } from "../../contracts";
+import {
+  ChatNextMove,
+  ChatOutcome,
+  type ChatToolCall,
+  type ChatToolName,
+  ClarifyingQuestion,
+  type GroundedThing,
+} from "../../contracts";
 import type { TouchedCall } from "./graph";
 import { MAX_MOVES } from "./next-moves";
 import { TOOL_NAMES, type ToolOutcome } from "./tools";
@@ -63,6 +70,8 @@ export interface FinishedCall extends TouchedCall {
   ambiguous: boolean;
   /** A skill it put in front of the agent. */
   skill: string | null;
+  /** The resolved things it put in front of the agent, for the conversation to remember by name. */
+  things: GroundedThing[];
   /** The text the model reads back. */
   text: string;
   /** What the data returned, which is all the literal guard treats as shown. Empty on a refusal. */
@@ -88,6 +97,7 @@ export function finish(call: Call, outcome: ToolOutcome, durationMs: number): Fi
     cameUpEmpty: outcome.empty === true,
     ambiguous: outcome.ambiguous === true,
     skill: outcome.skill ?? null,
+    things: outcome.things ?? [],
     text: outcome.text,
     grounds: outcome.ok ? (outcome.grounds ?? "") : "",
   };
@@ -95,7 +105,7 @@ export function finish(call: Call, outcome: ToolOutcome, durationMs: number): Fi
 
 /** Drops what only the harness and the graph needed, so the wire carries the contract and nothing more. */
 export function forWire(call: FinishedCall): ChatToolCall {
-  const { touched: _t, entities: _e, guardRefused: _g, cameUpEmpty: _c, ambiguous: _a, skill: _s, text: _x, grounds: _d, ...rest } = call;
+  const { touched: _t, entities: _e, guardRefused: _g, cameUpEmpty: _c, ambiguous: _a, skill: _s, things: _n, text: _x, grounds: _d, ...rest } = call;
   return rest;
 }
 

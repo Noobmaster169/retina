@@ -31,6 +31,7 @@ const BASE: Omit<TurnInput, "question"> = {
   today: "2026-09-20",
   stickySkills: [],
   pickedSkills: [],
+  memory: "",
 };
 
 async function turn(

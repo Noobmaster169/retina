@@ -42,6 +42,7 @@ export const getEntity: ChatTool<GetInput> = {
       ],
       entities: [thing.canonical],
       grounds: [thing.canonical, ...thing.names.map((name) => name.value)].join("\n"),
+      things: [{ kind: thing.kind, canonical: thing.canonical, spellings: thing.names.map((name) => name.value) }],
     };
   },
 };

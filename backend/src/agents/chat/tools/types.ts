@@ -1,7 +1,7 @@
 import type { Pool } from "pg";
 import type { z } from "zod";
 
-import type { ChatToolName, SqlResult } from "../../../contracts";
+import type { ChatToolName, GroundedThing, SqlResult } from "../../../contracts";
 import type { Queryable } from "../../../db";
 
 /**
@@ -83,6 +83,15 @@ export interface ToolOutcome {
   ungrounded?: string[];
   /** Set by `load_skill`: the skill now in front of the agent, which stays there for the conversation. */
   skill?: string;
+  /**
+   * The resolved things this call put in front of the agent, for the
+   * conversation to remember by name.
+   *
+   * Names and not ids: `entities.replaceAll` deletes and reinserts, so an id
+   * is good for this turn and wrong on the next one. A later turn grounds the
+   * canonical again, which is one indexed lookup and survives a refresh.
+   */
+  things?: GroundedThing[];
 }
 
 export interface ChatTool<I> {

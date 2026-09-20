@@ -157,6 +157,20 @@ export const ClarifyingQuestion = z.object({
 });
 export type ClarifyingQuestion = z.infer<typeof ClarifyingQuestion>;
 
+/**
+ * A resolved thing a turn grounded, remembered by name for the turns after it.
+ *
+ * By name and not by id: the resolved things are rebuilt by deleting and
+ * reinserting, so every id changes on a refresh. A follow-up grounds the
+ * canonical again, which is one indexed lookup and survives that.
+ */
+export const GroundedThing = z.object({
+  kind: z.string(),
+  canonical: z.string(),
+  spellings: z.array(z.string()).default([]),
+});
+export type GroundedThing = z.infer<typeof GroundedThing>;
+
 /** A skill that was in front of the agent on a turn, at which version, and how it got there. */
 export const ChatSkillUse = z.object({
   name: z.string(),

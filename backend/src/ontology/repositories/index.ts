@@ -1,6 +1,7 @@
 export * as analytics from "./analytics.repo";
 export * as attachments from "./attachments.repo";
 export * as chat from "./chat.repo";
+export * as chatMemory from "./chat.memory";
 export * as chatState from "./chat.state";
 export * as classifications from "./classifications.repo";
 export * as clients from "./clients.repo";

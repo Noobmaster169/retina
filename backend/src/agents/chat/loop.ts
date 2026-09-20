@@ -46,6 +46,8 @@ export interface TurnInput {
   stickySkills: string[];
   /** Skills the person picked for this message. */
   pickedSkills: string[];
+  /** What earlier turns grounded, rendered. For the model only: nothing in it grounds a literal. */
+  memory: string;
 }
 
 export interface LoopDeps extends StructuredDeps {
@@ -103,6 +105,7 @@ export async function runTurn(deps: LoopDeps, input: TurnInput): Promise<TurnRes
         scope: input.scope,
         today: input.today,
         history: input.history,
+        memory: input.memory,
         skillBodies,
         calls,
         notes,

@@ -6,10 +6,11 @@ import type { ChatAnswer, ChatThread, ProposedAction } from "../contracts";
 import { NewConversation, NewMessage } from "../contracts";
 import { runTurn } from "../agents/chat/loop";
 import { orientationFor } from "../agents/chat/orientation";
+import { renderMemory } from "../agents/chat/memory";
 import { standing } from "../agents/chat/standing";
 import type { LlmClient } from "../agents/llm-client";
 import { childLogger } from "../lib/logger";
-import { chat, chatState } from "../ontology/repositories";
+import { chat, chatMemory, chatState } from "../ontology/repositories";
 
 const log = childLogger({ module: "chat.routes" });
 
@@ -119,9 +120,10 @@ export function chatRouter(deps: ChatRouteDeps): Router {
     const scope = { runId: conversation.scope.runId, emailId: conversation.scope.emailId };
     // Read where the agent's own queries run, so the orientation never shows it
     // something it could not reach; without a read-only pool the tools refuse anyway.
-    const [orientation, stickySkills] = await Promise.all([
+    const [orientation, stickySkills, memory] = await Promise.all([
       orientationFor({ read: deps.roPool ?? deps.pool, write: deps.pool }, { id: id.data, runId: scope.runId }),
       chatState.stickySkills(deps.pool, id.data),
+      chatMemory.memoryOf(deps.pool, id.data),
     ]);
     const result = await runTurn(
       { llm: deps.llm, pool: deps.pool, tools: { pool: deps.pool, roPool: deps.roPool, ...scope } },
@@ -133,6 +135,7 @@ export function chatRouter(deps: ChatRouteDeps): Router {
         today: new Date().toISOString().slice(0, 10),
         stickySkills,
         pickedSkills: [],
+        memory: renderMemory(memory),
       },
     );
 
@@ -149,6 +152,7 @@ export function chatRouter(deps: ChatRouteDeps): Router {
       next: result.next,
       clarify: result.clarify,
       standingVersion: standing().version,
+      grounded: result.grounded,
       // Nothing in phase 10 proposes one yet; the field exists so the shape the
       // card reads is settled and phase 11 fills it rather than inventing it.
       proposal: null,

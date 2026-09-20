@@ -1,4 +1,11 @@
-import type { ChatGraph, ChatNextMove, ChatOutcome, ChatToolCall, ClarifyingQuestion } from "../../contracts";
+import type {
+  ChatGraph,
+  ChatNextMove,
+  ChatOutcome,
+  ChatToolCall,
+  ClarifyingQuestion,
+  GroundedThing,
+} from "../../contracts";
 import { buildGraph } from "./graph";
 import type { How } from "./inject";
 import type { FinishedCall } from "./loop.steps";
@@ -30,6 +37,8 @@ export interface TurnResult {
   checked: string[];
   next: ChatNextMove[];
   clarify: ClarifyingQuestion | null;
+  /** The resolved things this turn grounded, for the turns after it to remember by name. */
+  grounded: GroundedThing[];
   /** True when the step budget ran out: the answer is what it had, and the page says so. */
   exhausted: boolean;
 }
@@ -53,6 +62,24 @@ export interface FinalStep {
   exhausted: boolean;
 }
 
+/** Past this a conversation remembers a list rather than the names it worked with. */
+const MAX_GROUNDED = 12;
+
+/** What the turn grounded, most recent call first, one entry per canonical. */
+function groundedIn(calls: FinishedCall[]): GroundedThing[] {
+  const kept: GroundedThing[] = [];
+  const seen = new Set<string>();
+  for (const call of [...calls].reverse()) {
+    for (const thing of call.things) {
+      if (seen.has(thing.canonical)) continue;
+      seen.add(thing.canonical);
+      kept.push(thing);
+      if (kept.length === MAX_GROUNDED) return kept;
+    }
+  }
+  return kept;
+}
+
 export function assemble(so: TurnSoFar, final: FinalStep): TurnResult {
   const ran = so.calls.flatMap((call) => (call.sql ? [call.sql] : []));
   const claims = settle({ outcome: final.outcome, checked: final.checked, clarify: final.clarify });
@@ -73,6 +100,7 @@ export function assemble(so: TurnSoFar, final: FinalStep): TurnResult {
       so.question,
     ),
     clarify: claims.clarify,
+    grounded: groundedIn(so.calls),
     exhausted: final.exhausted,
   };
 }

@@ -6,6 +6,7 @@ import type {
   ChatToolCall,
   ChatTurn,
   ClarifyingQuestion,
+  GroundedThing,
   ProposedAction,
 } from "../../contracts";
 import type { Queryable } from "../../db";
@@ -45,6 +46,8 @@ interface AssistantExtras {
   clarify: ClarifyingQuestion | null;
   /** CHAT.md's version on the turn that ran, beside the skills'. */
   standingVersion: number;
+  /** What this turn grounded, which the turns after it remember by name. Read by chat.memory.ts. */
+  grounded: GroundedThing[];
 }
 
 const NO_EXTRAS: AssistantExtras = {
@@ -59,6 +62,7 @@ const NO_EXTRAS: AssistantExtras = {
   next: [],
   clarify: null,
   standingVersion: 0,
+  grounded: [],
 };
 
 function extrasOf(row: TurnRow): AssistantExtras {
@@ -147,6 +151,7 @@ export interface NewAssistantTurn {
   next: ChatNextMove[];
   clarify: ClarifyingQuestion | null;
   standingVersion: number;
+  grounded: GroundedThing[];
 }
 
 export async function addAssistantTurn(

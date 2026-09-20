@@ -80,6 +80,8 @@ async function main(): Promise<void> {
         today,
         stickySkills: [],
         pickedSkills: [],
+        // Each question is asked in its own turn, so there is nothing earlier to remember.
+        memory: "",
       },
     );
     const item = scoreTurn(question, result, { steps: llm.taken(), runId });

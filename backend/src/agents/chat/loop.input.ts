@@ -24,6 +24,8 @@ export interface InputParts {
   scope: Scope;
   today: string;
   history: { role: "user" | "assistant"; content: string }[];
+  /** What earlier turns of this conversation grounded, rendered. Empty on the first question. */
+  memory: string;
   /** The bodies of the skills in front of the agent on this step. */
   skillBodies: string[];
   calls: FinishedCall[];
@@ -57,6 +59,7 @@ export function stepInput(parts: InputParts): StructuredCall<unknown>["input"] {
     "The schema you may query": held.schemaDocs,
     "The tools you have": toolDescriptions(),
     "The scope of this conversation": `${scopeText(parts.scope)} Today is ${parts.today}.`,
+    "What this conversation already knows": parts.memory === "" ? "(nothing yet)" : parts.memory,
     "The conversation so far": parts.history.length > 0 ? historyText(parts.history) : "(this is the first question)",
     "What you have done on this turn": calls.length + notes.length > 0 ? [...calls.map(transcribe), ...notes] : "(nothing yet)",
     "The question": parts.question,
