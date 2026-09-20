@@ -16,6 +16,18 @@ const Env = z.object({
   PG_USER: z.string().min(1),
   PG_PASSWORD: z.string().min(1),
 
+  // Where the chat agent's SQL runs: the `retina_ro` role of migration 011,
+  // which holds no write privilege, defaults its transactions to read only and
+  // times a statement out at 5 s. A URL rather than another set of PG_* vars
+  // because it is a different principal, not a different setting, and one
+  // string makes that obvious.
+  //
+  // Optional, on the same argument as Redis and MinIO: the api must still boot
+  // where the role does not exist yet and say so, rather than refusing to
+  // serve the inbox because the chat cannot answer. run_sql fails with a
+  // terminal error naming this variable when it is unset.
+  DATABASE_RO_URL: z.url().optional(),
+
   // Redis and MinIO have defaults and optional credentials on purpose: the
   // api must still boot where they do not exist yet (the VPS until phase 3)
   // and say so in /health, rather than take the inbox down with it.
@@ -55,6 +67,7 @@ const Env = z.object({
   LLM_MODEL_EXTRACT: optionalString,
   LLM_MODEL_EXTRACT_VERIFY: optionalString,
   LLM_MODEL_FIELD_JUDGE: optionalString,
+  LLM_MODEL_CHAT: optionalString,
   // How many model calls the worker has in flight at once, across every queue.
   //
   // Unset, it is CLASSIFY_CONCURRENCY plus COMPARE_CONCURRENCY, because that
