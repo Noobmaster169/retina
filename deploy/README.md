@@ -95,6 +95,15 @@ which would lock the data away), rebuilds the api image from the clone, brings
 the stack up, adds the cron lines that are absent, and prints the day-one checks
 for `docs/PROGRESS.md`.
 
+**An existing box needs `PG_RO_PASSWORD` before the next deploy.** Phase 10's
+migration `011` creates the `retina_ro` role the chat agent's SQL runs as, and
+the api applies migrations before it listens, so a stack whose `.env` does not
+have it fails at boot rather than at the first question. Re-running the wizard
+generates it; by hand it is `openssl rand -hex 32` into `~/retina/.env`, then
+`docker compose up -d api worker`. Unlike `PG_PASSWORD` it is safe to change at
+any time: `011` resets the role's password on every apply and no data is
+encrypted under it.
+
 It rebuilds every time rather than trusting the `:main` tag, because the tag on
 this box can be an image from long before the clone's HEAD, and starting that
 under a new compose file gives you a stack that looks up and serves old code.

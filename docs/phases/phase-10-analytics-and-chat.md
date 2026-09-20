@@ -1,4 +1,9 @@
-# Phase 10: Analytics schema and chat agent
+# Phase 10: Analytics schema, the ontology surfaces, and the chat agent
+
+**Corrected against what was built.** CLAUDE.md rule 5: the repo wins for anything already built.
+Six things in the first draft of this file were wrong and are fixed below, each marked
+**corrected**; `docs/phases/phase-10-handover.md` section 1 found five of them against the live
+schema before any code was written, and the sixth turned up in a browser.
 
 ## Goal
 
@@ -19,7 +24,12 @@ tools, streaming.
 
 ## Work items
 
-### 1. Migration `009_analytics.sql`
+### 1. Migration `010_analytics.sql`
+
+**Corrected: the number.** Phase 9 took `009` for `009_clients_seed.sql`, and `db/migrate.mjs`
+applies by filename, so a duplicate number is a migration that silently never runs. The phase's
+migrations are `010` analytics, `011` the role, `012` chat, `013` the entity tables and `014` the
+grant `013` needed. Check `ls backend/db/migrations/` before naming a file.
 
 ```sql
 create schema if not exists analytics;
@@ -29,7 +39,9 @@ select er.run_id, er.email_id, e.sender_domain, coalesce(cl.tier, 3) as client_t
        e.subject, e.tonnage_mt,
        coalesce(c.human_category, c.final_category) as category, c.decided_by,
        cmp.status, cmp.review_reason, cmp.has_defect,
-       (select count(*) from core.field_diffs fd where fd.comparison_id = cmp.id) as n_defects,
+       -- corrected: a defect is a judgement that differed, not all seven
+       (select count(*) from core.field_diffs fd
+         where fd.comparison_id = cmp.id and not fd.same and not fd.missing) as n_defects,
        (select count(*) from core.llm_calls l where l.email_run_id = er.id) as llm_calls,
        (select coalesce(sum(cost_usd),0) from core.llm_calls l where l.email_run_id = er.id) as llm_cost_usd,
        er.stage, er.started_at, er.finished_at,
@@ -43,21 +55,32 @@ left join core.comparisons cmp on cmp.email_run_id = er.id;
 create unique index on analytics.fact_email_outcome (run_id, email_id);
 
 create materialized view analytics.fact_field_diff as
-select er.run_id, er.email_id, e.sender_domain, fd.field, fd.si_value, fd.bl_value, fd.judge_used
+-- corrected: field_diffs has no judge_used column and never has. The real
+-- columns are same, missing, confidence and rationale; `judged` is
+-- `rationale is not null`, because the field judge is the only writer of one,
+-- and `differed` is `not same and not missing`, which is what a defect means.
+select er.run_id, er.email_id, e.sender_domain, fd.field, fd.si_value, fd.bl_value,
+       fd.same, fd.missing, fd.confidence,
+       fd.rationale is not null as judged,
+       not fd.same and not fd.missing as differed
 from core.field_diffs fd
 join core.comparisons cmp on cmp.id = fd.comparison_id
 join core.email_runs er on er.id = cmp.email_run_id
 join core.emails e on e.email_id = er.email_id;
 create unique index on analytics.fact_field_diff (run_id, email_id, field);
 
-create view analytics.dim_client as select domain, name, tier, kind from core.clients;
+-- corrected: this saw only senders somebody had ranked, while /clients drives
+-- off core.emails so an unranked sender is still on it. A chat answer that
+-- disagreed with the clients page would be unexplainable. It is
+-- clients.repo.ts:list as a view, `known` included.
+create view analytics.dim_client as ...;   -- see 010_analytics.sql
 create view analytics.dim_run as
 select r.id, r.status, r.rate_per_second, r.total_emails, r.prompt_set, r.started_at, r.finished_at,
        (select final_score from core.submissions s where s.run_id = r.id order by created_at desc limit 1) as final_score
 from core.runs r;
 
 create materialized view analytics.agg_client_run as
-select run_id, sender_domain, client_name, client_tier,
+select run_id, sender_domain, client_name, client_tier,  -- client_tier via core.default_tier()
        count(*) as emails,
        count(*) filter (where category = 'BL_COMPARISON') as comparisons,
        count(*) filter (where status = 'MISMATCH') as mismatches,
@@ -74,18 +97,32 @@ select run_id,
        count(*) filter (where stage = 'done') as done,
        count(*) filter (where stage = 'review') as review,
        count(*) filter (where stage = 'failed') as failed,
-       count(*) filter (where decided_by = 'rule') as rule_decided,
+       -- corrected: nothing is ever decided_by 'rule'. classifications is
+       -- llm|verifier|human and comparisons is llm|human; `rule` belongs to the
+       -- organisers' submission enum and nowhere else, because no hand-written
+       -- rule decides a category here, on purpose. Dropped, not made true.
+       count(*) filter (where category_decided_by = 'verifier') as verifier_decided,
        sum(llm_cost_usd) as llm_cost_usd,
        min(started_at) as first_at, max(finished_at) as last_at
 from analytics.fact_email_outcome group by run_id;
 create unique index on analytics.agg_run_stage (run_id);
 ```
 
-Refresh: scheduler job `refresh-analytics` every 5 minutes and triggered when a run reaches
-`done + failed == total`: `refresh materialized view concurrently` in dependency order
-(`fact_email_outcome`, `fact_field_diff`, `agg_client_run`, `agg_run_stage`).
+**Corrected: `coalesce(cl.tier, 3)`.** The same number lived in `contracts.clients.ts` as
+`DEFAULT_TIER` with nothing tying them together. `core.default_tier()` is the tie and
+`analytics.test.ts` holds the two equal.
 
-### 2. Read-only role: migration `010_ro_role.sql`
+Refresh: scheduler job `refresh-analytics` every 5 minutes, `refresh materialized view
+concurrently` in dependency order, and only when `core` has moved.
+
+**Corrected: there is no refresh on run completion.** There is no run-completion event in this
+codebase to hang one on, and inventing a seam so a 520 row view refreshes a few minutes sooner is
+not worth it. The clock is the trigger; `pnpm derive` forces it for a deploy or a demo.
+`ontology/derived.ts` owns both derived things, each on its own staleness check, because a
+materialised view is created already populated and gating the entity resolver on the views'
+watermark meant it never ran on a fresh database.
+
+### 2. Read-only role: migration `011_ro_role.sql`
 
 ```sql
 do $$ begin
@@ -129,14 +166,27 @@ Each tool: zod input schema, `run(input, ctx)`, a short description string for t
 
 ### 5. Agent loop: `src/agents/chat/loop.ts`
 
-Tool use is done with a JSON protocol so it works with any text model behind the proxy:
+Tool use is done with a JSON protocol so it works with any text model behind the proxy.
+
+**Corrected: the step schema cannot be a union.** The provider refuses `oneOf`, `anyOf` and
+`allOf` at the top level of a tool schema, and the refusal arrives as a 502 from the proxy marked
+retryable, so the caller retries a call that can never succeed with the reason three layers from
+the schema that caused it. `toOutputSchema` throws a `TerminalError` naming the fix now, and the
+fix is one flat object narrowed after it parses:
 
 ```ts
-const Step = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("tool"), tool: z.enum(["describe_schema","run_sql","get_email","explain_decision"]), args: z.record(z.unknown()), thought: z.string().max(400) }),
-  z.object({ action: z.literal("final"), answer: z.string(), sql_used: z.array(z.string()).default([]) }),
-]);
+const Step = z.object({
+  action: z.enum(["tool", "final"]),
+  tool: z.enum(TOOL_NAMES).nullable().default(null),
+  args: z.record(z.string(), z.unknown()).default({}),
+  thought: z.string().max(400).default(""),
+  answer: z.string().default(""),
+  sql_used: z.array(z.string()).default([]),
+});
 ```
+
+A tool step that names no tool is the one shape this lets through that the union would not; the
+loop hands that back the way it hands back a bad query.
 
 ```
 runTurn(conversationId, userMessage):
@@ -155,7 +205,7 @@ prefer `analytics` views, say when a result was truncated, never claim writes. M
 `LLM_MODEL_CHAT` (default `sonnet`, a proxy alias), `maxTokens` 1500, timeout 240 s. Each
 loop iteration is one `llm_calls` row with `step = chat` and `run_id = null`.
 
-### 6. Migration `011_chat.sql`
+### 6. Migration `012_chat.sql`
 
 ```sql
 create table core.chat_conversations (id uuid primary key, title text, created_by text, created_at timestamptz default now());
@@ -201,14 +251,28 @@ imported from `agents/chat/tools`, not duplicated. Optional if the phase runs lo
 
 ### 10. Tests
 
-- `tools/run_sql.test.ts`: accepts `select` and `with`; rejects `delete`, a second statement,
-  `pg_sleep`, `copy`; appends `limit`; truncates rows; runs as `retina_ro` (assert
-  `current_user`).
-- `tools/explain_decision.test.ts`: assembled timeline for a seeded mismatch with a human
-  correction.
-- `loop.test.ts`: with `FakeLlmClient` scripted to call `run_sql` then `final`; tool budget
-  exhaustion path; invalid args fed back once.
-- `analytics.test.ts`: views refresh and `agg_client_run` counts match `core` for a seeded run.
+Built, and what each one holds:
+
+- `agents/sql-guard.test.ts`, 23 cases: `select` and `with` accepted, a limit added and an existing
+  one kept, writes refused, a write hidden in a data-modifying CTE refused, a second statement
+  refused including behind a comment, `pg_sleep` and `dblink` and the file readers refused, and the
+  case a careless word boundary breaks: `updated_at`, `offset` and `documents` are not `update`,
+  `set` and `do`.
+- `agents/chat-loop.test.ts`, 6: a refusal fed back and corrected, bad arguments fed back once, the
+  step budget exhausted answering with what it found, the graph drawn with its dead end, and one
+  `llm_calls` row per step with `run_id` null. Each in a rolled-back transaction.
+- `agents/output-schema.test.ts`: a top-level union refused at the seam, a plain object untouched.
+- `pipeline/ontology-resolve.test.ts`, 11: the resolver over the dataset's real Nantong cluster,
+  including the OCR slip and two spellings no judge compared staying two things.
+- `repositories/analytics.test.ts`, 8: the four spec corrections, and the role refused
+  `llm_calls.request`, `response` and `parsed` and a delete.
+- `routes/chat.routes.test.ts`, 6, and `routes/ontology.routes.test.ts`, 13.
+- `frontend/lib/graph/layout.test.ts`, 8: the layered layout, deterministic, cycles terminating.
+
+**Corrected: no test refreshes a materialised view.** `refresh concurrently` cannot run inside a
+transaction, and these tests roll back. That the views create at all is proved on every run,
+because global setup applies the migration and a view selecting a column that does not exist does
+not create.
 
 ### 11. Manual verification
 
@@ -218,15 +282,52 @@ imported from `agents/chat/tools`, not duplicated. Optional if the phase runs lo
 - `select pg_sleep(10)` typed into a "run this SQL" request → rejected by guardrail.
 - From Claude Code with `.mcp.json`: call `run_sql` and get rows.
 
+### 12. The ontology surfaces (10b)
+
+Not in the first draft of this file, which covered 10a only. `docs/04-phases.md` lists them under
+10b and the canvas draws them; they are built.
+
+- `GET /ontology/types|:type|:type/:id|:id/detail|:id/graph`, and `GET /database/tables...`.
+- Migration `013`: `core.entities`, `entity_names`, `entity_mentions`, resolved by
+  `pipeline/ontology/resolve.ts` from `extraction_fields` and the field judge's same-verdicts, and
+  nothing else. Port and party only: nothing in the seven fields yields a shipment or a carrier, so
+  those stay `planned` and are drawn dashed.
+- The database page (`DbGrid`, `DbEntities`, `DbRecord`) and the ontology page's two tabs
+  (`ObjectTyped`, `GraphLinks`). The third tab the canvas first drew was cut: the database page
+  does that job better.
+- The Links canvas is React Flow with the layout kept pure in `lib/graph/layout.ts`, because React
+  Flow does no layout of its own. The chat's result graph is inline SVG over the same function: it
+  does not pan or zoom, so a canvas runtime would be weight for nothing.
+
 ## Exit checklist
 
-- [ ] The two demo questions return correct answers with the SQL shown.
-- [ ] `run_sql` refuses writes, multi-statement input, and long queries; runs as `retina_ro`.
-- [ ] Analytics views refresh within 5 minutes of a run finishing and on run completion.
-- [ ] `retina_ro` cannot read `llm_calls.request` (verified with a direct query).
-- [ ] Chat turns and tool calls are stored; each loop iteration appears in `llm_calls`.
-- [ ] MCP server answers a `run_sql` call from Claude Code, or its deferral is noted.
+- [x] The demo questions return correct answers with the SQL shown. Verified on run `bd2f686e`:
+      "Which of the seven fields differs most often?" answered `container_count` with 10, ahead of
+      `port_of_discharge` at 8 and `gross_weight_kg` at 5, from one query over
+      `analytics.fact_field_diff` scoped to the conversation's run without being told to.
+- [x] `run_sql` refuses writes, multi-statement input and the rest: 23 cases in
+      `sql-guard.test.ts`, and a `delete` refused live through MCP.
+- [x] The views and the resolved ontology refresh on the five-minute tick when `core` has moved,
+      each on its own staleness check. **Not** on run completion: there is no such event, and the
+      spec above says why that was dropped rather than faked.
+- [x] `retina_ro` cannot read `llm_calls.request`, `response` or `parsed`, and cannot delete.
+      `analytics.test.ts`.
+- [x] Chat turns and tool calls are stored; each loop iteration is one `llm_calls` row with
+      `run_id = null`, held by a test.
+- [x] The MCP server answers `run_sql` over stdio: verified with a raw JSON-RPC exchange, all four
+      tools listed, a write refused, and the spellings query returning rows.
+- [x] The planned types are exactly the ones with no table, held by `ontology.routes.test.ts`.
+- [x] `written these ways` reads from judge verdicts alone. On the dataset: `NANTONG, CHINA
+      (CNNTG)` on 63 documents kept, `NANTONG, CHINA` on 3 joined at 0.98.
+- [ ] The full 520-email run against these pages. The one run of 520 in the database has no
+      MISMATCH in it, so the ontology and database pages were checked against `bd2f686e` (52
+      emails, 23 mismatches). Left for the user; it costs real tokens.
 
 ## Hand-off notes for phase 11
 
 - `explain_decision` output is what the lesson drafter reads; keep its shape stable.
+- The action card's contract is `docs/03-infra-deep.md` section 5.6, settled. Two things it leaves
+  for phase 11: which case a correction on an un-escalated email is addressed to, and the column
+  that separates `Apply and remember` from `Just this once`.
+- A grant does not reach a table a later migration adds. If phase 11 adds a table the agent reads,
+  grant it in the same commit; `014_ro_entities.sql` says why.

@@ -526,6 +526,45 @@ never gets here: `failure-policy.ts` reads that as an outage and pauses the queu
 attempts untouched. What reaches here is a permanent failure, such as doc-extract answering 404 for
 a key, or an answer that never fits its schema.
 
+### 5.6 What a chat turn may propose
+
+Settled in phase 10, after three phases carrying it as an open question. The shape is
+`ProposedAction` in `contracts.chat.ts`; the apply path is phase 11's.
+
+**A turn may propose, and nothing may apply.** Phase 10's scope puts write tools out, so the agent
+has no tool that could write one: a proposal is a field on the assistant turn and nothing else. The
+card is drawn with both buttons disabled and `blockedReason` under them, rather than hidden,
+because the card is the thing being deferred and hiding it would hide that.
+
+| Field | Meaning |
+|---|---|
+| `kind` | `correct_field`, `reclassify` or `note`: the three of section 5.5's seven a conversation could ever justify. The other four are a person's own acts, not a model's suggestion |
+| `emailId` | What it is about. A proposal never addresses more than one email |
+| `field`, `side`, `was`, `is` | On a `correct_field`. `was` is what is stored now, so the card can be read without the email beside it |
+| `note` | On a `note`, and the free text of the other two |
+| `effect` | What applying it would do, in the words the card shows: which stage re-runs, and what becomes a candidate lesson |
+| `blockedReason` | Why neither button may be pressed. Never null in phase 10 |
+
+**When phase 11 turns it on**, applying one is a `POST /review/:id/actions` with exactly the body
+section 5.5 already defines, so nothing new is written and the rerun behaviour is the one that
+already exists. Two rules the shape does not carry and the route must:
+
+- **Only a person applies one.** The turn proposes; the button is the write. There is no path from
+  a model's output to a row in `review_actions` that does not pass a click.
+- **A proposal needs a case to address.** Every write path is addressed by a `review_case_id`, and
+  `review_cases` exist only for escalations, so an email that was never escalated has nothing to
+  write against. That is the remaining gap, and it is why the action bar is present and disabled on
+  an un-escalated email today. Either the route opens a case of a third `kind` for a correction
+  nobody escalated, or corrections outside a case are refused and the card says so. Phase 11
+  chooses; `blockedReason` is where the answer is shown either way.
+
+**`Apply and remember` against `Just this once`.** Both write the same `review_actions` row, which
+is what re-runs the check. They differ in one field the row does not have yet: whether the
+correction is offered to phase 11's lesson drafter as a candidate. `Just this once` fixes this
+email; `Apply and remember` fixes this email and asks for the prompt to be changed, which only
+ships if the holdout score does not get worse. Phase 11 adds that column in the same commit as the
+drafter that reads it.
+
 ## 6. doc-extract service
 
 `services/doc-extract`, Python 3.12 on uv, FastAPI, tesseract in the image. Reads bytes from
@@ -708,31 +747,72 @@ explainability. Indexes: `email_runs(run_id, stage)`, `review_cases(status)`,
 
 ### 8.2 `analytics`
 
-Materialised views refreshed by a repeatable job every 5 minutes (and on demand after a run
-finishes):
+Built in phase 10, migration `010_analytics.sql`. Refreshed by the `refresh-analytics` scheduled
+job every 5 minutes, and only when `core` has moved: `ontology/derived.ts` compares each derived
+thing's own watermark against the table's, statelessly, so a worker restart cannot lose a mark.
 
-| View | Grain | Columns |
+There is no refresh on run completion. `resolve-case.ts` runs per email and `processingDone` is
+computed in the run summary rather than raised, so there is no run-completion event to hang one on,
+and inventing a seam so a 520 row view refreshes a few minutes sooner is not worth it. The clock is
+the trigger. `pnpm derive` forces it now, for straight after a deploy and before a demo.
+
+| View | Grain | Notes |
 |---|---|---|
-| `fact_email_outcome` | one row per email_run | run_id, email_id, sender_domain, client_tier, category, decided_by, status, review_reason, has_defect, n_defects, llm_calls, llm_cost_usd, latency_ms |
-| `fact_field_diff` | one row per field diff | run_id, email_id, sender_domain, field, si_value, bl_value |
-| `dim_client` | one row per domain | domain, name, tier, kind |
-| `dim_run` | one row per run | id, started_at, prompt_set, final_score |
-| `agg_client_run` | client × run | emails, comparisons, mismatches, reviews, top_defect_field |
-| `agg_run_stage` | run | counts per stage, throughput per minute, verifier_share, cost |
+| `fact_email_outcome` | (run_id, email_id), materialised | `category` is `human_category ?? final_category`; `model_category` is the model's alone. `n_defects` counts judgements that differed, not all seven |
+| `fact_field_diff` | (run_id, email_id, field), materialised | All seven per comparison. `differed` is `not same and not missing` and is what "a defect" means. `judged` is `rationale is not null`: the field judge is the only writer of one |
+| `dim_client` | domain, view | `clients.repo.ts:list` as a view, driven off `core.emails`, so a sender nobody ranked is still a client and `known` is false |
+| `dim_run` | run, view | plus the newest submission's `final_score` |
+| `agg_client_run` | (run_id, sender_domain), materialised | `top_defect_field` answers "and on which field" without a join |
+| `agg_run_stage` | run_id, materialised | counts per stage, `verifier_decided`, `human_decided`, calls and cost |
 
-### 8.3 Roles
+**There is no `rule_decided`.** `classifications.decided_by` is `llm | verifier | human` and
+`comparisons.decided_by` is `llm | human`. `rule` belongs to the organisers' submission enum and
+nowhere else, because no hand-written rule decides a category in this product, on purpose.
+
+**The default tier is `core.default_tier()`**, mirrored by `DEFAULT_TIER` in
+`contracts.clients.ts`, and `analytics.test.ts` holds the two equal.
+
+### 8.3 Ontology entities
+
+Migration `013_ontology_entities.sql`. `core.entities`, `core.entity_names`,
+`core.entity_mentions`, all derived and rebuildable: `pipeline/ontology/resolve.ts` produces them
+from `extraction_fields` and `field_diffs` alone.
+
+**The only edge that joins two spellings is a `field_diffs` row with `same = true`.** No
+lowercasing, no punctuation stripping, no edit distance, no lookup table: all four are rules fitted
+to one seed of one dataset. Two spellings no judge ever compared stay two things, and
+`entity_names.joined_by` says how each one joined, so that reads as a fact about the data.
+
+`kind` is `port` (from `port_of_loading`, `port_of_discharge`) or `party` (from `shipper`,
+`consignee`, `notify_party`). Shipment and Carrier are in the design's vocabulary and have no
+source field, so they are never `built` and the rail draws them dashed.
+
+### 8.4 Roles
+
+Migration `011_ro_role.sql`, plus `014_ro_entities.sql` for the tables `013` added afterwards.
 
 ```sql
-create role retina_ro login password '...';
+create role retina_ro login password :'ro_password';   -- substituted by db/migrate.mjs from PG_RO_PASSWORD
 grant usage on schema core, analytics to retina_ro;
-grant select on all tables in schema core, analytics to retina_ro;
+-- table by table, never `all tables`: the list is the documentation of what the agent may read
+grant select (id, email_run_id, run_id, step, model, prompt_version, input_tokens, output_tokens,
+              cost_usd, latency_ms, ok, error, attempt, created_at) on core.llm_calls to retina_ro;
+alter default privileges in schema core, analytics grant select on tables to retina_ro;
 alter role retina_ro set statement_timeout = '5s';
 alter role retina_ro set default_transaction_read_only = on;
 ```
 
-The chat agent's pool uses `DATABASE_RO_URL`. `llm_calls.request` is excluded from the grant
-(column-level) so prompts with document text do not leak through free-form SQL; the
-`explain_decision` tool reads them through the read-write pool with a fixed query instead.
+The chat agent's pool uses `DATABASE_RO_URL`. `llm_calls.request`, `response` and `parsed` are
+excluded column by column so prompts and model text cannot leak through free-form SQL; the
+`explain_decision` tool reads rationales through the read-write pool with a fixed query instead.
+
+**A grant does not reach a table added later.** `011` ran before `013` created the entity tables,
+so the agent was told about three tables it could not read. `014` grants them and sets default
+privileges, and `analytics.test.ts` holds it. A new table the agent reads needs a grant in the same
+commit as the table.
+
+A role belongs to the cluster, not a database, so `retina_test` and development share one password:
+`vitest.config.ts` and `.env.example` both say `localdev`.
 
 ## 9. MinIO layout
 
@@ -780,8 +860,12 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 | `POST /review/:id/actions` | `{ kind, actor, ...fields }`, validated per kind by a zod discriminated union. Answers the case as the queue shows it, the action row, which queue a rerun went to, and one sentence naming what was written. 409 when the case is not in a state for that kind |
 | `POST /review/:id/upload` | multipart (`multer` memory storage, 20 MB cap, extensions `txt pdf docx xlsx`), fields `actor`, `role`, `note?`. The bytes are sniffed against the name the file claims (`%PDF-`, the zip `PK` of an Office file, decodable UTF-8); a mismatch is 409, not a document stored and found unreadable three stages later |
 | `GET /queues` | superseded by `GET /runs/:id/queues` above, which is run scoped and carries the slots as well as the counts. A global view has no reader: every screen that asks is looking at one run |
-| `GET /clients`, `PUT /clients/:domain` | tiers |
-| `POST /chat/conversations`, `POST /chat/:id/messages`, `GET /chat/:id` | chat agent |
+| `POST /chat/conversations` | `{ title?, runId?, emailId?, actor }`. `runId` and `emailId` are the conversation's scope, which the rail draws as its `Reading` chips: a default the agent may widen when a question asks something wider, never a filter it cannot see past |
+| `GET /chat/conversations?runId=`, `GET /chat/:id`, `DELETE /chat/:id` | list, the thread with its turns, delete. A turn carries its tool calls, its result graph and the SQL it ran, so reloading a conversation brings the evidence back with the sentence |
+| `POST /chat/:id/messages` | `{ content, actor }` runs one turn and answers `{ turn, exhausted }`. The question is stored before the model is asked, so a turn that fails halfway still leaves the person's words on the page. No streaming; the frontend route handler declares `maxDuration = 300` and the client times out just under it |
+| `GET /ontology/types` | every object type with its live count and `built`. `shipment` and `carrier` are never built: nothing in the seven fields yields one, and the rail draws them dashed |
+| `GET /ontology/:type`, `GET /ontology/:type/:id`, `/:id/detail`, `/:id/graph?hops=1\|2` | the index of a resolved kind; one object in the one shape every type shares; the four parts a resolved thing opens into; and one email's graph as nodes and named edges. The graph carries no coordinates: the layout is one pure function in the frontend with a table-driven test |
+| `GET /database/tables`, `/tables/:schema/:name?limit=&offset=`, `/tables/:schema/:name/rows/:id` | every relation of `core` and `analytics` with an exact count; a page of one with typed columns and the SQL that produced it; one row as fields plus what points at it by foreign key. Identifiers are read out of `pg_catalog` and checked against a pattern before they reach a query; this path composes its own SQL and takes nothing a caller wrote, which is why it does not use the RO pool |
 | `GET /eval/runs/:id` | holdout, full-set and this-run scoreboards computed locally, plus `emails`: each email of the run, its answer beside the truth, check by check on the scorer's definitions (`EmailVerdict`), shown at `/runs/[id]/results`. Dev only; 404 on the VPS where ground truth is absent |
 | `GET /lessons`, `POST /lessons/:id/approve|reject` | gated self-improvement |
 | `GET /files/*key` | stream one object: an original attachment, a rendered page, or a document a reviewer supplied. Read only, and a key with a traversal segment is refused rather than resolved |
@@ -791,24 +875,40 @@ Contract types live in `backend/src/contracts.ts` and are copied into
 
 ## 11. Chat agent
 
-`agents/chat/loop.ts`: a plain tool-use loop over the proxy, max 8 tool calls per turn.
+`agents/chat/loop.ts`: one step per model call, each step either a tool or the answer, max 8 steps
+per turn. Tool use is a JSON protocol rather than a provider's tool-call API, because every call
+goes through the proxy to `claude -p` and the wire between them carries text.
 
-System prompt contains: the `analytics` view definitions with one-line column descriptions, the
-`core` table list, the five categories and seven fields, examples of good queries, and the rule
-"always show the SQL you ran".
+**The step schema is one flat object, never a union.** The provider refuses `oneOf`, `anyOf` and
+`allOf` at the top level of a tool schema, and says so as a 502 from the proxy marked retryable, so
+a caller retries a call that can never succeed. `agents/structured.ts:toOutputSchema` throws a
+`TerminalError` naming the fix instead. Any future step with two shapes does the same: one object
+with the discriminant as a field, narrowed after it parses.
+
+The prompt is `agents/prompts/chat/v1.md`; the schema documentation it is given is
+`agents/chat/schema-docs.md`, hand written, one block per view with its grain, its columns, the
+enums value for value, and five example questions with the SQL that answers them. Every loop
+iteration is one `llm_calls` row with `step = chat` and **`run_id = null`**, even when the
+conversation is about a run: a run's cost is what the pipeline spent on it, not what somebody asked
+about it afterwards.
 
 Tools:
 
 | Tool | Input | Guardrails |
 |---|---|---|
-| `describe_schema` | `{ schema?: "core" \| "analytics", table? }` | reads `information_schema` through the RO pool |
-| `run_sql` | `{ sql }` | must start with `select` or `with`; one statement; no `;` inside; `LIMIT 200` appended if absent; RO role with 5 s timeout; result truncated to 200 rows and 20 kB |
-| `get_email` | `{ runId?, emailId }` | fixed query, returns the trace summary |
-| `explain_decision` | `{ runId, emailId }` | fixed queries over classifications, extraction_fields, field_diffs, review_actions, and the rationales in `llm_calls.response`; returns a structured timeline the model narrates |
+| `describe_schema` | `{ schema?, table? }` | `pg_catalog` through the RO pool, not `information_schema`, which holds no row for a materialised view and would report the whole `analytics` schema as empty |
+| `run_sql` | `{ sql, purpose }` | `agents/chat/sql-guard.ts`, pure and table-tested: comments stripped first, must start with `select` or `with`, one statement, no `;` inside, a banned-word list as words, `limit 200` appended when the query ends without one, 200 rows and 20 kB out. Every ambiguity resolves towards refusal, a banned word inside a string literal included |
+| `get_email` | `{ emailId, runId? }` | the trace summary. Without a run, the most recent one that processed the email |
+| `explain_decision` | `{ emailId, runId? }` | the whole story in order, from `ontology/trace.ts`, the same assembly the trace page draws, so the chat and that page cannot tell a person different stories. Rationales come through the read-write pool because `retina_ro` is not granted them |
 
-Turns and tool calls are stored in `chat_turns`. Later, the same four tools are exposed by a
-small MCP server (`backend/src/mcp.ts`, stdio) so Claude Code and teammates can use them; the
-tool implementations are shared modules, not duplicated.
+The guardrail is the second line of defence and not the first: `retina_ro` holds no write
+privilege, defaults its transactions to read only and times out at 5 s. Two independent stops is
+the right number when one of them is a regex over text a model wrote.
+
+Turns are stored in `chat_turns`, tool calls and the result graph on the assistant turn. The same
+four tools are served over stdio by `backend/src/mcp.ts` from the same `TOOLS` registry, so a
+teammate in Claude Code runs identical code against identical guardrails. `.mcp.json` at the
+repository root configures it.
 
 ## 12. Eval harness
 
