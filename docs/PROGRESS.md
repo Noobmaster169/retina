@@ -1430,6 +1430,12 @@ the same branch. The behaviour changes are the first three.
   later, and nothing should without a way to check it against something.
 - **`ambiguous` on a sighting is stored and nothing reads it.** `entity-resolve` sets it when the
   candidates spanned more than one thing; the page does not draw it yet and no tool reports it.
+- **Eleven recipes still count emails through `core.entity_mentions`.** The appearances view is
+  the right source now, because a thing read only in a subject or a body has no mention and the
+  recipes report it as appearing in zero emails. Only `entities_named_like` was corrected in 10f,
+  and only for the tombstone filter: changing what the other ten count would move numbers the chat
+  has been giving, and there is no `eval:chat` baseline to move them against. Do it with the
+  baseline in hand, in one commit, with the version of every recipe bumped.
 - **`entity-resolve` judges sightings and never a document spelling.** The 25 email run left
   `BUATAN, INDONESIA` and `BUATAN, INDONESIA (IDBUA)` as two ports, two mentions each and no
   sighting: both were read out of documents, the field judge never saw them on one pair, and
