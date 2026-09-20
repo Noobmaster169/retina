@@ -123,17 +123,20 @@ export async function values(db: Queryable, entityId: string): Promise<StoredVal
   const row = rows[0];
   if (!row) return [];
 
-  const when = (at: Date | null, emailId: string | null): string | null =>
-    at === null ? null : `${at.toISOString()}${emailId ? `, in ${emailId}` : ""}`;
-
+  // A timestamp crosses the wire as an ISO string and is read for people in
+  // one place, lib/when.ts. The email it was seen in is its own row rather
+  // than glued onto the end of the date, because a composite string would
+  // have to be taken apart again before it could be formatted.
   return [
     { key: "name", valueType: "abc", value: row.canonical, writtenBy: "a model", tone: null },
     { key: "kind", valueType: "enum", value: row.kind, writtenBy: "code", tone: null },
     { key: "appears_as", valueType: "list", value: row.fields.join(", ") || null, writtenBy: "code", tone: null },
     { key: "read_from", valueType: "123", value: String(row.mention_count), writtenBy: "code", tone: null },
     { key: "spellings", valueType: "123", value: String(row.name_count), writtenBy: "a model", tone: null },
-    { key: "first_seen", valueType: "date", value: when(row.first_seen_at, row.first_email), writtenBy: "the source", tone: null },
-    { key: "last_seen", valueType: "date", value: when(row.last_seen_at, row.last_email), writtenBy: "the source", tone: null },
+    { key: "first_seen", valueType: "date", value: row.first_seen_at?.toISOString() ?? null, writtenBy: "the source", tone: null },
+    { key: "first_seen_in", valueType: "pk", value: row.first_email, writtenBy: "the source", tone: null },
+    { key: "last_seen", valueType: "date", value: row.last_seen_at?.toISOString() ?? null, writtenBy: "the source", tone: null },
+    { key: "last_seen_in", valueType: "pk", value: row.last_email, writtenBy: "the source", tone: null },
   ];
 }
 
