@@ -4,7 +4,7 @@ import { get, parseAs, request } from "./transport";
 
 /** Mirrors backend/src/emails.ts; change both or neither. */
 
-const Email = z.object({
+export const Email = z.object({
   email_id: z.string(),
   from: z.string(),
   subject: z.string(),

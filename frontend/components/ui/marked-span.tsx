@@ -77,8 +77,8 @@ export function Hatch({ placeholder }: { placeholder?: string | null }) {
  * section 2.1 principle 5 calls a field without its quote an unfinished
  * component. Never truncated mid quote.
  */
-export function EvidenceWell({ quote, tone = "hairline" }: { quote: string; tone?: "hairline" | "review" }) {
-  const rule = tone === "review" ? "border-review-line" : "border-hairline";
+export function EvidenceWell({ quote, tone = "hairline" }: { quote: string; tone?: "hairline" | "review" | "fault" }) {
+  const rule = tone === "review" ? "border-review-line" : tone === "fault" ? "border-fault" : "border-hairline";
   return (
     <blockquote className={`border-l-2 pl-2.5 font-mono text-mono-xs text-ink-tertiary ${rule}`}>{quote}</blockquote>
   );

@@ -9,7 +9,7 @@
  */
 
 export { type ChatMessage, type ChatOutcome, type ChatRequest, type ChatResult, chat, listModels, type ModelInfo } from "./api/chat-client";
-export { type Email, type EmailListQuery, type EmailPage, type EmailSummary, fetchAttachment, getEmail, listEmails } from "./api/mail-client";
+export { Email, type EmailListQuery, type EmailPage, type EmailSummary, fetchAttachment, getEmail, listEmails } from "./api/mail-client";
 export {
   type CheckStatus,
   DEPENDENCIES,
@@ -62,6 +62,25 @@ export {
   type RunEmailsPage,
   type RunEmailsQuery,
 } from "./api/trace-client";
+export {
+  actOnCase,
+  type ExtractionSide,
+  getReviewCase,
+  getReviewStats,
+  listReviewCases,
+  type ReviewActionInput,
+  type ReviewActionKind,
+  type ReviewActionResult,
+  type ReviewActionView,
+  type ReviewCaseItem,
+  type ReviewCaseKind,
+  type ReviewOutcome,
+  type ReviewQuery,
+  type ReviewQueue,
+  type ReviewStats,
+  uploadToCase,
+} from "./api/review-client";
+export { fetchFile } from "./api/files-client";
 export {
   type EmailVerdict,
   type EvalReport,

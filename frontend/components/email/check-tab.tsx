@@ -91,7 +91,7 @@ function factsOf(trace: EmailTrace): ReadingFact[] {
   const facts: ReadingFact[] = [];
   const classification = trace.classification;
   if (classification) {
-    facts.push({ label: "sorted", value: classification.finalCategory });
+    facts.push({ label: "sorted", value: classification.humanCategory ?? classification.finalCategory });
     facts.push({
       label: "sure",
       value: classification.generator.confidence.toFixed(2),

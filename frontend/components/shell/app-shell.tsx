@@ -7,6 +7,8 @@ import { HealthReport } from "@/lib/api/queues-schemas";
 import { RunList, type RunSummary } from "@/lib/api/runs-schemas";
 import { parsedFetcher } from "@/lib/poll";
 
+import { ToastHost } from "@/components/ui/toast";
+
 import { Rail } from "./rail";
 import type { NavCounts } from "./nav";
 
@@ -21,6 +23,9 @@ import type { NavCounts } from "./nav";
  * Without a run id, the context is the newest run there is. That is what makes
  * the run list, which has no run of its own, still look like the same
  * application as everything else.
+ *
+ * It also hosts the receipts. Every write says what it wrote, and the one
+ * place that can be true for every screen is the one that is on all of them.
  */
 
 const RUNS_MS = 5000;
@@ -52,18 +57,20 @@ export function AppShell({ active, counts, children, runId = null }: AppShellPro
   const [railOpen, setRailOpen] = useState(true);
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-canvas text-ink">
-      <Rail
-        open={railOpen}
-        onToggle={() => setRailOpen((was) => !was)}
-        active={active}
-        counts={counts}
-        current={current}
-        runs={runs}
-        health={health}
-      />
-      {children}
-    </div>
+    <ToastHost>
+      <div className="flex h-dvh overflow-hidden bg-canvas text-ink">
+        <Rail
+          open={railOpen}
+          onToggle={() => setRailOpen((was) => !was)}
+          active={active}
+          counts={counts}
+          current={current}
+          runs={runs}
+          health={health}
+        />
+        {children}
+      </div>
+    </ToastHost>
   );
 }
 

@@ -35,11 +35,11 @@ export function chatScope(trace: EmailTrace): ChatScope[] {
  * and which of the agreeing fields the judge had to think about.
  */
 export function openingLine(trace: EmailTrace): string {
-  if (trace.review) return reviewOpening(trace, trace.review.reason);
+  if (trace.review) return reviewOpening(trace, trace.review);
   const comparison = trace.comparison;
   if (!comparison) {
     return trace.classification
-      ? `Sorted as ${trace.classification.finalCategory}, so no document check was asked for. Nothing was opened and nothing was compared.`
+      ? `Sorted as ${trace.classification.humanCategory ?? trace.classification.finalCategory}, so no document check was asked for. Nothing was opened and nothing was compared.`
       : "Nothing has been decided about this email yet.";
   }
 
@@ -59,12 +59,21 @@ export function openingLine(trace: EmailTrace): string {
   return `${comparison.defectFields.length} of the ${judged.length} fields name different things: ${list(comparison.defectFields)}.${tail}`;
 }
 
-function reviewOpening(trace: EmailTrace, reason: string): string {
+function reviewOpening(trace: EmailTrace, review: NonNullable<EmailTrace["review"]>): string {
+  if (review.kind === "failure") {
+    return `This email stopped in the ${review.stage} stage before anything was decided about it. Nothing was guessed, and nothing about the email itself is wrong.`;
+  }
+  const reason = review.reason ?? "a reason it did not record";
   const unread = trace.documents.find((document) => document.unreadable);
-  if (!unread) return `This email is waiting for a person because of ${reason}. Nothing was guessed.`;
-  const pages = unread.pageConfidence;
-  const each = pages.length ? ` Its pages came back at ${pages.map((page) => `${Math.round(page * 100)}`).join(", ")} percent, under the 40 percent floor.` : "";
-  return `${unread.filename} could not be read, so this is parked as ${reason}.${each} Nothing was read from it and nothing was guessed.`;
+  const scanned = trace.documents.find((document) => document.scanned);
+  const at = (document: { pageConfidence: number[] }) =>
+    document.pageConfidence.length ? ` Its pages came back at ${document.pageConfidence.map((page) => Math.round(page)).join(", ")} percent, against a 40 percent floor.` : "";
+
+  if (unread) return `${unread.filename} could not be read, so this is parked as ${reason}.${at(unread)} Nothing was read from it and nothing was guessed.`;
+  // A scan that OCR did read is still parked: recognised text is never settled
+  // on without a person, whatever the comparison came out as.
+  if (scanned) return `${scanned.filename} is a scan, so it was read by OCR.${at(scanned)} That is never settled without a person, so this is parked as ${reason}.`;
+  return `This email is waiting for a person because of ${reason}. Nothing was guessed.`;
 }
 
 function list(values: string[]): string {

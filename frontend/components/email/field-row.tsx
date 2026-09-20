@@ -2,11 +2,13 @@
 
 import { AnimatePresence, motion } from "motion/react";
 
+import { Button } from "@/components/ui/button";
 import { Hatch, MarkedSpan, type MarkState } from "@/components/ui/marked-span";
 import type { ExtractedFieldView, FieldJudgementView } from "@/lib/api/comparison-schemas";
 import { panel } from "@/lib/motion";
 
 import { collapsedLine, markOf, splitQuote } from "./field-reading";
+import { FieldCorrection } from "./field-correction";
 
 /**
  * The component this whole product exists to render. Collapsed it is one line:
@@ -27,9 +29,11 @@ interface FieldRowProps {
   row: FieldRowData;
   open: boolean;
   onToggle: () => void;
+  /** Present only while a case is waiting for a person: a correction is a review action, not a way to edit a finished check. */
+  correcting?: { active: boolean; pending: boolean; onOpen: () => void; onClose: () => void; onRecord: (side: "SI" | "BL", value: string) => void };
 }
 
-export function FieldRow({ row, open, onToggle }: FieldRowProps) {
+export function FieldRow({ row, open, onToggle, correcting }: FieldRowProps) {
   const { judgement } = row;
   const mark = markOf(judgement, open);
   const rail = judgement.missing
@@ -69,6 +73,21 @@ export function FieldRow({ row, open, onToggle }: FieldRowProps) {
             <div className="pb-2.5">
               <Side label="SI" value={judgement.siValue} field={row.si} mark={mark} />
               <Side label="BL" value={judgement.blValue} field={row.bl} mark={mark} />
+              {correcting?.active ? (
+                <FieldCorrection
+                  judgement={judgement}
+                  human={{ SI: row.si?.humanValue ?? null, BL: row.bl?.humanValue ?? null }}
+                  pending={correcting.pending}
+                  onRecord={correcting.onRecord}
+                  onCancel={correcting.onClose}
+                />
+              ) : correcting ? (
+                <div className="ml-[27px] mt-1.5">
+                  <Button variant="quiet" className="h-6 px-1.5" onClick={correcting.onOpen}>
+                    Correct what a document reads
+                  </Button>
+                </div>
+              ) : null}
               {judgement.rationale ? (
                 <p className="ml-[27px] mt-1.5 max-w-[68ch] text-small leading-[17px] text-ink-secondary">
                   {judgement.rationale}
