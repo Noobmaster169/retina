@@ -16,7 +16,7 @@ function turn(answer: string, toolCalls: Call[], extra: Partial<TurnResult> = {}
   return {
     answer, reading: "", sqlUsed: [], toolCalls, graph: { nodes: [], edges: [] }, skillsUsed: [],
     adhoc: toolCalls.some((item) => item.tool === "run_sql" && item.ok), exhausted: false,
-    outcome: "answered", checked: [], next: [], clarify: null, grounded: [], removedMoves: 0, ...extra,
+    outcome: "answered", checked: [], next: [], clarify: null, grounded: [], semantic: [], removedMoves: 0, ...extra,
   };
 }
 
@@ -119,5 +119,64 @@ describe("the question set that ships", () => {
   it("keeps the interactive questions off specific email ids, so a fresh seed asks the same thing", () => {
     const interactive = set.filter((item) => item.tags.includes("interactive"));
     for (const item of interactive) expect(item.question).not.toMatch(/email_\d+/);
+  });
+});
+
+describe("the ontology question set that ships", () => {
+  const set = ChatQuestionSet.parse(JSON.parse(readFileSync(join(__dirname, "../../eval/ontology-questions.json"), "utf8")));
+
+  it("has twenty-one questions with distinct ids, covering every class the semantic layer serves", () => {
+    expect(set).toHaveLength(21);
+    expect(new Set(set.map((item) => item.id)).size).toBe(21);
+  });
+
+  it("names no email id, so a fresh seed asks the same thing", () => {
+    for (const item of set) expect(item.question).not.toMatch(/email_\d+/);
+  });
+
+  it("asks at least four questions whose answer is a set of things a person listed", () => {
+    expect(set.filter((item) => item.expect.entities.length > 0 || item.expect.behaviours.includes("gives_a_meaning")).length).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe("the ontology set's own checks", () => {
+  const score = (asked: ChatQuestion, result: TurnResult) => scoreTurn(asked, result, { steps: 2, runId: RUN, removedMoves: 0 });
+
+  const reading = (over: Partial<TurnResult["semantic"][number]> = {}) => ({
+    conceptId: "1", phrase: "in Asia", definition: "a seaport in Asia", entityKind: "port" as const,
+    matched: 2, judged: 3, reused: 0, unknown: 1, deferred: 0, complete: true, ...over,
+  });
+
+  it("passes completeness only where the flag agrees with the deferred count", () => {
+    const honest = score(question({ behaviours: ["completeness_is_truthful"] }), turn("x", [], { semantic: [reading()] }));
+    expect(honest.passed).toBe(true);
+
+    const lying = score(question({ behaviours: ["completeness_is_truthful"] }), turn("x", [], { semantic: [reading({ complete: true, deferred: 9 })] }));
+    expect(lying.passed).toBe(false);
+  });
+
+  it("asks for a lower bound only where a set actually came back partial", () => {
+    const whole = score(question({ behaviours: ["says_lower_bound"] }), turn("14 ports.", [], { semantic: [reading()] }));
+    expect(whole.passed).toBe(true);
+
+    const partial = { semantic: [reading({ complete: false, deferred: 9 })] };
+    expect(score(question({ behaviours: ["says_lower_bound"] }), turn("14 ports.", [], partial)).passed).toBe(false);
+    expect(score(question({ behaviours: ["says_lower_bound"] }), turn("At least 14 ports.", [], partial)).passed).toBe(true);
+  });
+
+  it("scores the entity set on what find_entities returned, not on the prose", () => {
+    const found = call("find_entities", {}, {
+      result: { columns: ["id", "name", "confidence"], rows: [["1", "ROXCEL TRADING GMBH", "0.9"], ["2", "SAFQA LIMITED", "0.8"]], rowCount: 2, truncated: false, durationMs: 1 },
+    });
+    const item = score(question({ entities: ["ROXCEL"] }), turn("Roxcel and one other.", [found]));
+
+    expect(item.entitySet).toMatchObject({ expected: 1, matched: 2, recall: 1 });
+    expect(item.entitySet?.extra).toEqual(["SAFQA LIMITED"]);
+    // Recall gates; an extra is reported and does not fail the question.
+    expect(item.passed).toBe(true);
+
+    const missed = score(question({ entities: ["TOPKOPY"] }), turn("Roxcel.", [found]));
+    expect(missed.entitySet?.recall).toBe(0);
+    expect(missed.passed).toBe(false);
   });
 });

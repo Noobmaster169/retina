@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { SemanticReading } from "./semantic-schemas";
+
 /**
  * Mirrors backend/src/contracts.chat.ts by hand. A drift fails here, naming
  * the field, instead of reaching the chat as undefined.
@@ -12,6 +14,7 @@ import { z } from "zod";
 export const ChatToolName = z.enum([
   "run_recipe",
   "find_entity",
+  "find_entities",
   "list_entities",
   "get_entity",
   "search_emails",
@@ -137,6 +140,8 @@ export const ChatTurn = z.object({
   checked: z.array(z.string()).default([]),
   next: z.array(ChatNextMove).default([]),
   clarify: ClarifyingQuestion.nullable().default(null),
+  /** Terms this turn had to give a meaning to. Empty on a turn that needed none. */
+  semantic: z.array(SemanticReading).default([]),
   createdAt: z.string(),
 });
 export type ChatTurn = z.infer<typeof ChatTurn>;

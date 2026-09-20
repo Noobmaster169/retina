@@ -1,5 +1,5 @@
 ---
-version: 2
+version: 3
 ---
 # How to work in this database
 
@@ -33,19 +33,38 @@ it tells you which names exist.
 - "Who sent it" is the sender address and its domain. Signatures and greetings inside a body
   are text somebody typed and often name a different person or company. Never answer who sent
   or who handles something from them.
-- Only comparison requests have documents read. Two documents are compared over seven fields;
-  everything stored about a shipment is one of those seven values, as the document wrote it.
-- Ports and parties are resolved things, built from the documents of compared pairs, across
-  every run. Two spellings become one thing only when a comparison judged them the same, so one
-  place or company can be more than one thing. Carriers, vessels, goods, references and people
-  are not resolved things: they are text in subjects and bodies.
+- Only comparison requests have documents read, and only those seven fields are compared and
+  scored. Everything else a mail states about its shipment is read separately into
+  `core.email_shipments`, which is not scored and never changes a verdict.
+- Six kinds of thing are resolved: ports, parties, carriers, people, commodities and vessels.
+  Two spellings become one thing only when a model judged them the same, so one place or company
+  can still be more than one thing. Ports and parties come from the seven fields of compared
+  documents; the other four, and everything in a subject or a body, come from the reading of the
+  mail itself.
+- Each thing carries a **profile** and **attributes** under fixed keys: a port has `country`,
+  `region`, `subregion`, `locode`, `coast`; a party has `country`, `city`, `kind`, `sector`,
+  `group`. `region` and `subregion` are the UN geoscheme's names, so a question about a region is
+  one query on `attributes->>'region'` and needs nothing else.
+- A profile has two parts and they mean different things. **What our mail shows** is only what
+  this mailbox holds. **General knowledge, unverified** is what the model knew about the world,
+  and it is never a fact about this mailbox. `get_entity` says which source each attribute came
+  from. Where the second one is what decided your answer, say so in the answer.
 - A company can appear in four places: as a resolved party, as a sender domain, in a subject
   line, and in the text of an email that hands over a shipping instruction. They are different
   evidence. Check the ones the question needs and report them apart.
 - A port is written several ways: with or without its country, with or without a code in
   brackets, joined with an underscore in a subject. Match a port by the words of its name. A
   code can be stale on a document that names a different port, so never match on the code alone.
-  A port's name carries its country as a word; there is no country or region column.
+  A port's name usually carries its country as a word, and its `attributes` carry `country`,
+  `region` and `subregion` besides, which are the ones to filter on.
+- `core.email_shipments` is one row per email: what that email stated about its shipment, with
+  the references, the goods, the terms and the entity ids. It belongs to the email and not to a
+  run. `mail_date` there is the date the mail states in its own text and is null on every email
+  that states none; `core.emails.first_seen_at` is when we ingested it. Say which one you
+  filtered on and how many rows had no `mail_date`.
+- `disputed_fields` on a shipment names the fields the judge called different. A port that exists
+  only on a wrong draft bill is marked disputed in `core.entity_appearances`, so a question about
+  where cargo actually went filters `not disputed`.
 - Every fact belongs to a run, and one email is processed again in every run. Counts across
   runs count the same email several times. Fix the run, or count `distinct email_id`.
 - `core.emails.tonnage_mt` is a number read out of some subject lines. It is not the documented
@@ -84,6 +103,28 @@ it tells you which names exist.
   fact about this mailbox is not: how many, which sender, what happened, what an abbreviation means
   here. Relate only among values a tool returned on this turn, never to a value you have not seen,
   and say in the answer which part was your own knowledge rather than the data.
+- A profile's **general knowledge, unverified** section, and an attribute `get_entity` says came
+  from `model`, are the one exception, and only because they are stored with that label already:
+  you may repeat what one says, with the label, as a claim about the world. It is still never a
+  claim about this mailbox, and you may not extend it: what the section says is what you may
+  say.
+
+## When a term in the question is not in any column
+
+"Ports in Asia", "customers that are distributors", "food grade board", "our big customers": none
+of those words is a value anywhere. Follow the `meaning-terms` skill, and in short:
+
+1. Try a stored attribute first. A region, a country or an HS chapter is a column filter, it is
+   complete, and it costs nothing.
+2. Split the question. Run the column part as a query returning one column of entity ids, and pass
+   it to `find_entities` as `candidateSql`.
+3. Call `find_entities` once for the term, with the words the person used.
+4. Join on the subquery it returns, never on the list of ids it printed.
+5. State the definition it used, and the measure you took for a word like "big", before the number.
+
+`find_entities` says how many things it did not judge. If that number is not zero the set is
+partial, every total over it is a lower bound, and the sentence has to say so. It also reports
+`unknown` apart from `no`: things nothing was known about are not things that did not match.
 
 ## When there is no direct answer
 

@@ -4,17 +4,22 @@ import type { z } from "zod";
 
 import type { LlmClient } from "../agents";
 import { config } from "../config";
+import { transactor } from "../db";
 import type { DocExtractClient } from "../doc-extract";
 import { type IngestDeps, replayRun } from "../ingest";
 import { TerminalError } from "../lib/errors";
 import { childLogger } from "../lib/logger";
 import type { LiveCalls } from "../live";
-import { runs } from "../ontology/repositories";
+import { emailRuns, runs } from "../ontology/repositories";
 import { isFinalFailure, type PausedAt, pausingOnOutage, type QueuePauser } from "./failure-policy";
 import { recordJobFailure } from "./record-failure";
-import { ClassifyJob, CompareJob, DEFAULT_PRIORITY, IngestJob, type JobAdder, QUEUES } from "./names";
+import { ClassifyJob, CompareJob, DEFAULT_PRIORITY, IngestJob, type JobAdder, JOB_NAMES, OntologyJob, ontologyJobOptions, QUEUES } from "./names";
 import { processClassify } from "./processors/classify.processor";
 import { processCompare } from "./processors/compare.processor";
+import { backfillConcepts } from "./backfill-concepts";
+import { processOntology } from "./processors/ontology.processor";
+import { queueOntology } from "./queue-ontology";
+import { refreshProfiles } from "./refresh-profiles";
 
 const log = childLogger({ module: "workers" });
 
@@ -24,6 +29,8 @@ export interface WorkerDeps extends IngestDeps {
   live?: LiveCalls;
   classify: JobAdder<ClassifyJob> & QueuePauser;
   compare: JobAdder<CompareJob> & QueuePauser;
+  /** The semantic layer's own queue. Absent, the compare leg simply never enqueues one. */
+  ontology?: JobAdder<OntologyJob> & QueuePauser;
 }
 
 // LLM calls are slow, so an email job may hold its lock for a while. A job
@@ -140,18 +147,45 @@ export function startWorkers(deps: WorkerDeps, connection: Redis): RunningWorker
 
   const compare = new Worker(
     QUEUES.compare,
-    (job) => {
+    async (job) => {
       const data = parse(CompareJob, job);
-      return noRetryOnTerminal(() => pausingOnOutage(deps.compare, at("compare", job, data), () => processCompare(deps, data)));
+      await noRetryOnTerminal(() => pausingOnOutage(deps.compare, at("compare", job, data), () => processCompare(deps, data)));
+      await queueOntology(deps, data);
     },
     { connection, concurrency: config.COMPARE_CONCURRENCY, limiter: NEVER_REACHED_LIMITER, ...EMAIL_LOCK },
+  );
+
+  // Its own queue, at the lowest priority, so a reading can never slow or fail
+  // a scored email. An outage pauses it exactly as it pauses the other two.
+  const ontology = new Worker(
+    QUEUES.ontology,
+    async (job) => {
+      // Three job names on one queue: one email's reading, and the two
+      // maintenance passes the clock enqueues rather than running itself.
+      if (job.name === JOB_NAMES.profiles) return void (await refreshProfiles(deps));
+      if (job.name === JOB_NAMES.concepts) return void (await backfillConcepts(deps));
+
+      const data = parse(OntologyJob, job);
+      const pauser = deps.ontology;
+      const read = () => processOntology({ ...deps, tx: transactor(deps.pool) }, data);
+      return noRetryOnTerminal(() =>
+        pauser ? pausingOnOutage(pauser, { stage: "ontology", jobId: job.id, runId: "", emailId: data.emailId }, read) : read(),
+      );
+    },
+    { connection, concurrency: config.ONTOLOGY_CONCURRENCY, limiter: NEVER_REACHED_LIMITER, ...EMAIL_LOCK },
   );
 
   ingest.on("failed", guarded(QUEUES.ingest, onIngestJobFailed(deps)));
   classify.on("failed", guarded(QUEUES.classify, onEmailJobFailed(deps, "classify")));
   compare.on("failed", guarded(QUEUES.compare, onEmailJobFailed(deps, "compare")));
+  // No review case and no stage change: a reading that failed leaves the
+  // email's verdict exactly where it was, which is the point of this queue.
+  // The only record a failed ontology job leaves: no review case and no stage
+  // change, because this queue may never fail or slow a scored email. The job
+  // itself is removed, so this line is the reason and there is no second copy.
+  ontology.on("failed", (job, error) => log.warn({ jobId: job?.id, job: job?.name, err: error.message }, "an ontology job failed"));
 
-  const workers = [ingest, classify, compare];
+  const workers = [ingest, classify, compare, ontology];
   for (const worker of workers) {
     worker.on("error", (error) => log.warn({ queue: worker.name, err: error.message }, "worker error"));
   }

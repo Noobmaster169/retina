@@ -1,9 +1,11 @@
 import { z } from "zod";
 
 import type { TurnResult } from "../agents/chat/loop";
+import { type EntitySetScore, matchedNames, scoreEntitySet } from "./chat-score.entities";
 import { Behaviour, type ChatQuestion } from "./chat-questions";
 
 export { Behaviour, ChatQuestion, ChatQuestionSet } from "./chat-questions";
+export type { EntitySetScore } from "./chat-score.entities";
 
 /**
  * Whether one chat turn did what its question expected of it.
@@ -29,6 +31,8 @@ export interface Scored {
   adhoc: boolean;
   exhausted: boolean;
   guardRefusals: number;
+  /** Null where the question named no expected entity set. */
+  entitySet: EntitySetScore | null;
 }
 
 const LOOKUPS = new Set(["find_entity", "list_entities", "get_entity", "search_emails", "profile_column"]);
@@ -84,6 +88,7 @@ export function scoreTurn(question: ChatQuestion, turn: TurnResult, context: Tur
     checks.push({ name: `outcome is ${expect.outcome}`, ok: turn.outcome === expect.outcome, detail: turn.outcome });
   }
 
+  const behaviourSet = new Set(expect.behaviours);
   for (const behaviour of expect.behaviours) {
     if (behaviour === "grounds_first") checks.push(groundsFirst(turn.toolCalls));
     if (behaviour === "uses_recipe") checks.push({ name: behaviour, ok: recipes.length > 0, detail: recipes.join(", ") });
@@ -107,6 +112,45 @@ export function scoreTurn(question: ChatQuestion, turn: TurnResult, context: Tur
       checks.push({ name: behaviour, ok: marked, detail: marked ? "marked" : "nothing marked as its own knowledge" });
     }
   }
+  if (behaviourSet.has("gives_a_meaning")) {
+    checks.push({ name: "gives_a_meaning", ok: turn.semantic.length > 0, detail: `${turn.semantic.length} terms read` });
+  }
+  if (behaviourSet.has("no_meaning_needed")) {
+    checks.push({ name: "no_meaning_needed", ok: turn.semantic.length === 0, detail: turn.semantic.map((term) => term.phrase).join(", ") });
+  }
+  if (behaviourSet.has("completeness_is_truthful")) {
+    const lying = turn.semantic.filter((term) => term.complete !== (term.deferred === 0));
+    checks.push({ name: "completeness_is_truthful", ok: lying.length === 0, detail: lying.map((term) => term.phrase).join(", ") });
+  }
+  if (behaviourSet.has("says_lower_bound")) {
+    // Only where a set actually came back partial. A complete set worded as a
+    // lower bound would be its own mistake, and this check is not the place.
+    const partial = turn.semantic.some((term) => !term.complete);
+    const said = /lower bound|at least/i.test(turn.answer);
+    checks.push({ name: "says_lower_bound", ok: !partial || said, detail: partial ? (said ? "said" : "a partial set was reported as a total") : "nothing was partial" });
+  }
+  if (behaviourSet.has("names_the_date_column")) {
+    checks.push({ name: "names_the_date_column", ok: /mail_date|first_seen_at/.test(turn.answer), detail: "" });
+  }
+
+  const entitySet = expect.entities.length > 0 ? scoreEntitySet(expect.entities, matchedNames(turn.toolCalls)) : null;
+  if (entitySet) {
+    checks.push({
+      name: "matched the expected things",
+      // Recall gates and precision only reports. A person writing the question
+      // knows which things must be in the set; knowing every thing that must
+      // not be would mean listing the whole table, and a wrong extra is worth
+      // reading rather than failing on.
+      ok: entitySet.recall === 1,
+      detail: `recall ${(entitySet.recall * 100).toFixed(0)}%, precision ${(entitySet.precision * 100).toFixed(0)}%${entitySet.missed.length > 0 ? `; missed ${entitySet.missed.join(", ")}` : ""}${entitySet.extra.length > 0 ? `; extra ${entitySet.extra.join(", ")}` : ""}`,
+    });
+  }
+
+  if (expect.complete !== undefined) {
+    const complete = turn.semantic.every((term) => term.complete);
+    checks.push({ name: `set is ${expect.complete ? "complete" : "partial"}`, ok: complete === expect.complete, detail: "" });
+  }
+
   if (expect.maxSteps !== undefined) {
     checks.push({ name: `at most ${expect.maxSteps} steps`, ok: context.steps <= expect.maxSteps, detail: `${context.steps} taken` });
   }
@@ -120,33 +164,8 @@ export function scoreTurn(question: ChatQuestion, turn: TurnResult, context: Tur
     adhoc: turn.adhoc,
     exhausted: turn.exhausted,
     guardRefusals: refusals,
+    entitySet,
   };
 }
 
-export interface Summary {
-  questions: number;
-  passed: number;
-  /** Turns that ran at least one recipe, none of their own SQL, and finished, as a share of the turns that queried at all. */
-  recipeOnlyShare: number;
-  /** Turns answered with no query, from the orientation. Not counted for or against the recipes. */
-  noQuery: number;
-  medianSteps: number;
-  guardRefusals: number;
-  adhoc: string[];
-}
-
-export function summarise(scored: Scored[]): Summary {
-  const steps = scored.map((item) => item.steps).sort((a, b) => a - b);
-  const middle = Math.floor(steps.length / 2);
-  // A turn that ran nothing says nothing about whether a recipe covered the question.
-  const queried = scored.filter((item) => item.recipes.length > 0 || item.adhoc || item.exhausted);
-  return {
-    questions: scored.length,
-    passed: scored.filter((item) => item.passed).length,
-    recipeOnlyShare: queried.length === 0 ? 0 : queried.filter((item) => item.recipes.length > 0 && !item.adhoc && !item.exhausted).length / queried.length,
-    noQuery: scored.length - queried.length,
-    medianSteps: steps.length === 0 ? 0 : steps.length % 2 === 1 ? steps[middle] : (steps[middle - 1] + steps[middle]) / 2,
-    guardRefusals: scored.reduce((sum, item) => sum + item.guardRefusals, 0),
-    adhoc: scored.filter((item) => item.adhoc).map((item) => item.id),
-  };
-}
+export { summarise, type Summary } from "./chat-score.summary";

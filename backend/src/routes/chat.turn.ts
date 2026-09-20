@@ -69,7 +69,7 @@ export async function answerTurn(
     {
       llm: deps.llm,
       pool: deps.pool,
-      tools: { pool: deps.pool, roPool: deps.roPool, ...scope },
+      tools: { pool: deps.pool, roPool: deps.roPool, llm: deps.llm, ...scope },
       onStep: async (calls) => {
         for (const call of calls) await chatLive.addToolTurn(deps.pool, id, asked.id, call);
       },
@@ -99,6 +99,7 @@ export async function answerTurn(
     checked: result.checked,
     next: result.next,
     clarify: result.clarify,
+    semantic: result.semantic,
     standingVersion: standing().version,
     grounded: result.grounded,
     // Nothing in phase 10 proposes one yet; the field exists so the shape the

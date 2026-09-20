@@ -20,6 +20,9 @@
     "eval:chat": "node --env-file-if-exists=.env --import tsx src/eval/chat-eval.cli.ts",
     "load-test": "node --env-file-if-exists=.env --import tsx scripts/load-test.ts",
     "derive": "node --env-file-if-exists=.env --import tsx scripts/derive.ts",
+    "ontology:backfill": "node --env-file-if-exists=.env --import tsx scripts/ontology-backfill.ts",
+    "ontology:bench": "node --env-file-if-exists=.env --import tsx scripts/ontology-bench.ts",
+    "ontology:export": "node --env-file-if-exists=.env --import tsx scripts/ontology-export.ts",
     "mcp": "node --env-file-if-exists=.env --import tsx src/mcp.ts"
   },
   "dependencies": {

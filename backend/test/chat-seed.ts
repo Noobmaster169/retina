@@ -1,8 +1,8 @@
 import type { PoolClient } from "pg";
 
-import { attachments, documents, emailRuns, entities, extractions } from "../src/ontology/repositories";
+import { attachments, documents, emailRuns, entityInputs, entityResolution, extractions } from "../src/ontology/repositories";
 import type { ExtractedFields } from "../src/pipeline/compare";
-import { resolveEntities } from "../src/pipeline/ontology";
+import { reconcile, resolveEntities } from "../src/pipeline/ontology";
 import { keys } from "../src/storage";
 import { seedEmail, seedRun } from "./db";
 
@@ -89,8 +89,10 @@ export async function seedInbox(tx: PoolClient, shipments = SHIPMENTS, replay: s
   }
 
   // The resolver as production runs it, over whatever this transaction can see.
-  const [mentions, verdicts] = await Promise.all([entities.loadMentions(tx), entities.loadVerdicts(tx)]);
-  await entities.replaceAll(tx, resolveEntities(mentions, verdicts));
+  const mentions = await entityInputs.loadMentions(tx);
+  const verdicts = await entityInputs.loadVerdicts(tx);
+  const existing = await entityInputs.loadExisting(tx);
+  await entityResolution.applyResolution(tx, reconcile(resolveEntities(mentions, verdicts), existing));
 
   const { rows } = await tx.query<{ id: string; canonical: string }>("select id::text as id, canonical from core.entities");
   const ids = new Map(rows.map((row) => [row.canonical, row.id]));

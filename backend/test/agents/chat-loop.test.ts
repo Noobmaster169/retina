@@ -279,7 +279,7 @@ describe("the harness around the loop", () => {
 
   it("keeps a skill the agent loaded, and gives a sticky one to the next turn without a step", async () => {
     const loaded = await turn([calls({ tool: "load_skill", args: { name: "time-questions" } }), final("There is no sent time.")]);
-    expect(loaded.result.skillsUsed).toContainEqual({ name: "time-questions", version: 1, how: "loaded" });
+    expect(loaded.result.skillsUsed).toContainEqual({ name: "time-questions", version: 2, how: "loaded" });
     expect(loaded.requests[1].user).toContain("## Skill: time-questions");
 
     const next = await turn([final("Still none.")], { input: { stickySkills: ["time-questions"] } });

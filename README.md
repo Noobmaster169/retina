@@ -135,9 +135,9 @@ All routes except `/health` need `Authorization: Bearer <key>`. The key is
 | `POST /chat/conversations`, `GET /chat/conversations?runId=` | open a conversation `{ title?, runId?, emailId?, actor }`, or list them. `runId` and `emailId` are its scope: a default the agent may widen, never a filter it cannot see past |
 | `POST /chat/:id/messages` | `{ content, actor }` → `{ turn, exhausted }`. One turn is up to eight model calls and can take minutes; there is no streaming. The turn carries the answer, the SQL that produced it, every tool call, and the graph of what it touched |
 | `GET /chat/:id`, `DELETE /chat/:id` | the thread with its turns, and delete |
-| `GET /ontology/types` | the five types the rail offers, with live counts: Emails, Ports, Parties, Shipments, Carriers. The last two are never built, because nothing in the seven fields yields a booking or a vessel |
+| `GET /ontology/types` | the types the rail offers, with live counts: Emails, Ports, Parties, Carriers, Vessels, Commodities, People and Shipments. Only Shipments is never built, because nothing yet groups one email's shipment rows into a booking across its instruction, its draft and its invoice query |
 | `GET /ontology/:type/:id` | one object in the one shape every type shares: stored values each saying who wrote it, and the links out of it |
-| `GET /ontology/port/:id/detail` | what is stored, step out from here, written these ways, and where it appeared |
+| `GET /ontology/port/:id/detail` | what is stored, what it is (its profile and attributes, each saying whether it was read in our mail or known already), step out from here, written these ways, and where it appeared |
 | `GET /ontology/email/:id/graph?runId=&hops=1\|2` | the email one or two hops out, as nodes and named edges. No coordinates: the layout is the frontend's |
 | `GET /database/tables`, `/tables/:schema/:name?limit=&offset=` | every relation of `core` and `analytics` with an exact count, and a page of one with typed columns and the SQL that produced it |
 | `GET /database/tables/:schema/:name/rows/:id` | one row as fields, then what points at it by foreign key |
@@ -168,6 +168,11 @@ curl -s 127.0.0.1:8091/ai/chat -H "authorization: Bearer $TEAM_API_KEY" \
 | Change how a document is parsed | an extractor in `services/doc-extract/extractors/`, then `docker compose -f compose.local.yaml up -d --build doc-extract` in `backend/` |
 | Debug the proxy | `curl -i 127.0.0.1:4000/v1/messages ...`. Look at the `X-LLM-Proxy-*` headers |
 | Rebuild the analytics views and the ontology | `pnpm derive` in `backend/`. The worker does it every five minutes when `core` has moved; this is for straight after a deploy and before a demo |
+| Read the mail's shipments into the ontology | `pnpm ontology:backfill [--limit N]` in `backend/`, with a worker running. It spends tokens: development runs stay at 20 to 30 and the full backfill is the user's to start |
+| Check the semantic layer at scale | `pnpm ontology:bench` in `backend/`: 200,000 things and 2,000,000 sightings inside a transaction that is rolled back, then `explain analyze` on the four lookups a question makes. No model is called and it is not part of `pnpm test` |
+| Read the profiles as files | `pnpm ontology:export` in `backend/`. One folder per kind; nothing reads it back, because the rows are the source of truth |
+| Measure the chat | `pnpm eval:chat [--set ontology] [--limit N]` in `backend/`. The `chat` set asks about the work, the `ontology` set about the things. Both spend tokens |
+| Ask a question whose words are in no column | `find_entities` does it: it defines the term, judges the things against the definition, keeps every verdict and hands back a subquery to join on. `ONTOLOGY_KNOWLEDGE=mail` turns off the half of a profile that comes from the model's own knowledge |
 | Change what the chat can read | `backend/src/agents/chat/schema-docs.md` for what it is told, and a `grant` migration for what it may actually read. A grant in an earlier migration does not reach a table a later one adds |
 | Add a chat tool | a file in `backend/src/agents/chat/tools/`, added to the registry in its `index.ts`. `src/mcp.ts` serves the same registry, so it appears over MCP with no second definition |
 | Use the tools from Claude Code | `.mcp.json` at the repo root already configures them. `pnpm mcp` in `backend/` runs the server by hand |

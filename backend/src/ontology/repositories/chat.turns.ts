@@ -8,6 +8,7 @@ import type {
   ClarifyingQuestion,
   GroundedThing,
   ProposedAction,
+  SemanticReading,
 } from "../../contracts";
 import type { Queryable } from "../../db";
 
@@ -44,6 +45,8 @@ interface AssistantExtras {
   checked: string[];
   next: ChatNextMove[];
   clarify: ClarifyingQuestion | null;
+  /** The terms this turn had to give a meaning to. Empty on a turn that needed none. */
+  semantic: SemanticReading[];
   /** CHAT.md's version on the turn that ran, beside the skills'. */
   standingVersion: number;
   /** What this turn grounded, which the turns after it remember by name. Read by chat.memory.ts. */
@@ -61,6 +64,7 @@ const NO_EXTRAS: AssistantExtras = {
   checked: [],
   next: [],
   clarify: null,
+  semantic: [],
   standingVersion: 0,
   grounded: [],
 };
@@ -88,6 +92,7 @@ export function toTurn(row: TurnRow): ChatTurn {
     checked: extras.checked,
     next: extras.next,
     clarify: extras.clarify,
+    semantic: extras.semantic,
     createdAt: row.created_at.toISOString(),
   };
 }
@@ -150,6 +155,8 @@ export interface NewAssistantTurn {
   checked: string[];
   next: ChatNextMove[];
   clarify: ClarifyingQuestion | null;
+  /** Every term the turn had to give a meaning to. Empty on a turn that needed none. */
+  semantic: SemanticReading[];
   standingVersion: number;
   grounded: GroundedThing[];
 }

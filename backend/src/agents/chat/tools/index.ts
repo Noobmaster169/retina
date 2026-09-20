@@ -3,6 +3,7 @@ import { childLogger } from "../../../lib/logger";
 import { argsSignature } from "./args-signature";
 import { describeSchema } from "./describe-schema";
 import { explainDecision } from "./explain-decision";
+import { findEntities } from "./find-entities";
 import { findEntity } from "./find-entity";
 import { getEmail } from "./get-email";
 import { getEntity } from "./get-entity";
@@ -33,6 +34,7 @@ export { relationsIn } from "./run-sql";
 export const TOOLS: Record<ChatToolName, ChatTool<any>> = {
   run_recipe: runRecipe,
   find_entity: findEntity,
+  find_entities: findEntities,
   list_entities: listEntities,
   get_entity: getEntity,
   search_emails: searchEmails,

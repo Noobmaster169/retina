@@ -7,6 +7,7 @@ import {
   type ChatToolName,
   ClarifyingQuestion,
   type GroundedThing,
+  type SemanticReading,
 } from "../../contracts";
 import type { TouchedCall } from "./graph";
 import { MAX_MOVES } from "./next-moves";
@@ -76,6 +77,8 @@ export interface FinishedCall extends TouchedCall {
   text: string;
   /** What the data returned, which is all the literal guard treats as shown. Empty on a refusal. */
   grounds: string;
+  /** The terms it gave a meaning to, which the turn carries to the page. */
+  semantic: SemanticReading[];
 }
 
 export function finish(call: Call, outcome: ToolOutcome, durationMs: number): FinishedCall {
@@ -100,12 +103,13 @@ export function finish(call: Call, outcome: ToolOutcome, durationMs: number): Fi
     things: outcome.things ?? [],
     text: outcome.text,
     grounds: outcome.ok ? (outcome.grounds ?? "") : "",
+    semantic: outcome.semantic ?? [],
   };
 }
 
 /** Drops what only the harness and the graph needed, so the wire carries the contract and nothing more. */
 export function forWire(call: FinishedCall): ChatToolCall {
-  const { touched: _t, entities: _e, guardRefused: _g, cameUpEmpty: _c, ambiguous: _a, skill: _s, things: _n, text: _x, grounds: _d, ...rest } = call;
+  const { touched: _t, entities: _e, guardRefused: _g, cameUpEmpty: _c, ambiguous: _a, skill: _s, things: _n, text: _x, grounds: _d, semantic: _m, ...rest } = call;
   return rest;
 }
 

@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { type EntityDetail, type EntityList, ObjectType } from "../contracts";
 import { emailGraph, isBuilt, listTypes, objectRecord } from "../ontology/objects";
-import { entityDetail, entities } from "../ontology/repositories";
+import { entityDetail, entityProfile, entityValues, entities } from "../ontology/repositories";
 
 /**
  * The model as a model: what types exist, what one object holds, what links
@@ -91,16 +91,17 @@ export function ontologyRouter(deps: OntologyRouteDeps): Router {
       res.status(404).json({ error: "no such thing" });
       return;
     }
-    const [values, links, names, appearances, appearanceCount] = await Promise.all([
-      entityDetail.values(pool, req.params.id),
+    const [values, links, names, appearances, appearanceCount, profile] = await Promise.all([
+      entityValues.values(pool, req.params.id),
       entityDetail.around(pool, req.params.id),
       entityDetail.names(pool, req.params.id),
       entityDetail.appearances(pool, req.params.id, APPEARANCES),
       entityDetail.appearanceCount(pool, req.params.id),
+      entityProfile.read(pool, req.params.id),
     ]);
     // Counted on the list's own grain. `row.mentions` counts mentions, which is
     // a bigger number, and "last 3 of 24" beside a list of 6 was that mismatch.
-    const body: EntityDetail = { row, values, links, names, appearances, appearanceCount };
+    const body: EntityDetail = { row, values, links, names, appearances, appearanceCount, profile };
     res.json(body);
   });
 

@@ -9,6 +9,7 @@ import {
   ClarifyingQuestion,
   ProposedAction,
 } from "./contracts.chat-agent";
+import { SemanticReading } from "./contracts.semantic";
 
 /**
  * A conversation, and the turns it carries.
@@ -39,6 +40,14 @@ export const ChatTurn = z.object({
   checked: z.array(z.string()).default([]),
   next: z.array(ChatNextMove).default([]),
   clarify: ClarifyingQuestion.nullable().default(null),
+  /**
+   * A term the turn had to give a meaning to, with how completely it did.
+   *
+   * On the turn and not only on the answer, which is where the 10f spec put
+   * it: the thread is read back after a reload and a total stated as a lower
+   * bound has to still read as one.
+   */
+  semantic: z.array(SemanticReading).default([]),
   createdAt: z.string(),
 });
 export type ChatTurn = z.infer<typeof ChatTurn>;

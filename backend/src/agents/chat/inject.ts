@@ -20,6 +20,16 @@ export interface TurnFacts {
   cameUpEmpty: boolean;
   /** A lookup on this turn returned candidates of more than one kind. */
   ambiguous: boolean;
+  /**
+   * A call on this turn gave a term a meaning.
+   *
+   * The harness cannot see that a question holds one before the agent looks:
+   * deciding that from the words would be a subject keyword table by another
+   * name. What it can see is that a term was given a meaning, and from the next
+   * step on the rules for reporting one are in front of the agent. Before that,
+   * the skill's card is, and `load_skill` is the way in.
+   */
+  gaveMeaning: boolean;
   /** Skills the agent loaded on this turn. Already in front of it once; repeated so they survive to the next step. */
   loaded: string[];
   /** Skills loaded or picked earlier in this conversation. */
@@ -49,6 +59,7 @@ export function skillsToInject(facts: TurnFacts, known: ReadonlySet<string>): In
   if (facts.guardRefused || facts.cameUpEmpty) wanted.push({ name: "ground-names", how: "injected" });
   if (facts.cameUpEmpty) wanted.push({ name: "near-misses", how: "injected" });
   if (facts.ambiguous) wanted.push({ name: "ask-back", how: "injected" });
+  if (facts.gaveMeaning) wanted.push({ name: "meaning-terms", how: "injected" });
   if (facts.scope.emailId) wanted.push({ name: "explain-an-email", how: "injected" });
   if (facts.scope.runId && !facts.scope.emailId) wanted.push({ name: "pick-the-run", how: "injected" });
   wanted.push(...facts.sticky.map((name) => ({ name, how: "loaded" as const })));

@@ -6,10 +6,12 @@ import { childLogger } from "../lib/logger";
 import { refreshIfStale } from "../ontology/derived";
 import { clients } from "../ontology/repositories";
 import { ageWaitingJobs } from "./aging";
+import { BACKFILL_EVERY_MS } from "./backfill-concepts";
 import { beat, HEARTBEAT_EVERY_MS } from "./heartbeat";
-import { QUEUES } from "./names";
+import { JOB_NAMES, maintenanceJobOptions, type MaintenanceAdder, QUEUES } from "./names";
 import type { PriorityCache } from "./priority-cache";
 import { getQueues } from "./queues";
+import { refreshProfiles } from "./refresh-profiles";
 
 const log = childLogger({ module: "schedulers" });
 
@@ -31,17 +33,24 @@ export const SCHEDULED = {
   ageWaitingJobs: "age-waiting-jobs",
   heartbeat: "heartbeat",
   refreshAnalytics: "refresh-analytics",
+  refreshProfiles: "refresh-profiles",
+  backfillConcepts: "backfill-concepts",
 } as const;
 
 const EVERY_HOUR_MS = 60 * 60 * 1000;
 const EVERY_MINUTE_MS = 60 * 1000;
 const EVERY_FIVE_MINUTES_MS = 5 * EVERY_MINUTE_MS;
+const EVERY_TEN_MINUTES_MS = 10 * EVERY_MINUTE_MS;
 
 const EVERY: Record<string, number> = {
   [SCHEDULED.refreshPriorityCache]: EVERY_HOUR_MS,
   [SCHEDULED.ageWaitingJobs]: EVERY_MINUTE_MS,
   [SCHEDULED.heartbeat]: HEARTBEAT_EVERY_MS,
   [SCHEDULED.refreshAnalytics]: EVERY_FIVE_MINUTES_MS,
+  // The profile job does model work, so it runs less often than the derived
+  // refresh and takes at most PROFILE_BATCH things per tick.
+  [SCHEDULED.refreshProfiles]: EVERY_TEN_MINUTES_MS,
+  [SCHEDULED.backfillConcepts]: BACKFILL_EVERY_MS,
 };
 
 export interface SchedulerDeps {
@@ -54,6 +63,11 @@ export interface SchedulerDeps {
    * against the same Redis, which is exactly what a dev box has.
    */
   queueName?: string;
+  /**
+   * Where the two maintenance passes are enqueued. Only a test passes it, for
+   * the same reason it passes `queueName`.
+   */
+  ontology?: MaintenanceAdder;
   /**
    * The queues the aging pass walks. Passed for the same reason as
    * `queueName`: without it a test's own scheduler ages the real `classify`
@@ -90,11 +104,27 @@ async function refreshDerived(deps: SchedulerDeps): Promise<void> {
   if (result.views) log.info({ things: result.entities }, "the derived data caught up with core");
 }
 
+/** A tick that cannot reach the queue is logged and dropped: the next one is ten minutes away. */
+async function enqueue(deps: SchedulerDeps, name: string): Promise<void> {
+  const queue = deps.ontology ?? getQueues().ontology;
+  try {
+    await queue.add(name, {}, maintenanceJobOptions(name));
+  } catch (error) {
+    log.warn({ task: name, err: message(error) }, "could not queue a maintenance pass");
+  }
+}
+
 async function runTask(deps: SchedulerDeps, name: string): Promise<void> {
   if (name === SCHEDULED.refreshPriorityCache) return refreshPriorityCache(deps);
   if (name === SCHEDULED.ageWaitingJobs) return ageEmailQueues(deps);
   if (name === SCHEDULED.heartbeat) return beat(deps.redis);
   if (name === SCHEDULED.refreshAnalytics) return refreshDerived(deps);
+  // These two do model work, which takes minutes. They are enqueued here and
+  // run on the ontology queue, because this worker is concurrency 1 and also
+  // writes the heartbeat: doing the work here would let the key expire and
+  // `/health` would report a working worker as dead.
+  if (name === SCHEDULED.refreshProfiles) return enqueue(deps, JOB_NAMES.profiles);
+  if (name === SCHEDULED.backfillConcepts) return enqueue(deps, JOB_NAMES.concepts);
   // A name from an older image whose scheduler this worker inherited. Logged
   // and dropped: failing it would retry a job no code here can ever do.
   log.warn({ task: name }, "no such scheduled task");

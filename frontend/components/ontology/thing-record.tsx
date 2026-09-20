@@ -2,6 +2,7 @@ import { AppearanceList } from "@/components/database/appearance-list";
 import { WhereItSits } from "@/components/database/where-it-sits";
 import { WrittenTheseWays } from "@/components/database/written-these-ways";
 import type { EntityDetail } from "@/lib/api/ontology-schemas";
+import type { EntityKind } from "@/lib/api/semantic-schemas";
 import { formatWhen } from "@/lib/when";
 
 /**
@@ -12,7 +13,7 @@ import { formatWhen } from "@/lib/when";
  * The line this page exists to make: nobody typed any of it in.
  */
 
-export function ThingRecord({ detail, type }: { detail: EntityDetail; type: "port" | "party" }) {
+export function ThingRecord({ detail, type }: { detail: EntityDetail; type: EntityKind }) {
   const { row } = detail;
   const tiles = [
     { label: "Read from", value: row.mentions, sub: "documents" },
@@ -77,6 +78,20 @@ function Known({ detail }: { detail: EntityDetail }) {
           </div>
         ))}
       </dl>
+      {detail.profile?.markdown ? (
+        <div className="border-t border-hairline-faint px-[22px] pt-4">
+          <h3 className="text-caption text-ink-tertiary">
+            What it is{detail.profile.stale ? ", written before the last mail about it" : null}
+          </h3>
+          {/* The rendered Markdown as text, headings and all. It is short, its
+              headings are the labels a reader needs (what our mail shows,
+              general knowledge unverified), and a renderer here would be a
+              second place those labels could be dropped. */}
+          <pre className="mt-2 font-sans text-small leading-[18px] whitespace-pre-wrap text-ink-secondary">
+            {detail.profile.markdown}
+          </pre>
+        </div>
+      ) : null}
       <div className="px-[22px] pt-4 pb-6">
         <WrittenTheseWays names={detail.names} />
       </div>

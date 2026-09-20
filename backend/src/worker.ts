@@ -22,16 +22,18 @@ const live = redisLiveCalls();
 const redis = getRedis();
 const pool = getPool();
 const priority = redisPriorityCache(redis);
+const llm = proxyLlmClient({ maxConcurrency: config.LLM_MAX_CONCURRENCY });
 const workers = startWorkers(
   {
     pool,
     source: new AverisSource(config.EMAIL_SERVER_URL),
     store,
-    llm: proxyLlmClient({ maxConcurrency: config.LLM_MAX_CONCURRENCY }),
+    llm,
     docExtract: httpDocExtractClient(config.DOC_EXTRACT_URL),
     live,
     classify: queues.classify,
     compare: queues.compare,
+    ontology: queues.ontology,
     priority,
   },
   redis,
@@ -41,7 +43,12 @@ const workers = startWorkers(
 // worker is alive when it is not.
 const schedulers = await startSchedulers({ pool, redis, priority, aging: [queues.classify, queues.compare] });
 log.info(
-  { classify: config.CLASSIFY_CONCURRENCY, compare: config.COMPARE_CONCURRENCY, llm: config.LLM_MAX_CONCURRENCY },
+  {
+    classify: config.CLASSIFY_CONCURRENCY,
+    compare: config.COMPARE_CONCURRENCY,
+    ontology: config.ONTOLOGY_CONCURRENCY,
+    llm: config.LLM_MAX_CONCURRENCY,
+  },
   "worker started",
 );
 

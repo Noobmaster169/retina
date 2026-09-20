@@ -1,19 +1,23 @@
 # Progress
 
-Current phase: **10e, merged to `main`.** 10a to 10e are all on it. Two lines of 10e's exit
-checklist are open and both need real tokens, so both are the user's: the full `pnpm eval:chat`,
-and a live follow-up by pronoun. Phase 7's two `[~]` items are still under "Deferred" below.
+Current phase: **10f, merged to `main`.** 10a to 10f are all on it. Phase 7's two `[~]` items are
+still under "Deferred" below.
 
-**Start at `docs/phases/phase-10f-handover.md`.** Sections 1 to 5 say what 10e built, what is
-left in it and the traps; **section 6 is the pickup doc for 10f**, including the two numbers in
-the 10f spec that are now taken and the one measurement that decides whether 10f is worth
-building. Then `docs/phases/phase-10e-interactive-chat.md` for the spec and its corrected exit
-checklist, and `docs/phases/phase-10f-semantic-layer.md`, which is still parked.
+**Start at `docs/phases/phase-10f-semantic-layer.md`**, whose header now carries the list of every
+place the repo and that spec disagreed and what the bench found. Then
+`docs/phases/phase-10f-handover.md` for what 10e left and the traps, which all still apply.
 
-The one number that decides whether 10e helped has not been taken: **`pnpm eval:chat` has never
-been run in full**, in 10d or in 10e. The set is now 45 questions, 15 of them tagged `interactive`,
-and a full run is roughly 150 sonnet calls. It is the user's to start, and there is no baseline to
-compare against until it is.
+**Two numbers are open and both are the user's, because both spend real tokens.**
+
+- **`pnpm eval:chat` has never been run in full**, in 10d, 10e or 10f. The set is 45 questions, 15
+  of them tagged `interactive`, and a full run is roughly 150 sonnet calls. There is no baseline,
+  so "10f has not made 10d's numbers worse" cannot be checked until there is one. Run 10d's 30
+  first if you want the comparison honestly: `pnpm eval:chat --limit 30`.
+- **`pnpm eval:chat --set ontology` has never been run**, so the semantic layer's own numbers
+  (recall and precision of the entity set, and how often the completeness flag told the truth) do
+  not exist yet. Twenty-one questions, roughly 80 calls. It wants a backfilled inbox first:
+  `pnpm ontology:backfill --limit 30` with a worker running, then two scheduler ticks for the
+  profiles.
 
 The shell contract and the traps in `docs/phases/phase-08-handover.md` sections 6 and 10 all still
 apply, as do phase 9's in `phase-09-handover.md` section 7.
@@ -22,6 +26,105 @@ Phase 6 is built and tested; left for the user there: the holdout run and the fu
 decide its exit checklist's score lines (`pnpm eval:score --run <id> --holdout`), and phase 5's
 open items (the box check of doc-extract, the classify `v5` holdout). Phase 4's open items (the
 few-shot `v4` holdout, the model comparison) are still the user's.
+
+## Phase 10f
+
+A term written nowhere in the database becomes a set of entity ids that SQL can join on, and the
+mail's own facts stop being invisible. Knowledge lives on things, never on emails; emails are only
+ever filtered by indexed SQL; the model judges a bounded number of profiles per question and every
+verdict is kept, so a question asked twice is a lookup.
+
+**Built.**
+
+- Migrations `017` to `022`. `017` widens the kinds to six and adds the profile columns; `018`
+  adds `entity_sightings`, `email_shipments`, `concepts`, `concept_verdicts` and the
+  `entity_appearances` view; `019` adds the backfill flag; `020` to `022` are the three indexes
+  `pnpm ontology:bench` asked for.
+- **Ids survive a refresh.** `pipeline/ontology/reconcile.ts` is pure and plans each cluster onto
+  the entity that already holds its spellings; `entities.resolution.ts` carries the plan out, with
+  a tombstone on the loser of a merge so a stored verdict can follow it. Every read of
+  `core.entities` filters `merged_into is null`, and `get_entity` follows the tombstone. This is
+  what made a profile and a concept verdict possible at all.
+- **Five LLM steps**, all sonnet, all prompts on disk: `shipment-read` (what the mail states
+  beyond the seven fields), `entity-resolve` (a spelling the field judge never saw),
+  `entity-profile` (what a thing is, from a dossier of fixed size), `concept-define` and
+  `concept-judge`. Every value `shipment-read` returns carries a quote, and one whose quote is not
+  in the text is dropped and logged.
+- **The `ontology` queue**, one job per email at priority 2000, enqueued by the compare worker once
+  the email reaches `done` or `review`. Two scheduled tasks beside it: `refresh-profiles` every ten
+  minutes and `backfill-concepts` every five.
+- **`find_entities`**, the chat tool for a term no column holds. It defines the term once, narrows
+  by `candidateSql` under the same guards model-written SQL gets, judges up to `JUDGE_BUDGET`
+  profiles, and hands back a subquery to join on. Over budget it says `complete: false` with the
+  count left, and the turn carries that reading to the page.
+- `find_entity`, `list_entities` and `get_entity` reach all six kinds; a candidate row carries the
+  first line of its profile. The ontology rail gains Carriers, Vessels, Commodities and People, and
+  only Shipments is still dashed.
+- `CHAT.md` v3, prompt `chat/v4`, the `meaning-terms` skill, `time-questions` v2 (it knows
+  `mail_date` now), and the schema notes with the four tables, the view and five worked examples.
+- `eval/ontology-questions.json`: twenty-one questions, one per class the layer serves, run with
+  `pnpm eval:chat --set ontology`. It reports recall and precision of the entity set against what
+  `find_entities` returned, never against the prose.
+- `pnpm ontology:backfill`, `pnpm ontology:bench`, `pnpm ontology:export`.
+
+**Numbers.** 941 backend tests, 70 frontend, none touching the proxy.
+
+**What the bench found, which is what it is for.** At 200,000 things and 2,000,000 sightings, one
+full `resolveAll` is 6.0 s to load and 2.6 s to resolve and plan, so the incremental form stays
+Deferred with that number as its reason. It also found three sequential scans: the exact-spelling
+lookup, the top-up leg of the candidate ranking, and the candidate search itself at 760 ms,
+because a similarity threshold of 0.3 matched a tenth of the table. Migrations `020` to `022` are
+the fixes, and the last one replaces the threshold with a nearest-neighbour search on a GiST
+index: a tool that shows eight candidates wants the nearest few, not everything over a line.
+
+**What a 25 email run through the layer showed.** `pnpm ontology:backfill --limit 25` with a
+worker: 25 shipments, 21 people, 4 vessels, 4 commodities and 1 carrier resolved out of subjects,
+bodies and headers, and **not one scored row moved** (the fingerprint of every
+`email_runs.outcome` and `comparisons.status` is identical before and after). The joins are the
+ones the phase exists for: `MOMBASA_KENYA` from a subject line joined to `MOMBASA, KENYA` at 0.97,
+`VITAL SOLUTIONS PTE LTD` from an SI request's prose joined to the stored
+`VITAL SOLUTIONS PTE. LTD.` at 0.95, and a person joined to their email address. Every stored
+value's quote was found in its text.
+
+**The disputed rule was proven on the generator's own injected mismatches.** `email_013`'s draft
+bill says `TUTICORIN, INDIA (KEMBA)`, which carries Mombasa's code on Tuticorin's name; the
+instruction says `MOMBASA, KENYA (KEMBA)`. The appearances view marks only the bill's side
+disputed, `disputed_fields` on the shipment names `port_of_discharge`, and `email_shipments.pod_id`
+points at Mombasa. Ten appearances across the 25 emails are marked disputed and 359 are not, so a
+question about where cargo actually went can filter them out.
+
+**A second job for one email replaces only that email's rows.** `email_007` was re-queued and
+read again: its three sightings and its shipment were rewritten, the other twenty-four shipments
+and the other hundred sightings were untouched. That is the rule a reviewer's correction depends
+on, and it is what makes the ontology queue's job id the email id.
+
+**`find_entities` has been put to a live model once**, `pnpm eval:chat --set ontology --ids
+c-gulf-consignees`, five steps and 73 seconds. It is the shape the phase was built for: the agent
+narrowed to actual consignees with a recipe first, then asked for the meaning, and the answer put
+the definition in front of the number. The model read "the Gulf" as the six GCC states and said in
+the definition that it was excluding Iraq and Iran and why, which is exactly the disagreement the
+definition exists to surface. Fifteen parties judged, three matched, **five `unknown`** and nothing
+deferred, and `unknown` reached the answer as its own count rather than as a no. The question's own
+expected set was wrong (EAST BRIGHT FZ-LLC is in the UAE and belongs in it) and is corrected; the
+five unknowns are things the profile job has not reached yet, which is the honest answer and not a
+miss. One real finding: the definition is shown to the reader word for word, so `concept-define`
+now asks for plain English with no em dash and no markdown.
+
+**It also found a bug that only a real run could have found.** `refresh-profiles` did its model
+work on the scheduler queue, which runs at concurrency 1 and also writes the heartbeat. A pass of
+fifty profiles at tens of seconds each held that queue for half an hour, the heartbeat's key
+expired at sixty seconds, and `/health` would have reported a working worker as dead, which
+auto-deploy reads. Before the fix: `shipment-read` averaged 210 s with two calls hitting the
+proxy's 600 s timeout. After it, with both passes moved onto the ontology queue and bounded by
+`MAINTENANCE_BUDGET_MS`: 48 s average, worst 91 s, **no failures**.
+
+**Two decisions the user made, and how they are kept.** `ONTOLOGY_KNOWLEDGE` defaults to
+`mail+model`, so a profile carries a `general` section from the model's own knowledge. It is
+stored under the heading "General knowledge, unverified" with a confidence, `get_entity` says
+which source each attribute came from, and `CHAT.md` v3 lets the agent repeat what one says
+**with that label** and never extend it. That is what reconciles it with v2's rule that general
+knowledge may relate and never report: a labelled claim about the world is not a claim about this
+mailbox. A person never gets a `general` section under either setting.
 
 ## Phase 10
 
@@ -1316,9 +1419,71 @@ the same branch. The behaviour changes are the first three.
   dev sample, decides a prompt switch; the runs page can pin them meanwhile.
 
 ## Deferred
-- Shipment and Carrier are in the design's entity vocabulary and are never `built`: nothing in the
-  organisers' seven fields yields a booking or a vessel. They are drawn dashed and the rail says
-  so. Building them needs a source, not a table.
+- Shipment is the one entity type in the design's vocabulary that is still never `built`.
+  `core.email_shipments` holds one row per email; nothing yet groups them into one booking across
+  its instruction, its draft and its invoice query. `oc_no` is indexed so a question can group on
+  it. Carrier, Vessel, Commodity and Person were in this entry until 10f gave them a source.
+- **Incremental resolution.** `pnpm ontology:bench` measures one full pass at 200,000 things and
+  2,000,000 sightings as 6.0 s to load and 2.6 s to resolve and plan. A pass every five minutes at
+  nine seconds is not the thing to fix, and the same pure functions over a subgraph is what the
+  incremental form would be. Revisit if the load time passes about a minute.
+- **Embeddings.** Still not on any path. The sign that ranking by search terms is missing is
+  `pnpm eval:chat --set ontology` recall falling on the over-budget questions, and that number
+  does not exist yet.
+- **`JUDGE_BUDGET` 400, `JUDGE_BATCH` 40, `CANDIDATE_CAP` 5000, `PROFILE_BATCH` 50 and the 24 hour
+  floor are starting values**, none of them measured. A judge batch's latency and accuracy at 20,
+  40 and 80 on the ontology question set is what settles the second.
+- **`entity-profile` writes no `llm_call_id` into `attributes_source`.** The shape carries the
+  field and the profile job passes null: the call id is not handed back by `callStructured`, and
+  threading it through for provenance nobody reads yet was not worth the seam. The `source` and
+  the `confidence` are there.
+- **A profile's `general` section is never re-verified.** It is written once with a confidence and
+  rewritten only when the thing goes stale for another reason. Nothing checks it against the mail
+  later, and nothing should without a way to check it against something.
+- **`ambiguous` on a sighting is stored and nothing reads it.** `entity-resolve` sets it when the
+  candidates spanned more than one thing; the page does not draw it yet and no tool reports it.
+- **Eleven recipes still count emails through `core.entity_mentions`.** The appearances view is
+  the right source now, because a thing read only in a subject or a body has no mention and the
+  recipes report it as appearing in zero emails. Only `entities_named_like` was corrected in 10f,
+  and only for the tombstone filter: changing what the other ten count would move numbers the chat
+  has been giving, and there is no `eval:chat` baseline to move them against. Do it with the
+  baseline in hand, in one commit, with the version of every recipe bumped.
+- **`entity-resolve` judges sightings and never a document spelling.** The 25 email run left
+  `BUATAN, INDONESIA` and `BUATAN, INDONESIA (IDBUA)` as two ports, two mentions each and no
+  sighting: both were read out of documents, the field judge never saw them on one pair, and
+  nothing else joins a mention. That is 10b's design and 10f's spec scopes the new judge to what
+  `shipment-read` returns, so it is a limitation and not a regression. The fix, if the eval set
+  says it costs recall, is to offer `entity-resolve` the spellings a mention holds that no verdict
+  has ever touched, which is a bounded set and one call each.
+- **`refresh-profiles` reaches the oldest things first and nothing weights a kind.** Among things
+  never profiled the order is the index's, which is roughly insertion order, so the four kinds 10f
+  added sit behind every port and party until those are done. Everything is profiled eventually
+  and the 24 hour floor stops it churning, but the first day after a backfill a question about a
+  person is answered from a name alone.
+- **`planSighting`'s same-case branch is a lowercasing rule, and the spec blessed it.** Work item
+  4 says an exact or same-case hit "is a cache of a judgement already made, not a rule", which is
+  true of the exact branch and only half true of the other: a judge accepted `MOMBASA, KENYA`, not
+  `mombasa, kenya`, and `resolve.ts` bans lowercasing in the same words this leans on. It was
+  built as the spec wrote it. Dropping it is cheap and worth measuring: the first sighting of each
+  case-variant would cost one `entity-resolve` call, after which that exact spelling is stored and
+  every later sighting takes the exact branch. `pnpm eval:chat --set ontology` is what should say
+  whether the calls buy anything.
+- **`entity-resolve`'s confidence is stored and nothing thresholds it.** The 25 email run joined
+  `Deswita` to `Deswita Elvyani` at 0.55 and `NHAVA SHEVA` to `NHAVA SHEVA, INDIA (INNSA)` at 0.50.
+  The first is the case the prompt warns against: two sightings of a person are one person only
+  where something ties them, and a first name alone does not. A floor is the obvious fix and it
+  would be another unmeasured number, which is the regret already recorded against
+  `DOC_TYPE_TRUST_FROM`. `pnpm eval:chat --set ontology` is what should decide it.
+- **`shipment-read` keeps a label it was given.** On the 25 email run one `oc_no` came back as
+  `OC 5ALT-01226` rather than `5ALT-01226`, and one `bl_no` as `058`. The prompt says to read a
+  value as written, which is right, and says nothing about a label in front of it. A `v2` is the
+  fix and the question set is what says whether it helped.
+- **`container_count` is null on every row of that run.** The extractor stores `1 x 40'HC`, which
+  is not a number, so the settled value falls through; the reader's own number was not set either.
+  Worth one trace read before touching the prompt.
+- **The `ontology` queue has no review case and no stage.** A failed reading is a warning in the
+  log and nothing else, deliberately: it must never fail or slow a scored email. If a run's
+  readings start failing quietly, that is the first thing to give a surface.
 - The database page is hidden, not removed (`Destination.hidden` in `components/shell/nav.ts`).
   `/runs/:id/database` still serves `As rows` and `As things`. If a demo wants the raw tables
   back in the rail, deleting that one field is what does it.

@@ -1,5 +1,6 @@
 import type { ObjectType, ObjectTypeSummary } from "../../contracts";
 import type { Queryable } from "../../db";
+import { DESCRIPTORS } from "./descriptors";
 
 /**
  * Every type the ontology knows, what it reads, and whether it exists yet.
@@ -37,113 +38,7 @@ export interface TypeDescriptor {
  * In the order the rail draws them: what the pipeline writes first, then what
  * the model resolved out of documents, then what is designed and not built.
  */
-export const DESCRIPTORS: TypeDescriptor[] = [
-  {
-    type: "run",
-    label: "Run",
-    plural: "Runs",
-    table: "core.runs",
-    blurb: "One replay of the inbox. Everything else is read through one of these.",
-    navigable: false,
-  },
-  {
-    type: "email",
-    label: "Email",
-    plural: "Emails",
-    table: "core.emails",
-    blurb: "One message as it arrived, with whatever was attached to it.",
-    navigable: true,
-  },
-  {
-    type: "attachment",
-    label: "Attachment",
-    plural: "Attachments",
-    table: "core.attachments",
-    blurb: "One file that arrived with an email, copied into object storage exactly as it came.",
-    navigable: false,
-  },
-  {
-    type: "document",
-    label: "Document",
-    plural: "Documents",
-    table: "core.documents",
-    blurb: "One attachment as the parser recovered it, and what the model says it is.",
-    navigable: false,
-  },
-  {
-    type: "comparison",
-    label: "Comparison",
-    plural: "Comparisons",
-    table: "core.comparisons",
-    blurb:
-      "One check of one instruction against one draft bill of lading. It holds seven judgements and nothing else. It never records which document is right.",
-    navigable: false,
-  },
-  {
-    type: "difference",
-    label: "Difference",
-    plural: "Differences",
-    table: "core.field_diffs",
-    blurb: "One field where the two documents did not say the same thing.",
-    navigable: false,
-  },
-  {
-    type: "field",
-    label: "Field",
-    plural: "Fields",
-    table: "core.extraction_fields",
-    blurb: "One of the seven values, read from one document, with the line it was quoted from.",
-    navigable: false,
-  },
-  {
-    type: "client",
-    label: "Client",
-    plural: "Clients",
-    table: "core.clients",
-    blurb: "A sender domain, and the tier that decides whose work is served first.",
-    // Folded into Party: a sender domain and a consignee are the same company
-    // read two ways, and two entries for it was the confusing part. `/clients`
-    // is still where a tier is set.
-    navigable: false,
-  },
-  {
-    type: "port",
-    label: "Port",
-    plural: "Ports",
-    table: "core.entities",
-    blurb:
-      "A place, read out of the loading and discharge fields of documents. Nobody typed it in: it exists because the field judge accepted several spellings as one place.",
-    navigable: true,
-  },
-  {
-    type: "party",
-    label: "Party",
-    plural: "Parties",
-    table: "core.entities",
-    blurb:
-      "A company, read out of the shipper, consignee and notify party fields, senders included. Resolved the same way a port is, and by the same judge.",
-    navigable: true,
-  },
-  {
-    type: "shipment",
-    label: "Shipment",
-    plural: "Shipments",
-    table: null,
-    blurb:
-      "A booking. Designed and not built: nothing in the organisers' seven fields yields one, so there is no honest way to fill it yet.",
-    navigable: true,
-  },
-  {
-    type: "carrier",
-    label: "Carrier",
-    plural: "Carriers",
-    table: null,
-    blurb: "A line. Designed and not built, for the same reason a shipment is not.",
-    navigable: true,
-  },
-];
-
-const BY_TYPE = new Map(DESCRIPTORS.map((descriptor) => [descriptor.type, descriptor]));
+export const BY_TYPE = new Map(DESCRIPTORS.map((descriptor) => [descriptor.type, descriptor]));
 
 export function descriptorFor(type: ObjectType): TypeDescriptor {
   return BY_TYPE.get(type) as TypeDescriptor;
@@ -154,29 +49,29 @@ export function isBuilt(type: ObjectType): boolean {
   return descriptorFor(type).table !== null;
 }
 
-/** The five the ontology rail offers. See `TypeDescriptor.navigable`. */
+/** The types the ontology rail offers. See `TypeDescriptor.navigable`. */
 export const NAVIGABLE = DESCRIPTORS.filter((descriptor) => descriptor.navigable);
 
 /**
  * The navigable types with their live counts.
  *
- * One query per relation rather than a union, because `port` and `party` share
- * a table and need a filter that the others do not, and a union that carried
- * that filter would be harder to read than five counts.
+ * Two queries: the emails, and one grouped count over the resolved things. A
+ * kind with no rows reads 0 and stays in the rail, because an empty index is
+ * an answer and a missing one is a question.
  */
 export async function listTypes(db: Queryable): Promise<ObjectTypeSummary[]> {
-  const { rows } = await db.query<Record<string, string>>(
-    `select (select count(*) from core.emails)::text as email,
-            (select count(*) from core.entities where kind = 'port')::text as port,
-            (select count(*) from core.entities where kind = 'party')::text as party`,
+  const emails = await db.query<{ n: string }>("select count(*)::text as n from core.emails");
+  const things = await db.query<{ kind: string; n: string }>(
+    "select kind, count(*)::text as n from core.entities where merged_into is null group by kind",
   );
-  const counts = rows[0];
+  const counts: Record<string, number> = { email: Number(emails.rows[0].n) };
+  for (const row of things.rows) counts[row.kind] = Number(row.n);
 
   return NAVIGABLE.map((descriptor) => ({
     type: descriptor.type,
     label: descriptor.plural,
     table: descriptor.table,
-    count: Number(counts[descriptor.type] ?? 0),
+    count: counts[descriptor.type] ?? 0,
     built: descriptor.table !== null,
   }));
 }

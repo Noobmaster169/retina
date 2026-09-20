@@ -54,3 +54,15 @@ export async function listForComparison(db: Queryable, comparisonId: string): Pr
   const order = new Map(ComparisonField.options.map((field, index) => [field, index]));
   return rows.map(toView).sort((a, b) => (order.get(a.field) ?? 0) - (order.get(b.field) ?? 0));
 }
+
+/** Which of the seven fields the judge called different, for one email run. Empty where nothing was compared. */
+export async function differedForEmailRun(db: Queryable, emailRunId: string): Promise<ComparisonField[]> {
+  const { rows } = await db.query<{ field: ComparisonField }>(
+    `select fd.field
+       from core.field_diffs fd
+       join core.comparisons c on c.id = fd.comparison_id
+      where c.email_run_id = $1::bigint and not fd.same and not fd.missing`,
+    [emailRunId],
+  );
+  return rows.map((row) => row.field);
+}

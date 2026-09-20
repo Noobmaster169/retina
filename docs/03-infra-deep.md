@@ -103,8 +103,12 @@ Backend (`deploy/.env`, mirrored in `backend/.env.example`):
 | `EMAIL_SERVER_URL` | `http://inbox:8000` (already set in `deploy/compose.yaml`) | api, worker |
 | `LLM_PROXY_URL` | `http://llm-proxy:4000` in compose; `http://127.0.0.1:4001` from the host with `compose.local.yaml`. A remote `/ai/chat` is refused at boot | api, worker |
 | `CLAUDE_CODE_OAUTH_TOKEN` | from `claude setup-token`; read by compose into the llm-proxy container only | llm-proxy |
-| `LLM_MODEL_CLASSIFY`, `LLM_MODEL_VERIFY`, `LLM_MODEL_TRIAGE`, `LLM_MODEL_DOC_TYPE` | unset: every step runs the model its prompt file names, sonnet. An override must be a proxy alias from `proxy/proxy.yaml` | worker, api |
+| `LLM_MODEL_CLASSIFY`, `LLM_MODEL_VERIFY`, `LLM_MODEL_TRIAGE`, `LLM_MODEL_DOC_TYPE`, and one per phase 10f step (`LLM_MODEL_SHIPMENT_READ`, `LLM_MODEL_ENTITY_RESOLVE`, `LLM_MODEL_ENTITY_PROFILE`, `LLM_MODEL_CONCEPT_DEFINE`, `LLM_MODEL_CONCEPT_JUDGE`) | unset: every step runs the model its prompt file names, sonnet. An override must be a proxy alias from `proxy/proxy.yaml` | worker, api |
 | `LLM_MAX_CONCURRENCY` | follows `CLASSIFY_CONCURRENCY` when unset, so one number sets how parallel every run is. Model calls in flight per worker process | worker (in-process semaphore) |
+| `ONTOLOGY_KNOWLEDGE` | `mail+model` (the default) or `mail`. Whether an entity profile carries a `general` section from the model's own knowledge, labelled unverified. A person never gets one under either setting | worker |
+| `JUDGE_BUDGET`, `JUDGE_BATCH`, `CANDIDATE_CAP`, `PROFILE_BATCH`, `PROFILE_FLOOR_HOURS` | `400`, `40`, `5000`, `50`, `24`. Starting values; `pnpm eval:chat --set ontology` is what says whether moving one helped | api (find_entities), worker |
+| `SHIPMENT_TEXT_CHARS` | `14000`. How much of an email and its documents the shipment reader sees. A cost guard, not a judgement | worker |
+| `ONTOLOGY_CONCURRENCY` | `2`. Left out of `LLM_MAX_CONCURRENCY`'s sum on purpose: its jobs take the same model slots and so wait behind scored work | worker |
 | `CLASSIFY_CONCURRENCY`, `COMPARE_CONCURRENCY` | `2`, `4`. Classify is 2 because the `claudecli` provider serves two calls at a time; more workers only queue inside the proxy with their request timeout already running | worker |
 | `API_SHARED_SECRET`, `TEAM_API_KEY` | hex | api |
 | `SITE_PASSWORD` | string | frontend gate in `proxy.ts` (Vercel env) |
@@ -121,6 +125,7 @@ the password signs everyone out.
 | Key | Type | Purpose |
 |---|---|---|
 | `bull:classify:*`, `bull:compare:*`, `bull:scheduler:*` | BullMQ | the two email queues and the clock |
+| `bull:ontology:*` | BullMQ | phase 10f's semantic reading, one job per email, below every scored job |
 | `client:priority` | hash `domain -> tier(1..5)` | enqueue-time priority lookup, refreshed hourly and written through on every `PUT /clients/:domain` |
 | `live:call:*` | string, 900 s TTL | one model call in flight, for the run page's preview |
 | `worker:heartbeat` | string, 60 s TTL | worker liveness for `/health` |
@@ -135,6 +140,7 @@ so nothing expires it either.
 |---|---|---|---|---|
 | `classify` | `classify-email` | `{ runId, emailId }` | replay controller, review "reclassify" | classify.worker |
 | `compare` | `compare-email` | `{ runId, emailId }` today; phase 8 adds `rerunFrom?: "triage" \| "extract" \| "compare"` when something reads it | classify.worker, review actions | compare.worker |
+| `ontology` | `read-shipment` | `{ emailId, emailRunId }` | the compare worker, once the email reaches `done` or `review` | ontology.worker, `ONTOLOGY_CONCURRENCY` |
 | `scheduler` | the task's own name | none; the name is the job | `queues/schedulers.ts` at worker boot | the scheduler worker, concurrency 1 |
 
 Job options, both queues:
@@ -149,6 +155,13 @@ Job options, both queues:
   priority,                              // see 4.3
 }
 ```
+
+The `ontology` queue's options differ in two ways, and both follow from its job id being the
+email id rather than `runId__emailId`: `priority` is a flat 2000, below the 1000 an email job can
+ever reach, and `removeOnComplete` is `true` rather than an age. A finished job kept for a day
+would hold that id, and the re-reading a reviewer's correction asks for would be silently
+refused. A failure is kept an hour, which is long enough to read and short enough not to block the
+correction that fixes it.
 
 Worker options: `concurrency` from env, `lockDuration: 120000` (LLM calls can be slow),
 `stalledInterval: 30000`, `maxStalledCount: 10`. A job that stalls (worker died) is retried
@@ -786,15 +799,76 @@ lowercasing, no punctuation stripping, no edit distance, no lookup table: all fo
 to one seed of one dataset. Two spellings no judge ever compared stay two things, and
 `entity_names.joined_by` says how each one joined, so that reads as a fact about the data.
 
-`kind` is `port` (from `port_of_loading`, `port_of_discharge`) or `party` (from `shipper`,
-`consignee`, `notify_party`). Shipment and Carrier are in the design's vocabulary and have no
-source field, so they are never `built` and the rail draws them dashed.
+`kind` was `port` (from `port_of_loading`, `port_of_discharge`) or `party` (from `shipper`,
+`consignee`, `notify_party`). Phase 10f widened it to six: `carrier`, `person`, `commodity` and
+`vessel` are read out of the mail by `shipment-read`, not out of the seven fields. Only `shipment`
+is still never `built` and drawn dashed: `core.email_shipments` holds one row per email and
+nothing yet groups them into one booking across its instruction, its draft and its invoice query.
+
+**Ids survive a refresh since phase 10f.** `pipeline/ontology/reconcile.ts` plans each resolved
+cluster onto the entity that already holds its spellings, and `entities.resolution.ts` carries
+that plan out: kept rows are updated, new ones inserted, and two things a new verdict joined are
+merged with a tombstone (`merged_into`) on the loser so a stored verdict or a remembered
+grounding can follow it. **Every read of `core.entities` filters `merged_into is null`**;
+`get_entity` follows the tombstone instead. This replaced `entities.replaceAll`, which deleted
+everything and reinserted; a profile, a concept verdict and a shipment column all hang on an id
+now, and all three would have pointed at something else by the next refresh.
 
 An **appearance** is an email, not a mention. A port read from both documents of one email is one
 appearance read twice, and the same email replayed in three runs is still one appearance:
 `entities.detail.ts:appearances` keeps the newest run's row per (email, field) and reports the
 sides it was read from as a field. Listing mentions put one subject on screen four times and told
 a reader nothing the sides and the count do not.
+
+### 8.3a The semantic layer (phase 10f)
+
+Migrations `017` to `021`. Nothing here runs before an email's verdict is written, so nothing here
+can move the score.
+
+| Table | What it holds |
+|---|---|
+| `core.entities` (+ columns) | `attributes` and `attributes_source` jsonb, `profile_md`, `profile_version`, `stale`, `merged_into`, `sighting_count`, and a `search` tsvector generated from `search_text` |
+| `core.entity_sightings` | one row per thing per place it was read outside the seven fields: `role`, `source` (subject, body, header, document), `surface`, `address`, `source_quote`, `ambiguous`. Per email, not per run |
+| `core.entity_appearances` (view) | `entity_mentions` and `entity_sightings` under one name, with `disputed` true for the draft bill's side of a field the judge called different |
+| `core.email_shipments` | one row per email: the references, the goods, the terms, `mail_date` with its quote, `disputed_fields`, and the eight entity ids |
+| `core.concepts` | a term written nowhere in the database, with the definition the model wrote, its search terms, `asked_count` and `backfill_wanted` |
+| `core.concept_verdicts` | one verdict per (concept, thing), against the `profile_version` it read. `matched` is a stored column equal to `verdict = 'yes'`, so the subquery a chat turn joins on carries no string literal |
+
+Five LLM steps, all `sonnet`, all under `agents/prompts/<step>/v1.md`:
+
+- **`shipment-read`**, one call per email, reads what the mail states beyond the seven fields.
+  Every value carries a `source_quote` and the `source` it came from, and
+  `pipeline/ontology/shipment.ts` drops any whose quote is not in that text. A number and a date
+  are read rather than copied (tonnes to kilograms, `28-Jan-26` to an ISO date), so only their
+  line has to be found.
+- **`entity-resolve`**, one call per spelling nothing already holds. `planSighting` is pure: a
+  spelling one live thing already holds is a judgement some model already made and costs no call;
+  two things or none both go to the model. A name it adds is written with
+  `entity_names.joined_step = 'entity-resolve'` and read back as a verdict on the next resolution
+  pass, so the two judges cannot disagree about which cluster a spelling is in.
+- **`entity-profile`**, one call per stale thing, from a dossier of fixed size
+  (`pipeline/ontology/dossier.ts`). Its output keeps `observed` (only what the dossier showed)
+  apart from `general` (the model's own knowledge, unverified, with a confidence), and names the
+  basis of every attribute it filled. `ONTOLOGY_KNOWLEDGE=mail` leaves `general` null; a person
+  never gets one under either setting.
+- **`concept-define`**, once per phrase, reusing a meaning already written for it. The definition
+  is shown to the reader, so a disagreement about what "Asia" covers surfaces in the answer
+  instead of in the numbers.
+- **`concept-judge`**, `JUDGE_BATCH` things per call, with the schema built from exactly the ids
+  sent. `unknown` is "no basis either way" and is reported apart from `no`.
+
+The `ontology` queue carries one job per email at priority 2000, below every scored job. It is
+enqueued by the compare worker once the email reaches `done` or `review`, and its job id is the
+email id with `removeOnComplete: true`, so a reviewer's correction can send the same email
+through again. Two scheduled tasks run beside it: `refresh-profiles` every ten minutes
+(`PROFILE_BATCH` stale things, never-profiled first, skipping anything written within
+`PROFILE_FLOOR_HOURS`) and `backfill-concepts` every five (one concept marked `backfill_wanted`,
+one budget of it).
+
+**The cost model is `plan-judging.ts`.** A verdict is stored against the profile version it read,
+so a question asked twice is a lookup and a rewritten profile re-judges exactly the things it
+describes. Above `JUDGE_BUDGET` the answer says `complete: false` with the number left, and a
+total over it is a lower bound.
 
 ### 8.4 Roles
 
@@ -818,7 +892,8 @@ excluded column by column so prompts and model text cannot leak through free-for
 **A grant does not reach a table added later.** `011` ran before `013` created the entity tables,
 so the agent was told about three tables it could not read. `014` grants them and sets default
 privileges, and `analytics.test.ts` holds it. A new table the agent reads needs a grant in the same
-commit as the table.
+commit as the table: `018` grants its four tables and the view by name rather than trusting the
+default privileges to cover a view.
 
 A role belongs to the cluster, not a database, so `retina_test` and development share one password:
 `vitest.config.ts` and `.env.example` both say `localdev`.
@@ -970,6 +1045,25 @@ connect the person's term to values a tool just listed: which of these ports are
 of these companies are one group. It may not state a fact about this mailbox from memory, and a move
 its own knowledge chose carries `basis: "general_knowledge"`, which the chip marks.
 
+`CHAT.md` v3 adds the one exception, and only because it is already labelled where it is stored: a
+profile's **general knowledge, unverified** section, and an attribute `get_entity` says came from
+`model`, may be repeated with that label as a claim about the world. It is still never a claim
+about this mailbox, and the agent may not extend it.
+
+### 11.1c A term no column holds (phase 10f)
+
+`ChatTurn.semantic` carries one `SemanticReading` per term the turn had to give a meaning to:
+the concept's id, the phrase, the definition, and the counts (`matched`, `judged`, `reused`,
+`unknown`, `deferred`, `complete`). It is on the turn and not only on the answer, so a total
+stated as a lower bound still reads as one after a reload. The reading line above the answer
+draws each one with its definition in full: a reader who disagrees with "Asia" can then disagree
+with the words rather than with a number.
+
+The harness injects the `meaning-terms` skill once a call has reported a reading. That is the only
+fact it can see without reading the question's own words, which would be a subject keyword table
+by another name; before that, the skill's card is in front of the agent and `load_skill` is the
+way in.
+
 ### 11.1b Live steps, stop, and what a conversation remembers (phase 10e)
 
 **Steps are rows as they happen.** The loop takes an `onStep` callback and the route writes one
@@ -1001,9 +1095,10 @@ prompt and into the bad-arguments message. A tool that throws comes back as a re
 | Tool | Input | Guardrails |
 |---|---|---|
 | `run_recipe` | `{ name, params? }` | a recipe by name; `run_id` defaults to the conversation's run, else the latest; parameters may also sit beside `name`; text parameters go through the literal guard |
-| `find_entity` | `{ text, kind? }` | candidates over every spelling: exact, same ignoring case, then `pg_trgm` similarity over 0.3. It proposes and picks none: `resolve.ts` still joins spellings on the field judge's verdict only. Also reports sender domains and subjects where the name appears |
+| `find_entity` | `{ text, kind? }` | candidates over every spelling of any of the six kinds: exact, same ignoring case, then `pg_trgm` similarity over 0.3, each leg reaching an index. It proposes and picks none: a spelling still joins a thing only on a model's verdict. A row carries the first line of the thing's profile, so two similar names can be told apart by what they are. Also reports sender domains and subjects where the name appears |
+| `find_entities` | `{ kind, description, candidateSql?, needComplete? }` | a term no column holds. Defines or reuses the concept, narrows by `candidateSql` (one column of ids, through `guardSql` and the literal guard), ranks, judges up to `JUDGE_BUDGET`, and returns the definition, the matches, the counts and a `joinSql` subquery to join on. Says `complete: false` with the deferred count rather than looking finished |
 | `list_entities` | `{ kind, contains?, limit? }` | the things of a kind, or those with a spelling containing a word, which is how a country's ports are found |
-| `get_entity` | `{ id }` | every spelling and how it joined, mentions by field, distinct emails and runs |
+| `get_entity` | `{ id }` | what it is, its attributes with where each came from, its profile, every spelling and how it joined, and its appearances by role. Follows a tombstone and says it did |
 | `search_emails` | `{ text, runId?, limit? }` | `websearch_to_tsquery('simple', ...)` over `core.emails.search`, subject `ilike` as fallback, with a snippet |
 | `profile_column` | `{ relation, column, near? }` | counts and the thirty most frequent values, or with `near` the thirty closest to a text, ranked by `public.similarity` (written in full: pg_trgm lives in `public`, off `retina_ro`'s search path). The column must exist in `pg_catalog` and be readable by the connection, and both names pass `safeIdentifier` before they are quoted |
 | `load_skill` | `{ name }` | a skill's body and its recipes' signatures; it then stays with the conversation |
@@ -1038,6 +1133,17 @@ repository root configures it.
   prompt comparison.
 - The lesson gate calls `eval:score --holdout` before and after applying a candidate; a drop
   in `final_score` or in any single component blocks it.
+- `pnpm eval:chat [--set ontology] [--limit N] [--tag T] [--ids a,b]`: runs a question set through
+  the real chat loop. `chat` is 10d's set, about the work; `ontology` is 10f's, one question per
+  class the semantic layer serves. Both are scored by `eval/chat-score.ts`, which is pure and
+  measures behaviour a person could verify from the page, never prose against a reference
+  sentence. The ontology set adds two numbers: recall and precision of the entity set against what
+  `find_entities` returned (not against the answer's words), and how often a turn's completeness
+  flag agreed with its own deferred count. Recall gates a question; precision is reported.
+- `pnpm ontology:backfill [--limit N]`, `pnpm ontology:bench`, `pnpm ontology:export`: enqueue a
+  reading for finished emails that have none, measure the layer at 200,000 things inside a
+  rolled-back transaction, and write the profiles out as Markdown for a person to read. Nothing
+  reads that folder back.
 
 On the VPS, `ground_truth.json` reaches only the `inbox` container, which mounts it read-only
 from the clone. `api` and `worker` never see it, and `EVAL_GROUND_TRUTH_PATH` is unset there.

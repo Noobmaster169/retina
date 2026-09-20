@@ -7,6 +7,7 @@ import {
   ObjectTypeList,
   type ObjectTypeSummary,
 } from "./ontology-schemas";
+import type { EntityKind } from "./semantic-schemas";
 import { get } from "./transport";
 
 export type {
@@ -25,6 +26,7 @@ export type {
   StoredValue,
   WrittenBy,
 } from "./ontology-schemas";
+export type { AttributeSource, EntityKind, SemanticReading, StoredProfile } from "./semantic-schemas";
 
 /** The rail on both the database page and the ontology page, with live counts. */
 export async function listObjectTypes(): Promise<ObjectTypeSummary[]> {
@@ -35,7 +37,7 @@ export async function listObjectTypes(): Promise<ObjectTypeSummary[]> {
  * The resolved things of one kind. Only `port` and `party` have an index of
  * their own; everything else is a table and is read through the database page.
  */
-export async function listEntities(type: "port" | "party"): Promise<EntityList> {
+export async function listEntities(type: EntityKind): Promise<EntityList> {
   return get(EntityList, `/ontology/${type}`);
 }
 
@@ -50,7 +52,7 @@ export async function getObjectRecord(
 }
 
 /** The four parts a resolved thing opens into. */
-export async function getEntityDetail(type: "port" | "party", id: string): Promise<EntityDetail | null> {
+export async function getEntityDetail(type: EntityKind, id: string): Promise<EntityDetail | null> {
   return orNull(get(EntityDetail, `/ontology/${type}/${encodeURIComponent(id)}/detail`));
 }
 

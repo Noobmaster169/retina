@@ -17,6 +17,16 @@ import type { EntityKind } from "../../pipeline/ontology";
 /** Below this a spelling is not worth showing. It bounds the list; it decides nothing. */
 const SIMILAR_FROM = 0.3;
 
+/**
+ * How many nearest spellings each distance brings back before the score is
+ * applied.
+ *
+ * Generous against the eight a tool shows, because two spellings of one thing
+ * both land here and the list is then reduced to one row per thing. Small
+ * enough that the index scan stops early at any table size.
+ */
+const NEAREST = 50;
+
 export type MatchKind = "exact" | "same ignoring case" | "similar";
 
 export interface EntityCandidate {
@@ -30,6 +40,8 @@ export interface EntityCandidate {
   mentions: number;
   /** Distinct emails, not email runs: an email replayed in five runs is one email. */
   emails: number;
+  /** The first line of its profile, so two similar names can be told apart by what they are. Empty before it is profiled. */
+  summary: string;
 }
 
 interface CandidateRow {
@@ -41,6 +53,7 @@ interface CandidateRow {
   score: string;
   mention_count: number;
   emails: string;
+  summary: string | null;
 }
 
 const HOW: MatchKind[] = ["exact", "same ignoring case", "similar"];
@@ -52,16 +65,37 @@ export async function findCandidates(
   limit = 8,
 ): Promise<EntityCandidate[]> {
   const { rows } = await db.query<CandidateRow>(
-    `with scored as (
-       select n.entity_id,
-              n.value,
-              case when n.value = $1::text then 0
-                   when lower(n.value) = lower($1::text) then 1
+    `with reachable as (
+       -- Four ways in, each served by an index of its own: the exact spelling,
+       -- the same spelling in another case, and pg_trgm's two distances as a
+       -- nearest-neighbour search. Without them this read every name in the
+       -- table, which is fine at fifty things and was 760 ms at two hundred
+       -- thousand.
+       --
+       -- The nearest few and not everything over a threshold, because the tool
+       -- shows eight candidates: an ordered scan of the GiST index stops after
+       -- ${NEAREST} rows however large the table is, where a threshold matched
+       -- a tenth of it and Postgres correctly read the lot. Both
+       -- distances are asked, whole-string and word, so a long name matching a
+       -- short query and the reverse both reach an index. The score below is
+       -- still what decides; this only bounds what it is asked about.
+       select n.entity_id, n.value from core.entity_names n where n.value = $1::text
+       union
+       select n.entity_id, n.value from core.entity_names n where lower(n.value) = lower($1::text)
+       union
+       (select n.entity_id, n.value from core.entity_names n order by n.value OPERATOR(public.<->) $1::text limit ${NEAREST})
+       union
+       (select n.entity_id, n.value from core.entity_names n order by n.value OPERATOR(public.<->>) $1::text limit ${NEAREST})
+     ), scored as (
+       select r.entity_id,
+              r.value,
+              case when r.value = $1::text then 0
+                   when lower(r.value) = lower($1::text) then 1
                    else 2 end as rank,
-              greatest(public.word_similarity($1::text, n.value), public.similarity($1::text, n.value)) as score
-         from core.entity_names n
-         join core.entities e on e.id = n.entity_id
-        where ($2::text is null or e.kind = $2::text)
+              greatest(public.word_similarity($1::text, r.value), public.similarity($1::text, r.value)) as score
+         from reachable r
+         join core.entities e on e.id = r.entity_id
+        where ($2::text is null or e.kind = $2::text) and e.merged_into is null
      ), best as (
        select distinct on (entity_id) entity_id, value, rank, score
          from scored
@@ -70,10 +104,10 @@ export async function findCandidates(
      )
      select e.id::text as id, e.kind, e.canonical, b.value as matched, b.rank, b.score::text as score,
             e.mention_count,
-            (select count(distinct er.email_id)
-               from core.entity_mentions m
-               join core.email_runs er on er.id = m.email_run_id
-              where m.entity_id = e.id)::text as emails
+            (select count(distinct a.email_id) from core.entity_appearances a where a.entity_id = e.id)::text as emails,
+            -- The fourth line of a rendered profile is its summary: the title,
+            -- the kind, a blank, then the two sentences. See profile-md.ts.
+            split_part(coalesce(e.profile_md, ''), chr(10), 4) as summary
        from best b
        join core.entities e on e.id = b.entity_id
       order by b.rank asc, b.score desc, e.mention_count desc, e.canonical asc
@@ -89,6 +123,7 @@ export async function findCandidates(
     score: Number(Number(row.score).toFixed(2)),
     mentions: row.mention_count,
     emails: Number(row.emails),
+    summary: row.summary ?? "",
   }));
 }
 
@@ -115,7 +150,7 @@ export async function listing(
               where m.entity_id = e.id)::text as emails,
             count(*) over ()::text as total
        from core.entities e
-      where e.kind = $1::text
+      where e.kind = $1::text and e.merged_into is null
         and ($2::text is null or exists (
               select 1 from core.entity_names n
                where n.entity_id = e.id and n.value ilike '%' || $2::text || '%'))
@@ -148,7 +183,7 @@ export async function knownValues(db: Queryable, values: string[]): Promise<stri
   const { rows } = await db.query<{ v: string }>(
     `select v from unnest($1::text[]) as v
       where exists (select 1 from core.entity_names n where n.value = v)
-         or exists (select 1 from core.entities e where e.canonical = v)
+         or exists (select 1 from core.entities e where e.canonical = v and e.merged_into is null)
          or exists (select 1 from core.emails m where m.email_id = v or m.sender_domain = v or m.from_addr = v)`,
     [values],
   );

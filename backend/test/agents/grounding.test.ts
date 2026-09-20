@@ -101,6 +101,17 @@ describe("ungrounded", () => {
     expect(ungrounded(sql, SHOWN)).toEqual(missing);
   });
 
+  it("passes the subquery find_entities hands back, shown nothing at all", () => {
+    // `concept_verdicts.matched` is a stored column equal to `verdict = 'yes'`,
+    // so the join the agent is told to make carries no string literal and the
+    // guard has nothing to refuse. Written as `verdict = 'yes'` it would be
+    // refused on every turn that had not been shown the word.
+    const joinSql = "select entity_id from core.concept_verdicts where concept_id = 12 and matched";
+    expect(ungrounded(joinSql, "")).toEqual([]);
+    expect(ungrounded(`select count(*) from core.email_shipments where pod_id in (${joinSql})`, "")).toEqual([]);
+    expect(ungrounded("select entity_id from core.concept_verdicts where verdict = 'yes'", "")).toEqual(["yes"]);
+  });
+
   it("tells the model which tools ground a value", () => {
     const reason = refusalFor(["Jakarta"]);
     expect(reason).toContain("'Jakarta'");

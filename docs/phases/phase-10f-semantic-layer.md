@@ -1,15 +1,53 @@
-# Phase 10f: The semantic layer (parked)
+# Phase 10f: The semantic layer (built)
 
-**Parked on 2026-09-20 by the user's decision.** The chat harness (10d) and the interactive chat
-(10e) come first, and skills are expected to cover most of what this was for. Nothing below has
-been revised since.
+**Built on 2026-09-21 and merged to `main`.** It was parked on 2026-09-20 and unparked by the
+user, who also settled the two decisions section "Decisions the user has to make" leaves open.
+`docs/phases/phase-10f-handover.md` section 6 is the re-reading against 10d and 10e that the
+old header asked for, and it is still worth reading first.
 
-**Read `docs/phases/phase-10f-handover.md` section 6 before this file.** 10d and 10e are both
-built and merged now, and that section is the re-reading this header asks for: what of the table
-below they already answer, the two numbers here that are taken (this spec's migrations `016` and
-`017` are now `017` and `018`; its prompt `chat/v3` is now `v4`), what 10f changes under 10e's
-conversation memory, and the one measurement that decides whether the concept machinery is
-justified at all.
+## What the repo does that this file did not say
+
+`CLAUDE.md` rule 5: where a design doc and the repo disagree, the repo wins for what is built and
+the doc is corrected. These are the corrections.
+
+- **Migrations.** `016` was taken by 10e. The layer is `017_semantic_expand.sql`,
+  `018_semantic_tables.sql`, `019_concept_backfill.sql` (the `backfill_wanted` flag),
+  `020_entity_name_lookup.sql`, `021_entities_ranked.sql` and `022_entity_names_knn.sql`. The last
+  three are indexes `pnpm ontology:bench` asked for; see "What the bench found" below.
+- **Prompts.** The chat prompt is `chat/v4`, not `v3`, and `CHAT.md` went to v3, not v2.
+- **`joinSql` does carry a literal**, or it would: `verdict = 'yes'` is a string literal and 10d's
+  guard would have refused it. `concept_verdicts.matched` is a stored generated column equal to
+  `verdict = 'yes'`, so the subquery is `... and matched` and carries no literal at all.
+- **A turn's readings are on `ChatTurn`, not on `ChatAnswer`.** The thread is read back after a
+  reload, and a total stated as a lower bound has to still read as one.
+- **The survivor of a merge is the entity with more mentions**, with the cluster's most-seen
+  spelling as the tiebreak. Work item 1 states both rules and they can disagree; the mention count
+  wins, because what a kept id buys is the profile and the verdicts written against it and those
+  describe the evidence, not the spelling.
+- **`reconcile` has a fourth output, `drop`**: an entity no cluster claims any more has lost every
+  spelling it held, so it is deleted with its profile and its verdicts. Without it the table grows
+  monotonically with things a deleted run left behind.
+- **`resolveEntities` takes sightings**, a third argument of spellings with no extraction field
+  behind them. Without it a party named only in an SI request's prose forms no cluster, and
+  `reconcile` would drop it on the next pass.
+- **Ranking is two queries, not one `order by ts_rank`.** See "What the bench found".
+- **`refresh-profiles` and `backfill-concepts` are scheduled tasks, not a `concept-backfill`
+  queue.** One queue was enough; `core.concepts.backfill_wanted` says which concept is worth
+  finishing, which is what `needComplete` and a second asking write.
+
+## What the bench found
+
+`pnpm ontology:bench` at 200,000 things and 2,000,000 sightings, on the development box:
+
+- One full `resolveAll`: 6.0 s to load, 2.6 s to resolve and plan. **The incremental form stays
+  Deferred**, with that number as its reason: a pass every five minutes at nine seconds is not
+  the thing to fix, and at a million things it would still be under a minute.
+- It found three missing indexes, which is what it is for. The exact-spelling lookup was a
+  sequential scan (`020`), topping the candidate list up was a sequential scan and a top-N sort
+  (`021`), and the candidate search was 760 ms because a similarity threshold of 0.3 matched a
+  tenth of the table. `022` replaces that threshold with a nearest-neighbour search on a GiST
+  index, which stops after fifty rows at any size: a tool that shows eight candidates wants the
+  nearest few, not everything over a line.
 
 Written 2026-09-20 for the engineer who builds it, against the code on
 `phase-10-analytics-and-chat`. Read `CLAUDE.md`, then `phase-10-handover.md`, then
@@ -609,27 +647,42 @@ the honest `complete: false` matters more than any ranking trick.
 
 ## Exit checklist
 
-- [ ] A refresh keeps entity ids: a profile and a verdict written before it are still attached
-      after it, and a merge leaves a tombstone that `get_entity` follows.
-- [ ] A 20 to 30 email run fills `email_shipments` and `entity_sightings`; every stored value's
-      quote passes the evidence check; no scored row changed and `pnpm eval:score` gives the
-      same number before and after the ontology jobs.
-- [ ] An SI_REQUEST with no attachment yields a shipment with its parties and their addresses,
-      joined to the same entities the documents produced.
-- [ ] A party seen with and without an address is one entity with both appearances.
-- [ ] Every entity touched by the run has a profile within two scheduler ticks, with `observed`
-      and `general` separate, and `ONTOLOGY_KNOWLEDGE=mail` leaves `general` null.
-- [ ] The six manual questions behave as written.
-- [ ] A repeated concept question makes no `concept-judge` call; a profile rewrite re-judges
-      exactly that entity.
-- [ ] Over budget, the answer says partial with the deferred count, and the backfill completes it.
-- [ ] `pnpm ontology:bench` passes at 200,000 entities and 2,000,000 appearances, and the
-      `resolveAll` time is recorded with the decision it led to.
-- [ ] `pnpm eval:chat --set ontology` numbers recorded in `PROGRESS.md`; 10d's own set has not
-      got worse.
-- [ ] 016 deployed and stable before any code writes a new kind.
-- [ ] `03-infra-deep.md`, `schema-docs.md` and the frontend zod mirrors updated in the same
-      commits; type-check, tests, lint and ruff clean; no file over 200 lines.
+`[x]` was checked on a 25 email run against a live model on 2026-09-21; `[~]` is open and named.
+
+- [x] A refresh keeps entity ids. Live: `kept: 90, inserted: 0, merged: 0, dropped: 0`, every id
+      still on the same thing and 28 profiles still attached. The tombstone and the merge are held
+      by `entities.resolution.test.ts`, including the swap that would abort a whole refresh.
+- [x] A 20 to 30 email run fills `email_shipments` and `entity_sightings`; every stored quote was
+      found in its own text; **no scored row changed**, by an md5 over every `email_runs.outcome`
+      and `comparisons.status` taken before and after.
+- [x] An SI_REQUEST with no attachment yields its parties with their addresses. `email_007`'s
+      on-behalf-of shipper was read out of prose with its address and joined to the stored
+      `VITAL SOLUTIONS PTE. LTD.` at 0.95.
+- [x] A party seen with and without an address is one entity with both appearances: the address is
+      on the sighting, never on the company.
+- [~] Profiles: 45 written, `observed` and `general` separate and labelled with a confidence. The
+      `mail` setting and the person rule are held by `refresh-profiles.test.ts` over every kind
+      and both settings. **A person had not been profiled live when this was written**: the batch
+      takes the oldest first and the four new kinds sit behind every port and party.
+- [~] The manual questions: "which ports in Asia" answers from `attributes->>'region'` in one SQL
+      statement with no `find_entities` call, and the Gulf question ran live end to end. The other
+      four want `pnpm eval:chat --set ontology`.
+- [x] A repeated concept question makes no `concept-judge` call and a profile rewrite re-judges
+      exactly that entity: `find-entities.test.ts`, with fakes.
+- [x] Over budget the answer says partial with the deferred count and the backfill completes it:
+      same file.
+- [x] `pnpm ontology:bench` passes at 200,000 entities and 2,000,000 sightings, all five lookups
+      indexed and inside the budget. `resolveAll` is 6.2 s to load and 2.7 s to resolve and plan,
+      which is why incremental resolution stays Deferred.
+- [~] **`pnpm eval:chat --set ontology` has not been run in full**, and neither has `eval:chat`.
+      Both spend real tokens and both are the user's. One ontology question has been run live and
+      is recorded in `PROGRESS.md`.
+- [x] Expand then use: `017` only widens and adds, and the image it rolls back to reads every row
+      it leaves behind.
+- [x] `03-infra-deep.md`, `README.md`, `schema-docs.md` and the frontend zod mirrors are updated,
+      the mirrors checked field for field against the backend contracts; type-check, tests and
+      lint clean on both packages; no file this phase touched is over 200 lines. The python
+      services are untouched.
 
 ## Deferred, and why
 
@@ -653,8 +706,12 @@ the honest `complete: false` matters more than any ranking trick.
 - **Merging two entities a person says are one, and splitting one.** `joined_by = 'human'`
   exists and nothing writes it; it needs the action-card contract that phase 11 owns.
 
-## Decisions the user has to make before the build starts
+## Decisions the user made before the build started
 
-1. `ONTOLOGY_KNOWLEDGE` default: `mail+model` as written, or `mail` only.
-2. Whether person entities get a `general` section at all. Proposed: never; a person's profile
-   is work facts from the mail only.
+1. `ONTOLOGY_KNOWLEDGE` defaults to `mail+model`. A profile's `general` section is stored with the
+   label "General knowledge, unverified" and a confidence of its own, and `CHAT.md` v3 lets the
+   agent repeat what it says **with that label** and never extend it. That is what reconciles it
+   with v2's rule that general knowledge may relate and never report: a labelled claim about the
+   world is not a claim about this mailbox.
+2. A person never gets a `general` section, under either setting. `generalAllowed()` in
+   `queues/refresh-profiles.ts` is the one place that decides it.

@@ -25,10 +25,19 @@ const QUEUE = "test-scheduler";
 let running: RunningSchedulers | undefined;
 let queue: Queue;
 
-async function start(priority = new MemoryPriorityCache()): Promise<RunningSchedulers> {
+/** Records what the clock put on the ontology queue, without reaching Redis. */
+class RecordingAdder {
+  readonly added: { name: string; jobId: unknown }[] = [];
+  async add(name: string, _data: unknown, options: { jobId?: string }): Promise<unknown> {
+    this.added.push({ name, jobId: options.jobId });
+    return undefined;
+  }
+}
+
+async function start(priority = new MemoryPriorityCache(), ontology?: RecordingAdder): Promise<RunningSchedulers> {
   // `aging: []` as well as `queueName`: without it the registered aging pass
   // walks the real classify and compare queues of a worker on this same Redis.
-  return startSchedulers({ pool: getPool(), redis: getRedis(), priority, queueName: QUEUE, aging: [] });
+  return startSchedulers({ pool: getPool(), redis: getRedis(), priority, queueName: QUEUE, aging: [], ontology });
 }
 
 beforeEach(async () => {
@@ -75,6 +84,25 @@ describe("startSchedulers", () => {
     const beat = await lastBeat(getRedis());
     expect(beat).not.toBeNull();
     expect(Date.parse(beat as string)).toBeGreaterThanOrEqual(before - 1000);
+  });
+
+  it("hands the two model passes to the ontology queue rather than running them itself", async () => {
+    // The clock runs at concurrency 1 and writes the heartbeat. A profile pass
+    // here would take minutes, the key would expire at sixty seconds, and
+    // /health would report a working worker as dead.
+    const ontology = new RecordingAdder();
+    running = await start(new MemoryPriorityCache(), ontology);
+    await queue.add(SCHEDULED.refreshProfiles, {}, { jobId: "one" });
+    await queue.add(SCHEDULED.backfillConcepts, {}, { jobId: "two" });
+
+    // Both names, however many times the repeatable job also fired meanwhile.
+    const names = () => new Set(ontology.added.map((one) => one.name));
+    const until = Date.now() + 5000;
+    while (names().size < 2 && Date.now() < until) await new Promise((wake) => setTimeout(wake, 50));
+
+    expect([...names()].sort()).toEqual(["backfill-concepts", "refresh-profiles"]);
+    // The job id is the task's name, so a tick landing on a pass still running is a no-op.
+    expect(ontology.added.every((one) => one.jobId === one.name)).toBe(true);
   });
 
   it("fills the priority cache at boot, so the first email of a run is queued at its client's tier", async () => {
