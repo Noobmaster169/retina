@@ -86,6 +86,18 @@ ones the phase exists for: `MOMBASA_KENYA` from a subject line joined to `MOMBAS
 `VITAL SOLUTIONS PTE. LTD.` at 0.95, and a person joined to their email address. Every stored
 value's quote was found in its text.
 
+**`find_entities` has been put to a live model once**, `pnpm eval:chat --set ontology --ids
+c-gulf-consignees`, five steps and 73 seconds. It is the shape the phase was built for: the agent
+narrowed to actual consignees with a recipe first, then asked for the meaning, and the answer put
+the definition in front of the number. The model read "the Gulf" as the six GCC states and said in
+the definition that it was excluding Iraq and Iran and why, which is exactly the disagreement the
+definition exists to surface. Fifteen parties judged, three matched, **five `unknown`** and nothing
+deferred, and `unknown` reached the answer as its own count rather than as a no. The question's own
+expected set was wrong (EAST BRIGHT FZ-LLC is in the UAE and belongs in it) and is corrected; the
+five unknowns are things the profile job has not reached yet, which is the honest answer and not a
+miss. One real finding: the definition is shown to the reader word for word, so `concept-define`
+now asks for plain English with no em dash and no markdown.
+
 **It also found a bug that only a real run could have found.** `refresh-profiles` did its model
 work on the scheduler queue, which runs at concurrency 1 and also writes the heartbeat. A pass of
 fifty profiles at tens of seconds each held that queue for half an hour, the heartbeat's key
