@@ -110,6 +110,63 @@ A fifth, smaller: the spec's test table says tier 1 and 500 MT is 151. It is 150
 - **`kind = 'spam'` is a label and nothing reads it.** It is offered on the page because a person
   may want to say it. No category is decided by it, by a sender list, or by anything but the model.
 
+**Verified live**, on a clean stack with one api and one worker:
+
+- `/health` carries all seven checks with their own detail: the inbox's 520 emails and
+  `scoringAvailable`, doc-extract's tesseract 5.5.0, the proxy's alias count, the worker's last
+  beat, the queue depths and the build.
+- `/clients` lists all fifteen senders with their counts, the two tier-1 domains at the top and the
+  six nobody ranked saying so. A tier and a kind changed from the page raise their toast, write
+  Postgres, and appear in the `client:priority` hash in the same second.
+
+**Exit checklist.**
+
+- [x] **Tier-1 emails complete before tier-3 emails.** A burst of 52 comparison emails, with
+      `fujitogrp.com` and `algurg.ae` at tier 1 and their sixteen emails deliberately ingested
+      **last**: all sixteen finished by place 20 of 52, average place 12.5 against tier 3's 32.7,
+      and twelve of the first sixteen to finish were theirs. The four tier-3 emails ahead of them
+      were already in flight before the tier-1 ones were ingested. Stored priorities were 170 to
+      200 for tier 1 and 578 to 600 for tier 3, tonnage breaking ties inside each tier.
+- [x] **A job waiting over five minutes has its priority raised by the aging job.** Watched live on
+      the compare queue: `email_064` went 190, then 90, then 1 across three passes, and the nine
+      jobs that had waited thirteen minutes were all at 1. The worker logs
+      `promoted a job that had waited` per job and `aged waiting jobs` per pass.
+- [x] **In-flight LLM calls never exceed `LLM_MAX_CONCURRENCY`.** Two readings, and the second does
+      not trust the first: the semaphore logs its own peak whenever it rises, and `load-test.ts`
+      sweeps the start and end of every `llm_calls` row to find the true overlap, because a
+      semaphore cannot report a violation of its own cap.
+- [x] **`/health` turns `degraded` within 60 s of stopping the worker, and `down` (503) when
+      Postgres is stopped.** Both watched. The worker case stayed HTTP 200 throughout, which is the
+      point: auto-deploy rolls back on a 503 and a worker restarting is not an outage. The Postgres
+      case first found that **the api died instead of answering**, which is written up above.
+- [x] **A tier changed through `/clients` reorders waiting jobs after the next refresh, and changes
+      no category.** The write reaches the hash immediately rather than waiting for the hourly
+      refresh, and `routes/clients.routes.test.ts` holds that a tier change writes no category and
+      that the contract carries none.
+- [x] **Both load-test durations recorded; zero 429s at either cap.** Table below.
+
+**Load test.** `pnpm load-test --limit 40`, a burst at rate 0, on the local stack:
+
+| `LLM_MAX_CONCURRENCY` | 40 emails | First 30 emails | Peak queue depth | Peak calls in flight | Model calls | Failed | 429s |
+|---|---|---|---|---|---|---|---|
+| 12 (the default: classify 8 plus compare 4) | 172 s | 77 s | 40 | 12 | 101 | 0 | 0 |
+| 2 | stopped at 34 of 40 | 253 s | 40 | 2 | 87 | 0 | 0 |
+
+The comparable column is the first 30, because the second run was stopped once it had shown what
+it was there to show. Throttling the cap from 12 to 2 slows the same work by 3.3x and fails
+nothing, which is the graceful-slowdown line. **Peak calls in flight of exactly 12 against a cap
+of 12 is the strongest form of the concurrency line**: the semaphore saturated and never went over,
+measured by sweeping `llm_calls` rather than by asking the semaphore about itself.
+
+**Deferred.**
+
+- **The full 520-email load test.** The user's, like phase 6's holdout: at the `claudecli`
+  provider's measured half a request a second, 520 emails is hours, not minutes, and every call
+  spends a real token budget. `pnpm load-test` with no `--limit` is the command.
+- `GET /review/stats` is still drawn nowhere. Unchanged from phase 8.
+- The chat's proposed action card and the action bar on an email that was never escalated. Both
+  still need a contract, and phase 10 is the phase that has to settle the first one.
+
 ## Phase 8
 
 The human in the loop path is real. A reviewer sees every escalated case with its evidence,
@@ -446,18 +503,19 @@ for a moment left the loader frozen at the left edge.
   reason. The documents pane buys its width back inside itself instead, from the field column and
   the line-number gutter.
 
-**A real finding, for phase 9 rather than this one.** BullMQ runs `CLASSIFY_CONCURRENCY` (8) plus
-`COMPARE_CONCURRENCY` (4) jobs at once, and all twelve contend for the same eight model slots that
-`llmSlots(LLM_MAX_CONCURRENCY)` hands out, because `LLM_MAX_CONCURRENCY` defaults to
-`CLASSIFY_CONCURRENCY` alone. Eight classify jobs can hold every slot, so four compare jobs sit
-blocked in the semaphore. That is exactly the shape of what the run page keeps showing: sorting
-unaffected, checking held. Either the two concurrencies should be budgeted against one number, or
-`LLM_MAX_CONCURRENCY` should be their sum and `proxy.yaml`'s `max_concurrency` raised with it.
+**A real finding, for phase 9 rather than this one. Fixed in phase 9.** BullMQ runs
+`CLASSIFY_CONCURRENCY` (8) plus `COMPARE_CONCURRENCY` (4) jobs at once, and all twelve contended
+for the same eight model slots that `llmSlots(LLM_MAX_CONCURRENCY)` hands out, because
+`LLM_MAX_CONCURRENCY` defaulted to `CLASSIFY_CONCURRENCY` alone. Eight classify jobs could hold
+every slot, so four compare jobs sat blocked in the semaphore, which is exactly the shape of what
+the run page kept showing: sorting unaffected, checking held. It is their sum now, and
+`proxy.yaml`'s `max_concurrency` is 12 to match.
 
-**Known, and left for phase 9.** A run whose ingest has finished reads `completed` while its
-queues are still full, and the API refuses both pause and cancel in that state, so the run page
+**Known, and still open after phase 9.** A run whose ingest has finished reads `completed` while
+its queues are still full, and the API refuses both pause and cancel in that state, so the run page
 offers neither. That is the API's rule and the page is drawing it honestly; stopping a run that is
-still working wants a backend change, not a button.
+still working wants a backend change, not a button. Phase 9 did not touch it: it is a rule about
+run state, not about how the queues are ordered.
 
 **Fixed under phase 7, outside its scope.** A run whose ingest finished read as `Completed` while
 its queues were still full: `status` is the ingest's and `processingDone` is the pipeline's. The

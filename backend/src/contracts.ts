@@ -4,6 +4,8 @@
  */
 import { z } from "zod";
 
+import { QueueCounts } from "./contracts.queues";
+
 import { Stage } from "./contracts.enums";
 import { RunOutcomes } from "./contracts.extraction";
 import { RunReview } from "./contracts.review";
@@ -66,9 +68,6 @@ export const CreateRunBody = z
   })
   .refine((body) => !(body.subset && body.emailIds), { message: "name either emailIds or a subset, not both" });
 export type CreateRunBody = z.infer<typeof CreateRunBody>;
-
-export const QueueCounts = z.object({ waiting: z.number(), active: z.number(), failed: z.number() });
-export type QueueCounts = z.infer<typeof QueueCounts>;
 
 export const LlmUsage = z.object({
   calls: z.number(),
@@ -141,55 +140,8 @@ export type Concurrency = z.infer<typeof Concurrency>;
 export const RunList = z.object({ runs: z.array(RunSummary), concurrency: Concurrency });
 export type RunList = z.infer<typeof RunList>;
 
-export const CheckStatus = z.enum(["up", "down"]);
-export type CheckStatus = z.infer<typeof CheckStatus>;
-
-/**
- * One dependency, and whatever it says about itself beyond being up.
- *
- * The detail is not decoration: `tesseract` names the OCR build a scan was
- * read with, `emails` catches a bind mount that came up empty, and `models`
- * catches a proxy serving an empty alias table. Each of those has looked
- * exactly like a working system from the outside at least once.
- */
-const check = <T extends z.ZodRawShape>(detail: T) =>
-  z.object({ status: CheckStatus, latencyMs: z.number().optional(), ...detail });
-
-export const HealthChecks = z.object({
-  postgres: check({}),
-  redis: check({}),
-  minio: check({}),
-  /** The Averis server in emails/. Named for what it is to us, which is where email comes from. */
-  inbox: check({ emails: z.number().optional(), scoringAvailable: z.boolean().optional() }),
-  docExtract: check({ tesseract: z.string().nullable().optional() }),
-  llmProxy: check({ models: z.number().optional() }),
-  /**
-   * Not a probe: the worker is another container with no route into it. This
-   * is the mark it leaves in Redis every ten seconds, read back. Null when no
-   * beat stands, which covers a worker that is down, one that never ran, and a
-   * Redis the api cannot read.
-   */
-  worker: check({ heartbeatAt: z.string().nullable() }),
-});
-export type HealthChecks = z.infer<typeof HealthChecks>;
-
-export const HealthReport = z.object({
-  /**
-   * `down` only when the api cannot do its job at all: postgres or redis.
-   * Everything else, a stale heartbeat included, is `degraded` and still a
-   * 200, because auto-deploy rolls back on a 503 and a worker one cycle late
-   * must never be the reason a good image goes away.
-   */
-  status: z.enum(["ok", "degraded", "down"]),
-  checks: HealthChecks,
-  /** The commit this image was built from, or "dev" outside one. */
-  version: z.string(),
-  /** How much work is waiting, so the state of the queues is in the same reading as the state of the services. */
-  queues: z.object({ classify: QueueCounts, compare: QueueCounts }).nullable(),
-});
-export type HealthReport = z.infer<typeof HealthReport>;
-
 export * from "./contracts.actions";
+export * from "./contracts.health";
 export * from "./contracts.clients";
 export * from "./contracts.emails";
 export * from "./contracts.enums";

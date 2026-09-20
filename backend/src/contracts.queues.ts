@@ -9,6 +9,10 @@ import { z } from "zod";
  * Re-exported from contracts.ts; mirrored in frontend/lib/api/queues-schemas.ts.
  */
 
+/** How much work a queue holds. On the run summary, on the health report, and on nothing else. */
+export const QueueCounts = z.object({ waiting: z.number(), active: z.number(), failed: z.number() });
+export type QueueCounts = z.infer<typeof QueueCounts>;
+
 /** Which queue. The names are BullMQ's, from queues/names.ts. */
 export const QueueName = z.enum(["classify", "compare"]);
 export type QueueName = z.infer<typeof QueueName>;
