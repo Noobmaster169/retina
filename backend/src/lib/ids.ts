@@ -21,3 +21,9 @@ export function resumeJobId(runId: string, epoch: number): string {
 export function runIdOfJob(id: string): string {
   return id.split("__")[0];
 }
+
+/** The email of an email job. Null for the ingest and resume jobs, whose ids carry no email. */
+export function emailIdOfJob(id: string): string | null {
+  const [, emailId] = id.split("__");
+  return emailId && emailId !== "resume" ? emailId : null;
+}

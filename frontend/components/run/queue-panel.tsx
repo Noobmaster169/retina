@@ -1,0 +1,136 @@
+"use client";
+
+import Link from "next/link";
+import { AnimatePresence, motion } from "motion/react";
+
+import { Panel, PanelFoot, PanelHead } from "@/components/ui/panel";
+import { QueueView } from "@/lib/api/queues-schemas";
+import { panel, rowEnter } from "@/lib/motion";
+
+import { Elapsed, ElapsedText } from "./elapsed";
+import { HeldChip } from "./held-notice";
+
+/**
+ * One queue, one row per email holding a slot. A list is a list: the two
+ * column grid of small boxes drawn for this panel was rejected in review, and
+ * so was the grid of dashed placeholders that stood in for an empty one.
+ *
+ * When the queue is held, the rows are replaced rather than padded: the panel
+ * says what is holding it and when it retries, and spends the rest of the
+ * space on the queue piling up behind it.
+ */
+
+interface QueuePanelProps {
+  title: string;
+  queue: QueueView;
+  runId: string;
+  /** The sentence along the foot. What this queue's shape means, not what it is doing. */
+  note: string;
+  /** What to say when the queue has drained but the run is still going. */
+  drained: string;
+  /** A count the panel's foot states above its sentence, the way the board gives sorting its backlog. */
+  standing?: { label: string; count: number };
+  className?: string;
+}
+
+export function QueuePanel({ title, queue, runId, note, drained, standing, className = "" }: QueuePanelProps) {
+  const held = queue.heldUntil !== null;
+  const empty = !held && queue.slots.length === 0 && queue.waiting === 0;
+  return (
+    <Panel className={`overflow-hidden ${className}`}>
+      <PanelHead
+        title={title}
+        aside={
+          <span className="flex items-center gap-2">
+            {held ? <HeldChip until={queue.heldUntil ?? ""} queue={queue.name} still={queue.slots.length} /> : null}
+            <span className={`font-mono text-mono-sm ${held ? "text-differ" : "text-ink-tertiary"}`}>
+              {queue.active} / {queue.concurrency}
+            </span>
+          </span>
+        }
+      />
+
+      <div className="flex min-h-0 grow flex-col overflow-y-auto">
+      {held && queue.slots.length === 0 ? (
+        // The pause itself is stated in the header; the body only has to say
+        // that there is nothing to look at while it lasts.
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={panel}
+          className="mx-4 mt-0.5 max-w-[46ch] border-t border-hairline-faint pt-3 text-small leading-[18px] text-ink-tertiary"
+        >
+          Nothing is running. The queue starts nothing new until it retries, and what was waiting is still waiting.
+        </motion.p>
+      ) : empty ? (
+        // An empty panel is replaced, not padded. Four dashed slots standing in
+        // for four busy ones was rejected in review: say what happened instead.
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={panel}
+          className="mx-4 mt-0.5 max-w-[46ch] border-t border-hairline-faint pt-3 text-small leading-[18px] text-ink-tertiary"
+        >
+          {drained}
+        </motion.p>
+      ) : (
+        <AnimatePresence initial={false} mode="popLayout">
+          {queue.slots.map((slot) => (
+            <motion.div
+              key={slot.emailId}
+              layout
+              variants={rowEnter}
+              initial="hidden"
+              animate="shown"
+              exit="gone"
+              transition={panel}
+            >
+              <Link
+                href={`/runs/${runId}/emails/${slot.emailId}`}
+                className="relative flex h-[34px] items-center gap-2.5 border-t border-hairline-faint px-4 transition-colors duration-150 hover:bg-sunken"
+              >
+                <span className="w-[74px] shrink-0 font-mono text-mono-sm">{slot.emailId}</span>
+                <span className="min-w-0 truncate text-small text-ink-secondary">{slot.step}</span>
+                <span className="grow" />
+                <Elapsed since={slot.startedAt} />
+              </Link>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      )}
+
+      {queue.next.length > 0 || queue.waiting > 0 ? (
+        <>
+          <div className="mt-2.5 flex h-[30px] shrink-0 items-center border-t border-hairline bg-surface px-4">
+            <span className="text-caption font-medium text-ink-tertiary">Next in line</span>
+            <span className="grow" />
+            <span className={`text-caption ${held ? "text-differ" : "text-ink-tertiary"}`}>
+              {queue.waiting} waiting{held ? ", climbing" : ""}
+            </span>
+          </div>
+          {queue.next.map((waiting) => (
+            <div key={waiting.emailId} className="flex h-[29px] shrink-0 items-center gap-2.5 px-4">
+              <span className="w-[74px] shrink-0 font-mono text-mono-sm text-ink-faint">{waiting.emailId}</span>
+              <span className="min-w-0 truncate text-small text-ink-faint">{waiting.files}</span>
+              <span className="grow" />
+              <ElapsedText since={waiting.queuedAt} prefix="held " />
+            </div>
+          ))}
+        </>
+      ) : null}
+      <span className="grow" />
+      </div>
+
+      <PanelFoot>
+        {standing ? (
+          <div className="mb-2 flex items-center">
+            <span className="text-small text-ink-tertiary">{standing.label}</span>
+            <span className="grow" />
+            <span className="text-strong font-semibold tabular-nums">{standing.count}</span>
+          </div>
+        ) : null}
+        <p className="text-small leading-[18px] text-ink-tertiary">{note}</p>
+      </PanelFoot>
+    </Panel>
+  );
+}

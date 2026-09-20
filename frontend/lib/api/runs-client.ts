@@ -70,6 +70,18 @@ export async function cancelRun(id: string): Promise<RunOutcome> {
   return controlRun(id, "cancel");
 }
 
+/**
+ * Drops a run and everything it produced. A running run is refused with a
+ * message rather than stopped from under its workers, so the caller can offer
+ * a cancel and try again.
+ */
+export async function deleteRun(id: string): Promise<{ ok: true } | { ok: false; status: number; message: string }> {
+  const path = `/runs/${encodeURIComponent(id)}`;
+  const response = await request(path, { method: "DELETE" });
+  if (response.status === 204) return { ok: true };
+  return { ok: false, status: response.status, message: await refusalMessage(response) };
+}
+
 /** The prompt versions a run may pin, per step. */
 export async function listPrompts(): Promise<PromptCatalog> {
   return get(PromptCatalog, "/prompts");

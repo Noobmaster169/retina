@@ -1,18 +1,242 @@
 # Progress
 
-Current phase: 6, on `phase-06-extraction-and-comparison`. Built and tested; checked on a
-24-email run locally (see "Phase 6" below). Left for the user: the holdout run and the full 520
-run that decide the exit checklist's score lines (`pnpm eval:score --run <id> --holdout`), and
-phase 5's open items (the box check of doc-extract, the classify `v5` holdout). Phase 4's open
-items (the few-shot `v4` holdout, the model comparison) are still the user's.
+Current phase: 8, not started. **Phase 7 is merged to `main`.** Its exit checklist is green but for
+two items marked `[~]` in `docs/04-phases.md`, both recorded under "Deferred" below.
 
-**Next: phase 7.** The interface was designed on 2026-09-20 over four rounds of review, on a
-canvas of eleven artboards at `https://claude.ai/artifact/CSbrqYfTwzHpGFLVgKQpUZ`.
-`docs/05-design.md`, `docs/design/screen-blueprints.md` and `docs/design/ontology-patterns.md` were
-rewritten against it in the same session, and `docs/04-phases.md` phases 7, 8 and 10 with them.
-**Start at `docs/phases/phase-07-handover.md`**, which says how to read the canvas, what the API
-does not return yet, and which four components of the original phase 7 spec were cut. The design
-docs are not committed yet.
+**Start at `docs/phases/phase-08-handover.md`.** Its first four sections are the design session's;
+the rest is what phase 7's implementation established, including the shell contract, the contracts
+it added, the design decisions settled with the user, and a list of traps that each cost a real
+amount of time. Read it before `phase-07-handover.md`, which is still right about intent and out of
+date about the API.
+
+Phase 6 is built and tested; left for the user there: the holdout run and the full 520 run that
+decide its exit checklist's score lines (`pnpm eval:score --run <id> --holdout`), and phase 5's
+open items (the box check of doc-extract, the classify `v5` holdout). Phase 4's open items (the
+few-shot `v4` holdout, the model comparison) are still the user's.
+
+## Phase 7
+
+The interface was designed on 2026-09-20 over four rounds of review, on a canvas of eleven
+artboards at `https://claude.ai/artifact/CSbrqYfTwzHpGFLVgKQpUZ`; `docs/phases/phase-07-handover.md`
+says how to read it. Phase 7 built rows one and two of that canvas.
+
+**Built.**
+
+- `frontend/app/globals.css` is the Air token set of `05-design.md` section 4, with the type scale
+  of 5.1 in the Tailwind theme. Newsreader, Inter and JetBrains Mono load through `next/font`. The
+  phase 1 harbour palette is gone from every file, including the pages phase 7 only re-skinned
+  (`/runs`, `/`, `/chat`, `/login`, `/runs/[id]/results`).
+- The shell: `components/shell/` is a 232px rail that collapses to 56px of glyphs, a 56px top bar
+  whose breadcrumb is the ontology path, and `AppShell`, which owns the one piece of shell state.
+  A pane can ask for the width (`wantsWidth`), and the person's own click on the rail control wins
+  over the request.
+- Primitives in `components/ui/`: the verdict chip with no dot, the marked span in its five states,
+  the hatch, the evidence well, the panel, the bar, the button, Radix-backed tabs with a shared
+  layout underline, and the canvas's own glyphs lifted path for path into `icons.tsx`.
+- The run page in its three states: running, a dependency down, finished. Two queues left to right,
+  one panel per queue with a row per email holding a slot, and the outcomes list in the enum's own
+  words. Checked in a browser on four real runs, including a genuinely held `classify` queue.
+- The email page: the message as a bordered card, the labelled seam, the reading in plain English,
+  then the seven fields. Tabs for `The check` (or `The case`), `Both documents` and `Model calls`.
+  The documents tab closes the rail and folds the message to one line.
+- The 340px chat column, present and inert, with its composer disabled and one sentence saying why.
+- Motion through `motion` (motion.dev), vocabulary in `lib/motion.ts`. Nothing loops.
+
+**New contracts**, each mirrored in `frontend/lib/api/` and in `03-infra-deep.md` section 10:
+
+- `GET /runs/:id/queues` (`contracts.queues.ts`): the slots, who is next, `heldUntil`, and the
+  handoff between the queues. The handoff is aggregated in the route, not in the page.
+- `DocumentView.pageConfidence`, from migration `007_document_page_confidence.sql`. doc-extract
+  already returned per page OCR confidence and nothing kept it; the review case needs it to say
+  which page failed.
+- `RunSummary.lastSubmission.scores.weights`, so the score panel reads the scorer's own weights
+  (0.30 / 0.20 / 0.50) instead of assuming the 0.30 / 0.40 / 0.30 the canvas drew.
+
+**Settled with the user**, and written into `05-design.md` section 4.5: both documents take the
+mark on a differing field, and a value the judge called the same across different text keeps its
+green. `components/email/field-reading.ts` holds the one `markOf` both screens use.
+
+**Substituted, and why.** The canvas gives the middle panel of a finished run to memory. `core.lessons`
+is phase 11 and the handover forbids faking a lesson or stubbing the table, so that rectangle holds
+`What it took` instead: the run's own machinery, which `05-design.md` section 11 allows on this page
+and nowhere else. Phase 11 takes the rectangle back.
+
+**Deferred.**
+
+- Rendered page images for an unreadable case. The exit checklist asks for them; the per page OCR
+  confidence is real and shown, but the page itself is drawn as a hatched page-shaped block rather
+  than a PNG. `docExtract.render`, a `/files/*key` streaming route and a `render` endpoint are the
+  work, and none of it changes what the case tells a reader. Phase 8 needs `/files/*key` anyway for
+  its upload path.
+- `/review`, `/database`, `/ontology` and `/chat` are rail destinations that phases 8 and 10 fill.
+  They are reachable and they are not built.
+- A fixed bug found while checking this phase: `documents.upsert` gained a column and not its
+  parameter, which failed every compare with `bind message supplies 9 parameters`. Caught on a
+  real run, not by a test, because the repository tests fake the insert.
+
+**The runs list, rebuilt after review.** It first got a mechanical token migration and kept its
+phase 6 structure, which broke the language in five ways at once: uppercase table headers (retired
+in 5.1), dollar costs and model call counts on a list (section 11 puts those on the run page's
+machinery view and nowhere else), raw queue counters with `CLASSIFY_CONCURRENCY` and
+`LLM_MAX_CONCURRENCY` named on screen, status as plain text rather than a chip, and ten prompt and
+model dropdowns exposed before anything else on the page.
+
+It is now a list: one two-line row per run, the whole row a link, status as a chip, what ended up
+where in the organisers' enums, and the score right aligned in mono. Starting a run is `Emails`,
+`Pace` and a button, with the eight experiment dropdowns behind a disclosure.
+
+Its per row controls moved to the run page, where the canvas drew them and where phase 7 had left
+them disabled although the routes work. `use-run-actions.ts` holds pause, resume, cancel, submit
+and the local eval; the header carries whichever controls the run's status allows, and the score
+panel carries submit and `Score it here`. All five checked against the live API.
+
+**A fidelity pass against the canvas, board by board.** The first build was read against the
+boards from memory; a side by side at 1440x900 found real gaps, and these were closed:
+
+- The lane map was missing the three outcome chips at the end of the second lane and both drop
+  rules that hang them under their card. The cards were 81px and unequal; they are 88px and equal
+  now, with the arrows at the drawn 34px. The hung groups are positioned rather than laid out, so
+  a wide group of chips can never widen its column and push the last card off the panel.
+- The run page's display line was the email count. The board names the run, so it does too:
+  `Morning run`, from when it started, with the count moved into the subtitle where the board has
+  it. The email page's rail carries the same name over a progress bar, as the board draws it.
+- Each queue panel's foot gained the standing count the board gives it.
+- The message card states each attachment's size. `core.attachments.bytes` was already stored and
+  `DocumentView` dropped it; the documents query already joined that table, so it was one column.
+- The email list leads with `Differences`, as the board does, not `All`.
+- The chat's opening turn was one line where the board's is a reading. It now says what differs
+  and which agreeing fields the judge had to think about, which is what that pane is for.
+
+**What still differs from the boards, and why.** Four of these are the canvas drawing a later
+phase, and two are data the organisers' dataset does not carry:
+
+- The board puts a time on every list row (`2m`, `4m`) and a date on the message header
+  (`14 Mar, 08:12`). The inbox returns `email_id`, `from`, `subject`, `body` and `attachments` and
+  nothing else: there is no timestamp anywhere in the dataset. Those are the designer's invention
+  and are not reproduced.
+- The board's rail carries a `Views` group of saved queries. Phase 10.
+- The board's `Links to` strip names ontology records (`Client`, `Shipment`, `Same client,
+  differed`). Those tables are phase 10b and are drawn `planned` on the canvas on purpose.
+- The board's chat holds a conversation and a violet `correct_field` card. The chat is phase 10a
+  and the write path behind that card is phase 8; the column is drawn and inert, which is what the
+  handover asked for.
+- The board's action bar is live. Phase 8.
+- The board's rail shows four destinations on the email page and six on the run page. The build
+  keeps the six everywhere, because one rail that does not change under you is the rule and the
+  two boards disagree with each other.
+
+**One shell over every route.** The first build left the phase 1 pages where they were, so the
+rail's own destinations either 404ed or dropped a person into a different product: `/` was the
+standalone Averis inbox in its own shell, `/mail/[id]` a second email page, `/chat` a phase 1 chat,
+and `/review`, `/database` and `/ontology` did not exist at all. That is fixed:
+
+- The phase 1 mail stack is deleted: `mail-shell`, `mail-list`, `email-view`, `chat-panel`,
+  `paperclip-icon`, `lib/inbox.ts`, `app/actions/ai.ts`, `app/mail/` and `app/attachments/`. The
+  email page under a run replaces all of it. `/files/*key` comes back in phase 8 for the uploads.
+- `/` redirects to `/runs`. Retina opens on its runs; there is no landing page.
+- `/inbox`, `/review`, `/database`, `/ontology` and `/chat` are one `Placeholder` component in the
+  same shell, the same rail and the same type: what will be there, which phase builds it, and a
+  line saying nothing is broken. A destination the rail offers always resolves.
+- `/runs/[id]/results` moved into the shell, and its two components were rebuilt on the panels,
+  bars and scale everything else uses rather than left as migrated phase 2 markup.
+- `/login` was still referencing `bg-brand` and `border-brand`, tokens Air does not define, so its
+  button and focus ring rendered as nothing. Rebuilt: the mark, the display face, one field.
+- `app/not-found.tsx` keeps the shell. Walking off the end of the product should not look like
+  leaving it.
+- The password gate named `/chat` and `/runs` because the inbox was a separate public page. It now
+  covers everything but `/login`, the API handlers and Next's assets. One gate, one matcher.
+- The email page marks `Runs` in the rail, not `Inbox`: it lives at `/runs/[id]/emails/[emailId]`
+  and the rail should say where you are.
+
+Every route was then swept: all twelve answer, all twelve carry the rail and the display face,
+and nothing in `frontend/` uses a Tailwind default type size, a grey that is not an Air token, a
+drop shadow or an uppercase label.
+
+**The run became the shell's context, not a page in it.** The rail changed shape on every
+navigation: the run list showed no run block, the run page suddenly grew pinned prompts and an
+inbox count, and clicking Inbox from inside a run showed no emails at all. The cause was that each
+page handed the rail its own contents, and that a run was a destination beside the others rather
+than the thing they are all read through.
+
+- `AppShell` owns the run in context and fetches the run list and health itself. Every page passes
+  which destination is current and nothing else, so the rail is identical on all of them.
+- The rail's head is a run switcher: the run's name, its id, a progress bar, and a menu of every
+  run. Switching keeps you where you are, so the inbox of one run becomes the inbox of another,
+  which is how two prompt versions get compared on one screen.
+- Every destination is run scoped: `/runs/[id]`, `/runs/[id]/inbox`, `/runs/[id]/review`,
+  `/runs/[id]/database`, `/runs/[id]/ontology`, `/runs/[id]/chat`. The flat versions are gone.
+  Without any run at all, every destination leads to the run list, which is where one is made.
+- `/runs/[id]/inbox` is real: the same 300px list the email page carries, with nothing open.
+- `/runs` is the one page with no run of its own and takes the newest as context, so it looks like
+  the same application as everything else.
+- `DELETE /runs/:id` (five tests). Every table referencing `core.runs` cascades, so it is one
+  statement. A running run is refused with a message saying to cancel it first rather than being
+  deleted from under its workers. The runs list carries the control, hover revealed, and it names
+  what goes before it asks.
+
+**Live feel on the run page.** The elapsed time on a queue slot jumped two seconds at a time,
+because it was a duration computed at poll time. `QueueSlot.startedAt` and `QueuedEmail.queuedAt`
+are instants, so `components/run/elapsed.tsx` counts up against a real clock at 100ms and the rule
+along the row grows with it. It is not optimism: the instants are the worker's own, so this is the
+real elapsed time measured continuously rather than sampled. The component owns its interval so the
+panel does not re-render ten times a second.
+
+The bars glide over 1.1s rather than settling in 0.3s of a 2s poll, and the cards' colours settle
+over 500ms. `Reading` is `Classifying`, which is what the queue is called. Every card's unit was
+shortened so none of them truncates. The crossing arrow gets a column wide enough for its label,
+and both rows of the lane map now share one CSS grid, so a drop rule always hangs from the centre
+of the card it belongs to and a wide group of chips cannot push the last card off the panel.
+
+A held queue keeps its working rows: a rate limit stops new jobs starting and the ones already in
+flight carry on, and hiding them said the queue had stopped dead.
+
+**The indeterminate loader, and what section 9 now says.** A stage whose progress has no
+denominator gets a looping sweep instead of a determinate bar: "8 of 8 slots busy" is not a
+fraction of anything finished, and a bar that filled to 100 percent there was drawing a number
+that does not exist. The same applies to a queue slot row, whose rule used to grow against a
+"typical" call duration, which was a denominator invented for the drawing; the elapsed time beside
+it is the real measurement. A stage that does have a denominator keeps its bar.
+
+`05-design.md` section 9 said "nothing loops" and now says "nothing loops decoratively", which is
+the rule that was meant: a loop encoding "there is no number here" carries information, and a pulse
+beside a word that already says `Running` does not. Under `prefers-reduced-motion` the sweep is a
+filled track.
+
+Both bars stay mounted and cross-fade rather than one replacing the other. A CSS animation restarts
+from its first frame every time its element is created, so a card flickering in and out of `live`
+for a moment left the loader frozen at the left edge.
+
+**Smaller things the same pass fixed.**
+
+- Creating a run goes straight to its overview. Starting a run is asking to watch it, not asking
+  to find its row in a list.
+- The pause a dependency causes is a chip in the panel header with a tooltip, not a block the size
+  of four rows in the panel body. "Rate limited" is BullMQ's word for it and a misleading one:
+  nothing throttles throughput, `failure-policy.ts` catches a `DependencyUnavailableError` and
+  tells the queue to start nothing new for thirty seconds. The copy says "paused" now, everywhere.
+- The trouble banner on the run header is a chip beside the controls. It was 68px of layout
+  appearing and disappearing on a thirty second cycle, and the whole page moved each time.
+- Switching to `Both documents` no longer takes the rail and the email list away. `AppShell` lost
+  `wantsWidth` entirely: the rail is open or closed because a person said so and for no other
+  reason. The documents pane buys its width back inside itself instead, from the field column and
+  the line-number gutter.
+
+**A real finding, for phase 9 rather than this one.** BullMQ runs `CLASSIFY_CONCURRENCY` (8) plus
+`COMPARE_CONCURRENCY` (4) jobs at once, and all twelve contend for the same eight model slots that
+`llmSlots(LLM_MAX_CONCURRENCY)` hands out, because `LLM_MAX_CONCURRENCY` defaults to
+`CLASSIFY_CONCURRENCY` alone. Eight classify jobs can hold every slot, so four compare jobs sit
+blocked in the semaphore. That is exactly the shape of what the run page keeps showing: sorting
+unaffected, checking held. Either the two concurrencies should be budgeted against one number, or
+`LLM_MAX_CONCURRENCY` should be their sum and `proxy.yaml`'s `max_concurrency` raised with it.
+
+**Known, and left for phase 9.** A run whose ingest has finished reads `completed` while its
+queues are still full, and the API refuses both pause and cancel in that state, so the run page
+offers neither. That is the API's rule and the page is drawing it honestly; stopping a run that is
+still working wants a backend change, not a button.
+
+**Fixed under phase 7, outside its scope.** A run whose ingest finished read as `Completed` while
+its queues were still full: `status` is the ingest's and `processingDone` is the pipeline's. The
+chip now says Running until `processingDone`.
 
 Phase 5 merged to `main` on 2026-09-20. Every document's text is in MinIO under `text/`, typed
 on its `documents` row; phase 6 reads it from there.

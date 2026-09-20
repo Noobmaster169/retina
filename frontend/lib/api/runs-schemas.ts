@@ -62,6 +62,8 @@ export const HeadlineScores = z.object({
   endToEndRate: z.number(),
   escalationRecall: z.number(),
   escalationPrecision: z.number(),
+  /** The scorer's own weights, so the score panel says what each component is worth rather than assuming. */
+  weights: z.object({ stage1: z.number(), stage3: z.number(), endToEnd: z.number() }),
 });
 export type HeadlineScores = z.infer<typeof HeadlineScores>;
 

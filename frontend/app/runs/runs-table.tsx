@@ -8,8 +8,14 @@ import { parsedFetcher } from "@/lib/poll";
 import { NewRunForm } from "./new-run-form";
 import { RunRow } from "./run-row";
 
-const POLL_MS = 3000;
+/**
+ * The runs, one row each. A list is a list: this page is for choosing a run,
+ * so nothing on a row is a control and nothing on it is machinery. Pausing,
+ * cancelling and submitting live on the run's own page, and what a run cost
+ * lives in that page's `What it took` panel, per `05-design.md` section 11.
+ */
 
+const POLL_MS = 3000;
 const fetchRuns = parsedFetcher(RunList);
 
 interface Props {
@@ -17,75 +23,57 @@ interface Props {
   initialError: string | null;
 }
 
-/** The list, kept fresh by polling: long work is queued, never awaited by a request. */
 export function RunsTable({ initialList, initialError }: Props) {
   const { data, error, mutate } = useSWR("/api/runs", fetchRuns, {
     fallbackData: initialList ?? undefined,
     refreshInterval: POLL_MS,
     revalidateOnMount: initialError !== null,
+    keepPreviousData: true,
   });
   const runs = data?.runs ?? [];
-  const queues = runs[0]?.queues;
   const message = error instanceof Error ? error.message : !data ? initialError : null;
 
   return (
     <>
       <NewRunForm onCreated={() => void mutate()} />
 
-      {data && (
-        <p className="mt-6 text-sm text-muted">
-          <span className="font-medium text-ink">Parallel</span> {data.concurrency.classify} emails at once,{" "}
-          {data.concurrency.llm} model calls in flight. Set by <code>CLASSIFY_CONCURRENCY</code> and{" "}
-          <code>LLM_MAX_CONCURRENCY</code> in the backend env.
-        </p>
-      )}
-
-      {queues && (
-        <dl className="mt-2 flex flex-wrap gap-x-8 gap-y-1 text-sm text-muted">
-          {(["classify", "compare"] as const).map((name) => (
-            <div key={name} className="flex gap-2">
-              <dt className="font-medium text-ink">{name} queue</dt>
-              <dd className="tabular-nums">
-                {queues[name].waiting} waiting · {queues[name].active} active · {queues[name].failed} failed
-              </dd>
-            </div>
-          ))}
-        </dl>
-      )}
-
-      {runs.length > 0 && !queues && <p className="mt-6 text-sm text-muted">Queue counts are unavailable right now.</p>}
-
-      {message && (
-        <p role="alert" className="mt-4 border-l-2 border-red-700 pl-3 text-sm text-red-700">
+      {message ? (
+        <p role="alert" className="mt-4 border-l-2 border-fault pl-3 text-small text-fault">
           {message}
         </p>
-      )}
+      ) : null}
 
-      <div className="mt-4 overflow-x-auto border-t border-line">
-        <table className="w-full min-w-[64rem] text-left text-sm">
-          <thead className="text-xs uppercase tracking-wide text-muted">
-            <tr className="border-b border-line">
-              <th className="py-2 pr-4 font-medium">Started</th>
-              <th className="py-2 pr-4 font-medium">Status</th>
-              <th className="py-2 pr-4 font-medium">Rate</th>
-              <th className="py-2 pr-4 font-medium">Progress</th>
-              <th className="py-2 pr-4 font-medium">Stages</th>
-              <th className="py-2 pr-4 font-medium">Score</th>
-              <th className="py-2 font-medium">
-                <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {runs.map((run) => (
-              <RunRow key={run.id} run={run} onChanged={() => void mutate()} />
-            ))}
-          </tbody>
-        </table>
-        {runs.length === 0 && !message && (
-          <p className="py-10 text-center text-sm text-muted">No runs yet. Start one above.</p>
-        )}
-      </div>
+      <table className="mt-5 w-full text-left">
+        <thead>
+          <tr className="border-b border-hairline">
+            <Th className="w-[186px]">Started</Th>
+            <Th className="w-[104px]">Status</Th>
+            <Th className="w-[72px]">Pace</Th>
+            <Th className="w-[210px]">Emails</Th>
+            <Th>Where they ended up</Th>
+            <Th className="w-[132px] text-right">Score</Th>
+            <Th className="w-[52px] text-right" hidden>Delete</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {runs.map((run) => (
+            <RunRow key={run.id} run={run} onDeleted={() => void mutate()} />
+          ))}
+        </tbody>
+      </table>
+
+      {runs.length === 0 && !message ? (
+        <p className="py-10 text-center text-small text-ink-tertiary">No runs yet. Start one above.</p>
+      ) : null}
     </>
+  );
+}
+
+/** Sentence case at the caption size. Section 5.1 retired the uppercase label. */
+function Th({ children, className = "", hidden = false }: { children: string; className?: string; hidden?: boolean }) {
+  return (
+    <th className={`h-8 pr-4 align-middle text-caption font-normal text-ink-tertiary ${className}`}>
+      {hidden ? <span className="sr-only">{children}</span> : children}
+    </th>
   );
 }

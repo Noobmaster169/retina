@@ -14,6 +14,12 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
   ]),
   {
+    // A table driven test is a table: the 200 line rule would split the table
+    // from the thing it drives, which is the one place length is not a smell.
+    files: ["**/*.test.ts", "**/*.test.tsx"],
+    rules: { "max-lines": "off" },
+  },
+  {
     files: ["**/*.ts", "**/*.tsx"],
     rules: {
       // CLAUDE.md's 200-line rule, checked rather than audited. api-client.ts

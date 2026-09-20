@@ -47,6 +47,7 @@ export async function parseDocuments(deps: ParseDeps, ids: EmailRunIds, files: S
       scanned: extracted.scanned,
       unreadable: extracted.unreadable,
       warnings: extracted.warnings,
+      pageConfidence: extracted.pages.flatMap((page) => (page.ocr_confidence === null ? [] : [page.ocr_confidence])),
     });
     texts.set(file.id, extracted.unreadable ? null : extracted.text);
     log.info(

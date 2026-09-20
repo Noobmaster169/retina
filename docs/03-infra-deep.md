@@ -303,7 +303,10 @@ until human review (phase 8).
 
 **Parse** (`queues/processors/parse-documents.ts`): every attachment goes through doc-extract
 (section 6) once. The text lands in MinIO under `text/`, and a `documents` row keeps the format,
-page count, whether OCR was used, whether the file was unreadable, and the parser's warnings.
+page count, whether OCR was used, whether the file was unreadable, the parser's warnings, and
+`page_confidence`: the mean OCR word confidence of each page in page order, empty for a document
+with a text layer. The per page numbers are what the email page's review case shows, because one
+number for a whole file cannot say which page failed (migration `007`).
 Idempotent: a classify prompt that reads attachments (`reads_attachments: true` in its
 frontmatter, `classify/v5.md`) parses first, and compare finds the rows.
 
@@ -684,20 +687,21 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 |---|---|
 | `GET /health` | `{ status: ok \| degraded, checks: { postgres, redis, minio, inbox, docExtract } }`, 2 s per check. Degraded is still 200; only postgres down is 503, which is the signal auto-deploy rolls back on. The proxy is left out on purpose: a cold model would read as an outage |
 | `POST /runs` | start a run `{ source, ratePerSecond, limit?, emailIds?, subset?: dev \| holdout, promptSet?: { step: vN }, models?: { step: alias } }`. `subset` reads the id lists in `backend/eval/` (ids only). 400 for an unknown prompt version or a model that is not a proxy alias, before anything is queued |
-| `GET /runs`, `GET /runs/:id` | list, detail with stage counts, `finishedEmails` (done, failed and review), `processingDone`, `elapsedMs` (start to the last email finishing, or to now), queue depth, `promptSet`, `llm` usage with `verifierShare`, `review: { open, byReason }`, `outcomes: { ok, mismatch, byField }` over the compared pairs, score. The list also carries `concurrency: { classify, llm }` from the env. `queues` is `null` when Redis cannot be reached; the rest comes from Postgres and is still served |
+| `GET /runs`, `GET /runs/:id` | list, detail with stage counts, `finishedEmails` (done, failed and review), `processingDone`, `elapsedMs` (start to the last email finishing, or to now), queue depth, `promptSet`, `llm` usage with `verifierShare`, `review: { open, byReason }`, `outcomes: { ok, mismatch, byField }` over the compared pairs, score (`lastSubmission.scores` carries the scorer's own `weights`, so a page never assumes them). The list also carries `concurrency: { classify, llm }` from the env. `queues` is `null` when Redis cannot be reached; the rest comes from Postgres and is still served |
 | `POST /runs/:id/pause`, `/resume`, `/cancel` | control the replay |
 | `POST /runs/:id/submit?force=false` | build submission, post to averis, store scoreboard. 409 when the run holds fewer rows than `totalEmails` (still ingesting) or holds unfinished emails, both overridden by `?force=true`; 409 while another submission for the same run is being scored. The `core.submissions` row is written before the scorer is called and updated with the scoreboard after, so a scorer failure leaves an unscored row (null `scoreboard`, null `final_score`) pointing at the stored payload rather than an orphan payload. Only scored rows count as a run's last submission |
 | `GET /runs/:id/submission.json` | download the payload |
 | `GET /runs/:id/emails?stage=&category=&decidedBy=&outcome=&q=` | paginated list with `category`, `decidedBy`, `confidence`, `verifierCategory`, `outcome` (`not_comparable`, `OK`, `MISMATCH` or a review reason), `defectFields`, `error` |
+| `GET /runs/:id/queues` | who holds each slot of each queue and who is next: per queue `concurrency` (from the worker's env), `waiting`, `active`, `failed`, `heldUntil` (set while `failure-policy.ts` has it rate limited, an instant so a stale poll cannot skew the countdown), `slots` (`emailId`, what the model is doing in plain English, `startedAt`, `elapsedMs`) and `next` (the five oldest waiting, with their attachments read as "two files, txt and pdf" and how long they have held). Plus `handoff: { needCheck, notComparable }`, the crossing between the two queues, aggregated here because the frontend holds no business logic. `reachable: false` with empty queues when Redis cannot be reached, never zeroes, which would read as a finished run |
 | `GET /runs/:id/calls?after=&limit=` | the run's newest `llm_calls` as summaries (no prompt or email text), newest first, for a live feed; `after` returns only newer ids |
 | `GET /runs/:id/live` | the run's model calls running now, each with the answer written so far (`LiveCallView`) |
-| `GET /runs/:id/emails/:emailId/trace` | one email: stage, error, how its category was settled (each reader's category, confidence, reasoning, counter-cases, verifier error), its documents (the role the filename claims, the model's type with confidence and rationale, format, pages, scanned, unreadable, warnings), its open review case, its `extractions` (per document: the place it filled, whether the verifier ran, the seven fields with value, placeholder, quote, confidence, evidence and any human value), its `comparison` (status, reason, defect fields, every field's judgement), the call running now, and every finished call oldest first with system prompt, input, answer text, parsed answer, tokens, cost, latency |
+| `GET /runs/:id/emails/:emailId/trace` | one email: stage, error, how its category was settled (each reader's category, confidence, reasoning, counter-cases, verifier error), its documents (the role the filename claims, the model's type with confidence and rationale, format, pages, scanned, unreadable, warnings, `pageConfidence`: the mean OCR word confidence per page in page order, empty for a document with a text layer), its open review case, its `extractions` (per document: the place it filled, whether the verifier ran, the seven fields with value, placeholder, quote, confidence, evidence and any human value), its `comparison` (status, reason, defect fields, every field's judgement), the call running now, and every finished call oldest first with system prompt, input, answer text, parsed answer, tokens, cost, latency |
 | `GET /prompts` | each prompt step's versions on disk, newest first, with the active one, the model the file names and any notes; the runs page offers exactly these |
 | `GET /emails/:runId/:emailId` | full trace: email, attachments, classification, extractions with fields, comparison, diffs, review case, llm_calls summary |
 | `GET /review?status=open` | review inbox |
 | `POST /review/:id/actions` | `{ kind, field?, value?, note? }` |
 | `POST /review/:id/upload` | multipart attachment |
-| `GET /queues` | waiting/active/failed per queue |
+| `GET /queues` | superseded by `GET /runs/:id/queues` above, which is run scoped and carries the slots as well as the counts. A global view has no reader: every screen that asks is looking at one run |
 | `GET /clients`, `PUT /clients/:domain` | tiers |
 | `POST /chat/conversations`, `POST /chat/:id/messages`, `GET /chat/:id` | chat agent |
 | `GET /eval/runs/:id` | holdout, full-set and this-run scoreboards computed locally, plus `emails`: each email of the run, its answer beside the truth, check by check on the scorer's definitions (`EmailVerdict`), shown at `/runs/[id]/results`. Dev only; 404 on the VPS where ground truth is absent |
@@ -759,8 +763,8 @@ Pages (all behind the `proxy.ts` password gate; the cookie is an HMAC of `SITE_P
 |---|---|---|
 | `/login` | password form | |
 | `/runs` | table of runs with score, the env concurrency, start-run form (dev sample, holdout, all 520 or first N; rate; optional prompt version and model) | 3 s |
-| `/runs/[id]` | progress, model calls, verifier share, tokens, cost, pinned prompts; a live feed of the newest calls; the emails with category, confidence and decider, filterable; for a chosen email every call with its exact input and output | 2 to 4 s |
-| `/emails/[runId]/[emailId]` | trace: email, attachments with viewer, classification panel (generator, verifier), extraction table with quotes highlighted in the document text, comparison table, review panel | on demand |
+| `/runs/[id]` | the two queues left to right, one panel per queue with a row per email holding a slot, and where they end up. Replaces its panels rather than emptying them: a held queue says what is holding it and when it retries, a finished run shows outcomes, what it took and the score | 2 s while live, not at all once `processingDone` |
+| `/runs/[id]/emails/[emailId]` | the message as a bordered card, the seam, the reading in plain English, then the check. Tabs for `The check` (or `The case`), `Both documents` and `Model calls`, the `Links to` strip, and the action bar drawn for phase 8. The 340px chat column is present and inert | 3 s until the email's stage is terminal |
 | `/review` | open cases grouped by reason, plus Failures tab; case detail with actions and upload | 3 s |
 | `/chat` | conversations, messages, SQL shown in a collapsible block, result tables | on send |
 | `/eval` | score history per run and prompt set; dev-only holdout view | 10 s |

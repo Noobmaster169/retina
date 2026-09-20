@@ -11,9 +11,13 @@ export interface NewDocument {
   scanned: boolean;
   unreadable: boolean;
   warnings: string[];
+  /** Mean OCR word confidence per page, in page order. Empty for a document with a text layer. */
+  pageConfidence: number[];
 }
 
 export interface StoredDocument extends NewDocument {
+  /** The file's size on disk, from its attachment row. The message card states it beside the name. */
+  bytes: number;
   id: string;
   filename: string;
   objectKey: string;
@@ -46,10 +50,12 @@ interface DocumentRow {
   scanned: boolean;
   unreadable: boolean;
   warnings: string[];
+  page_confidence: number[];
+  bytes: number;
 }
 
 const COLUMNS = `d.id, d.email_run_id, d.attachment_id, a.filename, a.object_key, a.content_type, d.role, d.doc_type,
-  d.doc_type_confidence, d.doc_type_rationale, d.format, d.text_object_key, d.pages, d.scanned, d.unreadable, d.warnings`;
+  d.doc_type_confidence, d.doc_type_rationale, d.format, d.text_object_key, d.pages, d.scanned, d.unreadable, d.warnings, d.page_confidence, a.bytes`;
 
 function toDocument(row: DocumentRow): StoredDocument {
   return {
@@ -69,6 +75,8 @@ function toDocument(row: DocumentRow): StoredDocument {
     scanned: row.scanned,
     unreadable: row.unreadable,
     warnings: row.warnings,
+    pageConfidence: row.page_confidence ?? [],
+    bytes: row.bytes,
   };
 }
 
@@ -86,6 +94,8 @@ export function toView(doc: StoredDocument, typeVerdict: TypeVerdict): DocumentV
     scanned: doc.scanned,
     unreadable: doc.unreadable,
     warnings: doc.warnings,
+    pageConfidence: doc.pageConfidence,
+    bytes: doc.bytes,
   };
 }
 
@@ -93,8 +103,8 @@ export function toView(doc: StoredDocument, typeVerdict: TypeVerdict): DocumentV
 export async function upsert(db: Queryable, doc: NewDocument): Promise<void> {
   await db.query(
     `insert into core.documents
-       (email_run_id, attachment_id, role, format, text_object_key, pages, scanned, unreadable, warnings)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       (email_run_id, attachment_id, role, format, text_object_key, pages, scanned, unreadable, warnings, page_confidence)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      on conflict (email_run_id, attachment_id) do update set
        role = excluded.role,
        format = excluded.format,
@@ -103,6 +113,7 @@ export async function upsert(db: Queryable, doc: NewDocument): Promise<void> {
        scanned = excluded.scanned,
        unreadable = excluded.unreadable,
        warnings = excluded.warnings,
+       page_confidence = excluded.page_confidence,
        doc_type = null,
        doc_type_confidence = null,
        doc_type_rationale = null,
@@ -117,6 +128,7 @@ export async function upsert(db: Queryable, doc: NewDocument): Promise<void> {
       doc.scanned,
       doc.unreadable,
       JSON.stringify(doc.warnings),
+      doc.pageConfidence,
     ],
   );
 }

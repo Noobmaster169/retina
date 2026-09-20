@@ -39,3 +39,21 @@ export async function lastFinishedForRuns(db: Queryable, runIds: string[]): Prom
   const last = new Map(rows.map((row) => [row.run_id, row.last.toISOString()]));
   return (runId) => last.get(runId) ?? null;
 }
+
+/**
+ * The crossing between the two queues: how many of the run's sorted emails
+ * need a document check, and how many stopped at the first queue. Counted here
+ * because the run page draws the handoff and CLAUDE.md keeps that arithmetic
+ * out of the frontend.
+ */
+export async function handoff(db: Queryable, runId: string): Promise<{ needCheck: number; notComparable: number }> {
+  const { rows } = await db.query<{ need_check: string; not_comparable: string }>(
+    `select count(*) filter (where c.final_category = 'BL_COMPARISON') as need_check,
+            count(*) filter (where er.outcome = 'not_comparable')      as not_comparable
+       from core.email_runs er
+       left join core.classifications c on c.email_run_id = er.id
+      where er.run_id = $1`,
+    [runId],
+  );
+  return { needCheck: Number(rows[0].need_check), notComparable: Number(rows[0].not_comparable) };
+}

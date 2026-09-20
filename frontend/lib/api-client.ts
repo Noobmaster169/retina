@@ -11,10 +11,24 @@
 export { type ChatMessage, type ChatOutcome, type ChatRequest, type ChatResult, chat, listModels, type ModelInfo } from "./api/chat-client";
 export { type Email, type EmailListQuery, type EmailPage, type EmailSummary, fetchAttachment, getEmail, listEmails } from "./api/mail-client";
 export {
+  type CheckStatus,
+  DEPENDENCIES,
+  DEPENDENCY_LABELS,
+  getHealth,
+  getRunQueues,
+  type HealthReport,
+  type QueuedEmail,
+  type QueueName,
+  type QueueSlot,
+  type QueueView,
+  type RunQueuesView,
+} from "./api/queues-client";
+export {
   cancelRun,
   type Concurrency,
   createRun,
   type CreateRunInput,
+  deleteRun,
   getRun,
   type HeadlineScores,
   type LastSubmission,

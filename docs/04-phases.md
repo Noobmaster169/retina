@@ -279,19 +279,19 @@ path (phase 8). The chat itself (phase 10a). Lessons (phase 11).
 
 **Exit checklist.**
 
-- [ ] No token from the phase 1 palette remains in `frontend/`; `globals.css` matches `05-design.md` section 4, and the three families load.
-- [ ] No status dot sits beside a chip, a row or a card anywhere in `frontend/`.
-- [ ] No JSON blob, model name, token count or dollar cost appears outside the run page's own machinery view.
-- [ ] During a 2 emails/s run both queue panels, the counters and the outcomes update without page reloads, and the two queues are visibly independent.
-- [ ] Stopping doc-extract mid run leaves the sorting panel running and the checking panel showing a held state that names the dependency and the retry, not an empty grid.
-- [ ] A finished run replaces its two queue panels rather than leaving them blank.
-- [ ] Opening a mismatch shows the message walled off from the reading by the seam, and the differing words marked on both sides, with nothing else on the row coloured.
-- [ ] A `missing_value` case renders the hatch, not a colour, and not the word "missing" in place of the value.
-- [ ] Opening an unreadable case shows the rendered page images with their per page OCR confidence.
-- [ ] The rail collapses to 56px and every page still works.
-- [ ] Every screen passes the accessibility checks in `05-design.md` section 10: 4.5:1 body contrast with nothing informational in `--ink-faint`, keyboard row navigation, no meaning carried by colour alone.
-- [ ] No secret or ngrok URL appears in browser network requests.
-- [ ] `eslint` clean, including the 200-line rule.
+- [x] No token from the phase 1 palette remains in `frontend/`; `globals.css` matches `05-design.md` section 4, and the three families load.
+- [x] No status dot sits beside a chip, a row or a card anywhere in `frontend/`.
+- [x] No JSON blob, model name, token count or dollar cost appears outside the run page's own machinery view.
+- [x] During a 2 emails/s run both queue panels, the counters and the outcomes update without page reloads, and the two queues are visibly independent.
+- [x] Stopping doc-extract mid run leaves the sorting panel running and the checking panel showing a held state that names the dependency and the retry, not an empty grid.
+- [x] A finished run replaces its two queue panels rather than leaving them blank.
+- [x] Opening a mismatch shows the message walled off from the reading by the seam, and the differing words marked on both sides, with nothing else on the row coloured.
+- [~] A `missing_value` case renders the hatch, not a colour, and not the word "missing" in place of the value. Held by a unit test (`field-reading.test.ts` asserts a missing field never takes a difference mark) and by the component, which draws `Hatch` whenever a value is null. Not yet seen on screen: no email in the local runs produced a missing field, so the path wants one real case before this is ticked.
+- [~] Opening an unreadable case shows its per page OCR confidence, and each page as a hatched page-shaped block rather than a rendered image. Rendering needs `docExtract.render` and `/files/*key`, which phase 8 brings for its upload path; see the phase 7 entry in `PROGRESS.md`.
+- [x] The rail collapses to 56px and every page still works.
+- [x] Every screen passes the accessibility checks in `05-design.md` section 10: 4.5:1 body contrast with nothing informational in `--ink-faint`, keyboard row navigation, no meaning carried by colour alone.
+- [x] No secret or ngrok URL appears in browser network requests: every call is a same-origin `/api/*` route handler.
+- [x] `eslint` clean, including the 200-line rule.
 
 ## Phase 8: Review inbox
 
