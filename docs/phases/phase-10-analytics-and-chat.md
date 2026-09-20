@@ -292,9 +292,18 @@ Not in the first draft of this file, which covered 10a only. `docs/04-phases.md`
   `pipeline/ontology/resolve.ts` from `extraction_fields` and the field judge's same-verdicts, and
   nothing else. Port and party only: nothing in the seven fields yields a shipment or a carrier, so
   those stay `planned` and are drawn dashed.
-- The database page (`DbGrid`, `DbEntities`, `DbRecord`) and the ontology page's two tabs
-  (`ObjectTyped`, `GraphLinks`). The third tab the canvas first drew was cut: the database page
-  does that job better.
+- The ontology page: **Things, Record and Links**, over one of five types. `DbEntities`'s list
+  and `DbRecord`'s record are the Things and Record tabs of a resolved thing; `ObjectTyped` and
+  `GraphLinks` are an email's. The database page (`DbGrid`) is built and **hidden from the rail**:
+  browsing raw tables is a flow nobody needs beside the ontology, and it is kept reachable by URL
+  only because it is the page that proves the ontology is not a mock-up.
+- Five navigable types and not twelve. Runs, Attachments, Documents, Comparisons, Differences and
+  Fields are real and are reached through an object rather than browsed, because nobody opens a
+  list of 3,178 Fields. Client folds into Party, since a sender domain and a consignee are the
+  same company read two ways; `/clients` is still where a tier is set.
+- The Record tab has no column configurator. The canvas drew one, and it configured a list of
+  eleven values with an Add menu offering three kinds of column that do not exist and two dead
+  tabs. One column, and the `written by` beside every value, is the part that was arguing.
 - The Links canvas is React Flow with the layout kept pure in `lib/graph/layout.ts`, because React
   Flow does no layout of its own. The chat's result graph is inline SVG over the same function: it
   does not pan or zoom, so a canvas runtime would be weight for nothing.

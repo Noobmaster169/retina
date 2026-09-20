@@ -36,8 +36,11 @@ working shown, the database page, and the ontology page.
 - `agents/chat/`: the four tools behind one registry, the pure SQL guardrail, and a loop of at
   most eight steps. Every iteration is an `llm_calls` row with `run_id = null`.
 - `src/mcp.ts` serves the same registry over stdio; `.mcp.json` configures it.
-- The database page, the ontology page's two tabs, the `/chat` page, and the email page's chat
-  rail turned on. `planned` came off three rail destinations.
+- The ontology page: Things, Record and Links over one of five types, with the type, the
+  selection and the tab all in the URL. The `/chat` page and the email page's chat rail turned on.
+- The database page is built and hidden from the rail. Five navigable types, not twelve: the rest
+  are reached through an object rather than browsed, and Client folds into Party because a sender
+  domain and a consignee are the same company read two ways.
 - `pnpm derive` forces the derived data level with core, for after a deploy and before a demo.
 
 **Three things only end-to-end use could have found, all fixed.**
@@ -1208,12 +1211,18 @@ the same branch. The behaviour changes are the first three.
 - Shipment and Carrier are in the design's entity vocabulary and are never `built`: nothing in the
   organisers' seven fields yields a booking or a vessel. They are drawn dashed and the rail says
   so. Building them needs a source, not a table.
+- The database page is hidden, not removed (`Destination.hidden` in `components/shell/nav.ts`).
+  `/runs/:id/database` still serves `As rows` and `As things`. If a demo wants the raw tables
+  back in the rail, deleting that one field is what does it.
+- Only an email has a graph. The Links tab is not drawn for a port or a party: another type's
+  graph is a different set of relations, not a parameter.
 - `entity_names.joined_by` allows `human` and nothing writes it. A person's `correct_field` says a
   value was wrong, which is not the same claim as two values denoting one thing, so joining on a
   correction would have been a guess. The path opens when the action card's apply path does.
-- The ontology page's Record tab draws the canvas's column configurator with the part that has
-  something to act on made real: the eyes hide and show values. `Add` is disabled, because a
-  computed value, a link count and a value over time are three columns that do not exist.
+- The column configurator the canvas drew on the Record tab is gone rather than deferred. It
+  configured a list of eleven values, its `Add` offered three kinds of column that do not exist,
+  and two of its three tabs were dead. If a computed column is ever built, it needs a table to
+  configure, which is the database page's job.
 - A resolved thing's graph. `GET /ontology/:type/:id/graph` serves an email only, which is what
   both canvases draw; another type's graph is a different set of relations, not a parameter.
 - The Earth view (`04-phases.md` 10c) is untouched and still optional.

@@ -787,6 +787,12 @@ to one seed of one dataset. Two spellings no judge ever compared stay two things
 `consignee`, `notify_party`). Shipment and Carrier are in the design's vocabulary and have no
 source field, so they are never `built` and the rail draws them dashed.
 
+An **appearance** is an email, not a mention. A port read from both documents of one email is one
+appearance read twice, and the same email replayed in three runs is still one appearance:
+`entities.detail.ts:appearances` keeps the newest run's row per (email, field) and reports the
+sides it was read from as a field. Listing mentions put one subject on screen four times and told
+a reader nothing the sides and the count do not.
+
 ### 8.4 Roles
 
 Migration `011_ro_role.sql`, plus `014_ro_entities.sql` for the tables `013` added afterwards.
@@ -863,7 +869,7 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 | `POST /chat/conversations` | `{ title?, runId?, emailId?, actor }`. `runId` and `emailId` are the conversation's scope, which the rail draws as its `Reading` chips: a default the agent may widen when a question asks something wider, never a filter it cannot see past |
 | `GET /chat/conversations?runId=`, `GET /chat/:id`, `DELETE /chat/:id` | list, the thread with its turns, delete. A turn carries its tool calls, its result graph and the SQL it ran, so reloading a conversation brings the evidence back with the sentence |
 | `POST /chat/:id/messages` | `{ content, actor }` runs one turn and answers `{ turn, exhausted }`. The question is stored before the model is asked, so a turn that fails halfway still leaves the person's words on the page. No streaming; the frontend route handler declares `maxDuration = 300` and the client times out just under it |
-| `GET /ontology/types` | every object type with its live count and `built`. `shipment` and `carrier` are never built: nothing in the seven fields yields one, and the rail draws them dashed |
+| `GET /ontology/types` | the five types the rail offers, with live counts and `built`: Emails, Ports, Parties, Shipments, Carriers. The last two are never built, because nothing in the seven fields yields a booking or a vessel, and the rail draws them dashed. The other seven `ObjectType`s are real and are reached through an object rather than browsed; `client` in particular folds into `party`, since a sender domain and a consignee are the same company read two ways |
 | `GET /ontology/:type`, `GET /ontology/:type/:id`, `/:id/detail`, `/:id/graph?hops=1\|2` | the index of a resolved kind; one object in the one shape every type shares; the four parts a resolved thing opens into; and one email's graph as nodes and named edges. The graph carries no coordinates: the layout is one pure function in the frontend with a table-driven test |
 | `GET /database/tables`, `/tables/:schema/:name?limit=&offset=`, `/tables/:schema/:name/rows/:id` | every relation of `core` and `analytics` with an exact count; a page of one with typed columns and the SQL that produced it; one row as fields plus what points at it by foreign key. Identifiers are read out of `pg_catalog` and checked against a pattern before they reach a query; this path composes its own SQL and takes nothing a caller wrote, which is why it does not use the RO pool |
 | `GET /eval/runs/:id` | holdout, full-set and this-run scoreboards computed locally, plus `emails`: each email of the run, its answer beside the truth, check by check on the scorer's definitions (`EmailVerdict`), shown at `/runs/[id]/results`. Dev only; 404 on the VPS where ground truth is absent |

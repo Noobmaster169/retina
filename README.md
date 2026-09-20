@@ -135,7 +135,7 @@ All routes except `/health` need `Authorization: Bearer <key>`. The key is
 | `POST /chat/conversations`, `GET /chat/conversations?runId=` | open a conversation `{ title?, runId?, emailId?, actor }`, or list them. `runId` and `emailId` are its scope: a default the agent may widen, never a filter it cannot see past |
 | `POST /chat/:id/messages` | `{ content, actor }` → `{ turn, exhausted }`. One turn is up to eight model calls and can take minutes; there is no streaming. The turn carries the answer, the SQL that produced it, every tool call, and the graph of what it touched |
 | `GET /chat/:id`, `DELETE /chat/:id` | the thread with its turns, and delete |
-| `GET /ontology/types` | every object type with a live count and `built`. `shipment` and `carrier` are never built: nothing in the seven fields yields one |
+| `GET /ontology/types` | the five types the rail offers, with live counts: Emails, Ports, Parties, Shipments, Carriers. The last two are never built, because nothing in the seven fields yields a booking or a vessel |
 | `GET /ontology/:type/:id` | one object in the one shape every type shares: stored values each saying who wrote it, and the links out of it |
 | `GET /ontology/port/:id/detail` | what is stored, step out from here, written these ways, and where it appeared |
 | `GET /ontology/email/:id/graph?runId=&hops=1\|2` | the email one or two hops out, as nodes and named edges. No coordinates: the layout is the frontend's |
@@ -162,7 +162,7 @@ curl -s 127.0.0.1:8091/ai/chat -H "authorization: Bearer $TEAM_API_KEY" \
 | Run the backend tests | `pnpm test` in `backend/`, with `compose.local.yaml` up. They use the database `retina_test` |
 | Measure a burst | `pnpm load-test [--limit N]` in `backend/`: starts a run at rate 0, then prints its elapsed time, peak queue depth, the peak model calls in flight and any 429s. Needs one worker running, and only one |
 | Change who is served first | `/clients` in the app, or `PUT /clients/:domain`. A tier orders the queue; it never decides a category |
-| Add a page | `frontend/app/`. Everything run-scoped lives under `app/runs/[id]/`: the overview, `inbox`, `review`, `database`, `ontology` and `chat`. `/clients` is the one destination that is not about a run |
+| Add a page | `frontend/app/`. Everything run-scoped lives under `app/runs/[id]/`: the overview, `inbox`, `review`, `ontology` and `chat`. `/clients` is the one destination that is not about a run, and `database` is built but kept off the rail by `Destination.hidden` |
 | Regenerate the emails | `emails/data_v2/README.md` |
 | Check types | `pnpm type-check` in `frontend/` or `backend/`. `pytest` in `proxy/`; `uv run pytest && uv run ruff check .` in `services/doc-extract/` |
 | Change how a document is parsed | an extractor in `services/doc-extract/extractors/`, then `docker compose -f compose.local.yaml up -d --build doc-extract` in `backend/` |
