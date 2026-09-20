@@ -22,12 +22,13 @@ const live = redisLiveCalls();
 const redis = getRedis();
 const pool = getPool();
 const priority = redisPriorityCache(redis);
+const llm = proxyLlmClient({ maxConcurrency: config.LLM_MAX_CONCURRENCY });
 const workers = startWorkers(
   {
     pool,
     source: new AverisSource(config.EMAIL_SERVER_URL),
     store,
-    llm: proxyLlmClient({ maxConcurrency: config.LLM_MAX_CONCURRENCY }),
+    llm,
     docExtract: httpDocExtractClient(config.DOC_EXTRACT_URL),
     live,
     classify: queues.classify,
@@ -40,7 +41,7 @@ const workers = startWorkers(
 // The worker owns the clock, not the api: the api runs behind a load balancer
 // in principle and one of two replicas writing the heartbeat would say the
 // worker is alive when it is not.
-const schedulers = await startSchedulers({ pool, redis, priority, aging: [queues.classify, queues.compare] });
+const schedulers = await startSchedulers({ pool, redis, priority, llm, aging: [queues.classify, queues.compare] });
 log.info(
   {
     classify: config.CLASSIFY_CONCURRENCY,

@@ -188,6 +188,7 @@ describe("the prompts that ship", () => {
     // same rule: describe the task, never the dataset.
     loadPrompt("shipment-read", "v1"),
     loadPrompt("entity-resolve", "v1"),
+    loadPrompt("entity-profile", "v1"),
   ];
 
   it.each(readers.slice(0, 2))("$step $version names all seven of the organisers' fields", (prompt) => {

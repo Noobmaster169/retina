@@ -28,3 +28,5 @@ export {
   type SightingDraft,
 } from "./shipment";
 export { type NameHit, planSighting, type SightingPlan } from "./resolve-sighting";
+export { buildDossier, type Dossier, type DossierInput, LIMITS } from "./dossier";
+export { renderProfile, type RenderedProfile } from "./profile-md";

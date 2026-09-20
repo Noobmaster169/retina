@@ -2,6 +2,7 @@ export { classifyEmail, ClassifyOutput } from "./classify";
 export { DocTypeOutput, identifyDocument } from "./doc-type";
 export { type ExtractInput, extractFields, type ExtractionRole, ExtractOutput, verifyExtraction } from "./extract";
 export { type EntityResolveInput, EntityResolveOutput, type ResolveCandidate, resolveSighting } from "./entity-resolve";
+export { type EntityProfileInput, type ProfileOutput, profileSchema, writeProfile } from "./entity-profile";
 export { judgeFields, type JudgeOutput, judgeSchema } from "./field-judge";
 export { type LlmClient, type LlmRequest, type LlmResponse, proxyLlmClient } from "./llm-client";
 export { completePromptSet, envModel, pinPromptSet, promptFor } from "./prompts/prompt-set";

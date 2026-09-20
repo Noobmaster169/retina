@@ -42,3 +42,49 @@ export async function read(db: Queryable, entityId: string): Promise<StoredProfi
     attributeSources: z.record(z.string(), AttributeSource).catch({}).parse(row.attributes_source),
   };
 }
+
+/**
+ * The things whose profile should be rewritten next: never profiled first,
+ * then oldest, skipping anything written within the floor.
+ *
+ * The floor is what keeps the cost following the day's new mail rather than
+ * the size of the table. A thing nobody wrote about today is not rewritten
+ * today, however stale a resolution pass marked it.
+ */
+export async function staleIds(db: Queryable, limit: number, floorHours: number): Promise<string[]> {
+  const { rows } = await db.query<{ id: string }>(
+    `select id::text as id from core.entities
+      where stale and merged_into is null
+        and (profile_updated_at is null or profile_updated_at < now() - make_interval(hours => $2::int))
+      order by profile_updated_at nulls first
+      limit $1::int`,
+    [limit, floorHours],
+  );
+  return rows.map((row) => row.id);
+}
+
+export interface ProfileWrite {
+  markdown: string;
+  searchText: string;
+  attributes: Record<string, string | null>;
+  attributeSources: Record<string, AttributeSource>;
+}
+
+/**
+ * One profile, with its version raised by one and `stale` cleared.
+ *
+ * The version is what a concept verdict stores, so raising it here is what
+ * makes every verdict about this thing worth taking again, and nothing else's.
+ */
+export async function write(tx: Queryable, entityId: string, profile: ProfileWrite): Promise<number> {
+  const { rows } = await tx.query<{ profile_version: number }>(
+    `update core.entities
+        set profile_md = $2::text, search_text = $3::text,
+            attributes = $4::jsonb, attributes_source = $5::jsonb,
+            profile_version = profile_version + 1, profile_updated_at = now(), stale = false
+      where id = $1::bigint
+      returning profile_version`,
+    [entityId, profile.markdown, profile.searchText, JSON.stringify(profile.attributes), JSON.stringify(profile.attributeSources)],
+  );
+  return rows[0]?.profile_version ?? 0;
+}

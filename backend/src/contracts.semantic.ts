@@ -94,10 +94,18 @@ export const ATTRIBUTES: Record<EntityKind, z.ZodType> = {
   vessel: VesselAttributes,
 };
 
-/** Where one attribute came from, key for key with the attributes themselves. */
+/**
+ * Where one attribute came from, key for key with the attributes themselves.
+ *
+ * `mail` means the dossier in front of the model carried it: an address, a
+ * counterparty, a count. `model` means its own knowledge, which is where a
+ * region and a carrier's full name come from. The confidence is the model's
+ * own on that knowledge, and null for a `mail` basis, where there is no
+ * separate number to give: the value is in the dossier or it is not.
+ */
 export const AttributeSource = z.object({
   source: z.enum(["mail", "model"]),
-  confidence: z.number().min(0).max(1),
+  confidence: z.number().min(0).max(1).nullable().default(null),
   llmCallId: z.number().int().nullable().default(null),
 });
 export type AttributeSource = z.infer<typeof AttributeSource>;
