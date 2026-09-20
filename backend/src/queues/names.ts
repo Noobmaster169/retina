@@ -103,7 +103,17 @@ export const ONTOLOGY_PRIORITY = 2000;
  * One attempt: the next tick is the retry, and it is ten minutes away.
  */
 export function maintenanceJobOptions(name: string): JobsOptions {
-  return { attempts: 1, removeOnComplete: true, removeOnFail: { age: 3600 }, jobId: name, priority: ONTOLOGY_PRIORITY };
+  return {
+    attempts: 1,
+    // Removed either way, because the job id is the task's own name: a failed
+    // one kept for an hour would hold that id and every tick in that hour
+    // would be refused as a duplicate, silently. The next tick is the retry
+    // and the worker's `failed` listener is where the reason is written.
+    removeOnComplete: true,
+    removeOnFail: true,
+    jobId: name,
+    priority: ONTOLOGY_PRIORITY,
+  };
 }
 
 export function ontologyJobOptions(emailId: string): JobsOptions {

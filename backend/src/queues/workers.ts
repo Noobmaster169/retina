@@ -180,7 +180,10 @@ export function startWorkers(deps: WorkerDeps, connection: Redis): RunningWorker
   compare.on("failed", guarded(QUEUES.compare, onEmailJobFailed(deps, "compare")));
   // No review case and no stage change: a reading that failed leaves the
   // email's verdict exactly where it was, which is the point of this queue.
-  ontology.on("failed", (job, error) => log.warn({ jobId: job?.id, err: error.message }, "a semantic reading failed"));
+  // The only record a failed ontology job leaves: no review case and no stage
+  // change, because this queue may never fail or slow a scored email. The job
+  // itself is removed, so this line is the reason and there is no second copy.
+  ontology.on("failed", (job, error) => log.warn({ jobId: job?.id, job: job?.name, err: error.message }, "an ontology job failed"));
 
   const workers = [ingest, classify, compare, ontology];
   for (const worker of workers) {
