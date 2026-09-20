@@ -13,6 +13,7 @@ import type { RunQueues } from "./queues/run-queues";
 import { aiRouter } from "./routes/ai.routes";
 import { clientsRouter } from "./routes/clients.routes";
 import { promptsRouter } from "./routes/prompts.routes";
+import { requestLog } from "./routes/request-log";
 import { emailsRouter } from "./routes/emails.routes";
 import { evalRouter } from "./routes/eval.routes";
 import { filesRouter } from "./routes/files.routes";
@@ -41,6 +42,8 @@ export interface AppDeps {
 
 export function createApp(deps: AppDeps): express.Express {
   const app = express();
+  // Before the body parser, so a request that fails to parse is still logged.
+  app.use(requestLog());
   app.use(express.json({ limit: "1mb" }));
 
   // Unauthenticated: the compose healthcheck has no key, and it reveals

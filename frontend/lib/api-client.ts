@@ -8,10 +8,22 @@
  * naming the field, instead of reaching a component as undefined.
  */
 
+export {
+  type ClientKind,
+  type ClientList,
+  type ClientOutcome,
+  type ClientRow,
+  type ClientUpdate,
+  KINDS,
+  listClients,
+  TIERS,
+  updateClient,
+} from "./api/clients-client";
 export { type ChatMessage, type ChatOutcome, type ChatRequest, type ChatResult, chat, listModels, type ModelInfo } from "./api/chat-client";
 export { Email, type EmailListQuery, type EmailPage, type EmailSummary, fetchAttachment, getEmail, listEmails } from "./api/mail-client";
 export {
   type CheckStatus,
+  checkDetail,
   DEPENDENCIES,
   DEPENDENCY_LABELS,
   getHealth,

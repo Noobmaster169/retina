@@ -151,7 +151,10 @@ export async function callStructured<T>(deps: StructuredDeps, call: StructuredCa
       response = await deps.llm.complete(request);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      log.warn({ runId: call.runId, emailRunId: call.emailRunId, stage: prompt.step, attempt, err: message }, "model call failed");
+      log.warn(
+        { runId: call.runId, emailRunId: call.emailRunId, stage: prompt.step, model: prompt.model, promptVersion: prompt.version, attempt, err: message },
+        "model call failed",
+      );
       await llmCalls.insert(deps.pool, { ...row, ok: false, error: message, latencyMs: Date.now() - started });
       throw error;
     } finally {
@@ -159,7 +162,7 @@ export async function callStructured<T>(deps: StructuredDeps, call: StructuredCa
     }
 
     const parsed = call.schema.safeParse(extractJson(response.text));
-    const where = { runId: call.runId, emailRunId: call.emailRunId, stage: prompt.step, model: prompt.model, attempt };
+    const where = { runId: call.runId, emailRunId: call.emailRunId, stage: prompt.step, model: prompt.model, promptVersion: prompt.version, attempt };
     log.info(
       { ...where, ok: parsed.success, latencyMs: response.latencyMs, tokens: response.usage, costUsd: response.costUsd },
       "model call",

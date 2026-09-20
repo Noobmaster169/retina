@@ -5,7 +5,6 @@ import { getPool } from "../../src/db";
 import { MemoryPriorityCache } from "../../src/queues/__fakes__/memory.priority-cache";
 import { closeRedis, getRedis } from "../../src/queues/connection";
 import { HEARTBEAT_KEY, lastBeat } from "../../src/queues/heartbeat";
-import { QUEUES } from "../../src/queues/names";
 import { type RunningSchedulers, SCHEDULED, startSchedulers } from "../../src/queues/schedulers";
 
 /**
@@ -16,16 +15,26 @@ import { type RunningSchedulers, SCHEDULED, startSchedulers } from "../../src/qu
  * within a week.
  */
 
+/**
+ * Its own queue, not the real one. A dev box runs a worker against this same
+ * Redis, and clearing `scheduler` here would silently unregister its heartbeat
+ * and its aging pass for the rest of the day.
+ */
+const QUEUE = "test-scheduler";
+
 let running: RunningSchedulers | undefined;
 let queue: Queue;
 
-async function start(): Promise<RunningSchedulers> {
-  return startSchedulers({ pool: getPool(), redis: getRedis(), priority: new MemoryPriorityCache() });
+async function start(priority = new MemoryPriorityCache()): Promise<RunningSchedulers> {
+  return startSchedulers({ pool: getPool(), redis: getRedis(), priority, queueName: QUEUE });
 }
 
 beforeEach(async () => {
-  queue = new Queue(QUEUES.scheduler, { connection: getRedis() });
+  queue = new Queue(QUEUE, { connection: getRedis() });
   await queue.obliterate({ force: true });
+  // The one key this does share with a worker on the same Redis, because the
+  // heartbeat is a singleton by definition and a test of it has to write the
+  // real one. It costs a dev box at most one cycle of reading worker down.
   await getRedis().del(HEARTBEAT_KEY);
 });
 
@@ -68,7 +77,7 @@ describe("startSchedulers", () => {
 
   it("fills the priority cache at boot, so the first email of a run is queued at its client's tier", async () => {
     const priority = new MemoryPriorityCache();
-    running = await startSchedulers({ pool: getPool(), redis: getRedis(), priority });
+    running = await start(priority);
 
     // The seed migration put the organisers' own domains in core.clients.
     expect(await priority.tierOf("aprilasia.com")).toBe(3);

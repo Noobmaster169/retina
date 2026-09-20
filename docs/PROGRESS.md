@@ -1,16 +1,114 @@
 # Progress
 
-Current phase: 9, not started. **Phase 8 is built on `phase-08-review-inbox` and its exit checklist
-is green.** Phase 7 is merged to `main`; its two `[~]` items are still under "Deferred" below.
+Current phase: 9, built on `phase-09-priority-and-ops`. **Phase 8 is merged to `main`.** Phase 7's
+two `[~]` items are still under "Deferred" below.
 
-**Start at `docs/phases/phase-09-handover.md`.** Phase 8's own sections are below; the shell
-contract, the design decisions settled with the user and the traps that cost real time are still in
-`docs/phases/phase-08-handover.md`, and all of it still applies.
+**Start at `docs/phases/phase-10-handover.md`.** Phase 9's section is below; the shell contract and
+the traps in `docs/phases/phase-08-handover.md` sections 6 and 10 all still apply.
 
 Phase 6 is built and tested; left for the user there: the holdout run and the full 520 run that
 decide its exit checklist's score lines (`pnpm eval:score --run <id> --holdout`), and phase 5's
 open items (the box check of doc-extract, the classify `v5` holdout). Phase 4's open items (the
 few-shot `v4` holdout, the model comparison) are still the user's.
+
+## Phase 9
+
+The queues behave like production queues: a client's tier decides who is served first, nothing
+starves, the model cap covers every queue that contends for it, the clock lives in the worker, and
+`/health` says enough that a person and a deploy script can both act on it.
+
+**Built.**
+
+- Migration `009_clients_seed.sql`: the nine domains the organisers' kit names as parties to a
+  shipment, every one at the default tier. Additive and idempotent.
+- `src/queues/priority.ts`, pure: `tier * 200 - min(floor(tonnage / 10), 99)`. The bonus caps below
+  a tier's width so it can never cross one, and the result is never 0, which BullMQ reads as "no
+  priority" and serves **ahead** of everything rather than behind it.
+- `src/queues/priority-cache.ts`: the `client:priority` hash behind one interface with a memory
+  fake. A read that fails answers null and the caller takes the default tier, because an email that
+  arrives while Redis is restarting still has to be queued.
+- `src/queues/aging.ts`: anything waiting over five minutes gains a tier of urgency, four passes
+  bringing the least urgent email to the front. A person's rerun is not exempt: aging only
+  promotes, so there is nothing to exempt it from.
+- `src/queues/schedulers.ts`: a `scheduler` queue with three repeatable jobs (the cache refresh,
+  the aging pass, the heartbeat), registered by key so the worker restarting every three minutes
+  under auto-deploy re-registers three rather than accumulating a fourth. The first heartbeat and
+  the first refresh happen at boot, before registration.
+- `src/queues/heartbeat.ts`: `worker:heartbeat`, written every 10 s with a 60 s TTL. Six beats, not
+  one: a worker that misses a cycle under load is still working.
+- `src/health.ts` and `src/health-probes.ts`: every check is an object carrying its own latency and
+  whatever that dependency says about itself, all of it free from the dependency's own health
+  payload. `llmProxy` and `worker` are new. `down` and 503 only for postgres or redis.
+- `GET /clients`, `PUT /clients/:domain`, and the `/clients` page with its rail entry and the
+  write-through to the cache.
+- `scripts/load-test.ts`: a burst, its elapsed time, its peak queue depth, the peak model calls in
+  flight swept out of `llm_calls`, and any 429s.
+- The logging audit: a model call names its `promptVersion`, a failed job names its `jobId` and
+  `attempt`, a queue pause names the job that caused it, and `routes/request-log.ts` gives every
+  request an id the response echoes. Successful requests log at `debug` on purpose: every open tab
+  polls three routes, and at `info` that would bury every decision the worker makes.
+
+**The finding phase 7 wrote down and phase 8 left alone.** `LLM_MAX_CONCURRENCY` defaulted to
+`CLASSIFY_CONCURRENCY` (8) alone while BullMQ runs 8 classify plus 4 compare jobs, all contending
+for those 8 slots, so eight classify jobs could hold every slot while four compare jobs sat blocked
+in the semaphore. It is their sum now, and `proxy.yaml` serves 12 to match. Both sit well under the
+measured ceilings: `claudecli` about 0.5 requests a second, ngrok falling over above roughly 64
+sockets.
+
+**New contracts**, mirrored in `frontend/lib/api/` and in `03-infra-deep.md` sections 4 and 10:
+
+- `contracts.clients.ts`: `ClientRow` (with `known`, false for a sender nobody has ranked),
+  `ClientList`, `ClientUpdate`, and `DEFAULT_TIER`.
+- `HealthReport` is a different shape: `status` gains `down`, every check is an object, and the
+  report carries `version` and `queues`.
+
+**Four things in the phase 9 spec were wrong; `phase-09-priority-and-ops.md` is corrected.**
+
+- The migration number. Phase 8 took `008`; `db/migrate.mjs` applies by filename, so a duplicate is
+  a migration that silently never runs.
+- `expire-counters` expires `run:{id}:counters`, a key that was never built: phase 7 draws its
+  counters from Postgres and `live:call:*` carries its own TTL. Not built, and `03-infra-deep.md`
+  section 4.1 is corrected.
+- The health check named `averis`. The built check is `inbox`, and the rail, its labels and
+  `DEPENDENCIES` all read that name. `CLAUDE.md` rule 5 gives the repo the last word.
+- "Insert every sender domain seen in the dataset", against its own list of nine. Fifteen appear;
+  the other six are the phishing senders, and seeding those would be a sender list fitted to one
+  seed of one dataset. `GET /clients` lists every sender actually seen instead, so all fifteen are
+  on the page with the six marked as nobody's decision.
+
+A fifth, smaller: the spec's test table says tier 1 and 500 MT is 151. It is 150.
+
+**Traps this phase added.**
+
+- **`changePriority` updates `job.priority` and leaves `job.opts.priority` alone.** The options
+  hold what the job was added with, so an aging pass that read them recomputed the same first step
+  forever: a job went 1000 to 900 and stayed there however long it waited.
+- **Two untyped parameters inside one `coalesce` are both inferred as text**, which Postgres then
+  refuses to write into a smallint. The upsert casts every parameter.
+- **Changing the health shape reaches the deploy scripts.** `retina_health_ready` in
+  `deploy/lib/stack.sh` gated on the substring `"postgres":"up"`, which a nested check does not
+  contain: left alone it would have failed every deploy's health check and rolled back a working
+  image. It accepts both shapes now, because a rollback puts the older image back and has to pass
+  its own gate. `deploy/sim/sim.sh` asserted the same substrings and is updated with it.
+- **A dev box accumulates workers.** Four generations of `pnpm dev:worker` from earlier sessions
+  were all consuming the same Redis queues, one of them pointed at a doc-extract base URL ending
+  `/nope`. A burst run came back 36 failed out of 52 with `doc-extract returned 404`, which is not
+  a bug in anything in this repository. Before reading a run, check there is one worker.
+- **A test against the real `scheduler` queue wipes a running worker's registrations.**
+  `startSchedulers` takes a queue name so the test has its own.
+
+**Settled while building.**
+
+- **A rerun takes the priority the email already has**, read back from `email_runs.priority` rather
+  than recomputed. A correction on a tier-1 client's email queueing behind a burst is the one thing
+  the person who just fixed it would never expect.
+- **Aging does not exempt a rerun.** The phase 8 handover worried one would "age out"; that reads
+  the sign backwards. BullMQ serves the lowest number first, so aging promotes.
+- **`/clients` is global, not run-scoped.** Every other destination is `/runs/{id}/...` and the
+  shell contract forbids a second nav pattern, but a tier is a standing decision about a sender and
+  not a property of one replay. `Destination.global` is the one field that allows it.
+- **`kind = 'spam'` is a label and nothing reads it.** It is offered on the page because a person
+  may want to say it. No category is decided by it, by a sender list, or by anything but the model.
 
 ## Phase 8
 

@@ -45,6 +45,12 @@ export interface SchedulerDeps {
   pool: Pool;
   redis: Redis;
   priority: PriorityCache;
+  /**
+   * Which queue to register on. Only a test passes it, and only so that
+   * clearing its own queue cannot wipe the registrations of a worker running
+   * against the same Redis, which is exactly what a dev box has.
+   */
+  queueName?: string;
 }
 
 /** Postgres is the truth; the hash is a copy the enqueue path can afford to read. */
@@ -84,7 +90,7 @@ export interface RunningSchedulers {
  * worker that is running as one that is not.
  */
 export async function startSchedulers(deps: SchedulerDeps): Promise<RunningSchedulers> {
-  const queue = new Queue(QUEUES.scheduler, { connection: deps.redis });
+  const queue = new Queue(deps.queueName ?? QUEUES.scheduler, { connection: deps.redis });
   await beat(deps.redis);
   await refreshPriorityCache(deps);
 
@@ -92,7 +98,7 @@ export async function startSchedulers(deps: SchedulerDeps): Promise<RunningSched
     await queue.upsertJobScheduler(name, { every: EVERY[name] }, { name });
   }
 
-  const worker = new Worker(QUEUES.scheduler, (job: Job) => runTask(deps, job.name), {
+  const worker = new Worker(queue.name, (job: Job) => runTask(deps, job.name), {
     connection: deps.redis,
     concurrency: 1,
   });

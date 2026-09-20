@@ -12,6 +12,14 @@ export interface QueuePauser {
 
 export const LLM_OUTAGE_PAUSE_MS = 30_000;
 
+/** Which job hit the outage. A pause is the loudest thing a queue does and a reader has to be able to find its cause. */
+export interface PausedAt {
+  stage: string;
+  jobId: string | undefined;
+  runId: string;
+  emailId: string;
+}
+
 /** BullMQ's own failure for a job whose worker died more often than maxStalledCount allows. It is never retried. */
 const STALLED_OUT = "job stalled more than allowable limit";
 
@@ -20,12 +28,12 @@ const STALLED_OUT = "job stalled more than allowable limit";
  * attempts within seconds and the run's emails would fail for good. Instead the
  * queue pauses and the job goes back to wait with its attempts untouched.
  */
-export async function pausingOnOutage<T>(queue: QueuePauser, work: () => Promise<T>): Promise<T> {
+export async function pausingOnOutage<T>(queue: QueuePauser, where: PausedAt, work: () => Promise<T>): Promise<T> {
   try {
     return await work();
   } catch (error) {
     if (!(error instanceof DependencyUnavailableError)) throw error;
-    log.warn({ err: error.message, pauseMs: LLM_OUTAGE_PAUSE_MS }, "dependency unavailable, pausing the queue");
+    log.warn({ ...where, err: error.message, pauseMs: LLM_OUTAGE_PAUSE_MS }, "dependency unavailable, pausing the queue");
     await queue.rateLimit(LLM_OUTAGE_PAUSE_MS);
     throw Worker.RateLimitError();
   }

@@ -36,12 +36,12 @@ export async function recordJobFailure(
 ): Promise<void> {
   const { runId, emailId } = ids;
   if (!isFinalFailure(job, error)) {
-    log.warn({ runId, emailId, stage, attempt: job.attemptsMade, err: error.message }, "job failed, will retry");
+    log.warn({ runId, emailId, stage, jobId: job.id, attempt: job.attemptsMade, err: error.message }, "job failed, will retry");
     await emailRuns.incrementAttempt(db, runId, emailId);
     return;
   }
 
-  log.error({ runId, emailId, stage, err: error.message }, "job failed for good");
+  log.error({ runId, emailId, stage, jobId: job.id, attempt: job.attemptsMade, err: error.message }, "job failed for good");
   await emailRuns.setStage(db, runId, emailId, "failed", { error: error.message, finished: true });
   const emailRunId = await emailRuns.idOf(db, runId, emailId);
   if (!emailRunId) return;

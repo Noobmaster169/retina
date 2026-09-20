@@ -1,6 +1,9 @@
 import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from "pg";
 
 import { config } from "./config";
+import { childLogger } from "./lib/logger";
+
+const log = childLogger({ module: "db" });
 
 /** What a repository needs: satisfied by the pool and by a transaction client. */
 export interface Queryable {
@@ -11,7 +14,8 @@ let pool: Pool | undefined;
 
 /** Lazy, so importing a module that can query never opens a connection by itself. */
 export function getPool(): Pool {
-  pool ??= new Pool({
+  if (pool) return pool;
+  pool = new Pool({
     host: config.PG_HOST,
     port: config.PG_PORT,
     database: config.PG_DATABASE,
@@ -19,6 +23,14 @@ export function getPool(): Pool {
     password: config.PG_PASSWORD,
     max: 10,
   });
+  // Postgres restarting drops every idle connection, and pg reports that on
+  // the pool. Without a listener here Node treats an emitter's 'error' as
+  // unhandled and takes the process down: the api died instead of answering
+  // /health with postgres down, which is the one reading a deploy rolls back
+  // on and the one a person looks at first. The pool discards the client and
+  // opens a new one on the next query, so this is a line in the log and not
+  // an outage of anything.
+  pool.on("error", (error) => log.warn({ err: error.message }, "an idle database connection was dropped"));
   return pool;
 }
 

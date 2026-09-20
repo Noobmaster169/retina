@@ -270,6 +270,8 @@ jobs:
         with:
           context: backend
           push: true
+          build-args: |
+            GIT_SHA=${{ github.sha }}
           tags: |
             ${{ steps.img.outputs.name }}:${{ steps.tag.outputs.immutable }}
             ${{ steps.img.outputs.name }}:${{ steps.tag.outputs.moving }}

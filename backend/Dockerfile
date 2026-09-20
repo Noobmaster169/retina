@@ -29,6 +29,12 @@ COPY db ./db
 # Id lists only, so a run can be started on the dev sample or the holdout. Never the answer key, never reports.
 COPY eval/split.json eval/dev-sample.json ./eval/
 
+# The commit this image was built from, so /health can say which one is
+# serving. Last, deliberately: it changes on every build and every layer below
+# it would be rebuilt with it.
+ARG GIT_SHA=dev
+ENV GIT_SHA=$GIT_SHA
+
 USER api
 EXPOSE 8091
 ENV PORT=8091

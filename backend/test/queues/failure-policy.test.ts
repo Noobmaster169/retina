@@ -2,7 +2,7 @@ import { UnrecoverableError } from "bullmq";
 import { describe, expect, it } from "vitest";
 
 import { LlmUnavailableError, RetryableError, TerminalError } from "../../src/lib/errors";
-import { isFinalFailure, LLM_OUTAGE_PAUSE_MS, pausingOnOutage } from "../../src/queues/failure-policy";
+import { isFinalFailure, LLM_OUTAGE_PAUSE_MS, type PausedAt, pausingOnOutage } from "../../src/queues/failure-policy";
 
 class RecordingPauser {
   readonly pauses: number[] = [];
@@ -11,10 +11,13 @@ class RecordingPauser {
   }
 }
 
+/** A pause names the job that hit the outage, so a reader can find its cause. */
+const WHERE: PausedAt = { stage: "classify", jobId: "run__email_001", runId: "run", emailId: "email_001" };
+
 describe("pausingOnOutage", () => {
   it("returns the work's value and pauses nothing when the call succeeds", async () => {
     const queue = new RecordingPauser();
-    await expect(pausingOnOutage(queue, async () => "classified")).resolves.toBe("classified");
+    await expect(pausingOnOutage(queue, WHERE, async () => "classified")).resolves.toBe("classified");
     expect(queue.pauses).toEqual([]);
   });
 
@@ -24,7 +27,7 @@ describe("pausingOnOutage", () => {
       throw new LlmUnavailableError("proxy answered 503");
     };
     // The job must come back with its attempts untouched, which is what a RateLimitError does.
-    await expect(pausingOnOutage(queue, work)).rejects.toThrow("bullmq:rateLimitExceeded");
+    await expect(pausingOnOutage(queue, WHERE, work)).rejects.toThrow("bullmq:rateLimitExceeded");
     expect(queue.pauses).toEqual([LLM_OUTAGE_PAUSE_MS]);
   });
 
@@ -34,7 +37,7 @@ describe("pausingOnOutage", () => {
   ])("lets %s through without pausing", async (_name, error) => {
     const queue = new RecordingPauser();
     await expect(
-      pausingOnOutage(queue, async () => {
+      pausingOnOutage(queue, WHERE, async () => {
         throw error;
       }),
     ).rejects.toBe(error);
