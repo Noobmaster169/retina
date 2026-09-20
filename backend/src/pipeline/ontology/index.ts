@@ -27,3 +27,4 @@ export {
   type ShipmentSources,
   type SightingDraft,
 } from "./shipment";
+export { type NameHit, planSighting, type SightingPlan } from "./resolve-sighting";

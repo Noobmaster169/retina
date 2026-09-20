@@ -187,6 +187,7 @@ describe("the prompts that ship", () => {
     // Phase 10f's five. None of them is scored and all of them are held to the
     // same rule: describe the task, never the dataset.
     loadPrompt("shipment-read", "v1"),
+    loadPrompt("entity-resolve", "v1"),
   ];
 
   it.each(readers.slice(0, 2))("$step $version names all seven of the organisers' fields", (prompt) => {
