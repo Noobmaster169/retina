@@ -1,6 +1,6 @@
 import { ClassifyOutput, classifyEmail, type LlmClient, promptFor, verifyClassification } from "../../agents";
 import { config } from "../../config";
-import type { Category, PromptSet } from "../../contracts";
+import type { Category, PromptSet, Stage } from "../../contracts";
 import type { Queryable } from "../../db";
 import type { DocExtractClient } from "../../doc-extract";
 import { TerminalError } from "../../lib/errors";
@@ -9,12 +9,15 @@ import type { LiveCalls } from "../../live";
 import { attachments, classifications, emailRuns, emails, llmCalls, type Run, runs, type StoredAttachment } from "../../ontology/repositories";
 import { buildClassifyInput, type ClassifyInput, decide, describeAttachments, needsVerifier } from "../../pipeline/classify";
 import type { ObjectStore } from "../../storage";
-import { type ClassifyJob, type CompareJob, JOB_NAMES, type JobAdder, jobOptions } from "../names";
+import { type ClassifyJob, type CompareJob, JOB_NAMES, type JobAdder, jobOptions, rerunJobOptions } from "../names";
 import type { EmailRunIds } from "./ids";
 import { parseDocuments } from "./parse-documents";
 import { promptSetOf } from "./prompt-set-of";
 
 const log = childLogger({ module: "classify.processor" });
+
+/** Where a rerun may pick an email up from: every stage an email can be sitting in when a person acts on it. */
+const RESTARTABLE: Stage[] = ["ingested", "classifying", "classified", "review", "done", "failed"];
 
 export interface ClassifyDeps {
   pool: Queryable;
@@ -140,6 +143,11 @@ export async function processClassify(deps: ClassifyDeps, data: ClassifyJob, pri
   const emailRunId = await emailRuns.idOf(deps.pool, runId, emailId);
   if (!emailRunId) throw new TerminalError(`email ${emailId} is not in run ${runId}`);
 
+  // A person asking for this email again is the only thing that may pick it up
+  // from `review`, `done` or `failed`. The pipeline's own jobs never drag a
+  // finished email backwards, which is what every stage move below says.
+  if (data.rerunFrom && !(await emailRuns.moveStage(deps.pool, runId, emailId, RESTARTABLE, "classifying"))) return;
+
   let category = (await classifications.get(deps.pool, emailRunId))?.finalCategory ?? null;
   if (!category) {
     await emailRuns.moveStage(deps.pool, runId, emailId, ["ingested", "classifying"], "classifying");
@@ -155,5 +163,9 @@ export async function processClassify(deps: ClassifyDeps, data: ClassifyJob, pri
     });
     return;
   }
-  await deps.compare.add(JOB_NAMES.compare, { runId, emailId }, jobOptions(runId, emailId, priority));
+  await deps.compare.add(
+    JOB_NAMES.compare,
+    { runId, emailId, rerunFrom: data.rerunFrom },
+    data.rerunFrom ? rerunJobOptions(runId, emailId, await emailRuns.rerunCount(deps.pool, emailRunId), priority) : jobOptions(runId, emailId, priority),
+  );
 }

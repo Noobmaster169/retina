@@ -8,6 +8,7 @@ export * as extractions from "./extractions.repo";
 export * as fieldDiffs from "./field-diffs.repo";
 export * as llmCalls from "./llm-calls.repo";
 export * as promptVersions from "./prompt-versions.repo";
+export * as reviewActions from "./review-actions.repo";
 export * as reviewCases from "./review-cases.repo";
 export * as runs from "./runs.repo";
 export * as submissions from "./submissions.repo";
@@ -17,7 +18,8 @@ export type { NewClassification, StoredClassification } from "./classifications.
 export type { NewComparison } from "./comparisons.repo";
 export type { DocTypeVerdict, NewDocument, StoredDocument } from "./documents.repo";
 export type { NewExtraction, StoredExtraction } from "./extractions.repo";
-export type { NewReviewCase } from "./review-cases.repo";
+export type { NewReviewAction } from "./review-actions.repo";
+export type { CaseIdentity, NewFailureCase, NewReviewCase } from "./review-cases.repo";
 export type { StageCounts, SubmissionSource } from "./email-runs.repo";
 export type { NewEmail, StoredEmail } from "./emails.repo";
 export type { LlmUsage, NewLlmCall } from "./llm-calls.repo";

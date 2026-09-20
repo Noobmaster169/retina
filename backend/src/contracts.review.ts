@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { ReviewActionView, ReviewCaseKind } from "./contracts.actions";
 import { ReviewReason } from "./contracts.scoring";
 
 /**
@@ -46,24 +47,38 @@ export const DocumentView = z.object({
   unreadable: z.boolean(),
   warnings: z.array(z.string()),
   /**
-   * Mean OCR word confidence per page, 0 to 1, in page order. Empty for a
-   * document with a text layer, which is most of them. The review case shows
-   * which page failed and how badly, and one number for the whole file could
-   * not say that.
+   * Mean OCR word confidence per page, 0 to 100, in page order: tesseract's
+   * own scale, as doc-extract reports it, and the same one the 40 percent
+   * floor is written on. Empty for a document with a text layer, which is most
+   * of them. The review case shows which page failed and how badly, and one
+   * number for the whole file could not say that.
    */
   pageConfidence: z.array(z.number()),
   /** The file's size, which the message card states beside its name. */
   bytes: z.number(),
+  /** `human` is a document a reviewer supplied for a case. It fills its place ahead of the sender's own. */
+  origin: z.enum(["source", "human"]),
 });
 export type DocumentView = z.infer<typeof DocumentView>;
 
-/** Why the email is waiting for a person, with what the stage found. */
+/**
+ * Why the email is waiting for a person, with what the stage found and what
+ * has been done about it. `id` is what the action routes are addressed by, so
+ * the case pane can write without asking a second question first.
+ */
 export const ReviewCaseView = z.object({
-  reason: ReviewReason,
+  id: z.string(),
+  kind: ReviewCaseKind,
+  /** Null exactly when the kind is `failure`: a job that failed is not one of the organisers' reasons. */
+  reason: ReviewReason.nullable(),
   stage: z.string(),
   status: z.enum(["open", "resolved"]),
   detail: z.record(z.string(), z.unknown()),
   openedAt: z.string(),
+  resolvedAt: z.string().nullable(),
+  resolvedBy: z.string().nullable(),
+  /** Oldest first, as a history reads. */
+  actions: z.array(ReviewActionView),
 });
 export type ReviewCaseView = z.infer<typeof ReviewCaseView>;
 

@@ -15,7 +15,19 @@ export const JOB_NAMES = {
 export const IngestJob = z.object({ runId: z.uuid(), epoch: z.number().int().min(0).default(0) });
 export type IngestJob = z.infer<typeof IngestJob>;
 
-export const ClassifyJob = z.object({ runId: z.uuid(), emailId: z.string().min(1) });
+/**
+ * Where a rerun a person asked for starts from. Absent on the pipeline's own
+ * jobs, and its presence is what lets a job pick an email up again from
+ * `review`, `done` or `failed`, which the pipeline itself never may.
+ */
+export const RerunFrom = z.enum(["classify", "triage", "compare"]);
+export type RerunFrom = z.infer<typeof RerunFrom>;
+
+export const ClassifyJob = z.object({
+  runId: z.uuid(),
+  emailId: z.string().min(1),
+  rerunFrom: RerunFrom.optional(),
+});
 export type ClassifyJob = z.infer<typeof ClassifyJob>;
 
 /** The same ids as a classify job. Phase 8's partial rerun is the reason this has its own name. */
@@ -35,6 +47,15 @@ const RETRY: Pick<JobsOptions, "attempts" | "backoff" | "removeOnComplete" | "re
 
 export function jobOptions(runId: string, emailId: string, priority: number): JobsOptions {
   return { ...RETRY, jobId: jobId(runId, emailId), priority };
+}
+
+/**
+ * A rerun a person set off. It carries the email run's rerun count in its id,
+ * because the original job is kept for a day after it completes and BullMQ
+ * refuses a second job under an id it already holds.
+ */
+export function rerunJobOptions(runId: string, emailId: string, rerun: number, priority: number): JobsOptions {
+  return { ...RETRY, jobId: `${jobId(runId, emailId)}__r${rerun}`, priority };
 }
 
 export function ingestJobOptions(id: string): JobsOptions {

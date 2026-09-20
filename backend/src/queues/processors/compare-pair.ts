@@ -9,6 +9,7 @@ import { escalate } from "./escalate";
 import { extractDocument } from "./extract-fields";
 import type { EmailRunIds } from "./ids";
 import type { ParsedDocument } from "./parse-documents";
+import { resolveCase } from "./resolve-case";
 
 const log = childLogger({ module: "compare-pair" });
 
@@ -28,20 +29,27 @@ function documentNamed(docs: ParsedDocument[], filename: string): ParsedDocument
   return doc;
 }
 
-/** The judge's word on these fields. One call per email, so an answer already paid for on an earlier attempt is reused when it covers the same fields. */
-async function judged(deps: CompareDeps, set: PromptSet, ids: EmailRunIds, si: ExtractedFields, bl: ExtractedFields, fields: ComparisonField[]): Promise<JudgeOutput> {
+/**
+ * The judge's word on these fields. One call per email, so an answer already
+ * paid for on an earlier attempt is reused when it covers the same fields.
+ *
+ * `fresh` is a rerun a person set off: their correction or their upload changed
+ * what is being judged, so the earlier answer is about a pair that no longer
+ * exists and reusing it would ignore the correction it was asked for.
+ */
+async function judged(deps: CompareDeps, set: PromptSet, ids: EmailRunIds, si: ExtractedFields, bl: ExtractedFields, fields: ComparisonField[], fresh: boolean): Promise<JudgeOutput> {
   if (fields.length === 0) return {};
   const prompt = promptFor("field-judge", set);
-  const earlier = judgeSchema(fields).safeParse(await llmCalls.latestAccepted(deps.pool, ids.emailRunId, "field-judge", prompt.version));
-  if (earlier.success) return earlier.data;
+  const earlier = fresh ? null : judgeSchema(fields).safeParse(await llmCalls.latestAccepted(deps.pool, ids.emailRunId, "field-judge", prompt.version));
+  if (earlier?.success) return earlier.data;
   return (await judgeFields(deps, prompt, { si, bl, fields }, ids)).value;
 }
 
 /** Extract both sides, ask the judge about every field with a value on both, assemble, decide. Writes the extractions; nothing else. */
-export async function judgePair(deps: CompareDeps, set: PromptSet, ids: EmailRunIds, docs: ParsedDocument[], pair: Pair): Promise<Judged> {
+export async function judgePair(deps: CompareDeps, set: PromptSet, ids: EmailRunIds, docs: ParsedDocument[], pair: Pair, fresh: boolean): Promise<Judged> {
   const si = await extractDocument(deps, set, documentNamed(docs, pair.si), "SI", ids);
   const bl = await extractDocument(deps, set, documentNamed(docs, pair.bl), "BL", ids);
-  const assembled = assemble(si, bl, await judged(deps, set, ids, si, bl, judgeable(si, bl)));
+  const assembled = assemble(si, bl, await judged(deps, set, ids, si, bl, judgeable(si, bl), fresh));
   return { assembled, decision: decide(assembled) };
 }
 
@@ -69,8 +77,9 @@ export async function compareDocuments(
   ids: EmailRunIds,
   docs: ParsedDocument[],
   outcome: Extract<StructureOutcome, { kind: "compare" }>,
+  fresh: boolean,
 ): Promise<void> {
-  const { assembled, decision } = await judgePair(deps, set, ids, docs, outcome);
+  const { assembled, decision } = await judgePair(deps, set, ids, docs, outcome, fresh);
   const detail = { si: outcome.si, bl: outcome.bl, extras: outcome.extras, swapped: outcome.swapped, ...decisionDetail(decision) };
   await storeComparison(deps, ids, { decision, detail, assembled });
 
@@ -79,6 +88,7 @@ export async function compareDocuments(
     return;
   }
   await emailRuns.moveStage(deps.pool, ids.runId, ids.emailId, ["comparing"], "done", { outcome: decision.status, finished: true });
+  await resolveCase(deps.pool, ids);
   log.info({ ...ids, stage: "compare", status: decision.status, defectFields: decision.defectFields }, "compared");
 }
 
@@ -89,13 +99,13 @@ export async function compareDocuments(
  * its schema on garbled text) leaves the suggestion out rather than failing the
  * email; an outage still pauses the queue. Null when the scan makes no pair.
  */
-export async function provisionalResult(deps: CompareDeps, set: PromptSet, ids: EmailRunIds, docs: ParsedDocument[]): Promise<Judged | null> {
+export async function provisionalResult(deps: CompareDeps, set: PromptSet, ids: EmailRunIds, docs: ParsedDocument[], fresh: boolean): Promise<Judged | null> {
   const roles = resolveRoles(docs.filter((doc) => doc.text !== null));
   const si = roles.attachments.find((file) => file.role === "SI");
   const bl = roles.attachments.find((file) => file.role === "BL");
   if (!si || !bl) return null;
   try {
-    return await judgePair(deps, set, ids, docs, { si: si.filename, bl: bl.filename });
+    return await judgePair(deps, set, ids, docs, { si: si.filename, bl: bl.filename }, fresh);
   } catch (error) {
     if (!(error instanceof TerminalError)) throw error;
     log.warn({ ...ids, stage: "compare", err: error.message }, "no provisional result for the scanned pair; the escalation stands");

@@ -179,3 +179,22 @@ export async function listForSubmission(db: Queryable, runId: string): Promise<S
 }
 
 export { handoff, inFlight, lastFinishedForRuns, stateOf } from "./email-runs.trace";
+
+/**
+ * A person has sent this email back through the pipeline. The count goes into
+ * the rerun's job id, so BullMQ takes a new job instead of refusing a
+ * duplicate of one it already ran.
+ */
+export async function incrementRerun(db: Queryable, emailRunId: string): Promise<number> {
+  const { rows } = await db.query<{ rerun_count: number }>(
+    "update core.email_runs set rerun_count = rerun_count + 1 where id = $1 returning rerun_count",
+    [emailRunId],
+  );
+  return rows[0]?.rerun_count ?? 0;
+}
+
+/** How many reruns this email has had. The classify stage carries it into the compare job's id so the crossing is a new job too. */
+export async function rerunCount(db: Queryable, emailRunId: string): Promise<number> {
+  const { rows } = await db.query<{ rerun_count: number }>("select rerun_count from core.email_runs where id = $1", [emailRunId]);
+  return rows[0]?.rerun_count ?? 0;
+}

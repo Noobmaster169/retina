@@ -61,6 +61,25 @@ describe("resolveRoles: the filename's claim first, then the model's word", () =
     expect(resolveRoles([doc("inv.txt", "UNKNOWN", "INVOICE"), doc("x.pdf", "UNKNOWN", null)]).attachments.map((d) => d.role)).toEqual(["UNKNOWN", "UNKNOWN"]);
   });
 
+  it("gives the place to the document a reviewer supplied, and the sender's file plays no part", () => {
+    const roles = resolveRoles([
+      doc("a_SI.txt", "SI", "SI"),
+      doc("b_BL.txt", "BL", "BL"),
+      { ...doc("reread_BL.pdf", "BL", "BL"), origin: "human" as const },
+    ]);
+    expect(roles.attachments).toEqual([
+      { filename: "a_SI.txt", role: "SI" },
+      { filename: "b_BL.txt", role: "UNKNOWN" },
+      { filename: "reread_BL.pdf", role: "BL" },
+    ]);
+    expect(triage({ request: null, attachments: roles.attachments })).toMatchObject({ kind: "compare", si: "a_SI.txt", bl: "reread_BL.pdf" });
+  });
+
+  it("without an upload, only one file fills each place and the rest travel with the pair", () => {
+    const roles = resolveRoles([doc("a_SI.txt", "SI", "SI"), doc("b_BL.txt", "BL", "BL"), doc("b_BL_v2.txt", "BL", "BL")]);
+    expect(roles.attachments.map((d) => d.role)).toEqual(["SI", "BL", "UNKNOWN"]);
+  });
+
   it("swaps a pair the model reads the other way round", () => {
     const roles = resolveRoles([doc("a_SI.txt", "SI", "BL"), doc("b_BL.txt", "BL", "SI")]);
     expect(roles.attachments).toEqual([

@@ -28,6 +28,8 @@ export interface RoledDocument {
   role: AttachmentRole;
   /** What the model said the document is, or null where it could not read it or has not yet. */
   docType: DocType | null;
+  /** `human` is a file a reviewer supplied for a case. Absent reads as the sender's own. */
+  origin?: "source" | "human";
 }
 
 export interface ResolvedRoles {
@@ -42,19 +44,30 @@ export interface ResolvedRoles {
  * pair the model reads the other way round is swapped. A file left UNKNOWN
  * here plays no part: it came along with the pair rather than filling a place
  * in it.
+ *
+ * A document a reviewer supplied fills its place ahead of the sender's own. A
+ * person uploads one because the file that arrived could not be used, so the
+ * upload is an answer to that and not a second candidate to choose between.
  */
 export function resolveRoles(docs: RoledDocument[]): ResolvedRoles {
   const roleOf = (doc: RoledDocument): AttachmentRole => {
     if (doc.role !== "UNKNOWN") return doc.role;
     return doc.docType === "SI" || doc.docType === "BL" ? doc.docType : "UNKNOWN";
   };
-  const roled = docs.map((doc) => ({ filename: doc.filename, role: roleOf(doc), docType: doc.docType }));
-  const si = roled.find((doc) => doc.role === "SI");
-  const bl = roled.find((doc) => doc.role === "BL");
+  const roled = docs.map((doc) => ({ filename: doc.filename, role: roleOf(doc), docType: doc.docType, origin: doc.origin ?? "source" }));
+  const fills = (role: AttachmentRole) =>
+    roled.find((doc) => doc.role === role && doc.origin === "human") ?? roled.find((doc) => doc.role === role);
+  const si = fills("SI");
+  const bl = fills("BL");
   const crossed = Boolean(si && bl && si.docType === "BL" && bl.docType === "SI");
   if (crossed && si && bl) {
     si.role = "BL";
     bl.role = "SI";
+  }
+  // Only one file fills each place. A second claimant travelled with the pair
+  // rather than being part of it, which is what UNKNOWN already means here.
+  for (const doc of roled) {
+    if (doc !== si && doc !== bl && doc.role !== "UNKNOWN") doc.role = "UNKNOWN";
   }
   return { attachments: roled.map(({ filename, role }) => ({ filename, role })), swapped: crossed };
 }

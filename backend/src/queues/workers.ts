@@ -9,8 +9,9 @@ import { type IngestDeps, replayRun } from "../ingest";
 import { TerminalError } from "../lib/errors";
 import { childLogger } from "../lib/logger";
 import type { LiveCalls } from "../live";
-import { emailRuns, runs } from "../ontology/repositories";
+import { runs } from "../ontology/repositories";
 import { isFinalFailure, pausingOnOutage, type QueuePauser } from "./failure-policy";
+import { recordJobFailure } from "./record-failure";
 import { ClassifyJob, CompareJob, DEFAULT_PRIORITY, IngestJob, type JobAdder, QUEUES } from "./names";
 import { processClassify } from "./processors/classify.processor";
 import { processCompare } from "./processors/compare.processor";
@@ -77,14 +78,7 @@ function onEmailJobFailed(deps: WorkerDeps, stage: string): FailedListener {
   return async (job, error) => {
     const data = ClassifyJob.safeParse(job?.data);
     if (!job || !data.success) return;
-    const { runId, emailId } = data.data;
-    if (isFinalFailure(job, error)) {
-      log.error({ runId, emailId, stage, err: error.message }, "job failed for good");
-      await emailRuns.setStage(deps.pool, runId, emailId, "failed", { error: error.message, finished: true });
-      return;
-    }
-    log.warn({ runId, emailId, stage, attempt: job.attemptsMade, err: error.message }, "job failed, will retry");
-    await emailRuns.incrementAttempt(deps.pool, runId, emailId);
+    await recordJobFailure(deps.pool, job, data.data, stage, error);
   };
 }
 
