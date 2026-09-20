@@ -1,7 +1,9 @@
 import { z } from "zod";
 
-import { ChatOutcome } from "../contracts";
 import type { TurnResult } from "../agents/chat/loop";
+import { Behaviour, type ChatQuestion } from "./chat-questions";
+
+export { Behaviour, ChatQuestion, ChatQuestionSet } from "./chat-questions";
 
 /**
  * Whether one chat turn did what its question expected of it.
@@ -11,60 +13,6 @@ import type { TurnResult } from "../agents/chat/loop";
  * use the standard query, does the answer name what it should), never the
  * model's prose against a reference sentence.
  */
-
-export const Behaviour = z.enum([
-  /** A lookup came before the first call that filters on a thing or a text value. */
-  "grounds_first",
-  /** At least one recipe ran. */
-  "uses_recipe",
-  /** The turn needed no SQL the agent wrote itself. */
-  "no_own_sql",
-  /** The literal guard never had to refuse a call. */
-  "no_guard_refusal",
-  /** The answer names the run it counted in, by the first eight characters of its id. */
-  "names_the_run",
-  /** Every alternative it offered survived the check against what its tools returned. */
-  "every_alternative_real",
-  /** It asked the person to choose between readings. */
-  "asked",
-  /** It did not ask: a broad question gets a stated reading and an answer. */
-  "did_not_ask",
-  /** It offered at least one next move, so the answer is not a dead end. */
-  "offers_a_next_move",
-  /** It said which part of the answer was its own knowledge rather than the data. */
-  "marks_its_inference",
-]);
-export type Behaviour = z.infer<typeof Behaviour>;
-
-export const ChatQuestion = z.object({
-  id: z.string().min(1),
-  tags: z.array(z.string()).default([]),
-  question: z.string().min(1),
-  /** Ask it in a conversation opened about the latest run, as the run page's chat is. */
-  scoped: z.boolean().default(true),
-  expect: z
-    .object({
-      /** Each must appear in the answer. Case does not matter. */
-      mentions: z.array(z.string()).default([]),
-      /** At least one of each inner list must appear: for a fact that can be worded several ways. */
-      mentionsAnyOf: z.array(z.array(z.string()).min(1)).default([]),
-      /** None may appear. */
-      absent: z.array(z.string()).default([]),
-      behaviours: z.array(Behaviour).default([]),
-      /** The outcome the turn should report. */
-      outcome: ChatOutcome.optional(),
-      /** Each must be the `thing` of an alternative it offered. */
-      alternatives: z.array(z.string()).default([]),
-      /** None may be the `thing` of any alternative: a plausible neighbour that is not in the data. */
-      alternativesAbsent: z.array(z.string()).default([]),
-      /** Model calls, the answer included. */
-      maxSteps: z.number().int().positive().optional(),
-    })
-    .default({ mentions: [], mentionsAnyOf: [], absent: [], behaviours: [], alternatives: [], alternativesAbsent: [] }),
-});
-export type ChatQuestion = z.infer<typeof ChatQuestion>;
-
-export const ChatQuestionSet = z.array(ChatQuestion).min(1);
 
 export interface Check {
   name: string;
