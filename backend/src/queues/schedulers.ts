@@ -3,7 +3,7 @@ import type { Redis } from "ioredis";
 import type { Pool } from "pg";
 
 import { childLogger } from "../lib/logger";
-import { clients } from "../ontology/repositories";
+import { analytics, clients } from "../ontology/repositories";
 import { ageWaitingJobs } from "./aging";
 import { beat, HEARTBEAT_EVERY_MS } from "./heartbeat";
 import { QUEUES } from "./names";
@@ -14,31 +14,33 @@ const log = childLogger({ module: "schedulers" });
 
 /**
  * The work that runs on a clock rather than on an email: refreshing the tier
- * cache, promoting jobs that have waited, and saying the worker is alive.
+ * cache, promoting jobs that have waited, saying the worker is alive, and
+ * bringing the analytics views level with core.
  *
  * BullMQ's own schedulers, not cron on the box, for two reasons. The box runs
  * one crontab that nobody reviews and a scheduled job there would be invisible
  * to anyone reading this repository. And a repeatable job is keyed, so a
  * worker restart every three minutes under auto-deploy re-registers the same
- * three tasks rather than accumulating a new copy each time.
- *
- * Phase 10 adds `refresh-analytics` here. Add it to TASKS, not to the box.
+ * tasks rather than accumulating a new copy of each one.
  */
 
-/** The names the repeatable jobs are registered under. A restart upserts these, never a fourth copy. */
+/** The names the repeatable jobs are registered under. A restart upserts these, never a fifth copy. */
 export const SCHEDULED = {
   refreshPriorityCache: "refresh-priority-cache",
   ageWaitingJobs: "age-waiting-jobs",
   heartbeat: "heartbeat",
+  refreshAnalytics: "refresh-analytics",
 } as const;
 
 const EVERY_HOUR_MS = 60 * 60 * 1000;
 const EVERY_MINUTE_MS = 60 * 1000;
+const EVERY_FIVE_MINUTES_MS = 5 * EVERY_MINUTE_MS;
 
 const EVERY: Record<string, number> = {
   [SCHEDULED.refreshPriorityCache]: EVERY_HOUR_MS,
   [SCHEDULED.ageWaitingJobs]: EVERY_MINUTE_MS,
   [SCHEDULED.heartbeat]: HEARTBEAT_EVERY_MS,
+  [SCHEDULED.refreshAnalytics]: EVERY_FIVE_MINUTES_MS,
 };
 
 export interface SchedulerDeps {
@@ -77,10 +79,17 @@ function pick({ classify, compare }: ReturnType<typeof getQueues>) {
   return { classify, compare };
 }
 
+/** Only when core has moved, which is what makes a five minute clock cheap enough to leave on. */
+async function refreshAnalytics(deps: SchedulerDeps): Promise<void> {
+  const refreshed = await analytics.refreshIfStale(deps.pool);
+  if (refreshed) log.info("the analytics views caught up with core");
+}
+
 async function runTask(deps: SchedulerDeps, name: string): Promise<void> {
   if (name === SCHEDULED.refreshPriorityCache) return refreshPriorityCache(deps);
   if (name === SCHEDULED.ageWaitingJobs) return ageEmailQueues(deps);
   if (name === SCHEDULED.heartbeat) return beat(deps.redis);
+  if (name === SCHEDULED.refreshAnalytics) return refreshAnalytics(deps);
   // A name from an older image whose scheduler this worker inherited. Logged
   // and dropped: failing it would retry a job no code here can ever do.
   log.warn({ task: name }, "no such scheduled task");

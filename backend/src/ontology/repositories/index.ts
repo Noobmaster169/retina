@@ -1,3 +1,4 @@
+export * as analytics from "./analytics.repo";
 export * as attachments from "./attachments.repo";
 export * as classifications from "./classifications.repo";
 export * as clients from "./clients.repo";
