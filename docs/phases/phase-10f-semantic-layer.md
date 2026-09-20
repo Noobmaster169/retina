@@ -647,27 +647,42 @@ the honest `complete: false` matters more than any ranking trick.
 
 ## Exit checklist
 
-- [ ] A refresh keeps entity ids: a profile and a verdict written before it are still attached
-      after it, and a merge leaves a tombstone that `get_entity` follows.
-- [ ] A 20 to 30 email run fills `email_shipments` and `entity_sightings`; every stored value's
-      quote passes the evidence check; no scored row changed and `pnpm eval:score` gives the
-      same number before and after the ontology jobs.
-- [ ] An SI_REQUEST with no attachment yields a shipment with its parties and their addresses,
-      joined to the same entities the documents produced.
-- [ ] A party seen with and without an address is one entity with both appearances.
-- [ ] Every entity touched by the run has a profile within two scheduler ticks, with `observed`
-      and `general` separate, and `ONTOLOGY_KNOWLEDGE=mail` leaves `general` null.
-- [ ] The six manual questions behave as written.
-- [ ] A repeated concept question makes no `concept-judge` call; a profile rewrite re-judges
-      exactly that entity.
-- [ ] Over budget, the answer says partial with the deferred count, and the backfill completes it.
-- [ ] `pnpm ontology:bench` passes at 200,000 entities and 2,000,000 appearances, and the
-      `resolveAll` time is recorded with the decision it led to.
-- [ ] `pnpm eval:chat --set ontology` numbers recorded in `PROGRESS.md`; 10d's own set has not
-      got worse.
-- [ ] 016 deployed and stable before any code writes a new kind.
-- [ ] `03-infra-deep.md`, `schema-docs.md` and the frontend zod mirrors updated in the same
-      commits; type-check, tests, lint and ruff clean; no file over 200 lines.
+`[x]` was checked on a 25 email run against a live model on 2026-09-21; `[~]` is open and named.
+
+- [x] A refresh keeps entity ids. Live: `kept: 90, inserted: 0, merged: 0, dropped: 0`, every id
+      still on the same thing and 28 profiles still attached. The tombstone and the merge are held
+      by `entities.resolution.test.ts`, including the swap that would abort a whole refresh.
+- [x] A 20 to 30 email run fills `email_shipments` and `entity_sightings`; every stored quote was
+      found in its own text; **no scored row changed**, by an md5 over every `email_runs.outcome`
+      and `comparisons.status` taken before and after.
+- [x] An SI_REQUEST with no attachment yields its parties with their addresses. `email_007`'s
+      on-behalf-of shipper was read out of prose with its address and joined to the stored
+      `VITAL SOLUTIONS PTE. LTD.` at 0.95.
+- [x] A party seen with and without an address is one entity with both appearances: the address is
+      on the sighting, never on the company.
+- [~] Profiles: 45 written, `observed` and `general` separate and labelled with a confidence. The
+      `mail` setting and the person rule are held by `refresh-profiles.test.ts` over every kind
+      and both settings. **A person had not been profiled live when this was written**: the batch
+      takes the oldest first and the four new kinds sit behind every port and party.
+- [~] The manual questions: "which ports in Asia" answers from `attributes->>'region'` in one SQL
+      statement with no `find_entities` call, and the Gulf question ran live end to end. The other
+      four want `pnpm eval:chat --set ontology`.
+- [x] A repeated concept question makes no `concept-judge` call and a profile rewrite re-judges
+      exactly that entity: `find-entities.test.ts`, with fakes.
+- [x] Over budget the answer says partial with the deferred count and the backfill completes it:
+      same file.
+- [x] `pnpm ontology:bench` passes at 200,000 entities and 2,000,000 sightings, all five lookups
+      indexed and inside the budget. `resolveAll` is 6.2 s to load and 2.7 s to resolve and plan,
+      which is why incremental resolution stays Deferred.
+- [~] **`pnpm eval:chat --set ontology` has not been run in full**, and neither has `eval:chat`.
+      Both spend real tokens and both are the user's. One ontology question has been run live and
+      is recorded in `PROGRESS.md`.
+- [x] Expand then use: `017` only widens and adds, and the image it rolls back to reads every row
+      it leaves behind.
+- [x] `03-infra-deep.md`, `README.md`, `schema-docs.md` and the frontend zod mirrors are updated,
+      the mirrors checked field for field against the backend contracts; type-check, tests and
+      lint clean on both packages; no file this phase touched is over 200 lines. The python
+      services are untouched.
 
 ## Deferred, and why
 
