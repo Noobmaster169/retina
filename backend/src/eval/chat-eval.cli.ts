@@ -1,4 +1,4 @@
-// pnpm eval:chat [--limit N] [--tag T] [--ids a,b]
+// pnpm eval:chat [--set ontology] [--limit N] [--tag T] [--ids a,b]
 // Runs the chat question set through the real loop and says, per question, whether the turn
 // looked before it filtered, used the standard query, and named what it should. It spends
 // tokens: development runs use --limit; the full set is the user's to start.
@@ -18,11 +18,15 @@ import { orientation } from "../ontology/repositories";
 import { ChatQuestionSet, scoreTurn, summarise, type Scored } from "./chat-score";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const QUESTIONS = join(HERE, "../../eval/chat-questions.json");
+/** The two sets. `chat` is 10d's, about the work; `ontology` is 10f's, about the things. */
+const SETS: Record<string, string> = {
+  chat: join(HERE, "../../eval/chat-questions.json"),
+  ontology: join(HERE, "../../eval/ontology-questions.json"),
+};
 const REPORTS = join(HERE, "../../eval/reports");
 
 const { values } = parseArgs({
-  options: { limit: { type: "string" }, tag: { type: "string" }, ids: { type: "string" } },
+  options: { set: { type: "string" }, limit: { type: "string" }, tag: { type: "string" }, ids: { type: "string" } },
 });
 
 /** Counts model calls, which is what a step is, without reaching into the loop. */
@@ -53,8 +57,12 @@ async function main(): Promise<void> {
   if (!roPool) throw new TerminalError("DATABASE_RO_URL is not set, so the chat's tools cannot read anything");
   const pool = getPool();
 
+  const set = values.set ?? "chat";
+  const questionsPath = SETS[set];
+  if (!questionsPath) throw new TerminalError(`there is no question set "${set}"; it is one of ${Object.keys(SETS).join(", ")}`);
+
   const wantedIds = values.ids?.split(",").map((id) => id.trim());
-  const questions = ChatQuestionSet.parse(JSON.parse(readFileSync(QUESTIONS, "utf8")))
+  const questions = ChatQuestionSet.parse(JSON.parse(readFileSync(questionsPath, "utf8")))
     .filter((question) => !values.tag || question.tags.includes(values.tag))
     .filter((question) => !wantedIds || wantedIds.includes(question.id))
     .slice(0, values.limit ? Number(values.limit) : undefined);
@@ -86,11 +94,19 @@ async function main(): Promise<void> {
     );
     const item = scoreTurn(question, result, { steps: llm.taken(), runId, removedMoves: result.removedMoves });
     scored.push(item);
-    turns[question.id] = { question: question.question, reading: result.reading, answer: result.answer, calls: result.toolCalls.map((call) => ({ tool: call.tool, args: call.args, ok: call.ok, preview: call.preview })), checks: item.checks };
+    turns[question.id] = { question: question.question, reading: result.reading, answer: result.answer, semantic: result.semantic, calls: result.toolCalls.map((call) => ({ tool: call.tool, args: call.args, ok: call.ok, preview: call.preview })), checks: item.checks };
     console.log(line(item, (Date.now() - started) / 1000));
   }
 
   const summary = summarise(scored);
+  if (summary.entitySets) {
+    const sets = summary.entitySets;
+    console.log(
+      `\nEntity sets, over ${sets.questions} questions: mean recall ${(sets.meanRecall * 100).toFixed(0)}%, ` +
+        `mean precision ${(sets.meanPrecision * 100).toFixed(0)}%. ` +
+        `Completeness told the truth on ${(sets.truthfulCompleteness * 100).toFixed(0)}% of turns.`,
+    );
+  }
   console.log(
     `\n${summary.passed} of ${summary.questions} passed. Of the turns that queried, answered from recipes alone: ${(summary.recipeOnlyShare * 100).toFixed(0)}%; ${summary.noQuery} needed no query. ` +
       `Median steps: ${summary.medianSteps}. Guard refusals: ${summary.guardRefusals}.` +
@@ -98,9 +114,9 @@ async function main(): Promise<void> {
   );
 
   await mkdir(REPORTS, { recursive: true });
-  const path = join(REPORTS, `chat-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
-  await writeFile(path, JSON.stringify({ runId, summary, turns }, null, 2));
-  console.log(`\nEvery answer and call: ${path}`);
+  const report = join(REPORTS, `${set}-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
+  await writeFile(report, JSON.stringify({ set, runId, summary, turns }, null, 2));
+  console.log(`\nEvery answer and call: ${report}`);
 }
 
 try {

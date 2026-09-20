@@ -29,6 +29,53 @@ export interface Scored {
   adhoc: boolean;
   exhausted: boolean;
   guardRefusals: number;
+  /** Null where the question named no expected entity set. */
+  entitySet: EntitySetScore | null;
+}
+
+/**
+ * How well the things a turn matched line up with the ones a person listed.
+ *
+ * Measured against what `find_entities` returned and never against the prose:
+ * an answer that names a company in a sentence has not necessarily put it in
+ * the set, and the set is what a later query joins on.
+ */
+export interface EntitySetScore {
+  expected: number;
+  matched: number;
+  /** Of what it matched, the share that was expected. */
+  precision: number;
+  /** Of what was expected, the share it matched. */
+  recall: number;
+  missed: string[];
+  extra: string[];
+}
+
+/** Every name a `find_entities` call put in its result, across the turn. */
+function matchedNames(calls: TurnResult["toolCalls"]): string[] {
+  const names = calls
+    .filter((call) => call.tool === "find_entities" && call.ok && call.result)
+    .flatMap((call) => {
+      const at = call.result?.columns.indexOf("name") ?? -1;
+      return at < 0 ? [] : (call.result?.rows.map((row) => row[at]) ?? []);
+    })
+    .filter((name): name is string => name !== null);
+  return [...new Set(names)];
+}
+
+function scoreEntitySet(expected: string[], got: string[]): EntitySetScore {
+  const has = (wanted: string) => got.some((name) => name.toLowerCase().includes(wanted.toLowerCase()));
+  const wanted = (name: string) => expected.some((one) => name.toLowerCase().includes(one.toLowerCase()));
+  const hit = expected.filter(has);
+  const right = got.filter(wanted);
+  return {
+    expected: expected.length,
+    matched: got.length,
+    precision: got.length === 0 ? 0 : right.length / got.length,
+    recall: expected.length === 0 ? 1 : hit.length / expected.length,
+    missed: expected.filter((one) => !has(one)),
+    extra: got.filter((name) => !wanted(name)),
+  };
 }
 
 const LOOKUPS = new Set(["find_entity", "list_entities", "get_entity", "search_emails", "profile_column"]);
@@ -84,6 +131,7 @@ export function scoreTurn(question: ChatQuestion, turn: TurnResult, context: Tur
     checks.push({ name: `outcome is ${expect.outcome}`, ok: turn.outcome === expect.outcome, detail: turn.outcome });
   }
 
+  const behaviourSet = new Set(expect.behaviours);
   for (const behaviour of expect.behaviours) {
     if (behaviour === "grounds_first") checks.push(groundsFirst(turn.toolCalls));
     if (behaviour === "uses_recipe") checks.push({ name: behaviour, ok: recipes.length > 0, detail: recipes.join(", ") });
@@ -107,6 +155,45 @@ export function scoreTurn(question: ChatQuestion, turn: TurnResult, context: Tur
       checks.push({ name: behaviour, ok: marked, detail: marked ? "marked" : "nothing marked as its own knowledge" });
     }
   }
+  if (behaviourSet.has("gives_a_meaning")) {
+    checks.push({ name: "gives_a_meaning", ok: turn.semantic.length > 0, detail: `${turn.semantic.length} terms read` });
+  }
+  if (behaviourSet.has("no_meaning_needed")) {
+    checks.push({ name: "no_meaning_needed", ok: turn.semantic.length === 0, detail: turn.semantic.map((term) => term.phrase).join(", ") });
+  }
+  if (behaviourSet.has("completeness_is_truthful")) {
+    const lying = turn.semantic.filter((term) => term.complete !== (term.deferred === 0));
+    checks.push({ name: "completeness_is_truthful", ok: lying.length === 0, detail: lying.map((term) => term.phrase).join(", ") });
+  }
+  if (behaviourSet.has("says_lower_bound")) {
+    // Only where a set actually came back partial. A complete set worded as a
+    // lower bound would be its own mistake, and this check is not the place.
+    const partial = turn.semantic.some((term) => !term.complete);
+    const said = /lower bound|at least/i.test(turn.answer);
+    checks.push({ name: "says_lower_bound", ok: !partial || said, detail: partial ? (said ? "said" : "a partial set was reported as a total") : "nothing was partial" });
+  }
+  if (behaviourSet.has("names_the_date_column")) {
+    checks.push({ name: "names_the_date_column", ok: /mail_date|first_seen_at/.test(turn.answer), detail: "" });
+  }
+
+  const entitySet = expect.entities.length > 0 ? scoreEntitySet(expect.entities, matchedNames(turn.toolCalls)) : null;
+  if (entitySet) {
+    checks.push({
+      name: "matched the expected things",
+      // Recall gates and precision only reports. A person writing the question
+      // knows which things must be in the set; knowing every thing that must
+      // not be would mean listing the whole table, and a wrong extra is worth
+      // reading rather than failing on.
+      ok: entitySet.recall === 1,
+      detail: `recall ${(entitySet.recall * 100).toFixed(0)}%, precision ${(entitySet.precision * 100).toFixed(0)}%${entitySet.missed.length > 0 ? `; missed ${entitySet.missed.join(", ")}` : ""}${entitySet.extra.length > 0 ? `; extra ${entitySet.extra.join(", ")}` : ""}`,
+    });
+  }
+
+  if (expect.complete !== undefined) {
+    const complete = turn.semantic.every((term) => term.complete);
+    checks.push({ name: `set is ${expect.complete ? "complete" : "partial"}`, ok: complete === expect.complete, detail: "" });
+  }
+
   if (expect.maxSteps !== undefined) {
     checks.push({ name: `at most ${expect.maxSteps} steps`, ok: context.steps <= expect.maxSteps, detail: `${context.steps} taken` });
   }
@@ -120,6 +207,7 @@ export function scoreTurn(question: ChatQuestion, turn: TurnResult, context: Tur
     adhoc: turn.adhoc,
     exhausted: turn.exhausted,
     guardRefusals: refusals,
+    entitySet,
   };
 }
 
@@ -133,6 +221,8 @@ export interface Summary {
   medianSteps: number;
   guardRefusals: number;
   adhoc: string[];
+  /** Over the questions that named an expected entity set. Null where none did. */
+  entitySets: { questions: number; meanPrecision: number; meanRecall: number; truthfulCompleteness: number } | null;
 }
 
 export function summarise(scored: Scored[]): Summary {
@@ -148,5 +238,21 @@ export function summarise(scored: Scored[]): Summary {
     medianSteps: steps.length === 0 ? 0 : steps.length % 2 === 1 ? steps[middle] : (steps[middle - 1] + steps[middle]) / 2,
     guardRefusals: scored.reduce((sum, item) => sum + item.guardRefusals, 0),
     adhoc: scored.filter((item) => item.adhoc).map((item) => item.id),
+    entitySets: entitySetSummary(scored),
+  };
+}
+
+/** The two numbers the ontology set exists to report, plus how often the completeness flag told the truth. */
+function entitySetSummary(scored: Scored[]): Summary["entitySets"] {
+  const withSets = scored.filter((item) => item.entitySet !== null);
+  if (withSets.length === 0) return null;
+  const mean = (of: (score: EntitySetScore) => number) =>
+    withSets.reduce((sum, item) => sum + of(item.entitySet as EntitySetScore), 0) / withSets.length;
+  const truthful = scored.filter((item) => item.checks.every((check) => check.name !== "completeness_is_truthful" || check.ok));
+  return {
+    questions: withSets.length,
+    meanPrecision: mean((score) => score.precision),
+    meanRecall: mean((score) => score.recall),
+    truthfulCompleteness: truthful.length / scored.length,
   };
 }

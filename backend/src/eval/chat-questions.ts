@@ -33,6 +33,16 @@ export const Behaviour = z.enum([
   "offers_a_next_move",
   /** It said which part of the answer was its own knowledge rather than the data. */
   "marks_its_inference",
+  /** It gave a term a meaning: a `find_entities` call ran and reported a reading. */
+  "gives_a_meaning",
+  /** It needed no meaning: a stored column or attribute answered the term, which is complete and free. */
+  "no_meaning_needed",
+  /** Where a set was only partly judged, the answer worded the total as a lower bound. */
+  "says_lower_bound",
+  /** Every reading's `complete` flag agrees with its own deferred count. */
+  "completeness_is_truthful",
+  /** It said which date column it filtered on. */
+  "names_the_date_column",
 ]);
 export type Behaviour = z.infer<typeof Behaviour>;
 
@@ -59,8 +69,16 @@ export const ChatQuestion = z.object({
       alternativesAbsent: z.array(z.string()).default([]),
       /** Model calls, the answer included. */
       maxSteps: z.number().int().positive().optional(),
+      /**
+       * The canonical names the entity set should hold, written by a person
+       * from the inbox and its documents. Precision and recall are reported
+       * against the things `find_entities` matched, never against the prose.
+       */
+      entities: z.array(z.string()).default([]),
+      /** Whether the set should come back complete. Omitted where either is a fair answer. */
+      complete: z.boolean().optional(),
     })
-    .default({ mentions: [], mentionsAnyOf: [], absent: [], behaviours: [], alternatives: [], alternativesAbsent: [] }),
+    .default({ mentions: [], mentionsAnyOf: [], absent: [], behaviours: [], alternatives: [], alternativesAbsent: [], entities: [] }),
 });
 export type ChatQuestion = z.infer<typeof ChatQuestion>;
 

@@ -1,0 +1,217 @@
+[
+  {
+    "id": "b-hs-code",
+    "tags": ["stated-in-mail"],
+    "question": "Which shipments are under HS code 48109200, and what goods do they carry?",
+    "expect": {
+      "mentions": ["48109200"],
+      "behaviours": ["no_meaning_needed", "no_guard_refusal"],
+      "maxSteps": 4
+    }
+  },
+  {
+    "id": "b-telex-release",
+    "tags": ["stated-in-mail"],
+    "question": "Which bills of lading are telex release?",
+    "expect": {
+      "behaviours": ["no_meaning_needed", "grounds_first"],
+      "maxSteps": 5
+    }
+  },
+  {
+    "id": "c-ports-in-asia",
+    "tags": ["place", "attribute"],
+    "question": "Which ports did we ship to in Asia?",
+    "scoped": false,
+    "expect": {
+      "mentionsAnyOf": [["Asia"]],
+      "behaviours": ["no_meaning_needed", "no_guard_refusal"],
+      "maxSteps": 4
+    }
+  },
+  {
+    "id": "c-gulf-consignees",
+    "tags": ["place", "concept"],
+    "question": "Which of our consignees are in the Gulf?",
+    "scoped": false,
+    "expect": {
+      "entities": ["AL GURG STATIONERY LLC", "TOPKOPY MIDDLE EAST FZE", "ORIENT LINKS CO (LLC)"],
+      "behaviours": ["gives_a_meaning", "completeness_is_truthful"],
+      "complete": true
+    }
+  },
+  {
+    "id": "d-distributors",
+    "tags": ["what-a-company-is", "concept"],
+    "question": "Which of our customers look like paper distributors rather than end users?",
+    "scoped": false,
+    "expect": {
+      "entities": ["ROXCEL TRADING GMBH", "KPP-ANTALIS (SINGAPORE) PTE. LTD.", "BALL & DOGGETT AUSTRALIA PTY LTD"],
+      "behaviours": ["gives_a_meaning", "completeness_is_truthful"]
+    }
+  },
+  {
+    "id": "d-asked-twice",
+    "tags": ["what-a-company-is", "concept", "reuse"],
+    "question": "Again: which customers are distributors?",
+    "scoped": false,
+    "expect": {
+      "behaviours": ["gives_a_meaning", "completeness_is_truthful"],
+      "maxSteps": 4
+    }
+  },
+  {
+    "id": "e-food-grade-board",
+    "tags": ["goods", "concept"],
+    "question": "Do we ship any food grade board, and to whom?",
+    "scoped": false,
+    "expect": {
+      "mentionsAnyOf": [["FOOD SERVICE BOARD", "CUPSTOCK", "food grade"]],
+      "behaviours": ["gives_a_meaning", "completeness_is_truthful"]
+    }
+  },
+  {
+    "id": "f-april-companies",
+    "tags": ["identity"],
+    "question": "Which APRIL companies appear as shippers, and are they the same company?",
+    "scoped": false,
+    "expect": {
+      "mentionsAnyOf": [["APRIL FINE PAPER TRADING", "APRIL FAR EAST"]],
+      "behaviours": ["grounds_first", "no_guard_refusal"],
+      "maxSteps": 5
+    }
+  },
+  {
+    "id": "g-both-roles",
+    "tags": ["roles"],
+    "question": "Which companies act as both a consignee and a notify party?",
+    "expect": {
+      "behaviours": ["no_meaning_needed", "no_guard_refusal"],
+      "maxSteps": 5
+    }
+  },
+  {
+    "id": "h-since-january",
+    "tags": ["time"],
+    "question": "How many shipping instruction requests are dated since January, by the date the mail itself states?",
+    "scoped": false,
+    "expect": {
+      "behaviours": ["names_the_date_column", "no_meaning_needed"],
+      "maxSteps": 5
+    }
+  },
+  {
+    "id": "i-detention-charges",
+    "tags": ["email-text"],
+    "question": "Which emails are chasing detention or demurrage charges?",
+    "expect": {
+      "behaviours": ["no_meaning_needed", "grounds_first"],
+      "maxSteps": 5
+    }
+  },
+  {
+    "id": "j-carriers-to-east-africa",
+    "tags": ["links", "place"],
+    "question": "Which carriers take our cargo to East Africa?",
+    "scoped": false,
+    "expect": {
+      "mentionsAnyOf": [["MOMBASA"]],
+      "behaviours": ["completeness_is_truthful"],
+      "maxSteps": 6
+    }
+  },
+  {
+    "id": "k-tonnage-to-asia",
+    "tags": ["total", "place"],
+    "question": "How much tonnage went to ports in Asia, by month?",
+    "scoped": false,
+    "expect": {
+      "behaviours": ["names_the_date_column", "says_lower_bound", "completeness_is_truthful"],
+      "maxSteps": 6
+    }
+  },
+  {
+    "id": "l-big-customers",
+    "tags": ["underspecified"],
+    "question": "Who are our big customers?",
+    "scoped": false,
+    "expect": {
+      "behaviours": ["did_not_ask", "offers_a_next_move"],
+      "maxSteps": 5
+    }
+  },
+  {
+    "id": "m-semiconductors",
+    "tags": ["nothing-there", "concept"],
+    "question": "Are any of these companies in semiconductors?",
+    "scoped": false,
+    "expect": {
+      "absent": ["semiconductor manufacturer"],
+      "behaviours": ["gives_a_meaning", "completeness_is_truthful", "every_alternative_real"],
+      "outcome": "none_found"
+    }
+  },
+  {
+    "id": "n-congestion",
+    "tags": ["out-of-scope"],
+    "question": "Is Mombasa congested this week?",
+    "scoped": false,
+    "expect": {
+      "mentionsAnyOf": [["cannot", "do not", "no way", "not something"]],
+      "behaviours": ["no_guard_refusal"],
+      "maxSteps": 4
+    }
+  },
+  {
+    "id": "o-who-handles-roxcel",
+    "tags": ["people"],
+    "question": "Who at our end handles Roxcel?",
+    "scoped": false,
+    "expect": {
+      "mentionsAnyOf": [["aprilasia.com", "ROXCEL"]],
+      "behaviours": ["grounds_first", "no_guard_refusal"],
+      "maxSteps": 5
+    }
+  },
+  {
+    "id": "p-after-a-correction",
+    "tags": ["corrections"],
+    "question": "Has a reviewer corrected a port on any email, and does the shipment show the corrected value?",
+    "expect": {
+      "mentionsAnyOf": [["corrected", "correction", "human", "reviewer"]],
+      "behaviours": ["no_meaning_needed"],
+      "maxSteps": 5
+    }
+  },
+  {
+    "id": "q-singapore",
+    "tags": ["ambiguous", "interactive"],
+    "question": "What about Singapore?",
+    "scoped": false,
+    "expect": {
+      "behaviours": ["grounds_first"],
+      "maxSteps": 5
+    }
+  },
+  {
+    "id": "r-chinese",
+    "tags": ["another-language", "place"],
+    "question": "亚洲的港口有哪些?",
+    "scoped": false,
+    "expect": {
+      "mentionsAnyOf": [["Asia", "亚洲"]],
+      "behaviours": ["no_guard_refusal"],
+      "maxSteps": 5
+    }
+  },
+  {
+    "id": "s-more-than-five-containers",
+    "tags": ["sizes"],
+    "question": "Which shipments carry more than five containers?",
+    "scoped": false,
+    "expect": {
+      "behaviours": ["no_meaning_needed", "no_guard_refusal"],
+      "maxSteps": 4
+    }
+  }
+]
