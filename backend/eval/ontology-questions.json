@@ -35,7 +35,7 @@
     "question": "Which of our consignees are in the Gulf?",
     "scoped": false,
     "expect": {
-      "entities": ["AL GURG STATIONERY LLC", "TOPKOPY MIDDLE EAST FZE", "ORIENT LINKS CO (LLC)"],
+      "entities": ["AL GURG STATIONERY LLC", "TOPKOPY MIDDLE EAST FZE", "EAST BRIGHT FZ-LLC"],
       "behaviours": ["gives_a_meaning", "completeness_is_truthful"],
       "complete": true
     }
