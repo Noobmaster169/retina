@@ -80,8 +80,32 @@ The page's own rail lists every conversation too, each with the run it was opene
 a browser: seven in the history, four turns resumed after a reload, the rail link ending in the
 remembered id, the page opening it wide, and a pick on the page followed by the dock.
 
+**The chat prompt, v5 on opus (follow-up, same day).** The answers read for a database user,
+not a business one: of the 8 assistant turns stored before the change, 5 had a dash used as
+punctuation, 2 ended in an offer, 1 opened with a greeting, 1 ended in a question, 1 named a
+table. Three changes: the style rules now sit in the output schema's description of `answer`,
+where constrained output follows them; `chat/v5.md` names the reader as the person running the
+business, forbids table names, offers and closing questions, and says a bare question is about
+what the reader is looking at; the chat step runs `opus`. The scorer gained `reads_plainly`, a
+check on every question (`eval/chat-score.prose.ts`, table-tested). `pnpm eval:chat --limit 20`
+on the first twenty questions, v4 on sonnet against v5 on opus, same day, same data:
+
+| | v4 sonnet | v5 opus |
+|---|---|---|
+| passed | 19 of 20 | 19 of 20 |
+| prose faults | 0 | 0 |
+| median steps | 3 | 2 |
+| recipes alone | 78% | 73% |
+
+Both fail `weight-total` the same way: its expectation predates `core.email_shipments`, which
+stores a numeric weight the answer now sums. The baseline already carried the schema-level rule,
+so the zero faults on both sides say that rule is what fixed the prose; the v5 text and opus buy
+the shorter path. Both reports are under `eval/reports/`, untracked.
+
 **Deferred.**
 
+- `weight-total` in `eval/chat-questions.json` expects the answer to say a weight cannot be
+  summed. It can now, from the shipments table. The expectation wants rewriting.
 - The ontology's Shipments type stays unbuilt there: its things tab lists resolved kinds only,
   and a shipment is one row per email with nothing yet grouping them into a booking. The rail's
   blurb points at `/shipment`.
