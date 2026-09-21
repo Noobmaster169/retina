@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { TurnResult } from "../agents/chat/loop";
 import { type EntitySetScore, matchedNames, scoreEntitySet } from "./chat-score.entities";
+import { proseFaults } from "./chat-score.prose";
 import { Behaviour, type ChatQuestion } from "./chat-questions";
 
 export { Behaviour, ChatQuestion, ChatQuestionSet } from "./chat-questions";
@@ -82,6 +83,11 @@ export function scoreTurn(question: ChatQuestion, turn: TurnResult, context: Tur
     ...expect.alternatives.map((thing) => ({ name: `offers "${thing}"`, ok: names(thing), detail: things.join(", ") })),
     ...expect.alternativesAbsent.map((thing) => ({ name: `does not offer "${thing}"`, ok: !names(thing), detail: things.join(", ") })),
     { name: "finished within the step budget", ok: !turn.exhausted, detail: "" },
+    // On every question: how it reads is the prompt's promise, whatever was asked.
+    ...(() => {
+      const faults = proseFaults(turn.answer, turn.outcome);
+      return [{ name: "reads_plainly", ok: faults.length === 0, detail: faults.map((fault) => `${fault.rule}: ${fault.detail}`).join("; ") }];
+    })(),
   ];
 
   if (expect.outcome !== undefined) {

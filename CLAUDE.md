@@ -191,7 +191,7 @@ needed.
   values mean the same thing are LLM calls. Code assembles the answer (the set of fields the
   model judged different) and validates it against the enums. No hand-written normalisers,
   label tables or title matching: those are rules fitted to one sample, like the email ones.
-- Every LLM step runs `sonnet`. `LLM_MODEL_<STEP>` exists for experiments, not as a default. A
+- Every LLM step runs `sonnet`, except `chat`, which runs `opus` since phase 13 (the prompt file says so), and `port-locate`, which runs `sonnet-web`. `LLM_MODEL_<STEP>` exists for experiments, not as a default. A
   wrong alias must fail fast: the proxy answers 500 with `retryable: false`, and anything that
   decides retry from the status instead requeues it forever without spending an attempt.
 - Retry is the dependency's call, not the caller's guess. Branch on `isTransient(error)` from

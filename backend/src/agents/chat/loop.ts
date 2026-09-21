@@ -31,7 +31,7 @@ const log = childLogger({ module: "chat.loop" });
 
 /** Two or three steps answer most questions; the rest is room to recover from a refusal. Never tuned upward without a measurement. */
 const MAX_STEPS = 8;
-const CHAT_PROMPT = "v4";
+const CHAT_PROMPT = "v5";
 
 export interface TurnInput {
   question: string;
