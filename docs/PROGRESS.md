@@ -11,11 +11,11 @@ See "Design decisions (classify stage invariant)" below for what was wrong and w
 measured against. **The holdout and the full 520 have not been rerun under the new prompts** and
 are the two numbers that decide whether E2E moves off 0.97.
 
-**2026-09-21: phase 13, the ingest gate, is built** (migration `025_ingest_gate.sql`, which
+**2026-09-21: phase 14, the ingest gate, is built** (migration `025_ingest_gate.sql`, which
 shares its number with the classify one above; both are applied and neither may be renamed now).
 An email cannot cost a model call until deterministic arithmetic over counts, sizes and timestamps
-has said it may. `docs/phases/phase-13-ingest-gate-design.md` is the design and
-`phase-13-ingest-gate.md` the work list; both are done except the two live checks below.
+has said it may. `docs/phases/phase-14-ingest-gate-design.md` is the design and
+`phase-14-ingest-gate.md` the work list; both are done except the two live checks below.
 
 **`GATE_MODE` defaults to `observe` and must stay there for the demo.** In `observe` the gate
 prices every email, charges every bucket and records every verdict, and then admits the email

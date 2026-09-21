@@ -1,4 +1,4 @@
--- Phase 13: admission control in front of the pipeline.
+-- Phase 14: admission control in front of the pipeline.
 --
 -- Three new tables and not one change to an existing one, which is what makes
 -- the rollback story trivial: an image from before this phase queries none of

@@ -292,7 +292,7 @@ Replay controller (`ingest/replay.ts`), driven by `core.runs`:
   happen before the transaction opens, so a slow inbox or MinIO never holds a pooled connection.
 - `ratePerSecond: 0` means burst: enqueue everything immediately.
 
-#### 5.1a The admission gate (phase 13)
+#### 5.1a The admission gate (phase 14)
 
 Between `source.getEmail` and the first attachment download, `ingest/gate/` decides whether this
 email is worth what reading it will cost. It is deterministic arithmetic over counts, sizes and
@@ -833,7 +833,7 @@ explainability. Indexes: `email_runs(run_id, stage)`, `review_cases(status)`,
 `llm_calls(email_run_id)`, `emails(sender_domain)`, `review_actions(email_run_id)`,
 `review_actions(kind, created_at)`.
 
-**Phase 13, the ingest gate.** Three tables, and not one change to an existing one, which is what
+**Phase 14, the ingest gate.** Three tables, and not one change to an existing one, which is what
 makes the rollback trivial: an image from before the phase queries none of them.
 
 - `gate_policy(principal, scope in (address, domain), policy in (allow, block), reason, note,

@@ -1,6 +1,6 @@
 # The ingest gate: admission control in front of the pipeline
 
-Date: 2026-09-21. Phase 13.
+Date: 2026-09-21. Phase 14.
 
 ## The problem
 

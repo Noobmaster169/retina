@@ -1,6 +1,6 @@
-# Phase 13: the ingest gate
+# Phase 14: the ingest gate
 
-**The design is `docs/phases/phase-13-ingest-gate-design.md`.** Read it first; this
+**The design is `docs/phases/phase-14-ingest-gate-design.md`.** Read it first; this
 file is the work list and the order to do it in. Where the two disagree, the spec is the intent and
 this file is the plan.
 
