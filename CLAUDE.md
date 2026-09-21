@@ -132,7 +132,7 @@ needed.
   its own `retryable` verdict. Never swallow an error; never `catch {}`.
 - Comments say why, never what. No banner comments, no commented-out code, no TODO without a
   `PROGRESS.md` entry.
-- No emoji in code, logs, or docs.
+- No emoji in code, logs, or docs. A country flag drawn from an ISO code at render time (`lib/flag.ts`) is data, not an emoji in code.
 - Logging: pino, one logger per module, always include `runId`, `emailId`, `stage` when known.
 - Config only from `config.ts`. No `process.env` anywhere else.
 - Async everywhere; no `.then` chains; no fire-and-forget promises.
@@ -173,6 +173,9 @@ needed.
 - The LLM classifies. No hand-written rule decides a category: no sender or domain lists, no
   subject or body keyword tables, no regexes over email content, no pattern-based stripping of
   signatures or threads. The inbox is one small seeded sample and the judges may score another.
+- Reference data is not a rule. `backend/reference/` holds the world's ports and countries
+  (UN/LOCODE, ISO 3166, the UN geoscheme), built by `scripts/reference-build.ts`. It places a
+  resolved port by the words of its name and never decides what an email is.
 - Prompts describe the task, not the dataset. Every statement in a prompt traces to the
   organisers' written definitions (the brief, `emails/data_v2/README.md`), never to a frequency
   seen in the inbox.
@@ -191,7 +194,7 @@ needed.
   values mean the same thing are LLM calls. Code assembles the answer (the set of fields the
   model judged different) and validates it against the enums. No hand-written normalisers,
   label tables or title matching: those are rules fitted to one sample, like the email ones.
-- Every LLM step runs `sonnet`, except `chat`, which runs `opus` since phase 13 (the prompt file says so), and `port-locate`, which runs `sonnet-web`. `LLM_MODEL_<STEP>` exists for experiments, not as a default. A
+- Every LLM step runs `sonnet`, except `chat`, which runs `opus` since phase 13 (the prompt file says so). `LLM_MODEL_<STEP>` exists for experiments, not as a default. A
   wrong alias must fail fast: the proxy answers 500 with `retryable: false`, and anything that
   decides retry from the status instead requeues it forever without spending an attempt.
 - Retry is the dependency's call, not the caller's guess. Branch on `isTransient(error)` from

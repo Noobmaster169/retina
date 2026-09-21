@@ -14,11 +14,8 @@ export function PortSections({ detail, parties, shipments }: { detail: EntityDet
   const loading = shipments.filter((s) => s.pol?.id === detail.row.id);
   const discharge = shipments.filter((s) => s.pod?.id === detail.row.id);
   const source = detail.profile?.attributeSources.lat;
-  const placedBy = source
-    ? ` · placed by ${source.source === "search" ? "a web search" : "the model's own knowledge"}${
-        source.confidence !== null ? ` at ${source.confidence.toFixed(2)}` : ""
-      }`
-    : "";
+  const by: Record<string, string> = { reference: "the world's port list", human: "a person", model: "the model", mail: "the mail" };
+  const placedBy = source ? ` · placed by ${by[source.source] ?? source.source}` : "";
   return (
     <div className="grid grid-cols-1 gap-8 px-7 py-6 xl:grid-cols-[minmax(0,1fr)_380px]">
       <div className="min-w-0 space-y-8">

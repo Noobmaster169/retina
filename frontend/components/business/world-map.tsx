@@ -25,6 +25,7 @@ export interface MapPin {
   href: string;
   loading: number;
   discharge: number;
+  flag?: string | null;
 }
 
 const WIDTH = 960;
@@ -66,7 +67,7 @@ export function WorldMap({ pins, focus }: { pins: MapPin[]; focus?: string }) {
       </svg>
       {hover ? (
         <div className="pointer-events-none absolute left-3 top-3 rounded-md border border-hairline bg-canvas px-3 py-2 text-small shadow-overlay">
-          <span className="block font-medium text-kind-port">{hover.name}</span>
+          <span className="block font-medium text-kind-port">{hover.flag ? `${hover.flag} ` : ""}{hover.name}</span>
           <span className="block text-caption text-ink-tertiary">
             {hover.loading} loading, {hover.discharge} discharge
           </span>

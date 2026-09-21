@@ -42,13 +42,13 @@ export function countryCodeFor(attributes: Record<string, string | null>): strin
   return countryByName(attributes.country)?.code ?? null;
 }
 
-/** Every live port without coordinates, and every live company with a country and no code. What `pnpm ontology:locate` walks. */
+/** Every live port without coordinates or a country code, and every live company with a country and no code. What `pnpm ontology:locate` walks. */
 export async function unlocated(db: Queryable): Promise<{ id: string; kind: string; canonical: string; attributes: Record<string, string | null> }[]> {
   const { rows } = await db.query<{ id: string; kind: string; canonical: string; attributes: Record<string, string | null> }>(
     `select id::text as id, kind, canonical, attributes
        from core.entities
       where merged_into is null
-        and ((kind = 'port' and attributes->>'lat' is null)
+        and ((kind = 'port' and (attributes->>'lat' is null or attributes->>'countryCode' is null))
           or (kind = 'party' and attributes->>'country' is not null and attributes->>'countryCode' is null))
       order by kind, canonical`,
   );

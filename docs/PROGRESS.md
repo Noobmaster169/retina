@@ -113,8 +113,23 @@ the dock on a company page for an overview of who they trade with, which ports, 
 wrong, v6 answered in three titled parts with a list and eleven bold figures; v5 had answered the
 same question as one paragraph.
 
+**Ports from the world's list, flags, and a person's corrections (follow-up, same day).** The
+LLM `port-locate` step is gone, with its prompt, its call in the profile pass and the proxy's
+web alias. In its place `backend/reference/` ships 12,608 ports and 249 countries, and a port is
+placed by the words of its name the moment the resolver creates it, the bracketed code breaking
+ties only. `pnpm ontology:locate` placed all 66 live ports on the first run, 0 missed, and gave
+the 5 profiled companies their country code. The pages draw each thing's flag from its code as
+the main symbol. A person may edit a thing's attributes (source `human`, never overwritten),
+rename it (kept by every pass as `human_name`) or fold it into another (recorded as their join
+of every spelling, so the pass keeps them together and the survivor's name). Checked in a
+browser: a city set through the form shows in the header after a reload; GDANSK_POLAND folded
+into GDANSK, POLAND (PLGDN) and the list lost the row. Repository tests prove a rename and a
+merge survive a full resolution pass. 1,028 backend tests, 102 frontend.
+
 **Deferred.**
 
+- A merged thing cannot be unmerged from the interface. The tombstone keeps its row, so a route
+  to split it again is possible; nobody has asked yet.
 - `weight-total` in `eval/chat-questions.json` expects the answer to say a weight cannot be
   summed. It can now, from the shipments table. The expectation wants rewriting.
 - The ontology's Shipments type stays unbuilt there: its things tab lists resolved kinds only,

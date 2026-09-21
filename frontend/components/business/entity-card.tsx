@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Icon } from "@/components/ui/icons";
+import { flagOf } from "@/lib/flag";
 import { formatWhenShort } from "@/lib/when";
 
 import { HUE_CLASSES, kindOf } from "./kind";
@@ -18,19 +19,22 @@ interface EntityCardProps {
   chips: string[];
   counts: { label: string; value: number }[];
   lastSeen: string | null;
+  /** ISO code; the flag becomes the card's symbol where it is known. */
+  countryCode?: string | null;
 }
 
-export function EntityCard({ type, href, name, summary, chips, counts, lastSeen }: EntityCardProps) {
+export function EntityCard({ type, href, name, summary, chips, counts, lastSeen, countryCode = null }: EntityCardProps) {
   const kind = kindOf(type);
   const hue = HUE_CLASSES[kind.hue];
+  const flag = flagOf(countryCode);
   return (
     <Link
       href={href}
       className="flex min-h-[148px] flex-col rounded-lg border border-hairline bg-canvas p-4 transition-colors duration-150 hover:border-hairline-strong hover:bg-surface"
     >
       <div className="flex items-start gap-2.5">
-        <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${hue.tint} ${hue.text}`}>
-          <Icon name={kind.icon} size={14} />
+        <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${hue.tint} ${hue.text}`} title={countryCode ?? undefined}>
+          {flag ? <span className="text-[18px] leading-none">{flag}</span> : <Icon name={kind.icon} size={14} />}
         </span>
         <span className="min-w-0">
           <span className={`block truncate text-heading font-medium ${hue.text}`}>{name}</span>

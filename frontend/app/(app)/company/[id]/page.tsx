@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { DetailHeader } from "@/components/business/detail-header";
+import { EditThing } from "@/components/business/edit-thing";
+import { SameAs } from "@/components/business/same-as";
 import { PageContext } from "@/components/dock/page-context-announcer";
 import { TopBar } from "@/components/shell/top-bar";
 import { getEntityDetail, listCounterparts, listShipments } from "@/lib/api-client";
@@ -36,7 +38,18 @@ export default async function Page({ params }: PageProps<"/company/[id]">) {
       />
       <TopBar crumbs={[{ label: "Companies", href: "/company" }, { label: detail.row.name }]} />
       <main className="min-h-0 grow overflow-y-auto">
-        <DetailHeader type="party" name={detail.row.name} chips={chips} />
+        <DetailHeader
+          type="party"
+          name={detail.row.name}
+          chips={chips}
+          countryCode={detail.row.attributes.countryCode}
+          aside={
+            <div className="flex shrink-0 gap-2">
+              <EditThing kind="party" id={id} name={detail.row.name} attributes={detail.row.attributes} />
+              <SameAs kind="party" id={id} name={detail.row.name} />
+            </div>
+          }
+        />
         <CompanySections detail={detail} people={people} ports={ports} shipments={shipments.shipments} />
       </main>
     </div>

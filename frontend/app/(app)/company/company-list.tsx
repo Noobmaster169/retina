@@ -72,6 +72,7 @@ export function CompanyList({ rows }: { rows: EntityRow[] }) {
               chips={[row.attributes.kind, row.attributes.country].filter((value): value is string => !!value)}
               counts={roleCounts(row)}
               lastSeen={row.lastSeen}
+              countryCode={row.attributes.countryCode}
             />
           ))}
           {shown.length === 0 ? <p className="col-span-full py-10 text-center text-body text-ink-tertiary">No company matches.</p> : null}
