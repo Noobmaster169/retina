@@ -58,8 +58,9 @@ claude setup-token          # prints a long-lived token; keep it secret
 The wizard (next step) asks for it and writes it to `~/retina/.env` as
 `CLAUDE_CODE_OAUTH_TOKEN`. Without it the stack still comes up, and every
 model call fails fast as `provider_not_logged_in`, never retried. To change it
-later: edit `~/retina/.env`, then `cd ~/retina && docker compose up -d
-llm-proxy`.
+later, re-run the wizard: it asks whether to replace a token that is already set
+and recreates the container with the new one. Editing `~/retina/.env` by hand and
+running `cd ~/retina && docker compose up -d llm-proxy` does the same.
 
 The CLI version is pinned in `proxy/Dockerfile` (`CLAUDE_CODE_VERSION`, 2.1.274
 or newer for `--json-schema`). `auto-deploy.sh` rebuilds the container whenever

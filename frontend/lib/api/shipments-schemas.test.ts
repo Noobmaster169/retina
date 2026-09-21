@@ -14,7 +14,7 @@ describe("mirrored contracts", () => {
   });
 
   it("reads an entity row stored before phase 13", () => {
-    const row = EntityRow.parse({ id: "1", type: "port", name: "P", mentions: 1, emails: 1, names: 1, lastSeen: null });
+    const row = EntityRow.parse({ id: "1", type: "port", name: "P", mentions: 1, sightings: 0, emails: 1, names: 1, lastSeen: null });
     expect(row.attributes).toEqual({});
     expect(row.roles).toEqual({});
     expect(row.summary).toBeNull();

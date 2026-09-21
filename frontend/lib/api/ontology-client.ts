@@ -10,6 +10,7 @@ import {
   type ObjectTypeSummary,
 } from "./ontology-schemas";
 import type { EntityKind } from "./semantic-schemas";
+import { ConsignmentDetail, ConsignmentList } from "./shipment-schemas";
 import { get } from "./transport";
 
 export type {
@@ -30,6 +31,15 @@ export type {
   WrittenBy,
 } from "./ontology-schemas";
 export type { AttributeSource, EntityKind, SemanticReading, StoredProfile } from "./semantic-schemas";
+export type { EntityInsight, IdentityFact, InsightFacet, InsightLine } from "./insight-schemas";
+export type {
+  ConsignmentDetail,
+  ConsignmentList,
+  ConsignmentParty,
+  ConsignmentRef,
+  ConsignmentRow,
+  ConsignmentStatement,
+} from "./shipment-schemas";
 
 /** The rail on both the database page and the ontology page, with live counts. */
 export async function listObjectTypes(): Promise<ObjectTypeSummary[]> {
@@ -46,6 +56,16 @@ export type Beside = "people" | "ports" | "parties";
 /** What sits beside a thing: a company's people and ports, a port's companies. */
 export async function listCounterparts(type: EntityKind, id: string, beside: Beside): Promise<Counterpart[]> {
   return (await get(CounterpartList, `/ontology/${type}/${encodeURIComponent(id)}/${beside}`)).counterparts;
+}
+
+/** The consignments the mail is about, newest first. */
+export async function listConsignments(): Promise<ConsignmentList> {
+  return get(ConsignmentList, "/ontology/shipment");
+}
+
+/** One consignment: its references, the things on it, and what each email said. */
+export async function getConsignment(id: string): Promise<ConsignmentDetail | null> {
+  return orNull(get(ConsignmentDetail, `/ontology/shipment/${encodeURIComponent(id)}`));
 }
 
 /** Null for an id nothing holds, and for a type that is designed and not built. */

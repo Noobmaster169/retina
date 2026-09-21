@@ -10,16 +10,17 @@ function get(path: string) {
 }
 
 describe("GET /ontology/types", () => {
-  it("names every type with a live count, and marks the two that are not built", async () => {
+  it("names every navigable type with a live count, and nothing is dashed any more", async () => {
     const response = await get("/ontology/types");
     expect(response.status).toBe(200);
 
     const types: { type: string; built: boolean; table: string | null; count: number }[] = response.body.types;
     const planned = types.filter((type) => !type.built).map((type) => type.type);
-    // The exit checklist: the planned types are exactly the ones with no table.
-    // Only shipment is left: a carrier, a vessel, a commodity and a person are
-    // all read out of the mail now, so only the one thing nothing sources stays dashed.
-    expect(planned.sort()).toEqual(["shipment"]);
+    // The exit checklist: a planned type is exactly one with no table, and
+    // phase 10g gave the last of them one. A shipment is a group of emails
+    // sharing an identifier, so core.shipments is what it counts.
+    expect(planned).toEqual([]);
+    expect(types.find((type) => type.type === "shipment")?.table).toBe("core.shipments");
     for (const type of types) expect(type.built).toBe(type.table !== null);
 
     const email = types.find((type) => type.type === "email");
@@ -44,11 +45,16 @@ describe("GET /ontology/:type", () => {
     expect(response.body.built).toBe(true);
   });
 
-  it("says a planned type is designed and not built", async () => {
+  it("404s a shipment id that is not a number rather than failing a cast", async () => {
     const response = await get("/ontology/shipment/anything");
     expect(response.status).toBe(404);
-    expect(response.body.built).toBe(false);
-    expect(response.body.error).toContain("not built yet");
+    expect(response.body.error).toBe("no such shipment");
+  });
+
+  it("lists the consignments, which are no longer a planned type", async () => {
+    const response = await get("/ontology/shipment");
+    expect(response.status).toBe(200);
+    expect(Array.isArray(response.body.shipments)).toBe(true);
   });
 
   it("400s a word that is not an object type at all", async () => {

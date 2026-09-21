@@ -5,7 +5,7 @@ import type { EntityRow } from "@/lib/api/ontology-schemas";
 import { groupByCountry, sortKeyOf, sortRows } from "./sort";
 
 function row(name: string, emails: number, country: string | null, code: string | null = null, lastSeen: string | null = null): EntityRow {
-  return { id: name, type: "port", name, mentions: 0, emails, names: 1, lastSeen, attributes: { country, countryCode: code }, summary: null, roles: {} };
+  return { id: name, type: "port", name, mentions: 0, sightings: 0, emails, names: 1, lastSeen, attributes: { country, countryCode: code }, summary: null, roles: {} };
 }
 
 const rows = [row("B", 2, "Kenya", "KE"), row("A", 5, null), row("C", 3, "Chile", "CL"), row("D", 1, "Kenya", null)];

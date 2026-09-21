@@ -1,6 +1,8 @@
 # Progress
 
-Current phase: **13, on `phase-13-business-data`.** 10a to 10f are merged to `main`.
+Current phase: **13, on `phase-13-business-data`.** 10a to 10f are merged to `main`, and so are
+10g and phase 11's first slice (the results page's failure view), which were built in parallel
+and merged into 13 afterwards.
 
 **Start at `docs/phases/phase-13-business-data.md`.** Phase 7's two `[~]` items are still under
 "Deferred" below.
@@ -132,15 +134,117 @@ merge survive a full resolution pass. 1,028 backend tests, 102 frontend.
   to split it again is possible; nobody has asked yet.
 - `weight-total` in `eval/chat-questions.json` expects the answer to say a weight cannot be
   summed. It can now, from the shipments table. The expectation wants rewriting.
-- The ontology's Shipments type stays unbuilt there: its things tab lists resolved kinds only,
-  and a shipment is one row per email with nothing yet grouping them into a booking. The rail's
-  blurb points at `/shipment`.
+- Two readings of a shipment now sit side by side, since phase 10g landed on `main` in parallel:
+  `/shipment` and `GET /shipments` read one row per email (`core.email_shipments`), and the
+  ontology's Shipments type reads the groups in `core.shipments` through `GET /ontology/shipment`.
+  The code calls the grouped one `Consignment*` so the two contracts do not collide. Whether the
+  business pages should list the groups instead is the user's call.
+- Migration numbers `023` and `024` are each used twice (`023_chat_context` and `023_shipments`,
+  `024_human_edits` and `024_shipment_key`), because 13 and 10g were cut from the same `main`.
+  `migrate.mjs` keys on the filename, so all four apply once and in a harmless order. Renaming any
+  would re-apply it on a database that already has it; they stay as they are, and the next one is
+  `025`.
 - The dock's top-bar toggle shows no unread mark when an answer lands while the dock is closed.
 - Empty conversations: a person who opens the Ask Retina page and presses New leaves a conversation
   with no turns behind, and the history lists it. The dock never does this (it opens on the first
   question); the page could do the same.
 - The port list filters in the browser and reads at most 200 things; a list past that wants the
   backend's paging.
+
+## Phase 10g: what a thing means, on the page
+
+**Start at `docs/phases/phase-10g-entity-meaning.md`.** Every kind the ontology resolves opens
+into what it means in this trade rather than into the columns that hold it, and Shipment is no
+longer dashed.
+
+**What was actually wrong.** 10f taught the resolver, the profiler and the chat about six kinds,
+and two read paths never heard: `GET /ontology/:type` and `/:type/:id/detail` refused anything but
+a port or a party, and the frontend kept its own two-kind list in `tab-body.tsx` and the database
+page. The rail counted Carriers 5 and the body said "This type is designed and not built yet".
+
+**One dossier, two readers.** `entities.dossier.ts` already ran seven bounded queries per thing and
+threw the structure away after rendering it for the profile prompt. `loadDossierInput` is now split
+out of it and the page reads the same facts the model was given, so a page and a model cannot
+disagree about what our mail shows. `pipeline/ontology/insight.ts` is pure and decides which three
+facets a kind gets; `entities.insight.ts` adds only what the dossier does not carry (a carrier's
+vessels, a vessel's voyages, a commodity's HS codes, the disputed count).
+
+**What each kind now says.** A port: which end of the lane it plays, the lanes it sits on, who
+ships through it. A party: what they are to us (a company only ever a consignee is a customer, and
+the note says so), where they trade, what they handle. A carrier: its ships, its lanes, the numbers
+it issues. A vessel: its voyages with lane and date, whose line it sails for, its cargo. A
+commodity: the customs codes the paperwork declares, who sells and who buys, where it goes. A
+person: how we know them (sender, signer, addressee), who they work with, what their mail concerns.
+The plumbing that used to lead these pages (`read_from`, `runs`, the link tree) is under a closed
+`The evidence` disclosure.
+
+**Shipments, and the honest finding.** `emails/data_v2/generate.py` calls `make_shipment` once per
+email with fresh references, so no two emails in the inbox share an order or a BL number: checked,
+zero repeats over the 25 backfilled rows. A shipment is therefore the consignment one email
+describes, grouped with any other email sharing an identifier (`oc_no`, `bl_no`, `booking_ref`,
+`invoice_no`, `po_no`), by exact equality and union-find in `pipeline/ontology/shipment-group.ts`.
+Every group holds one email today and the card says so; the machinery threads the moment a real
+mailbox or another seed puts two emails on one booking. Migrations `023` and `024`; a
+`regroup-shipments` scheduler every minute, keyed by membership so a shipment keeps its id.
+
+**A shipment learns the seven fields from the extractions**, not from a second model call: the
+shipment reader is told not to repeat them. `not disputed` is what makes that safe, because the
+flag is true for the BL side of a field the judge called different, so the fill takes the
+instruction's value and never the draft's wrong one. Live on `email_013`: the card shows
+`MOMBASA, KENYA (KEMBA)` marked "the two documents disagree here", with its order, bill and
+booking numbers, its carrier CMA, vessel VISION 202 V.002, cargo, HS code, trade and payment terms,
+and the line the date was read from.
+
+**Two bugs only a real page could have found.** `entities.detail.appearances` read
+`core.entity_mentions` alone, so every carrier, vessel, commodity and person showed an empty "when
+it appeared" beside a count that said three; it unions the sightings now. And the frontend's
+`AttributeSource` mirror had `confidence: z.number()` where the backend has it nullable, which the
+zod boundary caught the first time a person's profile was opened, exactly as it is meant to.
+
+**Numbers.** 1006 backend tests, 99 frontend. Migrations 023 and 024 applied locally.
+
+**Left for the user.** The backfill has only reached 25 of 520 emails, so most shipments carry no
+lane and most kinds are thin. `pnpm ontology:backfill --limit <n>` with a worker running fills
+them, and the profile scheduler writes the summaries within ten minutes.
+
+## Phase 11, first slice: the results page says where it went wrong
+
+The scorer reports totals and the results table reported an answer beside a truth. Neither said
+which reader produced the answer, so a wrong category could not be traced to a prompt without
+opening the email and reading its calls one at a time. That is now on the page.
+
+**Built.**
+
+- `EmailVerdict` carries `classify`: the chain that settled the email (`gen` and `ver` category and
+  confidence, `decidedBy`, a reviewer's category where there is one, model, prompt version) and
+  `effect`, what the verifier did to the generator's answer measured against the truth. The effect
+  is `eval/verifier-effect.ts`, pure and table-driven: `not_run`, `fixed`, `broke`, `agreed_right`,
+  `agreed_wrong`, `changed_still_wrong`. A human correction settles the submitted answer and never
+  enters the effect, because it says nothing about either prompt.
+- `classifications.eval.ts`, one read of a whole run's chains, joined into the report by
+  `evaluateRun`. `03-infra-deep.md` carries the new shape.
+- The results table is a folder now, not a file: filters, row, chain strip, detail, and the note.
+  `filters.ts` and `prompt-note.ts` are pure with their own tests.
+- **Filters, one per way of being wrong**: each scored check with the count it would show, anything
+  at all, the clean ones, each verifier effect, the truth's category, the answered category, the
+  split, and a search on the id. Nothing about the dataset is keyed on: every filter is a reading
+  of a verdict the backend settled.
+- **A row opens**, and only then fetches that email's trace: the generator's rationale, the
+  verifier's counter-cases word for word, the seven fields as the judge read them with both
+  documents' values, and every model call with what it was given and what it wrote.
+- **`Copy the whole case`** puts the email, both readers, the judge and every call on the clipboard
+  as plain text, for pasting into the session where the prompt is rewritten. The system prompts are
+  named rather than pasted: they are files in `agents/prompts` and the reader of the note has them.
+- Two fields of the frontend's `Scoreboard` mirror had drifted from the backend's (`rule_pct`,
+  `escalation_f1`) and were being stripped silently by zod. Closed in the same pass.
+
+**Numbers.** 89 frontend tests, up from 70. Backend type-check clean; the two eval suites pass.
+
+**Not yet done, and it needs the user.** The page has not been seen against a real run: Docker
+Desktop was not running on this machine, so the backend suite (which wants the compose Postgres)
+and the page itself were not exercised end to end. What to do: start the stack, run the backend
+suite, then open `/runs/<id>/results` for a run with `EVAL_GROUND_TRUTH_PATH` set and confirm the
+chain strip and the filter counts against an email whose answer you already know.
 
 ## Phase 10f
 

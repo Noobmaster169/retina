@@ -100,9 +100,9 @@ export const DESCRIPTORS: TypeDescriptor[] = [
     type: "shipment",
     label: "Shipment",
     plural: "Shipments",
-    table: null,
+    table: "core.shipments",
     blurb:
-      "A booking across its instruction, its draft and its invoice query. Designed and not built here: core.email_shipments holds one row per email, listed at /shipment, and nothing yet groups them into one shipment.",
+      "One consignment, and every email about it. Two emails are one shipment when they share an order, bill, booking, invoice or purchase order number, which in this inbox is one email each: the generator draws fresh references per mail.",
     navigable: true,
   },
   {

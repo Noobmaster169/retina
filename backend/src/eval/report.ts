@@ -1,5 +1,6 @@
 import type { EvalReport } from "../contracts";
 import type { Queryable } from "../db";
+import { chainsForRun } from "../ontology/repositories/classifications.eval";
 import { buildSubmission } from "../ontology/submission";
 import { compareEmail } from "./compare";
 import { loadGroundTruth } from "./ground-truth";
@@ -32,7 +33,12 @@ function wrongIds(truth: Truth, sub: Submission, ids: string[]): EvalReport["wro
  * over the held-out fifth, `full` over all 520 as the organisers' scorer sees it.
  */
 export async function evaluateRun(db: Queryable, runId: string): Promise<EvalReport> {
-  const [truth, split, built] = await Promise.all([loadGroundTruth(), loadSplit(), buildSubmission(db, runId)]);
+  const [truth, split, built, chains] = await Promise.all([
+    loadGroundTruth(),
+    loadSplit(),
+    buildSubmission(db, runId),
+    chainsForRun(db, runId),
+  ]);
   const inRun = Object.keys(built.payload).sort();
   const held = new Set(split.holdout);
   return {
@@ -42,6 +48,6 @@ export async function evaluateRun(db: Queryable, runId: string): Promise<EvalRep
     wrong: wrongIds(truth, built.payload, inRun),
     emails: inRun
       .filter((id) => truth[id])
-      .map((id) => compareEmail(id, truth[id], built.payload[id], held.has(id))),
+      .map((id) => compareEmail(id, truth[id], built.payload[id], held.has(id), chains.get(id))),
   };
 }

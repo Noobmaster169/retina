@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { GLYPH_OF } from "@/components/graph/glyphs";
 import { Icon } from "@/components/ui/icons";
 import type { ObjectLink } from "@/lib/api/ontology-schemas";
@@ -10,6 +12,10 @@ import type { ObjectLink } from "@/lib/api/ontology-schemas";
  * that makes this a knowledge tool rather than a schema browser. They are
  * drawn quieter and say so, because a reader should be able to tell a foreign
  * key from a traversal somebody chose.
+ *
+ * A link that names one thing rather than counting many carries a target, and
+ * that card is the only one you can click. An email's shipment is the first of
+ * them.
  */
 
 const TONE: Record<NonNullable<ObjectLink["tone"]>, { border: string; bg: string; ink: string; glyph: string }> = {
@@ -18,7 +24,7 @@ const TONE: Record<NonNullable<ObjectLink["tone"]>, { border: string; bg: string
   match: { border: "border-hairline", bg: "", ink: "text-match", glyph: "text-match" },
 };
 
-export function LinkCards({ links }: { links: ObjectLink[] }) {
+export function LinkCards({ links, hrefFor }: { links: ObjectLink[]; hrefFor?: (link: ObjectLink) => string | null }) {
   const derived = links.filter((link) => link.derived).length;
   return (
     <section>
@@ -34,7 +40,7 @@ export function LinkCards({ links }: { links: ObjectLink[] }) {
       <ul className="mt-1.5 grid grid-cols-2 gap-2.5 xl:grid-cols-4">
         {links.map((link) => (
           <li key={link.key}>
-            <LinkCard link={link} />
+            <LinkCard link={link} href={hrefFor?.(link) ?? null} />
           </li>
         ))}
       </ul>
@@ -42,14 +48,16 @@ export function LinkCards({ links }: { links: ObjectLink[] }) {
   );
 }
 
-function LinkCard({ link }: { link: ObjectLink }) {
+function LinkCard({ link, href }: { link: ObjectLink; href: string | null }) {
   const tone = link.tone ? TONE[link.tone] : null;
   const empty = link.count === 0;
+  const Card = href ? Link : "div";
   return (
-    <div
+    <Card
+      href={href as string}
       className={`block rounded-lg border px-3 py-2.5 ${tone?.border ?? "border-hairline"} ${
         link.derived ? "bg-surface" : (tone?.bg ?? "")
-      }`}
+      } ${href ? "hover:border-ink-faint" : ""}`}
     >
       <span className="flex items-center gap-[7px]">
         <Icon
@@ -64,6 +72,6 @@ function LinkCard({ link }: { link: ObjectLink }) {
         </span>
       </span>
       {link.sub ? <span className="mt-[3px] block truncate text-caption text-ink-faint">{link.sub}</span> : null}
-    </div>
+    </Card>
   );
 }

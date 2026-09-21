@@ -64,7 +64,11 @@ export async function listTypes(db: Queryable): Promise<ObjectTypeSummary[]> {
   const things = await db.query<{ kind: string; n: string }>(
     "select kind, count(*)::text as n from core.entities where merged_into is null group by kind",
   );
-  const counts: Record<string, number> = { email: Number(emails.rows[0].n) };
+  const shipments = await db.query<{ n: string }>("select count(*)::text as n from core.shipments");
+  const counts: Record<string, number> = {
+    email: Number(emails.rows[0].n),
+    shipment: Number(shipments.rows[0].n),
+  };
   for (const row of things.rows) counts[row.kind] = Number(row.n);
 
   return NAVIGABLE.map((descriptor) => ({

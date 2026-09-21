@@ -4,7 +4,17 @@ import { z } from "zod";
 
 import { type CounterpartList, type EntityDetail, EntityKind, type EntityList, ObjectType } from "../contracts";
 import { emailGraph, isBuilt, listTypes, objectRecord } from "../ontology/objects";
-import { entityAround, entityDetail, entityProfile, entityValues, entities } from "../ontology/repositories";
+import { buildInsight } from "../pipeline/ontology";
+import {
+  entityAround,
+  entityDetail,
+  entityDossier,
+  entityInsight,
+  entityProfile,
+  entityValues,
+  entities,
+  shipmentsRead,
+} from "../ontology/repositories";
 
 /**
  * The model as a model: what types exist, what one object holds, what links
@@ -35,6 +45,26 @@ export function ontologyRouter(deps: OntologyRouteDeps): Router {
     res.json({ types: await listTypes(pool) });
   });
 
+  /** The consignments the mail is about, newest first. Its own route: a shipment is a group, not a spelling. */
+  router.get("/shipment", async (_req, res) => {
+    res.json(await shipmentsRead.list(pool));
+  });
+
+  router.get("/shipment/:id", async (req, res) => {
+    // A shipment's id is a number. A word here is a link from somewhere that
+    // does not know that, and it is a 404 rather than a failed cast.
+    if (!/^\d+$/.test(req.params.id)) {
+      res.status(404).json({ error: "no such shipment" });
+      return;
+    }
+    const detail = await shipmentsRead.find(pool, req.params.id);
+    if (!detail) {
+      res.status(404).json({ error: "no such shipment" });
+      return;
+    }
+    res.json(detail);
+  });
+
   /** The index of one type. Only the resolved kinds have a list of their own; the rest are tables. */
   router.get("/:type", async (req, res) => {
     const type = TypeParam.safeParse(req.params.type);
@@ -51,7 +81,7 @@ export function ontologyRouter(deps: OntologyRouteDeps): Router {
       return;
     }
     const body: EntityList = {
-      type: type.data,
+      type: kind.data,
       built: true,
       entities: await entities.listByKind(pool, kind.data),
     };
@@ -82,27 +112,38 @@ export function ontologyRouter(deps: OntologyRouteDeps): Router {
    * here, written these ways, and where it appeared.
    */
   router.get("/:type/:id/detail", async (req, res) => {
-    const type = TypeParam.safeParse(req.params.type);
-    if (!type.success || !EntityKind.safeParse(type.data).success) {
-      res.status(404).json({ error: "only a resolved thing has a detail" });
+    const kind = EntityKind.safeParse(req.params.type);
+    if (!kind.success) {
+      res.status(404).json({ error: "only a resolved thing has a detail: a port, party, carrier, vessel, commodity or person" });
       return;
     }
     const row = await entities.find(pool, req.params.id);
-    if (!row || row.type !== type.data) {
+    if (!row || row.type !== kind.data) {
       res.status(404).json({ error: "no such thing" });
       return;
     }
-    const [values, links, names, appearances, appearanceCount, profile] = await Promise.all([
+    const [values, links, names, appearances, appearanceCount, profile, dossier, extras] = await Promise.all([
       entityValues.values(pool, req.params.id),
       entityDetail.around(pool, req.params.id),
       entityDetail.names(pool, req.params.id),
       entityDetail.appearances(pool, req.params.id, APPEARANCES),
       entityDetail.appearanceCount(pool, req.params.id),
       entityProfile.read(pool, req.params.id),
+      entityDossier.loadDossierInput(pool, req.params.id),
+      entityInsight.loadExtras(pool, req.params.id, kind.data),
     ]);
     // Counted on the list's own grain. `row.mentions` counts mentions, which is
     // a bigger number, and "last 3 of 24" beside a list of 6 was that mismatch.
-    const body: EntityDetail = { row, values, links, names, appearances, appearanceCount, profile };
+    const insight = buildInsight({
+      kind: kind.data,
+      dossier: dossier ?? { kind: kind.data, canonical: row.name, names: [], roles: [], counterparties: [], lanes: [], goods: [], addresses: [], quotes: [], emails: row.emails, firstMailDate: null, lastMailDate: null },
+      extras,
+      markdown: profile?.markdown ?? null,
+      attributes: profile?.attributes ?? {},
+      attributeSources: profile?.attributeSources ?? {},
+      spellings: names.length,
+    });
+    const body: EntityDetail = { row, values, links, names, appearances, appearanceCount, profile, insight };
     res.json(body);
   });
 

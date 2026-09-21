@@ -70,7 +70,7 @@ export async function appearances(db: Queryable, entityId: string, limit = 50): 
     outcome: string | null;
   }>(
     `select * from (
-       select distinct on (er.email_id, m.field)
+       (select distinct on (er.email_id, m.field)
               er.email_id,
               er.run_id::text as run_id,
               em.subject,
@@ -88,7 +88,27 @@ export async function appearances(db: Queryable, entityId: string, limit = 50): 
          join core.emails em on em.email_id = er.email_id
          left join core.comparisons cmp on cmp.email_run_id = er.id
         where m.entity_id = $1::bigint
-        order by er.email_id, m.field, er.started_at desc
+        order by er.email_id, m.field, er.started_at desc)
+       union all
+       -- Everywhere the shipment reader saw it, which for a carrier, a vessel,
+       -- a commodity or a person is every appearance it has: no extraction
+       -- field reaches a subject line or a signature. The sides array is empty
+       -- because a sighting was not read from one document of a pair.
+       (select distinct on (sg.email_id, sg.role)
+              sg.email_id,
+              er2.run_id::text as run_id,
+              em2.subject,
+              sg.role as field,
+              sg.surface as value,
+              em2.first_seen_at as seen_at,
+              cmp2.status as outcome,
+              '{}'::text[] as sides
+         from core.entity_sightings sg
+         join core.email_runs er2 on er2.id = sg.email_run_id
+         join core.emails em2 on em2.email_id = sg.email_id
+         left join core.comparisons cmp2 on cmp2.email_run_id = er2.id
+        where sg.entity_id = $1::bigint
+        order by sg.email_id, sg.role, er2.started_at desc)
      ) newest
      order by seen_at desc, email_id desc
      limit $2`,
@@ -110,10 +130,9 @@ export async function appearances(db: Queryable, entityId: string, limit = 50): 
 export async function appearanceCount(db: Queryable, entityId: string): Promise<number> {
   const { rows } = await db.query<{ n: string }>(
     `select count(*)::text as n
-       from (select distinct er.email_id, m.field
-               from core.entity_mentions m
-               join core.email_runs er on er.id = m.email_run_id
-              where m.entity_id = $1::bigint) distinct_appearances`,
+       from (select distinct a.email_id, a.role
+               from core.entity_appearances a
+              where a.entity_id = $1::bigint) distinct_appearances`,
     [entityId],
   );
   return Number(rows[0].n);

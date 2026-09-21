@@ -17,7 +17,7 @@ import { StoredValues } from "./stored-values";
  * code derived, and which nothing ever wrote.
  */
 
-export function RecordTab({ record }: { record: ObjectRecord }) {
+export function RecordTab({ record, base }: { record: ObjectRecord; base?: string }) {
   return (
     <div className="min-h-0 grow overflow-y-auto">
       <div className="mx-auto max-w-[900px] px-6 pt-5 pb-8">
@@ -43,7 +43,14 @@ export function RecordTab({ record }: { record: ObjectRecord }) {
         </div>
 
         <div className="mt-[18px]">
-          <LinkCards links={record.links} />
+          <LinkCards
+            links={record.links}
+            hrefFor={(link) =>
+              link.target && base
+                ? `${base.replace(/type=[a-z]+/, `type=${link.target.type}`)}&id=${encodeURIComponent(link.target.id)}&tab=record`
+                : null
+            }
+          />
         </div>
       </div>
     </div>

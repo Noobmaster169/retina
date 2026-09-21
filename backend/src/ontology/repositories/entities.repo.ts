@@ -16,6 +16,7 @@ interface EntityDbRow {
   kind: EntityKind;
   canonical: string;
   mention_count: number;
+  sighting_count: number;
   name_count: number;
   emails: string;
   last_seen_at: Date | null;
@@ -41,6 +42,7 @@ function toRow(row: EntityDbRow): EntityRow {
     type: row.kind as ObjectType,
     name: row.canonical,
     mentions: row.mention_count,
+    sightings: row.sighting_count,
     emails: Number(row.emails),
     names: row.name_count,
     lastSeen: row.last_seen_at?.toISOString() ?? null,
@@ -58,8 +60,8 @@ const ROLES = `(select coalesce(jsonb_object_agg(r.role, r.n), '{}'::jsonb)
                   from (select a.role, count(distinct a.email_id) as n
                           from core.entity_appearances a where a.entity_id = e.id group by a.role) r) as roles`;
 
-const COLUMNS = `e.id::text as id, e.kind, e.canonical, e.mention_count, e.name_count, e.last_seen_at,
-                 e.attributes, e.profile_md, ${EMAILS}, ${ROLES}`;
+const COLUMNS = `e.id::text as id, e.kind, e.canonical, e.mention_count, e.sighting_count, e.name_count,
+                 e.last_seen_at, e.attributes, e.profile_md, ${EMAILS}, ${ROLES}`;
 
 /** Most-seen first, which is the order a person scanning for the important ones wants. */
 export async function listByKind(db: Queryable, kind: EntityKind, limit = 200): Promise<EntityRow[]> {

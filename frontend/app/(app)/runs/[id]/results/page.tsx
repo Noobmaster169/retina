@@ -87,7 +87,7 @@ export default async function ResultsPage({ params }: PageProps<"/runs/[id]/resu
                 <ScoreboardView board={report.run} />
               </div>
               <div className="mt-6">
-                <VerdictTable verdicts={report.emails} />
+                <VerdictTable runId={id} verdicts={report.emails} />
               </div>
             </>
           ) : (
