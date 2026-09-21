@@ -86,7 +86,7 @@ them if you want, but change both.
 
 ### Use the deployed backend instead of a local one
 
-In `frontend/.env.local` set `BACKEND_URL=https://purebred-shank-riptide.ngrok-free.dev`
+In `frontend/.env.local` set `BACKEND_URL=https://fineness-getting-crusader.ngrok-free.dev`
 and `API_SHARED_SECRET` to the production value (ask the box owner). Then you
 only need terminal 3.
 

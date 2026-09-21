@@ -16,10 +16,10 @@ for what this phase changed. This file is the runbook for the one manual step.
 `main` holds phase 3. The box does not. Through the tunnel today:
 
 ```bash
-curl -s https://purebred-shank-riptide.ngrok-free.dev/health
+curl -s https://fineness-getting-crusader.ngrok-free.dev/health
 # {"status":"ok","database":"up"}          <- the OLD two-field shape
 curl -s -o /dev/null -w '%{http_code}\n' -H "authorization: Bearer $TEAM_API_KEY" \
-  https://purebred-shank-riptide.ngrok-free.dev/runs
+  https://fineness-getting-crusader.ngrok-free.dev/runs
 # 404                                       <- a route main registers unconditionally
 ```
 
@@ -117,7 +117,7 @@ docker compose ps --format '{{.Service}}  {{.Ports}}'
 
 ```bash
 # from anywhere
-curl -s https://purebred-shank-riptide.ngrok-free.dev/health
+curl -s https://fineness-getting-crusader.ngrok-free.dev/health
 # the four-check shape, every check "up"
 ```
 
@@ -150,7 +150,7 @@ its cookie as an HMAC of `SITE_PASSWORD`.
 By hand, if you would rather not use the page:
 
 ```bash
-export RETINA_URL=https://purebred-shank-riptide.ngrok-free.dev
+export RETINA_URL=https://fineness-getting-crusader.ngrok-free.dev
 export TEAM_API_KEY=...          # from ~/retina/.env on the box
 
 curl -s -X POST "$RETINA_URL/runs" \
