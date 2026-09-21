@@ -42,9 +42,6 @@ function pinOf(row: EntityRow, lat: number, lon: number): MapPin {
   };
 }
 
-/** The map opens on the home market: its busiest port picked, its lanes lit and its panel open. */
-const HOME = "MY";
-
 const laneOf = (lane: Lane): MapLane => ({ polId: lane.pol.id, podId: lane.pod.id, count: lane.count, disputed: lane.disputed });
 
 export function PortList({ rows, lanes }: { rows: EntityRow[]; lanes: Lane[] }) {
@@ -67,7 +64,6 @@ export function PortList({ rows, lanes }: { rows: EntityRow[]; lanes: Lane[] }) 
   // so a port outside the filter can still appear as the far end of a lane.
   const pins = located(rows).map((item) => pinOf(item.row, item.lat, item.lon));
   const visible = new Set(shown.map((row) => row.id));
-  const home = pins.filter((pin) => pin.countryCode === HOME && visible.has(pin.id)).sort((a, b) => b.count - a.count)[0];
   const unplaced = shown.filter((row) => !pins.some((pin) => pin.id === row.id));
   // The map keeps every pin; only the cards and the table grow with the scroll.
   const page = useSoftPage(shown, view === "cards" ? CARD_STEP : TABLE_STEP, `${view}|${sort}|${q}|${region}|${role}`);
@@ -129,7 +125,7 @@ export function PortList({ rows, lanes }: { rows: EntityRow[]; lanes: Lane[] }) 
     >
       {view === "map" ? (
         <div className="space-y-4">
-          <WorldMap pins={pins} lanes={lanes.map(laneOf)} visible={[...visible]} initial={home?.id} />
+          <WorldMap pins={pins} lanes={lanes.map(laneOf)} visible={[...visible]} />
           {unplaced.length ? (
             <p className="text-small text-ink-tertiary">
               Not located yet: {unplaced.map((row) => row.name).join(", ")}. The world&apos;s port list places a port by the words
