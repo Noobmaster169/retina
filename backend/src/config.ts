@@ -67,6 +67,7 @@ const Env = z.object({
   LLM_MODEL_EXTRACT: optionalString,
   LLM_MODEL_EXTRACT_VERIFY: optionalString,
   LLM_MODEL_FIELD_JUDGE: optionalString,
+  LLM_MODEL_VISION_READ: optionalString,
   LLM_MODEL_CHAT: optionalString,
   LLM_MODEL_SHIPMENT_READ: optionalString,
   LLM_MODEL_ENTITY_RESOLVE: optionalString,
@@ -77,12 +78,14 @@ const Env = z.object({
   //
   // Unset, it is CLASSIFY_CONCURRENCY plus COMPARE_CONCURRENCY, because that
   // is how many scored jobs BullMQ runs at once and all of them contend for
-  // these slots. The ontology queue is deliberately left out of the sum: its
-  // jobs take the same semaphore and so wait behind scored work, which is the
-  // whole point of a queue that must never slow an email down. It used to follow CLASSIFY_CONCURRENCY alone, which meant
-  // eight classify jobs could hold every slot while four compare jobs sat
-  // blocked in the semaphore: on the run page, sorting unaffected and checking
-  // paused, with nothing anywhere saying why.
+  // these slots. The ontology queue is deliberately left out of the sum: it has
+  // a lane of its own (worker.ts), as wide as ONTOLOGY_CONCURRENCY, because a
+  // reading is one call of about two minutes and this semaphore hands slots out
+  // first come first served, so readings sharing it would hold slots a scored
+  // email is waiting for. It used to follow CLASSIFY_CONCURRENCY alone, which
+  // meant classify jobs could hold every slot while compare jobs sat blocked in
+  // the semaphore: on the run page, sorting unaffected and checking paused,
+  // with nothing anywhere saying why.
   //
   // Keep it at or under what the proxy serves at once (max_concurrency in
   // proxy/proxy.yaml): more only wait inside the proxy with their request
@@ -142,15 +145,21 @@ const Env = z.object({
    */
   MAINTENANCE_BUDGET_MS: z.coerce.number().int().positive().default(240_000),
 
-  // The proxy serves twelve `claude -p` calls at a time (max_concurrency in proxy/proxy.yaml),
-  // which is these two added up, because that is how many scored jobs run at once. More workers
-  // than that only queue inside the proxy with their request timeout already running.
-  CLASSIFY_CONCURRENCY: z.coerce.number().int().positive().default(8),
-  COMPARE_CONCURRENCY: z.coerce.number().int().positive().default(4),
-  // The semantic layer's own queue. Small on purpose: it runs after an email's
-  // verdict is written, it must never slow a scored email, and it takes the
-  // LLM semaphore at the lowest priority.
-  ONTOLOGY_CONCURRENCY: z.coerce.number().int().positive().default(2),
+  // Emails in flight per stage, ten each. Classify is one short call and wants the inbox cleared
+  // quickly; compare parses, extracts both documents and judges, so each email holds its slot for
+  // a long time and only width keeps the queue moving. The proxy serves twenty `claude -p` calls
+  // at a time (max_concurrency in proxy/proxy.yaml), which is these two added up, because that is
+  // how many scored jobs run at once. More workers than that only queue inside the proxy with
+  // their request timeout already running.
+  CLASSIFY_CONCURRENCY: z.coerce.number().int().positive().default(10),
+  COMPARE_CONCURRENCY: z.coerce.number().int().positive().default(10),
+  // The semantic layer's own queue, ten like the others: it runs after an email's
+  // verdict is written and must never slow a scored one. Both hold at this width.
+  // The queue has its own model lane, so a reading cannot take a scored call's slot,
+  // and its write is ordered and revalidated (ontology-commit.ts), so readings that
+  // run at once build the graph a serial run would. At 2 they did neither for free:
+  // the same 13 emails took 26.7 minutes serial and 4.1 at 10.
+  ONTOLOGY_CONCURRENCY: z.coerce.number().int().positive().default(10),
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"]).default("info"),
 
   // The commit this image was built from, passed as a build arg by the
