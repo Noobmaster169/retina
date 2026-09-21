@@ -85,14 +85,14 @@ disclosure. Training knowledge is shown and marked unverified, which is what the
 
 ## Exit checklist
 
-- [ ] All six resolved kinds list and open from the ontology page and the database page.
-- [ ] A port, a party, a carrier, a vessel, a commodity and a person each open into meaning: the
+- [x] All six resolved kinds list and open from the ontology page and the database page.
+- [x] A port, a party, a carrier, a vessel, a commodity and a person each open into meaning: the
       profile's sentence, the identity strip and its facets, with no `read_from` or `runs` above
       the fold.
-- [ ] Shipments is no longer dashed; a shipment opens into its lane, parties, carriage, cargo and
+- [x] Shipments is no longer dashed; a shipment opens into its lane, parties, carriage, cargo and
       disputed fields, and says how many emails it was read from.
-- [ ] Every number on a facet traces to a bounded query, and a thing with 200,000 appearances
+- [x] Every number on a facet traces to a bounded query, and a thing with 200,000 appearances
       costs the same to open as one with three.
-- [ ] `pnpm test`, `pnpm type-check` green in `backend/`; `pnpm test`, `pnpm lint`,
+- [x] `pnpm test`, `pnpm type-check` green in `backend/`; `pnpm test`, `pnpm lint`,
       `pnpm type-check` green in `frontend/`.
-- [ ] `docs/03-infra-deep.md` carries the new routes and contracts; `PROGRESS.md` updated.
+- [x] `docs/03-infra-deep.md` carries the new routes and contracts; `PROGRESS.md` updated.

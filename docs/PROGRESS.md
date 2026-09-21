@@ -1,6 +1,6 @@
 # Progress
 
-Current phase: **11, first slice on `main`.** 10a to 10f are all on it, and so is the results
+Current phase: **10g, on `main`, and 11's first slice with it.** 10a to 10f are all on it, and so is the results
 page's failure view, which is phase 11's first item. Phase 7's two `[~]` items are still under
 "Deferred" below.
 
@@ -27,6 +27,62 @@ Phase 6 is built and tested; left for the user there: the holdout run and the fu
 decide its exit checklist's score lines (`pnpm eval:score --run <id> --holdout`), and phase 5's
 open items (the box check of doc-extract, the classify `v5` holdout). Phase 4's open items (the
 few-shot `v4` holdout, the model comparison) are still the user's.
+
+## Phase 10g: what a thing means, on the page
+
+**Start at `docs/phases/phase-10g-entity-meaning.md`.** Every kind the ontology resolves opens
+into what it means in this trade rather than into the columns that hold it, and Shipment is no
+longer dashed.
+
+**What was actually wrong.** 10f taught the resolver, the profiler and the chat about six kinds,
+and two read paths never heard: `GET /ontology/:type` and `/:type/:id/detail` refused anything but
+a port or a party, and the frontend kept its own two-kind list in `tab-body.tsx` and the database
+page. The rail counted Carriers 5 and the body said "This type is designed and not built yet".
+
+**One dossier, two readers.** `entities.dossier.ts` already ran seven bounded queries per thing and
+threw the structure away after rendering it for the profile prompt. `loadDossierInput` is now split
+out of it and the page reads the same facts the model was given, so a page and a model cannot
+disagree about what our mail shows. `pipeline/ontology/insight.ts` is pure and decides which three
+facets a kind gets; `entities.insight.ts` adds only what the dossier does not carry (a carrier's
+vessels, a vessel's voyages, a commodity's HS codes, the disputed count).
+
+**What each kind now says.** A port: which end of the lane it plays, the lanes it sits on, who
+ships through it. A party: what they are to us (a company only ever a consignee is a customer, and
+the note says so), where they trade, what they handle. A carrier: its ships, its lanes, the numbers
+it issues. A vessel: its voyages with lane and date, whose line it sails for, its cargo. A
+commodity: the customs codes the paperwork declares, who sells and who buys, where it goes. A
+person: how we know them (sender, signer, addressee), who they work with, what their mail concerns.
+The plumbing that used to lead these pages (`read_from`, `runs`, the link tree) is under a closed
+`The evidence` disclosure.
+
+**Shipments, and the honest finding.** `emails/data_v2/generate.py` calls `make_shipment` once per
+email with fresh references, so no two emails in the inbox share an order or a BL number: checked,
+zero repeats over the 25 backfilled rows. A shipment is therefore the consignment one email
+describes, grouped with any other email sharing an identifier (`oc_no`, `bl_no`, `booking_ref`,
+`invoice_no`, `po_no`), by exact equality and union-find in `pipeline/ontology/shipment-group.ts`.
+Every group holds one email today and the card says so; the machinery threads the moment a real
+mailbox or another seed puts two emails on one booking. Migrations `023` and `024`; a
+`regroup-shipments` scheduler every minute, keyed by membership so a shipment keeps its id.
+
+**A shipment learns the seven fields from the extractions**, not from a second model call: the
+shipment reader is told not to repeat them. `not disputed` is what makes that safe, because the
+flag is true for the BL side of a field the judge called different, so the fill takes the
+instruction's value and never the draft's wrong one. Live on `email_013`: the card shows
+`MOMBASA, KENYA (KEMBA)` marked "the two documents disagree here", with its order, bill and
+booking numbers, its carrier CMA, vessel VISION 202 V.002, cargo, HS code, trade and payment terms,
+and the line the date was read from.
+
+**Two bugs only a real page could have found.** `entities.detail.appearances` read
+`core.entity_mentions` alone, so every carrier, vessel, commodity and person showed an empty "when
+it appeared" beside a count that said three; it unions the sightings now. And the frontend's
+`AttributeSource` mirror had `confidence: z.number()` where the backend has it nullable, which the
+zod boundary caught the first time a person's profile was opened, exactly as it is meant to.
+
+**Numbers.** 1006 backend tests, 99 frontend. Migrations 023 and 024 applied locally.
+
+**Left for the user.** The backfill has only reached 25 of 520 emails, so most shipments carry no
+lane and most kinds are thin. `pnpm ontology:backfill --limit <n>` with a worker running fills
+them, and the profile scheduler writes the summaries within ten minutes.
 
 ## Phase 11, first slice: the results page says where it went wrong
 
