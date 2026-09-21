@@ -5,6 +5,7 @@ from docx.table import Table
 from docx.text.paragraph import Paragraph
 
 from extractors.base import Extracted, ExtractedPage, cell_text
+from extractors.media import images_in_package
 
 
 def _row_text(cells: list[str]) -> str:
@@ -33,4 +34,11 @@ def extract_docx(data: bytes) -> Extracted:
                 text = _row_text([cell_text(cell.text) for cell in row.cells])
                 if text:
                     lines.append(text)
-    return Extracted(pages=[ExtractedPage(index=1, text="\n".join(lines), source="text_layer")])
+    # The pictures too: a document whose real content is a pasted image reads as a
+    # covering sentence and nothing else without this.
+    images, warnings = images_in_package(data, "word")
+    return Extracted(
+        pages=[ExtractedPage(index=1, text="\n".join(lines), source="text_layer")],
+        images=images,
+        warnings=warnings,
+    )

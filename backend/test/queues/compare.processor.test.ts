@@ -15,6 +15,7 @@ import { classified, outcome, pair } from "./compare.harness";
 const EXTRACTING = "You read one shipping document";
 const VERIFYING = "You check a reading";
 const JUDGING = "You compare a Shipping Instruction";
+const LOOKING = "You transcribe a shipping document";
 
 describe("compare processor: a pair that can be compared", () => {
   it("email_004: both extracted, the judge asked once about all seven, MISMATCH on consignee and notify_party", async () => {
@@ -220,44 +221,65 @@ describe("compare processor: a pair that can be compared", () => {
     });
   });
 
-  it("a scanned pair: escalated unreadable, with the comparison on the OCR text attached as provisional", async () => {
+  /** A pair with no text layer: pixels in the store, waiting to be looked at. */
+  async function scannedPair(tx: Parameters<typeof classified>[0]) {
+    const ids = await classified(tx, [
+      { filename: "e_SI.pdf", role: "SI" },
+      { filename: "e_BL.pdf", role: "BL" },
+    ]);
+    const store = new MemoryStore();
+    const docExtract = new MemoryDocExtractClient();
+    for (const name of ["e_SI.pdf", "e_BL.pdf"]) {
+      const image = `runs/${ids.runId}/emails/${ids.emailId}/images/${name}/1.png`;
+      await store.put(image, Buffer.from(`png-of-${name}`), "image/png");
+      docExtract.on(ids.key(name), scanned(image));
+    }
+    return { ...ids, store, docExtract };
+  }
+
+  it("a scanned pair is read by looking at it, then compared like any other", async () => {
     await inRollback(async (tx) => {
-      const { runId, emailId, emailRunId, key } = await classified(tx, [
-        { filename: "e_SI.pdf", role: "SI" },
-        { filename: "e_BL.pdf", role: "BL" },
-      ]);
-      const docExtract = new MemoryDocExtractClient().on(key("e_SI.pdf"), scanned(SI_004)).on(key("e_BL.pdf"), scanned(BL_004));
+      const { runId, emailId, emailRunId, store, docExtract } = await scannedPair(tx);
+      const llm = new FakeLlmClient(byContent);
 
-      await processCompare({ pool: tx, llm: new FakeLlmClient(byContent), docExtract, store: new MemoryStore() }, { runId, emailId });
+      await processCompare({ pool: tx, llm, docExtract, store }, { runId, emailId });
 
-      const result = await outcome(tx, emailRunId);
-      expect(result).toMatchObject({
-        stage: "review",
-        outcome: "unreadable",
-        review_reason: "unreadable",
-        detail: { scanned: true, provisional: { status: "MISMATCH", review_reason: null, defect_fields: ["consignee", "notify_party"], missing: [] } },
+      // The verdict the documents actually carry, not an escalation for being a scan.
+      expect(await outcome(tx, emailRunId)).toMatchObject({
+        stage: "done",
+        outcome: "MISMATCH",
+        review_reason: null,
+        detail: { defect_fields: ["consignee", "notify_party"] },
       });
-      expect(result.detail.pages).toHaveLength(2);
-      expect((await comparisons.view(tx, emailRunId))?.fields).toHaveLength(7);
-      expect(await extractions.listForEmailRun(tx, emailRunId)).toHaveLength(2);
+      const calls = await llmCalls.listForEmail(tx, runId, emailId);
+      expect(calls.map((c) => c.step)).toEqual([
+        "vision-read",
+        "vision-read",
+        "doc-type",
+        "doc-type",
+        "extract",
+        "extract",
+        "field-judge",
+      ]);
+      // One call per document however many pages it has, and the images went with it.
+      const looking = llm.requests.filter((r) => r.system.startsWith(LOOKING));
+      expect(looking).toHaveLength(2);
+      expect(looking[0].images).toEqual([{ mediaType: "image/png", base64: expect.any(String) }]);
     });
   });
 
-  it("a scanned pair whose comparison fails for good is still escalated unreadable, without a provisional result", async () => {
+  it("what the model cannot make out is unreadable, and that is the only thing that is", async () => {
     await inRollback(async (tx) => {
-      const { runId, emailId, emailRunId, key } = await classified(tx, [
-        { filename: "e_SI.pdf", role: "SI" },
-        { filename: "e_BL.pdf", role: "BL" },
-      ]);
-      const docExtract = new MemoryDocExtractClient().on(key("e_SI.pdf"), scanned(SI_004)).on(key("e_BL.pdf"), scanned(BL_004));
-      const llm = new FakeLlmClient((request: LlmRequest) => (request.system.startsWith(JUDGING) ? "garbled" : byContent(request)));
+      const { runId, emailId, emailRunId, store, docExtract } = await scannedPair(tx);
+      const illegible = JSON.stringify({ legible: false, text: "", note: "the page is too faint to make out" });
+      const llm = new FakeLlmClient((request: LlmRequest) => (request.system.startsWith(LOOKING) ? illegible : byContent(request)));
 
-      await processCompare({ pool: tx, llm, docExtract, store: new MemoryStore() }, { runId, emailId });
+      await processCompare({ pool: tx, llm, docExtract, store }, { runId, emailId });
 
-      const result = await outcome(tx, emailRunId);
-      expect(result).toMatchObject({ stage: "review", review_reason: "unreadable", detail: { scanned: true, provisional: null } });
-      expect((await comparisons.view(tx, emailRunId))?.fields).toEqual([]);
+      expect(await outcome(tx, emailRunId)).toMatchObject({ stage: "review", review_reason: "unreadable" });
       expect(await reviewCases.latestFor(tx, emailRunId)).toMatchObject({ reason: "unreadable", status: "open" });
+      // Nothing was extracted from a document nobody could read.
+      expect(await extractions.listForEmailRun(tx, emailRunId)).toHaveLength(0);
     });
   });
 

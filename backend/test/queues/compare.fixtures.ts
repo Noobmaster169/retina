@@ -112,6 +112,12 @@ function judgeByText(user: string): string {
 /** Answers every step from the text in front of it, as the model would: no step is told which fixture it is reading. */
 export function byContent(request: LlmRequest): string {
   const { system, user } = request;
+  // A picture is the one thing a fake cannot read, so this is scripted by the
+  // filename it was handed. Everything after it is the ordinary text path.
+  if (system.startsWith("You transcribe a shipping document")) {
+    const text = user.includes("_BL") ? BL_004 : SI_004;
+    return JSON.stringify({ legible: true, text, note: null });
+  }
   if (system.startsWith("You compare a Shipping Instruction")) return judgeByText(user);
   const extracting = system.startsWith("You read one shipping document") || system.startsWith("You check a reading");
   if (extracting) {

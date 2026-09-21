@@ -33,13 +33,23 @@ describe("checkStructure", () => {
     });
   });
 
-  it("a scan is escalated as unreadable too, never silently trusted, with room for a provisional result", () => {
-    const scan = doc({ filename: "e_BL.pdf", role: "BL", format: "pdf", scanned: true, docType: "BL", warnings: ["page 1: read by OCR"] });
-    expect(checkStructure([si, scan], null)).toMatchObject({
-      kind: "review",
-      reason: "unreadable",
-      detail: { scanned: true, files: [{ filename: "e_BL.pdf", scanned: true }], provisional: null },
+  it("a document read by looking at it is compared like any other", () => {
+    // It has text, so nothing structural is wrong with it. Escalating on sight made
+    // a clean scan and a truncated file mean the same thing to everyone downstream.
+    const scan = doc({
+      filename: "e_BL.pdf",
+      role: "BL",
+      format: "pdf",
+      scanned: true,
+      docType: "BL",
+      warnings: ["page 1: no text layer, sent to be read as an image"],
     });
+    expect(checkStructure([si, scan], null)).toMatchObject({ kind: "compare" });
+  });
+
+  it("a document nothing could make out is still unreadable", () => {
+    const blank = doc({ filename: "e_BL.pdf", role: "BL", format: "pdf", scanned: true, unreadable: true, warnings: ["too faint to read"] });
+    expect(checkStructure([si, blank], null)).toMatchObject({ kind: "review", reason: "unreadable" });
   });
 
   it.each(["INVOICE", "PACKING_LIST", "COO", "OTHER"] as const)("a %s where a BL was claimed is a wrong document type", (docType) => {

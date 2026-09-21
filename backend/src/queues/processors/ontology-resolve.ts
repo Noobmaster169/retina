@@ -1,43 +1,32 @@
-import { type LlmClient, type ResolveCandidate, resolveSighting } from "../../agents";
-import { loadPrompt } from "../../agents/prompts/registry";
-import { config } from "../../config";
 import type { EntityKind } from "../../contracts";
-import type { Queryable } from "../../db";
-import { childLogger } from "../../lib/logger";
-import type { LiveCalls } from "../../live";
-import { entityInputs, entityProfile, entitySearch, sightings as sightingsRepo } from "../../ontology/repositories";
-import { type AssembledShipment, kindOfRole, planSighting, type ShipmentColumn, type SightingRole } from "../../pipeline/ontology";
+import { TerminalError } from "../../lib/errors";
+import { inParallel } from "../../lib/parallel";
+import { type AssembledShipment, kindOfRole, type ShipmentColumn, type SightingRole } from "../../pipeline/ontology";
 import type { EmailRunIds } from "./ids";
+import { type Decision, decideSpelling, type ResolveDeps } from "./ontology-decide";
 
-const log = childLogger({ module: "ontology.resolve" });
-
-const RESOLVE_PROMPT = "v1";
-const CANDIDATES = 8;
+export type { Decision, ResolveDeps } from "./ontology-decide";
 
 /**
  * Every spelling one email produced, decided but not yet written.
  *
  * A spelling one live thing already holds costs nothing: that is a judgement
- * some model already made and stored. Everything else goes to
- * `entity-resolve`, which answers an id or null, and null means a thing that
- * did not exist yet.
+ * some model already made and stored. A spelling with nothing near it is new
+ * without asking. Everything else goes to `entity-resolve`, which answers an id
+ * or null.
  *
  * It plans rather than writes, so the whole reading of one email lands in one
  * transaction. A half-written reading, with three of five things created and a
  * shipment nobody wrote, is the shape a retry cannot tell from a finished one.
  */
 
-export interface ResolveDeps {
-  pool: Queryable;
-  llm: LlmClient;
-  live?: LiveCalls;
-}
-
-/** What to do about one spelling. The writer turns each of these into an id. */
-export type Decision =
-  | { action: "use"; entityId: number }
-  | { action: "create"; kind: EntityKind; surface: string }
-  | { action: "join"; entityId: number; surface: string; confidence: number };
+/**
+ * How many of one email's spellings are decided at once. Each decision reads
+ * only what was committed when it began and writes nothing, so the order they
+ * finish in changes no answer; the writer still creates things in the order the
+ * reading names them, whatever the order they were judged in.
+ */
+const FAN_OUT = 4;
 
 export interface PlannedSighting {
   /** The key into `decisions`. The writer swaps it for an id. */
@@ -52,63 +41,15 @@ export interface PlannedSighting {
 
 export interface ResolvedOntology {
   decisions: Map<string, Decision>;
+  ambiguous: Map<string, boolean>;
   sightings: PlannedSighting[];
   links: Partial<Record<ShipmentColumn, string>>;
   /** How many spellings needed a model call. Zero in steady state, which is the point. */
   judged: number;
 }
 
-async function candidatesFor(deps: ResolveDeps, kind: EntityKind, surface: string): Promise<ResolveCandidate[]> {
-  const found = await entitySearch.findCandidates(deps.pool, surface, kind, CANDIDATES);
-  const candidates: ResolveCandidate[] = [];
-  for (const candidate of found) {
-    const profile = await entityProfile.read(deps.pool, candidate.id);
-    const addresses = await sightingsRepo.addressesOf(deps.pool, candidate.id, 4);
-    candidates.push({
-      id: candidate.id,
-      kind: candidate.kind,
-      canonical: candidate.canonical,
-      spellings: [...new Set([candidate.matched, candidate.canonical])],
-      addresses,
-      summary: profile?.markdown?.split("\n")[0] ?? null,
-    });
-  }
-  return candidates;
-}
-
-interface Verdict {
-  decision: Decision;
-  ambiguous: boolean;
-}
-
-/** One spelling: reuse a stored judgement, or ask for one. */
-async function decide(
-  deps: ResolveDeps,
-  ids: EmailRunIds,
-  kind: EntityKind,
-  role: string,
-  surface: string,
-  address: string | null,
-  counted: { judged: number },
-): Promise<Verdict> {
-  const hits = await entityInputs.loadNameHits(deps.pool, [surface]);
-  const plan = planSighting(kind, surface, hits);
-  if (plan.decision === "use") return { decision: { action: "use", entityId: plan.entityId }, ambiguous: false };
-
-  const candidates = await candidatesFor(deps, kind, surface);
-  const prompt = loadPrompt("entity-resolve", RESOLVE_PROMPT, config.LLM_MODEL_ENTITY_RESOLVE);
-  const { value } = await resolveSighting(deps, prompt, { kind, surface, address, role, candidates }, { runId: ids.runId, emailRunId: ids.emailRunId });
-  counted.judged += 1;
-
-  if (value.sameAs === null) return { decision: { action: "create", kind, surface }, ambiguous: value.ambiguous };
-  // An id the model named must be one it was given: one it invented would
-  // attach this spelling to something nobody showed it.
-  if (!candidates.some((candidate) => candidate.id === value.sameAs)) {
-    log.warn({ ...ids, surface, sameAs: value.sameAs }, "entity-resolve named an id it was not given; treated as new");
-    return { decision: { action: "create", kind, surface }, ambiguous: true };
-  }
-  return { decision: { action: "join", entityId: Number(value.sameAs), surface, confidence: value.confidence }, ambiguous: value.ambiguous };
-}
+/** What an earlier round settled and is still standing, so a later one decides only the rest. */
+export type Kept = Pick<ResolvedOntology, "decisions" | "ambiguous">;
 
 /** Which kind each shipment column holds. The columns are named for their role, not their kind. */
 const KIND_OF_COLUMN: Record<ShipmentColumn, EntityKind> = {
@@ -122,39 +63,49 @@ const KIND_OF_COLUMN: Record<ShipmentColumn, EntityKind> = {
   commodity_id: "commodity",
 };
 
-export async function resolveSightings(deps: ResolveDeps, ids: EmailRunIds, assembled: AssembledShipment): Promise<ResolvedOntology> {
-  const counted = { judged: 0 };
+interface Wanted {
+  key: string;
+  kind: EntityKind;
+  role: string;
+  surface: string;
+  address: string | null;
+}
+
+export async function resolveSightings(deps: ResolveDeps, ids: EmailRunIds, assembled: AssembledShipment, kept?: Kept): Promise<ResolvedOntology> {
+  // One spelling of one kind is decided once per email, however many roles it plays.
+  const wanted = new Map<string, Wanted>();
+  const want = (kind: EntityKind, role: string, surface: string, address: string | null): string => {
+    const key = `${kind} ${surface}`;
+    if (!wanted.has(key)) wanted.set(key, { key, kind, role, surface, address });
+    return key;
+  };
+  const sightingKeys = assembled.sightings.map((sighting) => want(kindOfRole(sighting.role), sighting.role, sighting.surface, sighting.address));
+  const linkKeys = assembled.shipment.links.map((link) => [link.column, want(KIND_OF_COLUMN[link.column], link.column, link.surface, null)] as const);
+
+  const todo = [...wanted.values()].filter((one) => !kept?.decisions.has(one.key));
+  const asked = await inParallel(todo, FAN_OUT, (one) => decideSpelling(deps, ids, one.kind, one.role, one.surface, one.address));
+  const fresh = new Map(todo.map((one, index) => [one.key, asked[index]]));
+
   const decisions = new Map<string, Decision>();
   const ambiguous = new Map<string, boolean>();
-
-  /** One spelling of one kind is decided once per email, however many roles it plays. */
-  async function thing(kind: EntityKind, role: string, surface: string, address: string | null): Promise<string> {
-    const key = `${kind} ${surface}`;
-    if (decisions.has(key)) return key;
-    const verdict = await decide(deps, ids, kind, role, surface, address, counted);
-    decisions.set(key, verdict.decision);
-    ambiguous.set(key, verdict.ambiguous);
-    return key;
+  for (const key of wanted.keys()) {
+    const verdict = fresh.get(key);
+    const decision = verdict?.decision ?? kept?.decisions.get(key);
+    if (!decision) throw new TerminalError(`no decision was made for ${key}`);
+    decisions.set(key, decision);
+    ambiguous.set(key, verdict?.ambiguous ?? kept?.ambiguous.get(key) ?? false);
   }
 
-  const planned: PlannedSighting[] = [];
-  for (const sighting of assembled.sightings) {
-    const key = await thing(kindOfRole(sighting.role), sighting.role, sighting.surface, sighting.address);
-    planned.push({
-      thing: key,
-      role: sighting.role,
-      source: sighting.source,
-      surface: sighting.surface,
-      address: sighting.address,
-      sourceQuote: sighting.sourceQuote,
-      ambiguous: ambiguous.get(key) ?? false,
-    });
-  }
+  const planned: PlannedSighting[] = assembled.sightings.map((sighting, index) => ({
+    thing: sightingKeys[index],
+    role: sighting.role,
+    source: sighting.source,
+    surface: sighting.surface,
+    address: sighting.address,
+    sourceQuote: sighting.sourceQuote,
+    ambiguous: ambiguous.get(sightingKeys[index]) ?? false,
+  }));
+  const links: Partial<Record<ShipmentColumn, string>> = Object.fromEntries(linkKeys);
 
-  const links: Partial<Record<ShipmentColumn, string>> = {};
-  for (const link of assembled.shipment.links) {
-    links[link.column] = await thing(KIND_OF_COLUMN[link.column], link.column, link.surface, null);
-  }
-
-  return { decisions, sightings: planned, links, judged: counted.judged };
+  return { decisions, ambiguous, sightings: planned, links, judged: asked.filter((verdict) => verdict.asked).length };
 }

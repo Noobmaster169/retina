@@ -1,5 +1,8 @@
 # Phase 3 handover: deploying to the Monash box
 
+> **`deploy/sim/` was removed on 2026-09-21.** What follows is the record of what this phase
+> built. The simulator is gone and the deploy scripts have no local gate; see `deploy/README.md`.
+
 Written 2026-09-19 for whoever has SSH access to `student@118.139.133.14`, and for the agent
 helping them. Everything in this file has been exercised against a replica of that box
 (`deploy/sim/`), never against the box itself, because the machine that built it cannot reach
@@ -210,7 +213,7 @@ If that works, phase 3 is done and every later phase is a `git push`.
 
 ## 9. Changing a deploy script
 
-Not on the box, and not by pushing and hoping. The simulator runs the real scripts against a
+Not on the box, and not by pushing and hoping. The simulator ran the real scripts against a
 replica of this layout:
 
 ```bash

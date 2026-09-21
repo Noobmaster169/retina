@@ -99,6 +99,10 @@ services:
   #   docker compose -f compose.local.yaml up -d --build doc-extract
   doc-extract:
     build: ../services/doc-extract
+    # A guard, as on the box (deploy/compose.yaml explains the number). Docker
+    # Desktop's VM is half the laptop's RAM by default and the proxy's twenty
+    # `claude -p` sessions need several GB of it, so this stays well under.
+    mem_limit: 8g
     ports:
       - "127.0.0.1:8000:8000"
     environment:

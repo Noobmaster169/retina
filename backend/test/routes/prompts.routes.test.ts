@@ -29,6 +29,7 @@ describe("GET /prompts", () => {
       "extract",
       "extract-verify",
       "field-judge",
+      "vision-read",
     ]);
   });
 

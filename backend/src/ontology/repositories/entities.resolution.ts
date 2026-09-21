@@ -76,6 +76,9 @@ async function park(tx: Queryable, keep: ReconcilePlan["keep"]): Promise<void> {
 }
 
 export async function applyResolution(tx: Queryable, plan: ReconcilePlan): Promise<number> {
+  // A refresh renames, merges and deletes things a reading may be deciding
+  // about, so it takes turns with every reading's write.
+  await lockWrites(tx);
   for (const merge of plan.merge) await applyMerge(tx, merge.from, merge.into);
   if (plan.drop.length > 0) {
     // Cascades to its names, mentions, sightings and verdicts. reconcile only
@@ -115,6 +118,19 @@ export async function applyResolution(tx: Queryable, plan: ReconcilePlan): Promi
   }
 
   return plan.keep.length + plan.insert.length;
+}
+
+/** An arbitrary constant, one per purpose: the number every ontology write takes the advisory lock under. */
+const ONTOLOGY_WRITE_LOCK = 7_204_112_001;
+
+/**
+ * Held to the end of the transaction. Every reading's write takes it, so two
+ * readings cannot each decide against a list of near things the other is about
+ * to change. It orders writers and nothing else: readers, and the model calls
+ * that come before a write, never wait on it.
+ */
+export async function lockWrites(tx: Queryable): Promise<void> {
+  await tx.query("select pg_advisory_xact_lock($1::bigint)", [ONTOLOGY_WRITE_LOCK]);
 }
 
 /** The chosen name is a spelling of the thing too, so a search by it finds it after every pass rewrote the names. */

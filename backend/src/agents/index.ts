@@ -18,4 +18,5 @@ export type { Prompt } from "./prompts/registry";
 export type { StructuredDeps } from "./structured";
 export { readShipment, type ShipmentReadInput, ShipmentReadOutput } from "./shipment-read";
 export { TriageOutput, triageRequest } from "./triage";
+export { readByLooking, type VisionReadInput, VisionReadOutput } from "./vision-read";
 export { verifyClassification, VerifyOutput } from "./verify";

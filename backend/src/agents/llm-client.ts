@@ -16,6 +16,8 @@ export interface LlmRequest {
   outputSchema?: Record<string, unknown>;
   /** Who the proxy bills the call to: retina-worker, retina-chat. */
   project: string;
+  /** Images the model is asked to look at, sent beside `user` as image blocks. */
+  images?: { mediaType: string; base64: string }[];
   /**
    * Set to stream the call: receives the answer written so far after every
    * piece, and is awaited. With a schema that is the JSON being written, a
@@ -77,7 +79,7 @@ export function proxyLlmClient(options: ProxyClientOptions = {}): LlmClient {
     const chatRequest = {
       model: request.model,
       system: request.system,
-      messages: [{ role: "user" as const, content: request.user }],
+      messages: [{ role: "user" as const, content: request.user, images: request.images }],
       maxTokens: request.maxTokens,
       outputSchema: request.outputSchema,
     };

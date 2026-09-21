@@ -1,5 +1,5 @@
 import pytest
-from conftest import fixture_bytes, needs_tesseract
+from conftest import fixture_bytes
 from extractors.pdf import extract_pdf, lines_from_words, render_pdf
 
 LABEL_VALUE_LINES = ["B/L NUMBER", "TOTAL", "x 40'HC"]
@@ -7,7 +7,7 @@ LABEL_VALUE_LINES = ["B/L NUMBER", "TOTAL", "x 40'HC"]
 
 @pytest.mark.parametrize("name", ["email_059_SI.pdf", "email_059_BL.pdf"])
 def test_label_and_value_share_a_line_in_a_generated_pdf(name):
-    out = extract_pdf(fixture_bytes(name), ocr_dpi=220, ocr_langs="eng")
+    out = extract_pdf(fixture_bytes(name), render_dpi=110)
     assert out.opened and len(out.pages) == 1
     text = out.pages[0].text
     assert out.pages[0].source == "text_layer"
@@ -32,7 +32,7 @@ def test_lines_are_rebuilt_from_baselines_not_drawing_order():
 
 
 def test_a_garbled_file_does_not_open():
-    out = extract_pdf(fixture_bytes("email_511_BL.pdf"), ocr_dpi=220, ocr_langs="eng")
+    out = extract_pdf(fixture_bytes("email_511_BL.pdf"), render_dpi=110)
     assert out.opened is False
     assert out.pages == []
     assert out.warnings and out.warnings[0].startswith("could not open")
@@ -49,14 +49,22 @@ def test_render_makes_one_png_per_page():
     assert index == 1 and png.startswith(b"\x89PNG") and width > 0 and height > 0
 
 
-@needs_tesseract
-def test_an_image_only_pdf_is_read_by_ocr():
-    out = extract_pdf(fixture_bytes("email_512_SI.pdf"), ocr_dpi=220, ocr_langs="eng")
+def test_an_image_only_pdf_becomes_pixels_rather_than_guessed_characters():
+    """The page is legible, so it is not unreadable; it is a page nothing has read yet."""
+    out = extract_pdf(fixture_bytes("email_512_SI.pdf"), render_dpi=110)
     assert out.opened and len(out.pages) == 1
     page = out.pages[0]
-    assert page.source == "ocr"
-    assert page.ocr_confidence is not None and page.ocr_confidence > 40
-    assert "Shipper" in page.text
+    assert page.source == "image" and page.text == ""
+    assert len(out.images) == 1
+    image = out.images[0]
+    assert image.index == 1 and image.origin == "page" and image.png.startswith(b"\x89PNG")
+    assert any("no text layer" in w for w in out.warnings)
+
+
+def test_a_pdf_with_a_text_layer_needs_no_picture_taken_of_it():
+    out = extract_pdf(fixture_bytes("email_059_SI.pdf"), render_dpi=110)
+    assert out.pages[0].source == "text_layer"
+    assert out.images == []
 
 
 def _word(text: str, baseline: float, x0: float = 20.0):

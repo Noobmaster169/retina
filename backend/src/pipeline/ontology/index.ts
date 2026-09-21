@@ -14,6 +14,7 @@ export type { Quoted, QuotedNumber, ShipmentReading } from "./shipment-reading";
 export type { AssembledShipment, Dropped, ShipmentDraft, SightingDraft } from "./shipment-draft";
 export { assembleShipment, type SettledField, type ShipmentSources } from "./shipment";
 export { type NameHit, planSighting, type SightingPlan } from "./resolve-sighting";
+export { type Nearby, seenAmong, type Standing, standing } from "./revalidate";
 export { buildDossier, type Dossier, type DossierInput, LIMITS } from "./dossier";
 export { groupShipments, readRef, REFERENCE_KEYS, type ReferenceKey, type ShipmentGroup, type ShipmentRead } from "./shipment-group";
 export { buildInsight, type InsightExtras, type InsightInput, NO_EXTRAS } from "./insight";

@@ -2,8 +2,8 @@ import pytest
 from conftest import fixture_bytes
 from fastapi.testclient import TestClient
 
-from app import create_app, is_unreadable, page_is_readable
-from extractors.base import Extracted, ExtractedPage
+from app import create_app, is_unreadable
+from extractors.base import Extracted, ExtractedImage, ExtractedPage
 from storage import MemoryStorage, StorageError
 
 
@@ -13,17 +13,24 @@ def stack():
     return storage, TestClient(create_app(storage))
 
 
-def extract(client: TestClient, key: str, filename: str, content_type: str | None = None):
-    response = client.post("/extract", json={"key": key, "filename": filename, "content_type": content_type})
+def extract(
+    client: TestClient,
+    key: str,
+    filename: str,
+    content_type: str | None = None,
+    out_prefix: str | None = None,
+):
+    response = client.post(
+        "/extract",
+        json={"key": key, "filename": filename, "content_type": content_type, "out_prefix": out_prefix},
+    )
     assert response.status_code == 200, response.text
     return response.json()
 
 
-def test_healthz_reports_the_ocr_engine(stack):
+def test_healthz_says_it_is_up(stack):
     _, client = stack
-    body = client.get("/healthz").json()
-    assert body["ok"] is True
-    assert "tesseract" in body and isinstance(body["langs"], list)
+    assert client.get("/healthz").json() == {"ok": True}
 
 
 def test_a_text_attachment_is_readable(stack):
@@ -31,7 +38,7 @@ def test_a_text_attachment_is_readable(stack):
     storage.put("a/email_004_SI.txt", fixture_bytes("email_004_SI.txt"), "text/plain")
     body = extract(client, "a/email_004_SI.txt", "email_004_SI.txt", "text/plain")
     assert body["format"] == "txt"
-    assert body["unreadable"] is False and body["scanned"] is False
+    assert body["unreadable"] is False and body["has_images"] is False
     assert body["text"].startswith("SHIPPING INSTRUCTION")
     assert body["pages"][0]["source"] == "text_layer"
     # The size of what it was handed, not a number copied from one machine's
@@ -49,7 +56,8 @@ def test_an_empty_file_is_unreadable_with_http_200(stack):
         "text": "",
         "pages": [],
         "unreadable": True,
-        "scanned": False,
+        "has_images": False,
+        "images": [],
         "warnings": ["the file is empty (0 bytes)"],
         "bytes": 0,
     }
@@ -113,25 +121,26 @@ def test_render_writes_a_png_per_page_and_nothing_for_a_non_pdf(stack):
     assert response.json() == {"pages": []}
 
 
-def test_a_page_ocr_could_not_read_is_not_something_to_work_from():
-    assert page_is_readable(ExtractedPage(1, "clean text", "text_layer", None)) is True
-    assert page_is_readable(ExtractedPage(1, "recognised well", "ocr", 88.0)) is True
-    assert page_is_readable(ExtractedPage(1, "rn1 vvorn noise", "ocr", 8.0)) is False
-    assert page_is_readable(ExtractedPage(1, "", "ocr", None)) is False
-    assert page_is_readable(ExtractedPage(1, "", "none", None)) is False
+def test_unreadable_means_nobody_could_read_it_not_that_we_have_not_yet():
+    """The distinction the whole change turns on: a legible scan is not unreadable.
 
-
-def test_a_document_no_page_could_be_read_from_is_unreadable():
+    It is a document nothing has read yet, and calling it unreadable is what made a
+    clean scan and a truncated file mean the same thing to everyone downstream.
+    """
     long_enough = "Shipper: ACME PAPER MILLS LIMITED, SHANGHAI CHINA. " * 3
+    picture = ExtractedImage(1, b"png-bytes", "page")
 
-    # Every page OCR, none of it trusted.
-    both_bad = Extracted(pages=[ExtractedPage(1, long_enough, "ocr", 12.0), ExtractedPage(2, long_enough, "ocr", 9.0)])
-    assert is_unreadable(5000, both_bad) is True
+    assert is_unreadable(0, Extracted()) is True, "empty"
+    assert is_unreadable(500, Extracted(opened=False)) is True, "would not open"
+    assert is_unreadable(500, Extracted(pages=[])) is True, "nothing in it at all"
+    thin = Extracted(pages=[ExtractedPage(1, "Dear Sir,", "text_layer")])
+    assert is_unreadable(500, thin) is True, "says too little to work from"
 
-    # A blank page beside one OCR could not read: neither yielded anything usable.
-    blank_and_bad = Extracted(pages=[ExtractedPage(1, "", "none", None), ExtractedPage(2, long_enough, "ocr", 8.0)])
-    assert is_unreadable(5000, blank_and_bad) is True
+    # Pixels somebody can look at: not read yet, which is not the same as unreadable.
+    scan = Extracted(pages=[ExtractedPage(1, "", "image")], images=[picture])
+    assert is_unreadable(5000, scan) is False
+    # A covering sentence plus the document as a picture. Thin text, but not unreadable.
+    pasted = Extracted(pages=[ExtractedPage(1, "Dear Sir,", "text_layer")], images=[picture])
+    assert is_unreadable(5000, pasted) is False
 
-    # One page the recogniser stands behind is enough to work from.
-    one_good = Extracted(pages=[ExtractedPage(1, long_enough, "ocr", 88.0), ExtractedPage(2, "noise", "ocr", 5.0)])
-    assert is_unreadable(5000, one_good) is False
+    assert is_unreadable(5000, Extracted(pages=[ExtractedPage(1, long_enough, "text_layer")])) is False
