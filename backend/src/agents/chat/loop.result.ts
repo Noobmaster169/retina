@@ -9,6 +9,7 @@ import type {
 } from "../../contracts";
 import { buildGraph } from "./graph";
 import type { How } from "./inject";
+import { linkAnswer } from "./mentions";
 import type { FinishedCall } from "./loop.steps";
 import { forWire } from "./loop.steps";
 import { keepReal, settle } from "./next-moves";
@@ -101,7 +102,9 @@ export function assemble(so: TurnSoFar, final: FinalStep): TurnResult {
     so.question,
   );
   return {
-    answer: final.answer,
+    // The answer's own links, kept only where a tool on this turn printed that
+    // id. One the agent wrote from memory loses its markup and stays as words.
+    answer: linkAnswer(final.answer, so.calls.flatMap((call) => call.mentions)),
     reading: so.reading,
     // What the tools actually ran beats what the model remembers running.
     sqlUsed: ran.length > 0 ? ran : final.sqlUsed,

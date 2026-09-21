@@ -2,6 +2,7 @@ import type { Pool } from "pg";
 import type { z } from "zod";
 
 import type { ChatToolName, GroundedThing, SemanticReading, SqlResult } from "../../../contracts";
+import type { ResolvedMention } from "../mentions";
 import type { LlmClient } from "../../llm-client";
 import type { Queryable } from "../../../db";
 
@@ -107,6 +108,13 @@ export interface ToolOutcome {
    * again is one indexed lookup that follows a merge for free.
    */
   things?: GroundedThing[];
+  /**
+   * The resolved things this call printed an id for, so the answer may link
+   * them. Ids and not names: a link has to lead to one row, and the id is what
+   * the agent was shown beside the name. `mentions.ts` keeps a link only where
+   * it finds it here.
+   */
+  mentions?: ResolvedMention[];
 }
 
 export interface ChatTool<I> {
