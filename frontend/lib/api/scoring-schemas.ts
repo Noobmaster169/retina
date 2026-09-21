@@ -5,7 +5,8 @@ import { z } from "zod";
  * here, so a client component may import these.
  */
 
-const Category = z.enum(["BL_COMPARISON", "SI_REQUEST", "INVOICE_QUERY", "GENERAL", "SPAM"]);
+export const Category = z.enum(["BL_COMPARISON", "SI_REQUEST", "INVOICE_QUERY", "GENERAL", "SPAM"]);
+export type Category = z.infer<typeof Category>;
 export const ComparisonStatus = z.enum(["OK", "MISMATCH", "NEEDS_REVIEW"]);
 const ReviewReason = z.enum(["wrong_doc_type", "missing_attachment", "unreadable", "missing_value"]);
 
@@ -16,6 +17,7 @@ export const Scoreboard = z.object({
   stage1: z.object({
     accuracy: z.number(),
     macro_f1: z.number(),
+    rule_pct: z.number().nullable(),
     per: z.record(z.string(), Prf),
     confusion: z.record(z.string(), z.record(z.string(), z.number())),
   }),
@@ -30,6 +32,7 @@ export const Scoreboard = z.object({
   reliability: z.object({
     escalation_recall: z.number(),
     escalation_precision: z.number(),
+    escalation_f1: z.number(),
     gold_review: z.number(),
     pred_review: z.number(),
     per_reason: z.record(z.string(), z.object({ total: z.number(), caught: z.number() })),
@@ -50,6 +53,38 @@ const Answer = z.object({
 });
 export type Answer = z.infer<typeof Answer>;
 
+/** Ours, not an organiser enum: which layer settled the category. */
+const DecidedBy = z.enum(["llm", "verifier", "human"]);
+
+/**
+ * Ours, not an organiser enum: what the verifier did to the generator's answer,
+ * judged against the truth. `not_run` is the generator being sure enough that
+ * no second call was made.
+ */
+export const VerifierEffect = z.enum([
+  "not_run",
+  "fixed",
+  "broke",
+  "agreed_right",
+  "agreed_wrong",
+  "changed_still_wrong",
+]);
+export type VerifierEffect = z.infer<typeof VerifierEffect>;
+
+/** How the two readers settled this email. The rationales are in the trace, one call away. */
+export const VerdictClassify = z.object({
+  genCategory: Category,
+  genConfidence: z.number(),
+  verCategory: Category.nullable(),
+  verConfidence: z.number().nullable(),
+  decidedBy: DecidedBy,
+  humanCategory: Category.nullable(),
+  model: z.string().nullable(),
+  promptVersion: z.string().nullable(),
+  effect: VerifierEffect,
+});
+export type VerdictClassify = z.infer<typeof VerdictClassify>;
+
 /** One email, the run's answer beside the truth, check by check. A null check is not scored for that email. */
 export const EmailVerdict = z.object({
   emailId: z.string(),
@@ -65,6 +100,8 @@ export const EmailVerdict = z.object({
     defectFields: z.boolean().nullable(),
     endToEnd: z.boolean().nullable(),
   }),
+  /** Null when the email was never classified. */
+  classify: VerdictClassify.nullable(),
 });
 export type EmailVerdict = z.infer<typeof EmailVerdict>;
 
