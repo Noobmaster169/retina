@@ -189,6 +189,19 @@ describe("gate_decisions", () => {
     });
   });
 
+  it("leaves a hold with no run out of the pen: nothing could release it", async () => {
+    await inRollback(async (tx) => {
+      // What the drill script writes. It belongs in the log, not in a queue of
+      // work, because the Release button beside it could only ever refuse.
+      await gateDecisions.insert(tx, { runId: null, emailId: uniqueEmailId(), from: "a@b.example", verdict: verdict() });
+      const before = await gateDecisions.tally(tx);
+      await gateDecisions.insert(tx, { runId: null, emailId: uniqueEmailId(), from: "a@b.example", verdict: verdict() });
+
+      expect((await gateDecisions.tally(tx)).waiting).toBe(before.waiting);
+      expect((await gateDecisions.waiting(tx, 1000)).every((one) => one.runId !== null)).toBe(true);
+    });
+  });
+
   it("will not release something that was never held", async () => {
     await inRollback(async (tx) => {
       const run = await seedRun(tx);

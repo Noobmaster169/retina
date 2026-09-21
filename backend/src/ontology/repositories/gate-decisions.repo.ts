@@ -83,11 +83,20 @@ export async function insert(db: Queryable, decision: NewDecision): Promise<stri
   return String(rows[0].id);
 }
 
-/** The holding pen: held for real, and nobody has released it. */
+/**
+ * The holding pen: held for real, nobody has released it, and there is a run
+ * to release it into.
+ *
+ * That last clause is not a detail. A hold with no run cannot be released,
+ * because releasing means re-ingesting the email into the run it arrived for,
+ * so listing one would put a button on the page that can only ever refuse.
+ * The drill script writes exactly such rows on purpose, and they belong in the
+ * decision log rather than in a queue of work.
+ */
 export async function waiting(db: Queryable, limit = 200): Promise<GateHeldRow[]> {
   const { rows } = await db.query<DecisionDbRow>(
     `select ${COLUMNS} from core.gate_decisions
-      where decision = 'hold' and enforced and released_at is null
+      where decision = 'hold' and enforced and released_at is null and run_id is not null
       order by decided_at desc limit $1`,
     [limit],
   );
@@ -153,7 +162,7 @@ export async function tally(db: Queryable): Promise<DecisionTally> {
   const { rows } = await db.query<{ decisions_today: string; held_today: string; waiting: string }>(
     `select count(*) filter (where decided_at >= current_date) as decisions_today,
             count(*) filter (where decided_at >= current_date and decision = 'hold') as held_today,
-            count(*) filter (where decision = 'hold' and enforced and released_at is null) as waiting
+            count(*) filter (where decision = 'hold' and enforced and released_at is null and run_id is not null) as waiting
        from core.gate_decisions`,
   );
   const row = rows[0];

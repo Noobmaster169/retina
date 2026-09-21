@@ -70,7 +70,9 @@ describe("GET /gate/senders", () => {
     const domain = principal();
     await gateSenders.recordArrival(getPool(), [{ principal: domain, scope: "domain" }], 16, false);
 
-    const response = await request(app()).get("/gate/senders").set(KEY);
+    // Every principal, not the busiest 500: this database keeps what earlier
+    // runs committed, and a row with one email would otherwise fall off the end.
+    const response = await request(app()).get("/gate/senders?limit=100000").set(KEY);
     expect(response.status).toBe(200);
     const { senders } = GateSenderList.parse(response.body);
 
@@ -78,6 +80,12 @@ describe("GET /gate/senders", () => {
     expect(row).toMatchObject({ scope: "domain", policy: "auto", standing: "new", unitsToday: 16 });
     // `new` is 45 burst and 300 a day, and the growth clamp leaves `new` alone.
     expect(row).toMatchObject({ burstCapacity: 45, dailyCap: 300 });
+  });
+
+  it("refuses a limit that is not a sensible one", async () => {
+    for (const bad of ["0", "-1", "1.5", "nope", "100001"]) {
+      expect((await request(app()).get(`/gate/senders?limit=${bad}`).set(KEY)).status).toBe(400);
+    }
   });
 });
 

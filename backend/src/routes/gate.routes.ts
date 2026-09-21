@@ -30,6 +30,9 @@ export interface GateRouteDeps {
   queues: RunQueues;
 }
 
+const DEFAULT_SENDERS = 500;
+const MAX_SENDERS = 100_000;
+
 /** A principal is a sender domain or a full address. Neither carries a scheme, a path or a space. */
 const PRINCIPAL = /^[^\s/\\]{3,254}$/;
 
@@ -81,8 +84,16 @@ export function gateRouter(deps: GateRouteDeps): Router {
     });
   });
 
-  router.get("/senders", async (_req, res) => {
-    const facts = await gateSenderList.list(deps.pool);
+  // Busiest today first, capped, because a real mailbox has more senders than
+  // anyone scrolls. `limit` is how a caller that wants a particular one rather
+  // than the busiest ones asks for it.
+  router.get("/senders", async (req, res) => {
+    const limit = Number(req.query.limit ?? DEFAULT_SENDERS);
+    if (!Number.isInteger(limit) || limit < 1 || limit > MAX_SENDERS) {
+      res.status(400).json({ error: `limit must be a whole number from 1 to ${MAX_SENDERS}` });
+      return;
+    }
+    const facts = await gateSenderList.list(deps.pool, limit);
     res.json({ senders: facts.map(toRow) });
   });
 
@@ -102,10 +113,10 @@ export function gateRouter(deps: GateRouteDeps): Router {
     log.info({ principal, scope: body.data.scope, policy: body.data.policy }, "a person changed a gate policy");
 
     // Read back rather than echo: the row the page redraws should be the one
-    // the enqueue path will read, caps and all.
-    const facts = await gateSenderList.list(deps.pool);
-    const row = facts.find((one) => one.principal === principal && one.scope === body.data.scope);
-    res.json(row ? toRow(row) : toRow(blank(principal, body.data.scope, body.data.policy)));
+    // the enqueue path will read, caps and all. A sender nobody has heard from
+    // has no facts to read, and its defaults are what the row should say.
+    const facts = await gateSenderList.one(deps.pool, principal, body.data.scope);
+    res.json(toRow(facts ?? blank(principal, body.data.scope, body.data.policy)));
   });
 
   router.get("/held", async (_req, res) => {

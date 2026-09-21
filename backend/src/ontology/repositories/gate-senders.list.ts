@@ -51,6 +51,20 @@ interface ListDbRow {
  * blacklist everybody would be a mistake waiting to be clicked.
  */
 export async function list(db: Queryable, limit = 500): Promise<SenderFacts[]> {
+  return query(db, null, limit);
+}
+
+/**
+ * One principal, for the write path. A policy change reads back the row it
+ * just wrote, and scanning every sender to find it would put a full pass over
+ * the activity table behind every click of a select.
+ */
+export async function one(db: Queryable, principal: string, scope: GateScope): Promise<SenderFacts | null> {
+  const [found] = await query(db, { principal, scope }, 1);
+  return found ?? null;
+}
+
+async function query(db: Queryable, only: { principal: string; scope: GateScope } | null, limit: number): Promise<SenderFacts[]> {
   const { rows } = await db.query<ListDbRow>(
     `with seen as (
        select principal, scope from core.gate_activity where scope in ('address','domain')
@@ -86,9 +100,10 @@ export async function list(db: Queryable, limit = 500): Promise<SenderFacts[]> {
        left join core.gate_policy p on p.principal = s.principal and p.scope = s.scope
        left join core.gate_activity today
               on today.principal = s.principal and today.scope = s.scope and today.day = current_date
+      where $2::text is null or (s.principal = $2::text and s.scope = $3::text)
       order by coalesce(today.units, 0) desc, coalesce(t.held_ever, 0) desc, s.principal asc
       limit $1`,
-    [limit],
+    [limit, only?.principal ?? null, only?.scope ?? null],
   );
 
   return rows.map((row) => {
