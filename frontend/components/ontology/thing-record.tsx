@@ -1,32 +1,34 @@
 import { AppearanceList } from "@/components/database/appearance-list";
-import { WhereItSits } from "@/components/database/where-it-sits";
-import { WrittenTheseWays } from "@/components/database/written-these-ways";
+import { Meaning } from "@/components/ontology/insight/meaning";
+import type { InsightLine } from "@/lib/api/insight-schemas";
 import type { EntityDetail } from "@/lib/api/ontology-schemas";
 import type { EntityKind } from "@/lib/api/semantic-schemas";
-import { formatWhen } from "@/lib/when";
+
+import { ThingEvidence } from "./thing-evidence";
 
 /**
- * A resolved thing as a page: what is known, the ways it has been written and
- * who joined them, every appearance with the field it filled and how that email
- * ended, and a tree of where it sits.
+ * A resolved thing as a page: what it means, and every appearance with the
+ * field it filled and how that email ended.
  *
- * The line this page exists to make: nobody typed any of it in.
+ * The line this page exists to make: nobody typed any of it in. What used to
+ * lead it was four tiles of plumbing (read from, emails, spellings,
+ * differences), a list of stored columns and a tree of link counts. All three
+ * are still here, under `ThingEvidence`, where a reader goes to check a claim
+ * rather than to learn what the thing is. Two columns and not three, because
+ * this page sits between two rails and the third was 280px the appearances
+ * needed.
  */
 
-export function ThingRecord({ detail, type }: { detail: EntityDetail; type: EntityKind }) {
-  const { row } = detail;
-  const tiles = [
-    { label: "Read from", value: row.mentions, sub: "documents" },
-    { label: "Emails", value: row.emails, sub: "name it" },
-    { label: "Spellings", value: row.names, sub: "judged one" },
-    { label: "Differences", value: detail.links.find((link) => link.key === "differed")?.count ?? 0, sub: "about it" },
-  ];
+export function ThingRecord({ detail, type, base }: { detail: EntityDetail; type: EntityKind; base?: string }) {
+  const { row, insight } = detail;
+  const hrefFor = (line: InsightLine): string | null => {
+    if (!line.target || !base) return null;
+    return `${base.replace(/type=[a-z]+/, `type=${line.target.kind}`)}&id=${encodeURIComponent(line.target.id)}&tab=record`;
+  };
 
   return (
     <>
-      <div className="flex h-[104px] shrink-0 items-center gap-4 border-b border-hairline px-7">
-        {/* grow, not a spacer beside it: a name is the longest thing on this
-            row and without it the tiles take the width and the title truncates. */}
+      <div className="flex shrink-0 items-center gap-4 border-b border-hairline px-7 py-5">
         <div className="min-w-0 grow">
           <div className="flex items-center gap-2.5">
             <span className="inline-flex h-5 items-center rounded-xs bg-sunken px-1.5 font-mono text-[10.5px] text-ink-tertiary">
@@ -40,61 +42,15 @@ export function ThingRecord({ detail, type }: { detail: EntityDetail; type: Enti
             {row.name}
           </h1>
         </div>
-        {tiles.map((tile) => (
-          <div key={tile.label} className="w-[104px] shrink-0 border-l border-hairline pl-3.5">
-            <div className="text-caption text-ink-tertiary">{tile.label}</div>
-            <div className="mt-[3px] flex items-baseline gap-1.5">
-              <span className={`text-[22px] font-semibold tracking-[-0.02em] ${tile.value === 0 ? "text-ink-faint" : "text-ink"}`}>
-                {tile.value}
-              </span>
-              <span className="text-caption text-ink-faint">{tile.sub}</span>
-            </div>
-          </div>
-        ))}
       </div>
 
       <div className="flex min-h-0 grow overflow-hidden">
-        <Known detail={detail} />
+        <div className="flex w-[400px] shrink-0 flex-col overflow-y-auto border-r border-hairline px-[22px] py-4">
+          <Meaning insight={insight} hrefFor={hrefFor} stale={detail.profile?.stale ?? false} />
+          <ThingEvidence detail={detail} />
+        </div>
         <AppearanceList appearances={detail.appearances} total={detail.appearanceCount} />
-        <WhereItSits detail={detail} />
       </div>
     </>
-  );
-}
-
-function Known({ detail }: { detail: EntityDetail }) {
-  return (
-    <div className="flex w-[300px] shrink-0 flex-col overflow-y-auto border-r border-hairline">
-      <h2 className="flex h-[42px] shrink-0 items-center px-[22px] text-heading font-semibold tracking-[-0.01em]">
-        What is known
-      </h2>
-      <dl className="px-[22px]">
-        {detail.values.map((value) => (
-          <div key={value.key} className="border-t border-hairline-faint py-[9px]">
-            <dt className="font-mono text-[10.5px] text-ink-faint">{value.key}</dt>
-            <dd className={`mt-[3px] text-small leading-[18px] ${value.value === null ? "text-ink-faint" : "text-ink"}`}>
-              {value.value === null ? "not set" : value.valueType === "date" ? formatWhen(value.value) : value.value}
-            </dd>
-          </div>
-        ))}
-      </dl>
-      {detail.profile?.markdown ? (
-        <div className="border-t border-hairline-faint px-[22px] pt-4">
-          <h3 className="text-caption text-ink-tertiary">
-            What it is{detail.profile.stale ? ", written before the last mail about it" : null}
-          </h3>
-          {/* The rendered Markdown as text, headings and all. It is short, its
-              headings are the labels a reader needs (what our mail shows,
-              general knowledge unverified), and a renderer here would be a
-              second place those labels could be dropped. */}
-          <pre className="mt-2 font-sans text-small leading-[18px] whitespace-pre-wrap text-ink-secondary">
-            {detail.profile.markdown}
-          </pre>
-        </div>
-      ) : null}
-      <div className="px-[22px] pt-4 pb-6">
-        <WrittenTheseWays names={detail.names} />
-      </div>
-    </div>
   );
 }

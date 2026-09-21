@@ -16,6 +16,7 @@ interface EntityDbRow {
   kind: EntityKind;
   canonical: string;
   mention_count: number;
+  sighting_count: number;
   name_count: number;
   emails: string;
   last_seen_at: Date | null;
@@ -27,6 +28,7 @@ function toRow(row: EntityDbRow): EntityRow {
     type: row.kind as ObjectType,
     name: row.canonical,
     mentions: row.mention_count,
+    sightings: row.sighting_count,
     emails: Number(row.emails),
     names: row.name_count,
     lastSeen: row.last_seen_at?.toISOString() ?? null,
@@ -39,7 +41,8 @@ const EMAILS = `(select count(distinct a.email_id) from core.entity_appearances 
 /** Most-seen first, which is the order a person scanning for the important ones wants. */
 export async function listByKind(db: Queryable, kind: EntityKind, limit = 200): Promise<EntityRow[]> {
   const { rows } = await db.query<EntityDbRow>(
-    `select e.id::text as id, e.kind, e.canonical, e.mention_count, e.name_count, e.last_seen_at, ${EMAILS}
+    `select e.id::text as id, e.kind, e.canonical, e.mention_count, e.sighting_count, e.name_count,
+            e.last_seen_at, ${EMAILS}
        from core.entities e
       where e.kind = $1::text and e.merged_into is null
       order by e.mention_count + e.sighting_count desc, e.canonical asc
@@ -51,7 +54,8 @@ export async function listByKind(db: Queryable, kind: EntityKind, limit = 200): 
 
 export async function find(db: Queryable, id: string): Promise<EntityRow | null> {
   const { rows } = await db.query<EntityDbRow>(
-    `select e.id::text as id, e.kind, e.canonical, e.mention_count, e.name_count, e.last_seen_at, ${EMAILS}
+    `select e.id::text as id, e.kind, e.canonical, e.mention_count, e.sighting_count, e.name_count,
+            e.last_seen_at, ${EMAILS}
        from core.entities e where e.id = $1::bigint and e.merged_into is null`,
     [id],
   );

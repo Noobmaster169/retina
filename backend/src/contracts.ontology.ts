@@ -200,7 +200,10 @@ export const EntityRow = z.object({
   id: z.string(),
   type: ObjectType,
   name: z.string(),
+  /** Times it was read out of one of the seven fields of a document. */
   mentions: z.number().int(),
+  /** Times it was read somewhere no extraction field reaches: a subject, a body, a header. */
+  sightings: z.number().int(),
   emails: z.number().int(),
   names: z.number().int(),
   lastSeen: z.string().nullable(),

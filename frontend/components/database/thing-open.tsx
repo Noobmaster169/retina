@@ -3,13 +3,18 @@ import Link from "next/link";
 import { Chip, toneOf } from "@/components/ui/chip";
 import { Icon } from "@/components/ui/icons";
 import type { EntityDetail } from "@/lib/api/ontology-schemas";
-import { formatWhen, formatWhenShort } from "@/lib/when";
+import { formatWhenShort } from "@/lib/when";
 
-import { WrittenTheseWays } from "./written-these-ways";
+import { Meaning } from "@/components/ontology/insight/meaning";
 
 /**
- * What a row opens into, in place: what is stored, step out from here, written
- * these ways, and where it appeared.
+ * What a row opens into, in place: what it means, the ways it has been
+ * written, and where it appeared.
+ *
+ * The stored columns and the links out of it used to be here. They are on the
+ * full record now, under the evidence: a reader who opens a row in a list is
+ * asking what this one is, not which table holds it. The spellings are the
+ * last facet of the meaning, so they are not repeated beside it either.
  *
  * In place rather than on its own page, because the question a reader has at
  * this point is usually about this thing against the ones above and below it.
@@ -19,44 +24,8 @@ import { WrittenTheseWays } from "./written-these-ways";
 export function ThingOpen({ detail, recordHref }: { detail: EntityDetail; recordHref: string }) {
   return (
     <div className="border-b border-hairline bg-surface shadow-[inset_2px_0_0_0_var(--ink)]">
-      <div className="flex gap-7 px-7 pt-1 pb-[22px]">
-        <section className="w-[300px] shrink-0">
-          <h3 className="text-caption font-medium text-ink-tertiary">What is stored</h3>
-          <dl>
-            {detail.values.map((value) => (
-              <div key={value.key} className="flex h-8 items-center gap-2.5 border-b border-hairline-faint">
-                <dt className="w-24 shrink-0 font-mono text-mono-xs text-ink-faint">{value.key}</dt>
-                <dd className={`min-w-0 truncate text-small ${value.value === null ? "text-ink-faint" : "text-ink-secondary"}`}>
-                  {value.value === null ? "not set" : value.valueType === "date" ? formatWhen(value.value) : value.value}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        </section>
-
-        <section className="w-[392px] shrink-0">
-          <h3 className="text-caption font-medium text-ink-tertiary">Step out from here</h3>
-          <ul>
-            {detail.links.map((link) => (
-              <li key={link.key} className="flex h-[38px] items-center gap-2.5 border-b border-hairline-faint">
-                <Icon name="graph" size={13} className="shrink-0 text-hairline-strong" />
-                <span className="min-w-0 grow">
-                  <span className="block truncate text-small text-ink-secondary">{link.label}</span>
-                  <span className="block font-mono text-[10px] text-hairline-strong">{link.sub}</span>
-                </span>
-                <span
-                  className={`shrink-0 text-[14px] font-medium ${
-                    link.count === 0 ? "text-hairline-strong" : link.tone === "differ" ? "text-differ" : "text-ink"
-                  }`}
-                >
-                  {link.count}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        <WrittenTheseWays names={detail.names} />
+      <div className="px-7 pt-2 pb-[22px]">
+        <Meaning insight={detail.insight} hrefFor={() => null} stale={detail.profile?.stale ?? false} />
       </div>
 
       <div className="mx-7 mb-5 border-t border-hairline pt-3">
