@@ -84,10 +84,19 @@ function Struck({ amount, still, animate }: { amount: string; still: boolean; an
   const big = animate;
   const drawn = still || !animate;
   return (
-    <span className="relative inline-block">
+    // `self-start`, or the line runs to the far side of the card. The span is
+    // inline-block and shrinks to its text everywhere except here, where it is
+    // a child of a flex column and a flex child stretches to the width of its
+    // container unless it is told not to.
+    <span className="relative inline-block self-start">
       <span className={`font-mono tabular-nums text-ink-tertiary ${big ? "text-[22px] font-semibold" : "text-mono-sm"}`}>
         {amount}
       </span>
+      {/*
+        Centred on the text box rather than at a measured offset, and moved
+        there through motion's own transform: a `-translate-y-1/2` class would
+        be overwritten by the inline transform this animates.
+      */}
       <motion.span
         aria-hidden="true"
         initial={drawn ? { scaleX: 1, opacity: 1 } : { scaleX: 0, opacity: 1 }}
@@ -97,8 +106,8 @@ function Struck({ amount, still, animate }: { amount: string; still: boolean; an
             ? undefined
             : { duration: 2.1, times: [0, 0.34, 0.82, 1], repeat: Infinity, repeatDelay: 0.7, ease: [0.2, 0, 0, 1] }
         }
-        style={{ originX: 0 }}
-        className={`absolute left-0 right-0 ${big ? "top-[13px] h-[2px]" : "top-[8px] h-px"} rounded-full bg-fault`}
+        style={{ originX: 0, y: "-50%" }}
+        className={`absolute inset-x-0 top-1/2 ${big ? "h-[2px]" : "h-px"} rounded-full bg-fault`}
       />
     </span>
   );
