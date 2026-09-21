@@ -1,4 +1,5 @@
-import { ChatTurnsAfter, type ChatTurn } from "@/lib/api/chat-agent-schemas";
+import { type ChatTurn } from "@/lib/api/chat-agent-schemas";
+import { ChatTurnsAfter } from "@/lib/api/chat-thread-schemas";
 
 /**
  * The gap between asking and having an answer.
@@ -58,6 +59,7 @@ export function optimistic(question: string): ChatTurn {
     next: [],
     clarify: null,
     semantic: [],
+    context: [],
     createdAt: new Date().toISOString(),
   };
 }

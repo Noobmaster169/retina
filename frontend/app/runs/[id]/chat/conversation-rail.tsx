@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { Icon } from "@/components/ui/icons";
-import type { ChatConversation } from "@/lib/api/chat-agent-schemas";
+import type { ChatConversation } from "@/lib/api/chat-thread-schemas";
 import { formatWhenShort } from "@/lib/when";
 
 /**

@@ -1,30 +1,21 @@
-import {
-  ChatAnswer,
-  ChatConversation,
-  ChatConversationList,
-  ChatSkillCards,
-  ChatThread,
-  ChatTurnsAfter,
-} from "./chat-agent-schemas";
+import { type ContextRef } from "./chat-agent-schemas";
+import { ChatAnswer, ChatConversation, ChatConversationList, ChatSkillCards, ChatThread, ChatTurnsAfter } from "./chat-thread-schemas";
 import { get, parseAs, refusalMessage, request } from "./transport";
 
 export type {
-  ChatAnswer,
-  ChatConversation,
   ChatGraph,
   ChatGraphNode,
   ChatNextMove,
   ChatOutcome as ChatTurnOutcome,
-  ChatScope,
-  ChatSkillCard,
-  ChatThread,
   ChatToolCall,
   ChatToolName,
   ChatTurn,
   ClarifyingQuestion,
+  ContextRef,
   ProposedAction,
   SqlResult,
 } from "./chat-agent-schemas";
+export type { ChatAnswer, ChatConversation, ChatScope, ChatSkillCard, ChatThread } from "./chat-thread-schemas";
 
 /**
  * A turn can take minutes: eight model calls through a proxy that serves about
@@ -75,10 +66,11 @@ export async function askQuestion(
   content: string,
   actor: string,
   skills: string[] = [],
+  context: ContextRef[] = [],
 ): Promise<ChatOutcome<ChatAnswer>> {
   const response = await request(`/chat/${id}/messages`, {
     method: "POST",
-    body: JSON.stringify({ content, actor, skills }),
+    body: JSON.stringify({ content, actor, skills, context }),
     timeoutMs: TURN_TIMEOUT_MS,
   });
   if (!response.ok) return { ok: false, message: await refusalMessage(response) };

@@ -2,7 +2,8 @@
 
 import { useRef, useState } from "react";
 
-import { ChatAnswer, ChatConversation, type ChatTurn } from "@/lib/api/chat-agent-schemas";
+import { type ChatTurn } from "@/lib/api/chat-agent-schemas";
+import { ChatAnswer, ChatConversation } from "@/lib/api/chat-thread-schemas";
 
 import { optimistic, whatLanded } from "./pending-turn";
 import { useLiveSteps, type Watched } from "./use-live-steps";

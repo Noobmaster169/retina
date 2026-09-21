@@ -11,7 +11,8 @@ import { openConversation, useChat } from "@/components/chat/use-chat";
 import { ConversationRail } from "./conversation-rail";
 import { AppShell } from "@/components/shell/app-shell";
 import { TopBar } from "@/components/shell/top-bar";
-import type { ChatConversation, ChatThread, ChatTurn } from "@/lib/api/chat-agent-schemas";
+import type { ChatTurn } from "@/lib/api/chat-agent-schemas";
+import type { ChatConversation, ChatThread } from "@/lib/api/chat-thread-schemas";
 
 /**
  * A question about the whole inbox rather than one email.

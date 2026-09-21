@@ -1,4 +1,4 @@
-import type { ChatSkillCard } from "@/lib/api/chat-agent-schemas";
+import type { ChatSkillCard } from "@/lib/api/chat-thread-schemas";
 
 /**
  * The `/` menu's rule: when the composer is naming a skill rather than typing

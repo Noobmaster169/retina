@@ -1,4 +1,6 @@
 import {
+  type Counterpart,
+  CounterpartList,
   EntityDetail,
   EntityList,
   ObjectGraph,
@@ -11,6 +13,7 @@ import type { EntityKind } from "./semantic-schemas";
 import { get } from "./transport";
 
 export type {
+  Counterpart,
   EntityAppearance,
   EntityDetail,
   EntityList,
@@ -33,12 +36,16 @@ export async function listObjectTypes(): Promise<ObjectTypeSummary[]> {
   return (await get(ObjectTypeList, "/ontology/types")).types;
 }
 
-/**
- * The resolved things of one kind. Only `port` and `party` have an index of
- * their own; everything else is a table and is read through the database page.
- */
+/** The resolved things of one kind, any of the six, each with its attributes, summary and roles. */
 export async function listEntities(type: EntityKind): Promise<EntityList> {
   return get(EntityList, `/ontology/${type}`);
+}
+
+export type Beside = "people" | "ports" | "parties";
+
+/** What sits beside a thing: a company's people and ports, a port's companies. */
+export async function listCounterparts(type: EntityKind, id: string, beside: Beside): Promise<Counterpart[]> {
+  return (await get(CounterpartList, `/ontology/${type}/${encodeURIComponent(id)}/${beside}`)).counterparts;
 }
 
 /** Null for an id nothing holds, and for a type that is designed and not built. */
