@@ -8,6 +8,26 @@ and merged into 13 afterwards.
 `docs/phases/phase-13-business-data.md` and phase 7's two `[~]` items are still under "Deferred"
 below.
 
+**2026-09-22: extract is on `v2` and extract-verify on `v2`** (migration `027_extract_party_lines.sql`).
+A party field was read one way on the SI and another on the BL when the party's block carried its
+identification over more than one line. `email_407` and `email_059` both hold the identical shipper
+block on both documents, on behalf line included, and both were read as `APRIL FINE PAPER TRADING ON
+BEHALF OF VITAL SOLUTIONS PTE LTD` on the SI and `APRIL FINE PAPER TRADING` on the BL, so the judge
+called `shipper` different and the comparison was a false MISMATCH.
+
+It was a gap in the prompt rather than a hard document. v1 said "return the name only" and quoted
+"the one line you took the value from"; between them those cover a one-line name and the address
+under it, and say nothing about a line that carries the identification on. The brief's section 7.3
+is why that bites: in a PDF every label sits on a line of its own with the value in the lines below,
+so where the value ends was a judgement v1 left to the model, made one way on one document and the
+other way on the next. v2 says where a party's value ends: it runs to the postal address, and the
+lines before it that say who the party is belong in it. The same paragraph is in extract-verify v2,
+which re-reads from its own copy of the rule.
+
+**Not measured.** This changes every party field on every email, so `pnpm eval:score --holdout` is
+what says whether it helped, and it is the user's to run. No number is in the commit message, which
+`CLAUDE.md` asks for and this commit does not have.
+
 **2026-09-22: local scoring works on the box.** "Score it here" and the second half of
 `/runs/<id>/results` used to answer "No answer key on this machine" in production, because
 `/eval/runs/:id` 404s unless the api can reach `ground_truth.json` and on the VPS that file is a
