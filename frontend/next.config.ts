@@ -18,6 +18,18 @@ import type { NextConfig } from "next";
  * while the person is still reading it. What the reuse saves is the wait.
  */
 const nextConfig: NextConfig = {
+  /**
+   * `localhost` and `127.0.0.1` are the same machine and not the same origin,
+   * and the dev server refuses a request for its own chunks from an origin it
+   * was not started for. The page still renders, because that is the server's
+   * own HTML; every script it asks for comes back 403, so nothing on it is
+   * interactive and every value a client component was going to fetch stays at
+   * whatever the server rendered. It looks like a bug in the page.
+   *
+   * Both names, because the README says one and a browser's address bar
+   * remembers the other. Development only, and read by nothing in a build.
+   */
+  allowedDevOrigins: ["localhost", "127.0.0.1"],
   experimental: {
     staleTimes: {
       dynamic: 30,
