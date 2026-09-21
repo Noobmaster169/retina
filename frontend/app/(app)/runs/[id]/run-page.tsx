@@ -2,7 +2,6 @@
 
 import useSWR from "swr";
 
-import { AppShell } from "@/components/shell/app-shell";
 import { Search, TopBar } from "@/components/shell/top-bar";
 import { LaneMapPanel } from "@/components/run/lane-map";
 import { MachineryPanel } from "@/components/run/machinery-panel";
@@ -11,6 +10,7 @@ import { laneMap } from "@/components/run/progress";
 import { QueuePanel } from "@/components/run/queue-panel";
 import { RunHeader, statusWord } from "@/components/run/run-header";
 import { ScorePanel } from "@/components/run/score-panel";
+import { NavCounts } from "@/components/shell/nav-counts";
 import { HealthReport, RunQueuesView } from "@/lib/api/queues-schemas";
 import { RunSummary } from "@/lib/api/runs-schemas";
 import { parsedFetcher } from "@/lib/poll";
@@ -51,7 +51,8 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
   const status = statusWord(run, trouble !== null);
 
   return (
-    <AppShell active="overview" runId={id} counts={{ inbox: run.totalEmails ?? undefined, review: run.review.open }}>
+    <>
+      <NavCounts counts={{ inbox: run.totalEmails ?? undefined, review: run.review.open }} />
       <div className="flex min-w-0 grow flex-col">
         <TopBar crumbs={[{ label: "Runs", href: "/runs" }, { label: id.slice(0, 8), mono: true }]}>
           <Search />
@@ -112,7 +113,7 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
           </div>
         </div>
       </div>
-    </AppShell>
+    </>
   );
 }
 

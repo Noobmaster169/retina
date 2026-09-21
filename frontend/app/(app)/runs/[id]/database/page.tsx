@@ -6,7 +6,6 @@ import { RowDrawer } from "@/components/database/row-drawer";
 import { RowGrid } from "@/components/database/row-grid";
 import { SchemaRail } from "@/components/database/schema-rail";
 import { ThingList } from "@/components/database/thing-list";
-import { AppShell } from "@/components/shell/app-shell";
 import {
   getEntityDetail,
   getRowDetail,
@@ -69,7 +68,7 @@ export default async function Page({ params, searchParams }: PageProps<"/runs/[i
   const base = `/runs/${id}/database?view=rows&schema=${schema}&table=${name}`;
 
   return (
-    <AppShell active="database" runId={id} counts={{}}>
+    <>
       <SchemaRail types={types} tables={tables} runId={id} activeType={null} activeTable={`${schema}.${name}`} />
       <div className="flex min-w-0 grow flex-col">
         <DatabaseHeader
@@ -84,7 +83,7 @@ export default async function Page({ params, searchParams }: PageProps<"/runs/[i
           {detail ? <RowDrawer detail={detail} runId={id} closeHref={base} /> : null}
         </div>
       </div>
-    </AppShell>
+    </>
   );
 }
 
@@ -113,7 +112,7 @@ async function Things({
   const base = `/runs/${runId}/database?view=things&type=${kind}`;
 
   return (
-    <AppShell active="database" runId={runId} counts={{}}>
+    <>
       <SchemaRail types={types} tables={tables} runId={runId} activeType={kind} activeTable={null} />
       <div className="flex min-w-0 grow flex-col">
         <DatabaseHeader
@@ -135,7 +134,7 @@ async function Things({
           recordHrefFor={(value) => `/runs/${runId}/ontology?type=${kind}&id=${encodeURIComponent(value)}&tab=record`}
         />
       </div>
-    </AppShell>
+    </>
   );
 }
 

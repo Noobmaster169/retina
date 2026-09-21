@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 
-import { AppShell } from "@/components/shell/app-shell";
 import { TopBar } from "@/components/shell/top-bar";
 import { type ClientList, listClients } from "@/lib/api-client";
 
@@ -31,7 +30,7 @@ export default async function ClientsPage() {
   const { list, backendError } = await loadClients();
 
   return (
-    <AppShell active="clients" counts={{}}>
+    <>
       <div className="flex min-w-0 grow flex-col">
         <TopBar crumbs={[{ label: "Clients" }]} />
         <main className="min-h-0 grow overflow-y-auto px-7 pb-8">
@@ -46,6 +45,6 @@ export default async function ClientsPage() {
           <ClientsTable initialList={list} initialError={backendError} />
         </main>
       </div>
-    </AppShell>
+    </>
   );
 }

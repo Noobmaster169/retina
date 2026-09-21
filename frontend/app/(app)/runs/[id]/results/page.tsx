@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import { AppShell } from "@/components/shell/app-shell";
 import { Search, TopBar } from "@/components/shell/top-bar";
+import { NavCounts } from "@/components/shell/nav-counts";
 import { type EvalReport, getEvalReport, getRun, listSubmissions, type SubmissionList } from "@/lib/api-client";
 
 import { ScoreboardView } from "./scoreboard-view";
@@ -42,7 +42,8 @@ export default async function ResultsPage({ params }: PageProps<"/runs/[id]/resu
   const { submission, report, failed } = await load(id);
 
   return (
-    <AppShell active="runs" counts={{ review: run.review.open }}>
+    <>
+      <NavCounts counts={{ review: run.review.open }} />
       <div className="flex min-w-0 grow flex-col">
         <TopBar
           crumbs={[
@@ -97,6 +98,6 @@ export default async function ResultsPage({ params }: PageProps<"/runs/[id]/resu
         </section>
         </main>
       </div>
-    </AppShell>
+    </>
   );
 }

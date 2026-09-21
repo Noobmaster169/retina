@@ -8,8 +8,8 @@ import { EmailPane } from "@/components/email/email-pane";
 import { chatScope, openingLine } from "@/components/email/email-reading";
 import { ChatRail } from "@/components/email/chat-rail";
 import { CaseList } from "@/components/review/case-list";
-import { AppShell } from "@/components/shell/app-shell";
 import { Icon } from "@/components/ui/icons";
+import { NavCounts } from "@/components/shell/nav-counts";
 import { TopBar } from "@/components/shell/top-bar";
 import { Email } from "@/lib/api/mail-client";
 import { ReviewQueue } from "@/lib/api/review-schemas";
@@ -62,7 +62,8 @@ export function ReviewPage({ runId }: { runId: string }) {
   const open = (nextEmailId: string) => router.replace(`/runs/${runId}/review?email=${nextEmailId}`, { scroll: false });
 
   return (
-    <AppShell active="review" runId={runId} counts={{ review: queue?.total ?? 0 }}>
+    <>
+      <NavCounts counts={{ review: queue?.total ?? 0 }} />
       <CaseList cases={cases} selectedId={selected?.id ?? null} onSelect={(item) => open(item.emailId)} loading={isLoading} />
 
       {emailId && trace && email ? (
@@ -87,7 +88,7 @@ export function ReviewPage({ runId }: { runId: string }) {
           suggestions={["Why did this need a person?", "What did the parser see?"]}
         />
       ) : null}
-    </AppShell>
+    </>
   );
 }
 

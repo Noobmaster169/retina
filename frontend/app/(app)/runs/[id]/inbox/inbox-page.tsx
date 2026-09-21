@@ -4,9 +4,9 @@ import { useState } from "react";
 import useSWR from "swr";
 
 import { EmailList } from "@/components/email/email-list";
-import { AppShell } from "@/components/shell/app-shell";
 import { Search, TopBar } from "@/components/shell/top-bar";
 import { Icon } from "@/components/ui/icons";
+import { NavCounts } from "@/components/shell/nav-counts";
 import { RunEmailsPage } from "@/lib/api/trace-schemas";
 import { parsedFetcher } from "@/lib/poll";
 
@@ -37,7 +37,8 @@ export function InboxPage({ runId, initialList, review }: InboxPageProps) {
   const shown = tab === "differences" ? differing : tab === "review" ? parked : list.emails;
 
   return (
-    <AppShell active="inbox" runId={runId} counts={{ inbox: list.total, review }}>
+    <>
+      <NavCounts counts={{ inbox: list.total, review }} />
       <EmailList
         runId={runId}
         emails={shown}
@@ -63,6 +64,6 @@ export function InboxPage({ runId, initialList, review }: InboxPageProps) {
           </p>
         </div>
       </div>
-    </AppShell>
+    </>
   );
 }

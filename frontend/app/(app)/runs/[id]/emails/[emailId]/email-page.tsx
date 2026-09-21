@@ -8,7 +8,7 @@ import { chatScope, openingLine } from "@/components/email/email-reading";
 import { EmailPane } from "@/components/email/email-pane";
 import { EmailList } from "@/components/email/email-list";
 import type { Message } from "@/components/email/message-card";
-import { AppShell } from "@/components/shell/app-shell";
+import { NavCounts } from "@/components/shell/nav-counts";
 import { EmailTrace, RunEmailsPage } from "@/lib/api/trace-schemas";
 import { parsedFetcher } from "@/lib/poll";
 
@@ -41,7 +41,8 @@ export function EmailPage({ runId, initialTrace, message, subject, initialList }
   const differing = trace.comparison?.defectFields.length ?? 0;
 
   return (
-    <AppShell active="inbox" runId={runId} counts={{ inbox: initialList.total, review: trace.review ? 1 : 0 }}>
+    <>
+      <NavCounts counts={{ inbox: initialList.total, review: trace.review ? 1 : 0 }} />
       <EmailList
         runId={runId}
         emails={initialList.emails}
@@ -69,6 +70,6 @@ export function EmailPage({ runId, initialTrace, message, subject, initialList }
             : ["Why do these two fields differ?", "Has this client differed before?"]
         }
       />
-    </AppShell>
+    </>
   );
 }

@@ -11,7 +11,7 @@ import { Icon } from "@/components/ui/icons";
  */
 export default function NotFound() {
   return (
-    <AppShell active="" counts={{}}>
+    <AppShell>
       <div className="flex min-w-0 grow flex-col">
         <TopBar crumbs={[{ label: "Not found" }]} />
         <main className="min-h-0 grow overflow-y-auto px-7 pb-8">

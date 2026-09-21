@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 
-import { AppShell } from "@/components/shell/app-shell";
 import { Search, TopBar } from "@/components/shell/top-bar";
 import { listRuns, type RunList } from "@/lib/api-client";
 
@@ -24,7 +23,7 @@ export default async function RunsPage() {
   const { list, backendError } = await loadRuns();
 
   return (
-    <AppShell active="" counts={{}}>
+    <>
       <div className="flex min-w-0 grow flex-col">
         <TopBar crumbs={[{ label: "Runs" }]}>
           <Search />
@@ -40,6 +39,6 @@ export default async function RunsPage() {
           <RunsTable initialList={list} initialError={backendError} />
         </main>
       </div>
-    </AppShell>
+    </>
   );
 }

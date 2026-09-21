@@ -9,7 +9,6 @@ import { Turn } from "@/components/chat/turn";
 import { openConversation, useChat } from "@/components/chat/use-chat";
 
 import { ConversationRail } from "./conversation-rail";
-import { AppShell } from "@/components/shell/app-shell";
 import { TopBar } from "@/components/shell/top-bar";
 import type { ChatTurn } from "@/lib/api/chat-agent-schemas";
 import type { ChatConversation, ChatThread } from "@/lib/api/chat-thread-schemas";
@@ -56,7 +55,7 @@ export function ChatPage({ runId, conversations, thread }: ChatPageProps) {
   }
 
   return (
-    <AppShell active="chat" runId={runId} counts={{}}>
+    <>
       <ConversationRail conversations={conversations} runId={runId} openId={thread?.conversation.id ?? null} onNew={start} />
 
       <div className="flex min-w-0 grow flex-col">
@@ -112,7 +111,7 @@ export function ChatPage({ runId, conversations, thread }: ChatPageProps) {
           />
         ) : null}
       </div>
-    </AppShell>
+    </>
   );
 }
 

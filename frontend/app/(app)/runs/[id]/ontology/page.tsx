@@ -5,7 +5,6 @@ import { notFound } from "next/navigation";
 import { type OntologyTab, OntologyTabs } from "@/components/ontology/tabs";
 import { tabBody } from "@/components/ontology/tab-body";
 import { TypeRail } from "@/components/ontology/type-rail";
-import { AppShell } from "@/components/shell/app-shell";
 import { TopBar } from "@/components/shell/top-bar";
 import { listObjectTypes, listRunEmails } from "@/lib/api-client";
 import type { ObjectTypeSummary } from "@/lib/api/ontology-schemas";
@@ -69,7 +68,7 @@ export default async function Page({ params, searchParams }: PageProps<"/runs/[i
   };
 
   return (
-    <AppShell active="ontology" runId={id} counts={{}}>
+    <>
       {/*
         The canvas takes the width this rail would have had. GraphLinks.dc.html
         is one rail and 868px of canvas; squeezing a second rail in beside it
@@ -109,7 +108,7 @@ export default async function Page({ params, searchParams }: PageProps<"/runs/[i
         <OntologyTabs active={tab} hrefs={hrefs} />
         {await tabBody({ runId: id, type, selected, tab, emails, base, hops })}
       </div>
-    </AppShell>
+    </>
   );
 }
 
