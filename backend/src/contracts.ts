@@ -89,6 +89,12 @@ export const RunSummary = z.object({
   totalEmails: z.number().nullable(),
   /** Emails that will not move again on their own: done, failed, or waiting for a person. */
   finishedEmails: z.number(),
+  /**
+   * Emails the ingest gate held, which have no email_runs row and so appear in
+   * no stage count. Without it `finishedEmails` could never reach
+   * `totalEmails` on a run that held anything and the page would spin forever.
+   */
+  heldByGate: z.number(),
   /** Nothing more will happen in this run: every email finished, or it was cancelled or failed. */
   processingDone: z.boolean(),
   /** From the start to the last email finishing, or to now while it runs. Null before it starts. */
@@ -150,8 +156,10 @@ export * from "./contracts.clients";
 export * from "./contracts.emails";
 export * from "./contracts.enums";
 export * from "./contracts.extraction";
+export * from "./contracts.gate";
 export * from "./contracts.ontology";
 export * from "./contracts.semantic";
+export * from "./contracts.shipments";
 export * from "./contracts.prompts";
 export * from "./contracts.queues";
 export * from "./contracts.review";

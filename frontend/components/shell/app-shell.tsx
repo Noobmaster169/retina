@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import useSWR from "swr";
 
@@ -7,45 +8,50 @@ import { RunList, type RunSummary } from "@/lib/api/runs-schemas";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { parsedFetcher } from "@/lib/poll";
 
+import { Dock } from "@/components/dock/dock";
+import { DockProvider, useDock } from "@/components/dock/dock-state";
 import { ToastHost } from "@/components/ui/toast";
 
+import { activeFor, runIdFrom } from "./nav";
+import { NavCountsProvider, useNavCounts } from "./nav-counts";
 import { Rail } from "./rail";
-import type { NavAlerts, NavCounts } from "./nav";
 
 /**
- * Every screen is this: a rail, then panes a hairline apart.
+ * Every screen is this: a rail, then panes a hairline apart, then the dock.
  *
- * The shell owns the run in context and fetches it itself, so the rail is
- * identical on every route and a page never has to hand it anything but which
- * destination is current. A rail that gained a block on one route and lost it
- * on the next made moving around feel like changing product.
+ * Mounted once by app/(app)/layout.tsx, so the rail, the receipts and the
+ * chat survive every navigation. The active destination and the run in
+ * context are read off the pathname; a page passes nothing but its counts,
+ * through `<NavCounts>`.
  *
  * Without a run id, the context is the newest run there is. That is what makes
  * the run list, which has no run of its own, still look like the same
  * application as everything else.
- *
- * It also hosts the receipts. Every write says what it wrote, and the one
- * place that can be true for every screen is the one that is on all of them.
  */
 
 const RUNS_MS = 5000;
 
-interface AppShellProps {
-  active: string;
-  counts: NavCounts;
-  /** What is waiting on a person, per destination. Tinted in the rail; absent where nothing is. */
-  alerts?: NavAlerts;
-  children: ReactNode;
-  /** The run this page is about. Null on the run list, which takes the newest. */
-  runId?: string | null;
+export function AppShell({ children }: { children: ReactNode }) {
+  return (
+    <NavCountsProvider>
+      <DockProvider>
+        <Frame>{children}</Frame>
+      </DockProvider>
+    </NavCountsProvider>
+  );
 }
 
-export function AppShell({ active, counts, alerts = {}, children, runId = null }: AppShellProps) {
+function Frame({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const runId = runIdFrom(pathname);
+  const { counts, alerts } = useNavCounts();
+  const dock = useDock();
+  // The chat page is the conversation, wide; a dock beside it would be the same thread twice.
+  const onChatPage = activeFor(pathname) === "chat";
   const { data: list } = useSWR("/api/runs", parsedFetcher(RunList), {
     refreshInterval: RUNS_MS,
     keepPreviousData: true,
   });
-
   const runs = list?.runs ?? [];
   const current = pick(runs, runId);
   // The rail is open or closed because a person said so, and for no other
@@ -64,13 +70,16 @@ export function AppShell({ active, counts, alerts = {}, children, runId = null }
         <Rail
           open={railOpen && !narrow}
           onToggle={() => setRailOpen((was) => !was)}
-          active={active}
+          active={activeFor(pathname)}
           counts={counts}
           alerts={alerts}
           current={current}
+          runId={runId}
+          conversationId={dock.conversationId}
           runs={runs}
         />
         {children}
+        {onChatPage ? null : <Dock runId={current?.id ?? runId} />}
       </div>
     </ToastHost>
   );

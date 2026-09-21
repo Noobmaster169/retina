@@ -140,8 +140,27 @@ export const EntityRow = z.object({
   emails: z.number().int(),
   names: z.number().int(),
   lastSeen: z.string().nullable(),
+  /** That kind's attributes as stored, every value a string or null. Empty before the profile job has run. */
+  attributes: z.record(z.string(), z.string().nullable()).default({}),
+  /** The profile's first sentence, for a card. Null until profiled. */
+  summary: z.string().nullable().default(null),
+  /** Distinct emails per role this thing was seen in: shipper, consignee, port_of_loading, sender... */
+  roles: z.record(z.string(), z.number().int()).default({}),
 });
 export type EntityRow = z.infer<typeof EntityRow>;
+
+/** A thing seen beside another: a port a company ships through, a person on its mail. */
+export const Counterpart = z.object({
+  id: z.string(),
+  type: ObjectType,
+  name: z.string(),
+  /** Distinct emails the two were seen on together. */
+  count: z.number().int(),
+});
+export type Counterpart = z.infer<typeof Counterpart>;
+
+export const CounterpartList = z.object({ counterparts: z.array(Counterpart) });
+export type CounterpartList = z.infer<typeof CounterpartList>;
 
 export const EntityList = z.object({ type: ObjectType, built: z.boolean(), entities: z.array(EntityRow) });
 export type EntityList = z.infer<typeof EntityList>;

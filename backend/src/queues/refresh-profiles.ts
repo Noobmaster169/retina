@@ -4,7 +4,7 @@ import { type LlmClient, type ProfileOutput, writeProfile } from "../agents";
 import { loadPrompt } from "../agents/prompts/registry";
 import { type Config, config } from "../config";
 import { childLogger } from "../lib/logger";
-import { entityDossier, entityProfile, type ProfileWrite } from "../ontology/repositories";
+import { entityDossier, entityLocate, entityProfile, type ProfileWrite } from "../ontology/repositories";
 import { renderProfile, type RenderedProfile } from "../pipeline/ontology";
 
 const log = childLogger({ module: "refresh-profiles" });
@@ -81,5 +81,12 @@ function profileWrite(rendered: RenderedProfile, value: ProfileOutput): ProfileW
     const source = value.attributeBasis[key] === "mail" ? "mail" : "model";
     sources[key] = { source, confidence: source === "mail" ? null : value.generalConfidence, llmCallId: null };
   }
-  return { markdown: rendered.markdown, searchText: rendered.searchText, attributes: value.attributes, attributeSources: sources };
+  const attributes = { ...value.attributes };
+  // The code is the reference list's reading of the country the model named, so the flag never rests on a model's spelling.
+  const countryCode = entityLocate.countryCodeFor(attributes);
+  if (countryCode) {
+    attributes.countryCode = countryCode;
+    sources.countryCode = { source: "reference", confidence: null, llmCallId: null };
+  }
+  return { markdown: rendered.markdown, searchText: rendered.searchText, attributes, attributeSources: sources };
 }

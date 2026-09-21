@@ -1,6 +1,6 @@
 import { ThingList } from "@/components/database/thing-list";
 import { isResolved } from "@/components/graph/glyphs";
-import { getEntityDetail, getObjectGraph, getObjectRecord, getShipment, listEntities, listRunEmails, listShipments } from "@/lib/api-client";
+import { getEntityDetail, getObjectGraph, getObjectRecord, getConsignment, listEntities, listRunEmails, listConsignments } from "@/lib/api-client";
 import type { ObjectType } from "@/lib/api/ontology-schemas";
 
 import { OntologyEmailList } from "./email-list";
@@ -49,7 +49,7 @@ export async function tabBody({ runId, type, selected, tab, emails, base, hops }
   if (!selected) return <Nothing>Pick one from Things to read its record.</Nothing>;
 
   if (type === "shipment") {
-    const detail = await getShipment(selected);
+    const detail = await getConsignment(selected);
     if (!detail) return <Nothing>No shipment has that id.</Nothing>;
     return <ShipmentRecord detail={detail} base={base} />;
   }
@@ -80,7 +80,7 @@ async function things({ type, selected, emails, base }: Omit<BodyProps, "tab" | 
     );
   }
   if (type === "shipment") {
-    const { shipments } = await listShipments();
+    const { shipments } = await listConsignments();
     return (
       <ShipmentList
         shipments={shipments}

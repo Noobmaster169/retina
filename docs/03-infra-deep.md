@@ -110,6 +110,10 @@ Backend (`deploy/.env`, mirrored in `backend/.env.example`):
 | `SHIPMENT_TEXT_CHARS` | `14000`. How much of an email and its documents the shipment reader sees. A cost guard, not a judgement | worker |
 | `ONTOLOGY_CONCURRENCY` | `10`. Left out of `LLM_MAX_CONCURRENCY`'s sum on purpose: the queue has a model lane of its own, as wide as this, so a reading cannot take a scored call's slot. `proxy.yaml`'s `max_concurrency` is the three lanes added up | worker |
 | `CLASSIFY_CONCURRENCY`, `COMPARE_CONCURRENCY` | `10`, `10`. Emails in flight per stage. Their sum is the scored lane's model cap, and with the ontology lane the whole of `proxy.yaml`'s `max_concurrency`, so they move together; more workers than the proxy serves only queue inside it with their request timeout already running. Leave them unset: a pinned copy in a `.env` is how a machine ends up on other numbers than the code | worker |
+| `GATE_MODE` | `off \| observe \| enforce`, default `observe`. What the ingest gate does with a verdict it reached. `observe` prices every email, charges every bucket and records every row, then admits anyway; only a policy a person set holds anything. The default is not timidity: the Averis replay is 520 emails from fifteen domains, all unknown senders on their first day, and a live gate would hold most of a demo | worker |
+| `GATE_DAILY_BUDGET_USD` | `25`. What a day of model calls may cost before the gate refuses by standing. Summed from `core.llm_calls.cost_usd`, so it measures what was actually spent | worker, api |
+| `GATE_GLOBAL_BURST`, `GATE_GLOBAL_DAILY` | `4000`, `60000`. The bucket no sender can rotate around | worker, api |
+| `GATE_BURST_REFILL_SECONDS` | `600`. How long an empty burst bucket takes to refill. Its capacity divided by this is the sustained rate | worker |
 | `API_SHARED_SECRET`, `TEAM_API_KEY` | hex | api |
 | `SITE_PASSWORD` | string | frontend gate in `proxy.ts` (Vercel env) |
 | `EVAL_GROUND_TRUTH_PATH` | local path only, unset on the VPS containers | eval CLI |
@@ -293,6 +297,66 @@ Replay controller (`ingest/replay.ts`), driven by `core.runs`:
   happen before the transaction opens, so a slow inbox or MinIO never holds a pooled connection.
 - `ratePerSecond: 0` means burst: enqueue everything immediately.
 
+#### 5.1a The admission gate (phase 14)
+
+Between `source.getEmail` and the first attachment download, `ingest/gate/` decides whether this
+email is worth what reading it will cost. It is deterministic arithmetic over counts, sizes and
+timestamps. It never reads the words in an email, it makes no model call, and its verdict is
+`admit` or `hold` and never a category: the model classifies everything admitted, whoever sent it.
+
+The deciding functions are pure and live in `pipeline/gate/`:
+
+- **`cost.ts`** prices an email in units of roughly one model call: 3 for the email (classify,
+  its verifier, triage), 3 per attachment (doc-type, extract, its verifier), 7 once when two or
+  more documents make a comparison, and 1 per 100 KB past 256 KB. An ordinary email with an SI and
+  a BL is 16 units. Counting envelopes per minute would miss the attack, which is volume of text
+  and documents. `EmailRecord.attachment_bytes` is optional; an unmeasured attachment is charged
+  at 128 KB rather than zero, so withholding a size is not the cheapest way in.
+- **`standing.ts`** turns a policy and two integers into a bracket and its two caps. Standing is
+  earned by distinct active days and never by volume: `unknown` 20 burst and 60 a day, `new`
+  (1 day) 45 and 300, `regular` (3 days over 7) 120 and 1200, `established` (10 days over 30)
+  300 and 6000, `trusted` (a person said so) 600 and 20000, `blocked` nothing. A flood on day one
+  is still a stranger. An unknown sender's 20 is exactly one ordinary email and not two.
+- **`growth.ts`** clamps the day's cap to three times the median of the sender's last 14 daily
+  totals, floored at a newcomer's 300 and capped by the bracket. It applies to `regular` and
+  `established` only. Gradual growth passes; a spike does not, and yesterday's tripling becomes
+  the baseline today's is measured against.
+- **`decide.ts`** is the one place the signals meet: mode, standing, three bucket readings,
+  budget level, whether the meter answered. Order: mode `off` admits; a person's `block` holds in
+  every mode; an unreadable meter admits `regular` and above and holds the rest; the budget
+  breaker holds by standing; then the first bucket to refuse, address before domain before global.
+
+Each email is charged against three buckets at once, in `ingest/gate/meter.ts`: one Lua script,
+one round trip, atomic. `address` is the narrowest name, `domain` catches an attacker rotating the
+local part, `global` catches one rotating domains. Buckets are charged even when the verdict is
+`hold`, in every mode, so a flood at exactly the limit gets no free retry and `observe` shows the
+numbers `enforce` would have seen.
+
+**Only a person may block.** `From` is forgeable, so an automatic rule that could blacklist could
+be made to blacklist a customer. Automatic rules produce `hold` and nothing else, a hold is
+visible and releasable, and nothing the gate does deletes mail.
+
+A held email costs one inbox read, two indexed queries, one Redis round trip and two small writes.
+Its `core.emails` row is written, because that is what the holding pen shows; no attachment is
+fetched or stored, no job is added, and `core.llm_calls` never hears about it. **It gets no
+`core.email_runs` row**, deliberately: `Stage` is a closed enum parsed on both sides and a
+rollback would meet a value it refuses. `RunSummary.heldByGate` counts them instead, and
+`processingDone` adds it to `finishedEmails`, without which a run that held anything could never
+read as finished.
+
+Releasing adds a `release-email` job to the `ingest` queue carrying `{ runId, emailId }`; the
+worker calls `ingestEmail(..., bypassGate: true)`, which copies the attachments nobody copied the
+first time. An older image would parse that job as an ingest job at epoch 0 and answer
+`superseded`, which is a harmless no-op.
+
+`refresh-gate-budget` runs every five minutes, sums today's `cost_usd` and writes it to
+`gate:budget:today`. Below 0.8 of `GATE_DAILY_BUDGET_USD` it changes nothing; at 0.8 `unknown` and
+`new` wait; past 1.0 only `established` and `trusted` are served. It degrades by standing rather
+than stopping: an attacker whose flood stops your real customers has achieved the outage.
+
+`pnpm gate:drill` pushes synthetic mail past `admit` with an in-memory meter. No model, no
+attachment, no run, no email row, so it costs nothing and is safe before a demo.
+
 ### 5.2 Classify
 
 **No rules.** Nothing in the pipeline decides a category from a sender list, a subject keyword
@@ -305,13 +369,18 @@ Nothing is stripped, reordered or normalised. A prompt whose frontmatter says
 `reads_attachments: true` (`classify/v5.md`, `classify-verify/v2.md`) also gets an
 "attachment contents" section (`classify/attachments.ts`): each file's name and the text
 doc-extract recovered, cut at `CLASSIFY_ATTACHMENT_CHARS`, an unreadable file named with the
-parser's reason. The input shape follows the pinned prompt, so `v3` runs exactly as before.
+parser's reason. The input shape follows the pinned prompt, so `v6` runs exactly as `v3` did.
 
-**Generator** (`prompts/classify/v3.md`, the active version; v1 and v2 are kept for comparison). Defines the five categories in the organisers' words
+**Generator** (`prompts/classify/v6.md`, the active version; v1 to v5 are kept for comparison). Defines the five categories in the organisers' words
 (the brief and `emails/data_v2/README.md`), says that a body may carry a forwarded thread, a
 signature and a warning banner and that the category follows what the sender is asking for now.
-It names no sender, domain, subject code or phrase from the dataset. Zero-shot. `v4` is `v3` plus
-ten train examples and is not active: it ships only if a holdout run shows it helps. Output (JSON
+It names no sender, domain, subject code or phrase from the dataset. Zero-shot. `v6` is `v3` plus
+the stage invariant: what the sender asks for decides the stage, and what actually arrived does
+not, so a request to check a draft is still stage 3 when the draft is missing, unreadable or a
+different document from the one its name claims. That follows from the organisers' own
+definitions, where all four `review_reason` values are BL_COMPARISON cases that end in
+NEEDS_REVIEW. `v4` is `v3` plus ten train examples and is not active: it ships only if a holdout
+run shows it helps. Output (JSON
 schema enforced, category restricted to the enum, rationale first because a schema-bound answer
 has no room for reasoning before it):
 
@@ -323,9 +392,12 @@ has no room for reasoning before it):
 on the train split (24 of 401 train emails below it under v2; every recorded miss at 0.70 or
 lower). The model's own confidence is the only input; there is no branch on email content.
 
-**Verifier** (`prompts/classify-verify/v1.md`) receives the same input plus the generator's
+**Verifier** (`prompts/classify-verify/v3.md`) receives the same input plus the generator's
 proposal and is told to make the strongest case for every other category before deciding. The
-case comes first in the schema, for the same reason as the generator's rationale. Output:
+case comes first in the schema, for the same reason as the generator's rationale. `v3` is `v1`
+plus the same stage invariant and one bound on the exercise: a counter-case has to rest on what
+the sender asks for, because under `v1` the absence of a usable document was itself argued as a
+case for an earlier stage, and that argument only ever moved right answers to wrong ones. Output:
 
 ```json
 { "counter_cases": "...", "rationale": "...", "category": "GENERAL", "agrees": false, "confidence": 0.88 }
@@ -816,6 +888,23 @@ explainability. Indexes: `email_runs(run_id, stage)`, `review_cases(status)`,
 `llm_calls(email_run_id)`, `emails(sender_domain)`, `review_actions(email_run_id)`,
 `review_actions(kind, created_at)`.
 
+**Phase 14, the ingest gate.** Three tables, and not one change to an existing one, which is what
+makes the rollback trivial: an image from before the phase queries none of them.
+
+- `gate_policy(principal, scope in (address, domain), policy in (allow, block), reason, note,
+  set_by, set_at)`, primary key `(principal, scope)`. What a person decided. Empty at migration
+  time: seeding it would ship a sender list fitted to one seed of one dataset, which is the same
+  argument 009 makes for not seeding the phishing senders.
+- `gate_activity(principal, scope, day, emails, units, held)`, primary key
+  `(principal, scope, day)`. The whole memory the standing bracket is computed from, and counts
+  only. `day` being in the key is the mechanism, not a detail: standing is earned by distinct
+  active days, so it cannot be bought by sending more on one of them.
+- `gate_decisions(id, run_id, email_id, from_addr, principal, scope, decision in (admit, hold),
+  enforced, reason, standing, units, breakdown jsonb, buckets jsonb, decided_at, released_by,
+  released_at)`. Append only; a release stamps the row. `buckets` holds what each bucket read at
+  the moment of the decision, so a row can justify itself long after they refilled. No foreign key
+  on `email_id`: a decision may exist for an email the gate declined to store.
+
 ### 8.2 `analytics`
 
 Built in phase 10, migration `010_analytics.sql`. Refreshed by the `refresh-analytics` scheduled
@@ -874,6 +963,24 @@ appearance read twice, and the same email replayed in three runs is still one ap
 `entities.detail.ts:appearances` keeps the newest run's row per (email, field) and reports the
 sides it was read from as a field. Listing mentions put one subject on screen four times and told
 a reader nothing the sides and the count do not.
+
+### 8.3b Reference data and a person's corrections (phase 13)
+
+`backend/reference/ports.json` (12,608 ports with coordinates, from UN/LOCODE and the sea-ports
+set) and `countries.json` (249 countries with the UN geoscheme region and subregion) ship with
+the backend, built by `scripts/reference-build.ts`. `src/reference/ports.ts` places a port by the
+words of its name inside the country its name carries; a bracketed code only breaks a tie among
+candidates it agrees with, because the dataset writes stale codes. `entities.locate.ts` writes
+country, `countryCode`, `locode`, coordinates, region and subregion with source `reference` the
+moment the resolver creates a port, and `pnpm ontology:locate` walks what exists. A company's
+`countryCode` is the reference list's reading of the country its profile names.
+
+Migration `024` adds `human_name`, `edited_by`, `edited_at`. An attribute a person sets carries
+source `human`; a profile write lays every `reference` or `human` key back over the model's. A
+rename sets `canonical` and `human_name`; `applyResolution` keeps `coalesce(human_name, most
+seen)`. A merge inserts the loser's spellings into the survivor as `human` joins with
+`joined_step`, which `loadResolveJoins` reads back as verdicts, then tombstones the loser as a
+model's merge would, and pins the survivor's name.
 
 ### 8.3a The semantic layer (phase 10f)
 
@@ -1005,6 +1112,10 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 | Method, path | Purpose |
 |---|---|
 | `GET /health` | `{ status: ok \| degraded \| down, checks, version, queues }`, 2 s per check, unauthenticated. A check is an object: `{ status, latencyMs }` plus whatever that dependency says about itself, which comes free from its own health payload (`inbox` its email count and whether scoring is available, `docExtract` its tesseract build, `llmProxy` its alias count, `worker` its last heartbeat). `worker` is not a probe but the mark the worker leaves in Redis every 10 s, read back; null when none stands. `down` and 503 only for postgres or redis, which is the signal auto-deploy rolls back on: everything else, a stale heartbeat included, is `degraded` and still 200. `llmProxy` is read through its `/healthz`, which lists aliases and starts no session, so a cold model never reads as an outage. `version` is `GIT_SHA` from the build arg, `dev` outside an image. `queues` is null when Redis cannot be reached |
+| `GET /gate` | what the gate is doing: `mode`, `budget` (today's spend, the day's budget, the two thresholds), the `global` bucket read from Postgres rather than the meter so the page stays readable exactly when Redis is what went wrong, and `decisionsToday`, `heldToday`, `waiting` |
+| `GET /gate/senders?limit=`, `PUT /gate/senders/:principal` | every principal seen or decided about, busiest today first, `limit` 500 by default and 100000 at most, with its standing, the two numbers that earned it, today's units against its clamped cap, and how many of its emails were held. The caps come from the same pure functions the enqueue path calls, so the page and the gate cannot quote different numbers. The `PUT` takes `{ scope: address \| domain, policy: auto \| allow \| block, note? }`; `auto` deletes the row rather than storing a third value. It decides no category |
+| `GET /gate/held`, `GET /gate/decisions` | the holding pen, and the whole log. The pen lists only holds that were enforced, are unreleased, and belong to a run: a hold with no run cannot be released, so listing one would put a button on the page that could only refuse |
+| `POST /gate/held/:id/release` | admit that email after all. Stamps the row first, then enqueues, so a second click is a 409 and never a second copy. 409 for a hold with no run |
 | `GET /clients`, `PUT /clients/:domain` | every sender domain seen, full-outer-joined to `core.clients`, with its tier, kind, email count and mismatch count, and `known: false` for one nobody has ranked. The `PUT` upserts `{ name?, tier?, kind? }`, writes the `client:priority` hash after Postgres, and changes no category: `kind` is a label a person sets and nothing in the pipeline reads it |
 | `POST /runs` | start a run `{ source, ratePerSecond, limit?, emailIds?, subset?: dev \| holdout, promptSet?: { step: vN }, models?: { step: alias } }`. `subset` reads the id lists in `backend/eval/` (ids only). 400 for an unknown prompt version or a model that is not a proxy alias, before anything is queued |
 | `GET /runs`, `GET /runs/:id` | list, detail with stage counts, `finishedEmails` (done, failed and review), `processingDone`, `elapsedMs` (start to the last email finishing, or to now), queue depth, `promptSet`, `llm` usage with `verifierShare`, `review: { open, byReason }`, `outcomes: { ok, mismatch, byField }` over the compared pairs, score (`lastSubmission.scores` carries the scorer's own `weights`, so a page never assumes them). The list also carries `concurrency: { classify, llm }` from the env. `queues` is `null` when Redis cannot be reached; the rest comes from Postgres and is still served |
@@ -1029,8 +1140,11 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 | `POST /chat/:id/messages` | `{ content, actor, skills? }` runs one turn and answers `{ turn, exhausted }`. `skills` is up to three names the person picked in the composer, refused with 400 when the registry does not know one, and injected exactly as an event-injected skill is. The question is stored before the model is asked, so a turn that fails halfway still leaves the person's words on the page. No streaming; the frontend route handler declares `maxDuration = 300` and the client times out just under it. Aborting the request stops the turn between steps, and what it had is still stored |
 | `GET /chat/:id/turns?after=<id>` | every turn newer than one id, **including the `role: tool` rows** a turn writes as each call finishes. The only read that returns them. The page polls it once a second while its own POST is in flight, which is how the steps appear one by one |
 | `GET /chat/skills` | the skill cards for the composer's `/` menu: `{ name, version, when }`. The bodies are never sent; they are for the agent |
-| `GET /ontology/types` | the five types the rail offers, with live counts and `built`: Emails, Ports, Parties, Shipments, Carriers. The last two are never built, because nothing in the seven fields yields a booking or a vessel, and the rail draws them dashed. The other seven `ObjectType`s are real and are reached through an object rather than browsed; `client` in particular folds into `party`, since a sender domain and a consignee are the same company read two ways |
+| `GET /ontology/types` | the types the rail offers, with live counts and `built`: Emails, then the six resolved kinds, then Shipments, built since phase 10g over `core.shipments` (a group of emails sharing an identifier). A company and a port answer an `openHref` to their business pages since phase 13. The other seven `ObjectType`s are real and are reached through an object rather than browsed; `client` in particular folds into `party`, since a sender domain and a consignee are the same company read two ways |
 | `GET /ontology/:type`, `GET /ontology/:type/:id`, `/:id/detail`, `/:id/graph?hops=1\|2` | the index of a resolved kind; one object in the one shape every type shares; the four parts a resolved thing opens into; and one email's graph as nodes and named edges. The graph carries no coordinates: the layout is one pure function in the frontend with a table-driven test. All six kinds of `EntityKind` list and open; a type that is a table of its own answers 404 naming `/database/tables`. `detail` carries `insight`: the summary, the identity facts with a `verified` flag per attribute, the scale (emails, appearances, spellings, disputed, first and last mail date) and at most three facets of the kind's own trade, built by the pure `pipeline/ontology/insight.ts` from the same `DossierInput` the profile prompt is rendered from |
+| `PATCH /ontology/:kind/:id/attributes`, `POST /ontology/:kind/:id/rename`, `POST /ontology/:kind/:id/merge` | a person correcting a thing from its page (phase 13): attributes with source `human`, which no profile rewrite touches; a chosen name kept as `human_name`, which every resolution pass prefers; and a merge recorded as the person's join of every spelling, so the pass keeps the two together. Each takes `actor` and answers the row |
+| `GET /shipments?partyId&portId&disputed&q&page&pageSize`, `GET /shipments/:emailId` | shipments as the mail states them, each party and port a reference to the resolved thing; one shipment with everything shipment-read wrote (phase 13). One row per email, which is a different grain from `/ontology/shipment` below; the code calls that one a `Consignment` so the two contracts do not collide |
+| `GET /ontology/:kind` for all six kinds; `GET /ontology/party/:id/people`, `/party/:id/ports`, `/port/:id/parties` | a kind's list carries attributes, the profile's first sentence and distinct emails per role; the three counterpart lists count distinct undisputed emails (phase 13) |
 | `GET /ontology/shipment`, `/shipment/:id` | the consignments, newest first, and one opened: its references, the eight things on it in bill-of-lading order with the disputed ones marked, and what each email of the group stated with the line it was read from. A shipment is a group of emails sharing an identifier (`oc_no`, `bl_no`, `booking_ref`, `invoice_no`, `po_no`), grouped by the pure `pipeline/ontology/shipment-group.ts` and regrouped whole every minute by the `regroup-shipments` scheduler. On this inbox every group holds one email: the generator draws fresh references per mail |
 | `GET /database/tables`, `/tables/:schema/:name?limit=&offset=`, `/tables/:schema/:name/rows/:id` | every relation of `core` and `analytics` with an exact count; a page of one with typed columns and the SQL that produced it; one row as fields plus what points at it by foreign key. Identifiers are read out of `pg_catalog` and checked against a pattern before they reach a query; this path composes its own SQL and takes nothing a caller wrote, which is why it does not use the RO pool |
 | `GET /eval/runs/:id` | holdout, full-set and this-run scoreboards computed locally, plus `emails`: each email of the run, its answer beside the truth, check by check on the scorer's definitions (`EmailVerdict`), shown at `/runs/[id]/results`. Each verdict also carries `classify`: the chain that produced it (`gen`/`ver` category and confidence, `decidedBy`, the human's category where there is one, model, prompt version) and `effect`, what the verifier did to the generator's answer judged against the truth (`not_run`, `fixed`, `broke`, `agreed_right`, `agreed_wrong`, `changed_still_wrong`, from the pure `eval/verifier-effect.ts`). Null for an email that was never classified. The rationales are not here: the page fetches one email's trace when a row is opened. Dev only; 404 on the VPS where ground truth is absent |
@@ -1069,6 +1183,13 @@ A turn does not start blind. Besides the question it is given, in this order:
 | Orientation | `agents/chat/orientation.ts`, SQL in `orientation.repo.ts` | what the database holds right now: runs, the scoped or latest run's counts, every port (up to 60) and the top parties with ids, sender domains, what is not there. Computed on a conversation's first turn, kept in `chat_conversations.orientation` with a watermark, recomputed only when a run progressed or the resolver rebuilt |
 | Skills | `agents/chat/skills/<name>/SKILL.md`, versioned | how to do one kind of task here. A two-line card per skill is always shown; a body is injected or loaded |
 | Recipes | `agents/chat/skills/<name>/recipes/<recipe>.sql` | a named, parameterised query with declared parameters and columns. Passes `guardSql` when it loads, runs on `roPool`, tested as `retina_ro` |
+
+**Context on a question (phase 13).** `NewMessage.context` carries up to five refs to what the
+person was looking at, stored on the user turn in `chat_turns.context`. `agents/chat/context.ts`
+resolves each through the same repositories the pages read and the scope section says "The person
+is looking at: ..., answer about them unless the question says otherwise". A ref nothing holds is
+dropped and logged. It is the existing scope rule extended: a default the agent may widen, never a
+filter. An email in the context injects `explain-an-email` as a conversation opened on one does.
 
 **Structure is written, values are computed.** `CHAT.md`, the skills and the recipes name no
 company, port, sender or subject code (`chat-harness.test.ts` holds that); what exists is the

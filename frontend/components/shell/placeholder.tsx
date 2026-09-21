@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 
 import { Icon, type IconName } from "@/components/ui/icons";
 
-import { AppShell } from "./app-shell";
 import { Search, TopBar } from "./top-bar";
 
 /**
@@ -16,9 +15,6 @@ import { Search, TopBar } from "./top-bar";
  */
 
 interface PlaceholderProps {
-  active: string;
-  /** The run this destination will be read through once it is built. */
-  runId?: string | null;
   title: string;
   crumbs: string[];
   /** One sentence on what this page is for, in the present tense. */
@@ -31,9 +27,9 @@ interface PlaceholderProps {
   children?: ReactNode;
 }
 
-export function Placeholder({ active, runId = null, title, crumbs, blurb, holds, phase, icon, children }: PlaceholderProps) {
+export function Placeholder({ title, crumbs, blurb, holds, phase, icon, children }: PlaceholderProps) {
   return (
-    <AppShell active={active} runId={runId} counts={{}}>
+    <>
       <div className="flex min-w-0 grow flex-col">
         <TopBar crumbs={crumbs.map((label, index) => ({ label, href: index === 0 ? "/runs" : undefined, mono: index === 1 }))}>
           <Search />
@@ -69,6 +65,6 @@ export function Placeholder({ active, runId = null, title, crumbs, blurb, holds,
           {children}
         </main>
       </div>
-    </AppShell>
+    </>
   );
 }

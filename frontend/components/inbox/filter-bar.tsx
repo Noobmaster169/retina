@@ -29,6 +29,7 @@ const ON: Record<Tone, string> = {
   review: "border-review-line bg-review-tint text-review",
   fault: "border-fault-line bg-fault-tint text-fault",
   signal: "border-signal-line bg-signal-tint text-signal",
+  accent: "border-accent-line bg-accent-tint text-accent",
 };
 
 const OFF = "border-hairline text-ink-secondary hover:border-hairline-strong hover:bg-sunken";

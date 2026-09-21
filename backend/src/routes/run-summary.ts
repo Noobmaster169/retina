@@ -10,6 +10,8 @@ export interface SummaryParts {
   review: RunSummary["review"];
   outcomes: RunSummary["outcomes"];
   lastSubmission: StoredSubmission | undefined;
+  /** Emails the gate stopped. They have no email_runs row, so no stage count holds them. */
+  heldByGate: number;
   /** When the run's last email finished, if one has. */
   lastFinishedAt: string | null;
   now: number;
@@ -17,11 +19,15 @@ export interface SummaryParts {
 
 /** One run as the API reports it: its row, where its emails are, what it cost, how it scored. */
 export function toSummary(run: Run, parts: SummaryParts): RunSummary {
-  const { stageCounts, queues, llm, review, outcomes, lastSubmission: last } = parts;
+  const { stageCounts, queues, llm, review, outcomes, heldByGate, lastSubmission: last } = parts;
   // An email at `review` waits for a person, not for the pipeline: the run is finished with it.
   const finishedEmails = stageCounts.done + stageCounts.failed + stageCounts.review;
   const stopped = run.status === "cancelled" || run.status === "failed";
-  const processingDone = stopped || (run.totalEmails !== null && finishedEmails >= run.totalEmails);
+  // A held email is one the run will never hear from again unless a person
+  // releases it, and it has no stage to be counted in. Without it here a run
+  // that held anything could never read as done and the page would spin.
+  const settled = finishedEmails + heldByGate;
+  const processingDone = stopped || (run.totalEmails !== null && settled >= run.totalEmails);
   const end = processingDone ? Date.parse(parts.lastFinishedAt ?? run.finishedAt ?? new Date(parts.now).toISOString()) : parts.now;
   return {
     id: run.id,
@@ -29,6 +35,7 @@ export function toSummary(run: Run, parts: SummaryParts): RunSummary {
     ratePerSecond: run.ratePerSecond,
     totalEmails: run.totalEmails,
     finishedEmails,
+    heldByGate,
     processingDone,
     elapsedMs: run.startedAt ? Math.max(0, end - Date.parse(run.startedAt)) : null,
     stageCounts,

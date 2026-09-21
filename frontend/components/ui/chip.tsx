@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
  * beside one, and this file is the reason there is nowhere to put it.
  */
 
-export type Tone = "neutral" | "match" | "differ" | "review" | "fault" | "signal";
+export type Tone = "neutral" | "match" | "differ" | "review" | "fault" | "signal" | "accent";
 
 const TONES: Record<Tone, string> = {
   neutral: "bg-sunken text-ink-secondary",
@@ -15,6 +15,7 @@ const TONES: Record<Tone, string> = {
   review: "bg-review-tint text-review",
   fault: "bg-fault-tint text-fault",
   signal: "bg-signal-tint text-signal",
+  accent: "bg-accent-tint text-accent",
 };
 
 /**
@@ -74,6 +75,7 @@ export function Fact({ label, value, tone = "neutral" }: { label: string; value:
     review: "text-review",
     fault: "text-fault",
     signal: "text-signal",
+    accent: "text-accent",
   };
   return (
     <span className="inline-flex h-[22px] items-center gap-1 whitespace-nowrap rounded-sm border border-hairline bg-canvas px-2 text-caption text-ink-secondary">

@@ -207,8 +207,27 @@ export const EntityRow = z.object({
   emails: z.number().int(),
   names: z.number().int(),
   lastSeen: z.string().nullable(),
+  /** That kind's attributes as stored, every value a string or null. Empty before the profile job has run. */
+  attributes: z.record(z.string(), z.string().nullable()).default({}),
+  /** The profile's first sentence, for a card. Null until profiled. */
+  summary: z.string().nullable().default(null),
+  /** Distinct emails per role this thing was seen in: shipper, consignee, port_of_loading, sender... */
+  roles: z.record(z.string(), z.number().int()).default({}),
 });
 export type EntityRow = z.infer<typeof EntityRow>;
+
+/** A thing seen beside another: a port a company ships through, a person on its mail. */
+export const Counterpart = z.object({
+  id: z.string(),
+  type: ObjectType,
+  name: z.string(),
+  /** Distinct emails the two were seen on together. */
+  count: z.number().int(),
+});
+export type Counterpart = z.infer<typeof Counterpart>;
+
+export const CounterpartList = z.object({ counterparts: z.array(Counterpart) });
+export type CounterpartList = z.infer<typeof CounterpartList>;
 
 export const EntityList = z.object({ type: ObjectType, built: z.boolean(), entities: z.array(EntityRow) });
 export type EntityList = z.infer<typeof EntityList>;
@@ -228,3 +247,19 @@ export const EntityDetail = z.object({
   appearanceCount: z.number().int(),
 });
 export type EntityDetail = z.infer<typeof EntityDetail>;
+
+/** What a person may send from a company's or a port's page. Every write names who made it, as review actions do. */
+const Actor = z.string().min(1).max(120);
+
+export const EditAttributesBody = z.object({
+  actor: Actor,
+  /** A subset of that kind's attributes. Keys are checked against the kind's schema at the route; null clears one. */
+  attributes: z.record(z.string(), z.string().max(200).nullable()).refine((a) => Object.keys(a).length > 0, "nothing to change"),
+});
+export type EditAttributesBody = z.infer<typeof EditAttributesBody>;
+
+export const RenameBody = z.object({ actor: Actor, name: z.string().trim().min(1).max(200) });
+export type RenameBody = z.infer<typeof RenameBody>;
+
+export const MergeBody = z.object({ actor: Actor, into: z.string().regex(/^\d+$/) });
+export type MergeBody = z.infer<typeof MergeBody>;

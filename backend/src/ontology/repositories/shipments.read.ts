@@ -1,4 +1,4 @@
-import type { ComparisonField, ShipmentDetail, ShipmentParty, ShipmentRow, ShipmentStatement } from "../../contracts";
+import type { ComparisonField, ConsignmentDetail, ConsignmentParty, ConsignmentRow, ConsignmentStatement } from "../../contracts";
 import type { Queryable } from "../../db";
 import { readRef } from "../../pipeline/ontology";
 
@@ -40,7 +40,7 @@ const SELECT = `select sh.id::text as id, sh.refs, sh.email_count, sh.last_mail_
   left join core.entities cons on cons.id = sh.consignee_id
   left join core.entities com on com.id = sh.commodity_id`;
 
-function toRow(row: RowShape): ShipmentRow {
+function toRow(row: RowShape): ConsignmentRow {
   return {
     id: row.id,
     refs: row.refs.map(readRef),
@@ -53,7 +53,7 @@ function toRow(row: RowShape): ShipmentRow {
   };
 }
 
-export async function list(db: Queryable, limit = 200): Promise<{ shipments: ShipmentRow[]; total: number }> {
+export async function list(db: Queryable, limit = 200): Promise<{ shipments: ConsignmentRow[]; total: number }> {
   const counted = await db.query<{ total: string }>("select count(*)::text as total from core.shipments");
   const { rows } = await db.query<RowShape>(
     `${SELECT} order by sh.last_mail_date desc nulls last, sh.id desc limit $1::int`,
@@ -62,7 +62,7 @@ export async function list(db: Queryable, limit = 200): Promise<{ shipments: Shi
   return { shipments: rows.map(toRow), total: Number(counted.rows[0].total) };
 }
 
-async function parties(db: Queryable, shipmentId: string, disputed: string[]): Promise<ShipmentParty[]> {
+async function parties(db: Queryable, shipmentId: string, disputed: string[]): Promise<ConsignmentParty[]> {
   const columns = ROLES.map((role) => `sh.${role.column}`).join(", ");
   const { rows } = await db.query<Record<string, string | null>>(
     `select ${columns},
@@ -82,7 +82,7 @@ async function parties(db: Queryable, shipmentId: string, disputed: string[]): P
   });
 }
 
-async function statements(db: Queryable, shipmentId: string): Promise<ShipmentStatement[]> {
+async function statements(db: Queryable, shipmentId: string): Promise<ConsignmentStatement[]> {
   const { rows } = await db.query<{
     email_id: string;
     subject: string;
@@ -131,7 +131,7 @@ async function statements(db: Queryable, shipmentId: string): Promise<ShipmentSt
   }));
 }
 
-export async function find(db: Queryable, shipmentId: string): Promise<ShipmentDetail | null> {
+export async function find(db: Queryable, shipmentId: string): Promise<ConsignmentDetail | null> {
   const { rows } = await db.query<RowShape>(`${SELECT} where sh.id = $1::bigint`, [shipmentId]);
   const row = rows[0];
   if (!row) return null;

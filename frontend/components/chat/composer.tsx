@@ -21,9 +21,11 @@ interface ComposerProps {
   pending: boolean;
   suggestions: string[];
   placeholder: string;
+  /** The dock's narrower gutter. */
+  dense?: boolean;
 }
 
-export function Composer({ onAsk, onStop, pending, suggestions, placeholder }: ComposerProps) {
+export function Composer({ onAsk, onStop, pending, suggestions, placeholder, dense = false }: ComposerProps) {
   const [text, setText] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
   const field = useRef<HTMLTextAreaElement>(null);
@@ -56,7 +58,7 @@ export function Composer({ onAsk, onStop, pending, suggestions, placeholder }: C
         event.preventDefault();
         ask(text);
       }}
-      className="border-t border-hairline px-6 py-3"
+      className={`border-t border-hairline py-3 ${dense ? "px-[18px]" : "px-6"}`}
     >
       {suggestions.length > 0 && !pending ? (
         <ul className="mb-2.5 flex flex-wrap gap-1.5">

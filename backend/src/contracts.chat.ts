@@ -22,6 +22,13 @@ import { SemanticReading } from "./contracts.semantic";
 export const ChatRole = z.enum(["user", "assistant", "tool"]);
 export type ChatRole = z.infer<typeof ChatRole>;
 
+/** One thing the open page is about, attached to a question. Resolved to a sentence by the harness; never a filter. */
+export const ContextRef = z.object({
+  kind: z.enum(["run", "email", "party", "port", "shipment", "carrier", "vessel", "commodity", "person"]),
+  id: z.string().min(1).max(120),
+});
+export type ContextRef = z.infer<typeof ContextRef>;
+
 export const ChatTurn = z.object({
   id: z.number().int(),
   role: ChatRole,
@@ -48,6 +55,8 @@ export const ChatTurn = z.object({
    * bound has to still read as one.
    */
   semantic: z.array(SemanticReading).default([]),
+  /** What the person had attached when they asked. Empty on assistant turns and on turns stored before phase 13. */
+  context: z.array(ContextRef).default([]),
   createdAt: z.string(),
 });
 export type ChatTurn = z.infer<typeof ChatTurn>;
@@ -105,6 +114,8 @@ export const NewMessage = z.object({
    * rather than silently ignored.
    */
   skills: z.array(z.string().max(60)).max(3).default([]),
+  /** What the page offered and the person attached. At most five; a ref nothing holds is dropped and logged. */
+  context: z.array(ContextRef).max(5).default([]),
 });
 export type NewMessage = z.infer<typeof NewMessage>;
 

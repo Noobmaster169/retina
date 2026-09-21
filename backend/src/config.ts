@@ -145,6 +145,36 @@ const Env = z.object({
   // The proxy serves twelve `claude -p` calls at a time (max_concurrency in proxy/proxy.yaml),
   // which is these two added up, because that is how many scored jobs run at once. More workers
   // than that only queue inside the proxy with their request timeout already running.
+  /**
+   * The admission gate in front of the pipeline.
+   *
+   * `observe` is the default and it holds nothing an automatic rule decided:
+   * it reaches every verdict, charges every bucket and records every row, then
+   * admits the email anyway, so a person can see what the gate would have done
+   * to real traffic before letting it do it. A blacklist a person set bites in
+   * `observe` too, because that is a decision and not a guess.
+   *
+   * It matters that this is not `enforce`. The Averis replay is 520 emails
+   * from fifteen domains, every one of them an unknown sender on its first
+   * day, and a live gate would hold most of a demo.
+   */
+  GATE_MODE: z.enum(["off", "observe", "enforce"]).default("observe"),
+  /**
+   * What a day of model calls may cost before the gate starts refusing by
+   * standing: at 0.8 of it an unknown or new sender waits, past it only
+   * established and whitelisted senders are served. Read from the cost_usd
+   * already in core.llm_calls, so it measures what was actually spent.
+   *
+   * It degrades rather than stopping: an attacker whose flood stops your real
+   * customers has achieved the outage they were paying for.
+   */
+  GATE_DAILY_BUDGET_USD: z.coerce.number().positive().default(25),
+  /** The bucket no sender can rotate around, in the same units as every other one. */
+  GATE_GLOBAL_BURST: z.coerce.number().int().positive().default(4000),
+  GATE_GLOBAL_DAILY: z.coerce.number().int().positive().default(60_000),
+  /** How long an empty burst bucket takes to refill. Its capacity divided by this is the sustained rate. */
+  GATE_BURST_REFILL_SECONDS: z.coerce.number().int().positive().default(600),
+
   CLASSIFY_CONCURRENCY: z.coerce.number().int().positive().default(8),
   COMPARE_CONCURRENCY: z.coerce.number().int().positive().default(4),
   // The semantic layer's own queue. Small on purpose: it runs after an email's

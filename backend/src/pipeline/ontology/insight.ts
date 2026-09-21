@@ -1,4 +1,4 @@
-import type { EntityInsight, EntityKind, IdentityFact, InsightFacet, InsightLine } from "../../contracts";
+import type { AttributeSource, EntityInsight, EntityKind, IdentityFact, InsightFacet, InsightLine } from "../../contracts";
 import type { DossierInput } from "./dossier";
 import { readProfile } from "./profile-read";
 
@@ -223,7 +223,7 @@ function facetsOf(kind: EntityKind, input: DossierInput, extras: InsightExtras):
 /** Every attribute the profile set, with the "our mail" or "the model" split the page draws. */
 function identityOf(
   attributes: Record<string, string | null>,
-  sources: Record<string, { source: "mail" | "model"; confidence: number | null }>,
+  sources: Record<string, Pick<AttributeSource, "source" | "confidence">>,
 ): IdentityFact[] {
   return Object.entries(attributes)
     .filter((entry): entry is [string, string] => entry[1] !== null && entry[1] !== "")
@@ -248,7 +248,7 @@ export interface InsightInput {
   extras: InsightExtras;
   markdown: string | null;
   attributes: Record<string, string | null>;
-  attributeSources: Record<string, { source: "mail" | "model"; confidence: number | null }>;
+  attributeSources: Record<string, Pick<AttributeSource, "source" | "confidence">>;
   spellings: number;
 }
 

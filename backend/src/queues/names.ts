@@ -7,6 +7,10 @@ export const QUEUES = { ingest: "ingest", classify: "classify", compare: "compar
 
 export const JOB_NAMES = {
   ingest: "ingest-run",
+  // One email a person took out of the gate's holding pen. It runs on the
+  // ingest queue because releasing means copying attachments into object
+  // storage, which is work an HTTP request has no business doing.
+  release: "release-email",
   classify: "classify-email",
   compare: "compare-email",
   ontology: "read-shipment",
@@ -22,6 +26,21 @@ export const JOB_NAMES = {
 /** `epoch` is the run's ingest epoch when the job was added. A job from before it existed holds 0. */
 export const IngestJob = z.object({ runId: z.uuid(), epoch: z.number().int().min(0).default(0) });
 export type IngestJob = z.infer<typeof IngestJob>;
+
+/**
+ * One held email, admitted after all. Ids only, like every other payload.
+ *
+ * An image from before this phase would parse it as an ingest job at epoch 0,
+ * find the run's epoch has moved on and answer `superseded`, which is a
+ * harmless no-op rather than a replay nobody asked for.
+ */
+export const ReleaseJob = z.object({ runId: z.uuid(), emailId: z.string().min(1) });
+export type ReleaseJob = z.infer<typeof ReleaseJob>;
+
+/** A release is keyed by the email, so two clicks on one row are one job. */
+export function releaseJobOptions(runId: string, emailId: string): JobsOptions {
+  return { ...RETRY, jobId: `release__${jobId(runId, emailId)}` };
+}
 
 /**
  * Where a rerun a person asked for starts from. Absent on the pipeline's own

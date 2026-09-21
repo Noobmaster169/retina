@@ -81,6 +81,9 @@ export async function replayRun(
       return stop;
     }
 
+    // A gate hold counts as placed. It has no email_runs row and never will
+    // unless a person releases it, so leaving it out of `held` would have the
+    // loop offer it again on the next resume and charge its sender twice.
     await ingestEmail(deps, runId, emailId);
     held.add(emailId);
     await hooks.onProgress?.(held.size / ids.length);

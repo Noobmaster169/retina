@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { DockToggle } from "@/components/dock/dock-toggle";
 import { Icon } from "@/components/ui/icons";
 
 /**
@@ -44,6 +45,7 @@ export function TopBar({ crumbs, children, onBack }: { crumbs: Crumb[]; children
       </nav>
       <span className="grow" />
       {children}
+      <DockToggle />
     </header>
   );
 }

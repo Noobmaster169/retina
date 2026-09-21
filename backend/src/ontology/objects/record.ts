@@ -30,9 +30,9 @@ async function entityRecord(db: Queryable, type: "port" | "party", id: string): 
     ],
     values,
     links,
-    // A resolved thing has no page of its own outside the ontology, because
-    // the ontology is where it exists. Its database page is the same record.
-    openHref: null,
+    // A company and a port have pages of their own since phase 13; the other
+    // kinds still live in the ontology, where their record is the page.
+    openHref: type === "party" ? `/company/${id}` : type === "port" ? `/port/${id}` : null,
   };
 }
 

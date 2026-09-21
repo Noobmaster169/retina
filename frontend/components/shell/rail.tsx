@@ -7,7 +7,7 @@ import { Icon, Mark } from "@/components/ui/icons";
 import type { RunSummary } from "@/lib/api/runs-schemas";
 import { quick, spring } from "@/lib/motion";
 
-import { hrefFor, type NavAlerts, type NavCounts, RAIL_DESTINATIONS } from "./nav";
+import { CLUSTERS, hrefFor, type NavAlerts, type NavCounts, RAIL_DESTINATIONS } from "./nav";
 import { RunSwitcher } from "./run-switcher";
 
 /**
@@ -28,10 +28,14 @@ interface RailProps {
   alerts: NavAlerts;
   /** The run everything below is read through, and every run there is to switch to. */
   current: RunSummary | null;
+  /** The run named by the URL, which is known before the run list has loaded. */
+  runId: string | null;
+  /** The conversation the dock is in, so Ask Retina opens it wide rather than something else. */
+  conversationId: string | null;
   runs: RunSummary[];
 }
 
-export function Rail({ open, onToggle, active, counts, alerts, current, runs }: RailProps) {
+export function Rail({ open, onToggle, active, counts, alerts, current, runId, conversationId, runs }: RailProps) {
   return (
     <motion.nav
       initial={false}
@@ -62,45 +66,55 @@ export function Rail({ open, onToggle, active, counts, alerts, current, runs }: 
       <RunSwitcher current={current} runs={runs} open={open} />
       <div className={`h-px bg-hairline ${open ? "mx-[18px] mt-2" : "mx-3"}`} />
 
-      <div className={open ? "px-3 pt-2" : "flex flex-col items-center pt-2"}>
-        {RAIL_DESTINATIONS.map((destination) => {
-          const here = destination.key === active;
-          const waiting = alerts[destination.key] ?? 0;
-          return (
-            <Link
-              key={destination.key}
-              href={hrefFor(destination, current?.id ?? null)}
-              aria-label={open ? undefined : destination.label}
-              aria-current={here ? "page" : undefined}
-              title={open ? undefined : destination.label}
-              className={`flex items-center rounded-md transition-colors duration-150 hover:bg-active ${
-                open ? "h-[34px] gap-2.5 px-2.5" : "mb-1 h-[34px] w-[34px] justify-center"
-              } ${here ? "bg-active" : ""}`}
-            >
-              <Icon name={destination.icon} className={`shrink-0 ${here ? "text-ink" : "text-ink-tertiary"}`} />
-              {open ? (
-                <>
-                  <span
-                    className={`whitespace-nowrap text-heading ${here ? "font-medium text-ink" : "font-normal text-ink-secondary"}`}
-                  >
-                    {destination.label}
-                  </span>
-                  <span className="grow" />
-                  <span className="font-mono text-mono-sm text-ink-tertiary">{counts[destination.key] ?? ""}</span>
-                  {waiting > 0 ? (
+      {CLUSTERS.map((cluster) => (
+        <div key={cluster.key} className={open ? "px-3 pt-3" : "flex flex-col items-center pt-3"}>
+          {/* The one uppercase label in the product: the name of a group, not a heading. */}
+          {open ? (
+            <div className="px-2.5 pb-1 text-micro font-medium uppercase tracking-[0.06em] text-ink-tertiary">
+              {cluster.label}
+            </div>
+          ) : (
+            <div className="mb-1.5 h-px w-5 bg-hairline" />
+          )}
+          {RAIL_DESTINATIONS.filter((destination) => destination.cluster === cluster.key).map((destination) => {
+            const here = destination.key === active;
+            const waiting = alerts[destination.key] ?? 0;
+            return (
+              <Link
+                key={destination.key}
+                href={`${hrefFor(destination, current?.id ?? runId)}${destination.key === "chat" && conversationId ? `?c=${conversationId}` : ""}`}
+                aria-label={open ? undefined : destination.label}
+                aria-current={here ? "page" : undefined}
+                title={open ? undefined : destination.label}
+                className={`flex items-center rounded-md transition-colors duration-150 ${
+                  open ? "h-[34px] gap-2.5 px-2.5" : "mb-1 h-[34px] w-[34px] justify-center"
+                } ${here ? "bg-accent-tint" : "hover:bg-active"}`}
+              >
+                <Icon name={destination.icon} className={`shrink-0 ${here ? "text-accent" : "text-ink-tertiary"}`} />
+                {open ? (
+                  <>
                     <span
-                      title={`${waiting} waiting for a person`}
-                      className="rounded-xs bg-review-tint px-1 font-mono text-mono-sm text-review tabular-nums"
+                      className={`whitespace-nowrap text-heading ${here ? "font-medium text-accent" : "font-normal text-ink-secondary"}`}
                     >
-                      {waiting}
+                      {destination.label}
                     </span>
-                  ) : null}
-                </>
-              ) : null}
-            </Link>
-          );
-        })}
-      </div>
+                    <span className="grow" />
+                    <span className="font-mono text-mono-sm text-ink-tertiary">{counts[destination.key] ?? ""}</span>
+                    {waiting > 0 ? (
+                      <span
+                        title={`${waiting} waiting for a person`}
+                        className="rounded-xs bg-review-tint px-1 font-mono text-mono-sm text-review tabular-nums"
+                      >
+                        {waiting}
+                      </span>
+                    ) : null}
+                  </>
+                ) : null}
+              </Link>
+            );
+          })}
+        </div>
+      ))}
 
       {open ? null : (
         <div className="flex grow flex-col items-center justify-end pb-3.5">

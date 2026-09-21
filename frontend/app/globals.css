@@ -54,9 +54,30 @@
   --signal-tint: #eff4ff;
   --signal-line: #bbd2f5;
 
+  /* 4.3 the accent: signal blue promoted to interactive and active states (phase 13) */
+  --accent: #175cd3;
+  --accent-tint: #eff4ff;
+  --accent-line: #bbd2f5;
+
+  /* 4.10 kind hues: what a thing is, never how it was judged. Each clears 4.5:1 on canvas and on its tint. */
+  --kind-company: #0f766e;
+  --kind-company-tint: #f0fdfa;
+  --kind-port: #0e7490;
+  --kind-port-tint: #ecfeff;
+  --kind-shipment: #4338ca;
+  --kind-shipment-tint: #eef2ff;
+  --kind-vessel: #1e3a8a;
+  --kind-vessel-tint: #eff6ff;
+  --kind-carrier: #4d7c0f;
+  --kind-carrier-tint: #f7fee7;
+  --kind-commodity: #9d174d;
+  --kind-commodity-tint: #fdf2f8;
+  --kind-person: #57534e;
+  --kind-person-tint: #f5f5f4;
+
   /* 4.7 the one shadow in the product, and the focus ring */
   --shadow-overlay: 0 8px 24px -8px rgb(17 24 39 / 0.18), 0 1px 2px rgb(17 24 39 / 0.06);
-  --focus-ring: 0 0 0 2px var(--canvas), 0 0 0 4px var(--signal);
+  --focus-ring: 0 0 0 2px var(--canvas), 0 0 0 4px var(--accent);
 
   /* 6 radius */
   --r-xs: 5px;
@@ -99,6 +120,23 @@
   --color-signal: var(--signal);
   --color-signal-tint: var(--signal-tint);
   --color-signal-line: var(--signal-line);
+  --color-accent: var(--accent);
+  --color-accent-tint: var(--accent-tint);
+  --color-accent-line: var(--accent-line);
+  --color-kind-company: var(--kind-company);
+  --color-kind-company-tint: var(--kind-company-tint);
+  --color-kind-port: var(--kind-port);
+  --color-kind-port-tint: var(--kind-port-tint);
+  --color-kind-shipment: var(--kind-shipment);
+  --color-kind-shipment-tint: var(--kind-shipment-tint);
+  --color-kind-vessel: var(--kind-vessel);
+  --color-kind-vessel-tint: var(--kind-vessel-tint);
+  --color-kind-carrier: var(--kind-carrier);
+  --color-kind-carrier-tint: var(--kind-carrier-tint);
+  --color-kind-commodity: var(--kind-commodity);
+  --color-kind-commodity-tint: var(--kind-commodity-tint);
+  --color-kind-person: var(--kind-person);
+  --color-kind-person-tint: var(--kind-person-tint);
 
   --font-display: var(--font-newsreader), Georgia, serif;
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;

@@ -11,10 +11,10 @@ import { EntityKind } from "./semantic-schemas";
  * each, because the generator draws fresh references per mail.
  */
 
-export const ShipmentRef = z.object({ key: z.string(), label: z.string(), value: z.string() });
-export type ShipmentRef = z.infer<typeof ShipmentRef>;
+export const ConsignmentRef = z.object({ key: z.string(), label: z.string(), value: z.string() });
+export type ConsignmentRef = z.infer<typeof ConsignmentRef>;
 
-export const ShipmentParty = z.object({
+export const ConsignmentParty = z.object({
   role: z.string(),
   kind: EntityKind,
   id: z.string(),
@@ -22,11 +22,11 @@ export const ShipmentParty = z.object({
   /** The field judge said the two documents did not agree on this value. */
   disputed: z.boolean(),
 });
-export type ShipmentParty = z.infer<typeof ShipmentParty>;
+export type ConsignmentParty = z.infer<typeof ConsignmentParty>;
 
-export const ShipmentRow = z.object({
+export const ConsignmentRow = z.object({
   id: z.string(),
-  refs: z.array(ShipmentRef),
+  refs: z.array(ConsignmentRef),
   lane: z.object({ from: z.string(), to: z.string() }).nullable(),
   consignee: z.string().nullable(),
   commodity: z.string().nullable(),
@@ -34,12 +34,12 @@ export const ShipmentRow = z.object({
   lastMailDate: z.string().nullable(),
   disputedFields: z.array(ComparisonField),
 });
-export type ShipmentRow = z.infer<typeof ShipmentRow>;
+export type ConsignmentRow = z.infer<typeof ConsignmentRow>;
 
-export const ShipmentList = z.object({ shipments: z.array(ShipmentRow), total: z.number().int() });
-export type ShipmentList = z.infer<typeof ShipmentList>;
+export const ConsignmentList = z.object({ shipments: z.array(ConsignmentRow), total: z.number().int() });
+export type ConsignmentList = z.infer<typeof ConsignmentList>;
 
-export const ShipmentStatement = z.object({
+export const ConsignmentStatement = z.object({
   emailId: z.string(),
   subject: z.string(),
   mailDate: z.string().nullable(),
@@ -55,11 +55,11 @@ export const ShipmentStatement = z.object({
   freight: z.string().nullable(),
   disputedFields: z.array(ComparisonField),
 });
-export type ShipmentStatement = z.infer<typeof ShipmentStatement>;
+export type ConsignmentStatement = z.infer<typeof ConsignmentStatement>;
 
-export const ShipmentDetail = z.object({
-  row: ShipmentRow,
-  parties: z.array(ShipmentParty),
-  statements: z.array(ShipmentStatement),
+export const ConsignmentDetail = z.object({
+  row: ConsignmentRow,
+  parties: z.array(ConsignmentParty),
+  statements: z.array(ConsignmentStatement),
 });
-export type ShipmentDetail = z.infer<typeof ShipmentDetail>;
+export type ConsignmentDetail = z.infer<typeof ConsignmentDetail>;

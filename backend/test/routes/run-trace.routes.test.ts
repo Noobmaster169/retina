@@ -32,8 +32,8 @@ describe("POST /runs, choosing what and how", () => {
 
     expect(response.status).toBe(201);
     expect(response.body.promptSet).toEqual({
-      classify: { version: "v3", model: "sonnet" },
-      "classify-verify": { version: "v1", model: "sonnet" },
+      classify: { version: "v6", model: "sonnet" },
+      "classify-verify": { version: "v3", model: "sonnet" },
       triage: { version: "v1", model: "sonnet" },
       "doc-type": { version: "v1", model: "sonnet" },
       extract: { version: "v1", model: "sonnet" },
@@ -50,7 +50,7 @@ describe("POST /runs, choosing what and how", () => {
     expect(response.status).toBe(201);
     expect(response.body.promptSet).toEqual({
       classify: { version: "v4", model: "sonnet" },
-      "classify-verify": { version: "v1", model: "haiku" },
+      "classify-verify": { version: "v3", model: "haiku" },
       triage: { version: "v1", model: "sonnet" },
       "doc-type": { version: "v1", model: "sonnet" },
       extract: { version: "v1", model: "sonnet" },

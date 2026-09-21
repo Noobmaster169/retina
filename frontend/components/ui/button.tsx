@@ -6,16 +6,15 @@ import type { ComponentProps, ReactNode } from "react";
 import { quick } from "@/lib/motion";
 
 /**
- * Interactive is ink, not a colour: docs/05-design.md section 4.3. That is the
- * decision that frees all five hues to mean something, so nothing here takes a
- * verdict tint except `memory`, which is the one write path that is itself a
- * lesson.
+ * Interactive is the accent since phase 13: docs/05-design.md section 4.3. The
+ * verdict hues stay reserved for verdicts, so nothing here takes a verdict tint
+ * except `memory`, which is the one write path that is itself a lesson.
  */
 
 type Variant = "primary" | "secondary" | "quiet" | "memory";
 
 const VARIANTS: Record<Variant, string> = {
-  primary: "bg-ink text-ink-inverse font-medium",
+  primary: "bg-accent text-ink-inverse font-medium",
   secondary: "border border-hairline-strong text-ink",
   quiet: "text-ink-secondary hover:bg-sunken",
   memory: "bg-review text-ink-inverse font-medium",

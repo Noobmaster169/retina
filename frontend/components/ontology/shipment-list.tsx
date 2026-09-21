@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { Chip } from "@/components/ui/chip";
-import type { ShipmentRow } from "@/lib/api/shipment-schemas";
+import type { ConsignmentRow } from "@/lib/api/shipment-schemas";
 
 /**
  * The consignments the mail is about. One row says enough to tell two apart:
@@ -17,7 +17,7 @@ import type { ShipmentRow } from "@/lib/api/shipment-schemas";
  */
 
 interface ShipmentListProps {
-  shipments: ShipmentRow[];
+  shipments: ConsignmentRow[];
   openId: string | null;
   hrefFor: (id: string) => string;
 }

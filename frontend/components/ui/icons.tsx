@@ -41,6 +41,16 @@ const PATHS = {
   field: "M6 3 H4 v10 h2 M10 3 h2 v10 h-2",
   clip: "M3.5 2.5 h6 L12.5 5.5 v8 h-9 z M9.5 2.5 v3 h3",
   box: "M3 3 h10 v10 h-10 z M6.3 3 v10",
+  /* Phase 13: the four secondary kinds, the map, and the two view controls. */
+  vessel: "M2 10.5 h12 l-2 3 h-8 z M4.5 10.5 V6.5 h7 v4 M8 6.5 V3 M6 3 h4",
+  carrier: "M2.5 4.5 h8 v6 h-8 z M10.5 6.5 h2 l1.5 2 v2 h-3.5 z M5 12.5 a1 1 0 1 0 0.01 0 M11.5 12.5 a1 1 0 1 0 0.01 0",
+  commodity: "M3 5 l5 -2.5 l5 2.5 v6 l-5 2.5 l-5 -2.5 z M3 5 l5 2.5 l5 -2.5 M8 7.5 v6",
+  person: "M8 3 a2.2 2.2 0 1 0 0.01 0 M3.5 13 a4.5 4.5 0 0 1 9 0",
+  map: "M2 4 l4 -1.5 l4 1.5 l4 -1.5 v9.5 l-4 1.5 l-4 -1.5 l-4 1.5 z M6 2.5 v9.5 M10 4 v9.5",
+  cards: "M2.5 3 h4.5 v4.5 h-4.5 z M9 3 h4.5 v4.5 h-4.5 z M2.5 9.5 h4.5 v4.5 h-4.5 z M9 9.5 h4.5 v4.5 h-4.5 z",
+  dock: "M2.5 3 h11 v10 h-11 z M9.5 3 v10",
+  plus: "M8 3.5 v9 M3.5 8 h9",
+  expand: "M9.5 2.5 h4 v4 M13.5 2.5 L9 7 M6.5 13.5 h-4 v-4 M2.5 13.5 L7 9",
 } as const;
 
 export type IconName = keyof typeof PATHS;
