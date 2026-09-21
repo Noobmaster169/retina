@@ -55,7 +55,6 @@ export function CompanyList({ rows }: { rows: EntityRow[] }) {
         type="party"
         href={hrefFor("party", row.id) ?? "#"}
         name={row.name}
-        summary={row.summary}
         chips={[row.attributes.kind, row.attributes.country].filter((value): value is string => !!value)}
         counts={roleCounts(row)}
         lastSeen={row.lastSeen}

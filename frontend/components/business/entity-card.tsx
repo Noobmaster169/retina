@@ -11,7 +11,7 @@ import { formatWhenShort } from "@/lib/when";
 import { HUE_CLASSES, kindOf } from "./kind";
 
 /**
- * One thing as a card: its name in its kind's hue, one sentence, a few
+ * One thing as a card: its name in its kind's hue, one sentence where the list wants it, a few
  * attribute chips and the counts that say how much of the mail it touches.
  * A hairline panel, not a floated card: docs/05-design.md section 6.
  */
@@ -19,7 +19,8 @@ interface EntityCardProps {
   type: string;
   href: string;
   name: string;
-  summary: string | null;
+  /** The profile's first line. Left out, the card has no summary line at all. */
+  summary?: string | null;
   chips: string[];
   counts: { label: string; value: number }[];
   lastSeen: string | null;
@@ -62,7 +63,9 @@ export function EntityCard({ type, href, name, summary, chips, counts, lastSeen,
           </span>
         </span>
       </div>
-      <p className="mt-2.5 line-clamp-2 text-small leading-[19px] text-ink-secondary">{summary ?? "Not profiled yet."}</p>
+      {summary === undefined ? null : (
+        <p className="mt-2.5 line-clamp-2 text-small leading-[19px] text-ink-secondary">{summary ?? "Not profiled yet."}</p>
+      )}
       {chips.length ? (
         <div className="mt-2 flex flex-wrap gap-1">
           {chips.map((chip) => (
