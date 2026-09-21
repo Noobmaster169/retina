@@ -7,6 +7,15 @@ export const EmailRecord = z.object({
   subject: z.string(),
   body: z.string(),
   attachments: z.array(z.string()),
+  /**
+   * Each attachment's size, positionally, where the inbox states one.
+   *
+   * Optional because an inbox may not, and the gate must still price an email
+   * it cannot measure: pipeline/gate/cost.ts assumes a size rather than zero,
+   * so "do not report a size" is not the cheapest way in. A real mail
+   * connector reads it from the MIME part headers without downloading anything.
+   */
+  attachment_bytes: z.array(z.number().nullable()).optional(),
 });
 export type EmailRecord = z.infer<typeof EmailRecord>;
 

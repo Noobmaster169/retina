@@ -488,6 +488,33 @@ views, and the chat becomes a dock that survives navigation and carries the open
 
 **Exit checklist.** As the phase doc lists it.
 
+## Phase 14: the ingest gate
+
+**Goal.** An email cannot cost us a model call until a deterministic function has said it may.
+The design is `docs/phases/phase-14-ingest-gate-design.md` and the work list
+`docs/phases/phase-14-ingest-gate.md`.
+
+**Why now.** `ingest/` replays one inbox the organisers wrote, so today nothing untrusted reaches
+it. The moment a mail connector is the source, anyone can spend our money by sending a lot of mail
+or mail with a lot in it, and `Source` is already the seam that would carry it.
+
+**Build.**
+
+- `pipeline/gate/`: four pure functions. `cost` prices an email in model calls, `standing` turns
+  distinct active days into a bracket, `growth` clamps a day to three times the sender's own
+  fortnight, `decide` is the only place they meet.
+- `ingest/gate/`: three token buckets in one Lua script (address, domain, global), the day's
+  budget read from `core.llm_calls`, and the thin function that loads, decides and records.
+- A verdict before the first attachment is copied, so a hold costs two queries and no tokens.
+- `/gate` routes and the `/gate` page: what it is doing, what each sender has earned, and the
+  holding pen with a Release button.
+
+**The rule the phase hangs on.** `From` is forgeable, so an automatic rule may only hold and only
+a person may block. Nothing here deletes mail, and nothing here decides a category.
+
+**Exit checklist.** In `docs/phases/phase-14-ingest-gate.md`.
+
+
 ## PROGRESS.md template
 
 ```markdown

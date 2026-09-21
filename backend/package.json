@@ -20,6 +20,7 @@
     "eval:chat": "node --env-file-if-exists=.env --import tsx src/eval/chat-eval.cli.ts",
     "load-test": "node --env-file-if-exists=.env --import tsx scripts/load-test.ts",
     "derive": "node --env-file-if-exists=.env --import tsx scripts/derive.ts",
+    "gate:drill": "node --env-file-if-exists=.env --import tsx scripts/gate-drill.ts",
     "ontology:backfill": "node --env-file-if-exists=.env --import tsx scripts/ontology-backfill.ts",
     "ontology:bench": "node --env-file-if-exists=.env --import tsx scripts/ontology-bench.ts",
     "ontology:locate": "node --env-file-if-exists=.env --import tsx scripts/ontology-locate.ts",

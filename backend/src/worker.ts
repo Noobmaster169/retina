@@ -4,6 +4,7 @@ import { closePool, getPool } from "./db";
 import { httpDocExtractClient } from "./doc-extract";
 import { AverisSource } from "./ingest";
 import { childLogger } from "./lib/logger";
+import { redisGateMeter } from "./ingest";
 import { redisLiveCalls } from "./live";
 import { closeRedis, getRedis } from "./queues/connection";
 import { redisPriorityCache } from "./queues/priority-cache";
@@ -35,6 +36,10 @@ const workers = startWorkers(
     compare: queues.compare,
     ontology: queues.ontology,
     priority,
+    // The gate. Its mode comes from GATE_MODE and its default is `observe`,
+    // so a worker that has just been deployed records every verdict and holds
+    // nothing an automatic rule decided.
+    gate: { redis, meter: redisGateMeter(redis) },
   },
   redis,
 );

@@ -43,6 +43,7 @@ const app = createApp({
   store,
   scorer: inboxScorer(config.EMAIL_SERVER_URL),
   priority: redisPriorityCache(getRedis()),
+  redis: getRedis(),
   roPool,
   // The api makes model calls now: one chat turn is several. Its own client,
   // with its own concurrency, so a conversation cannot take slots the worker's

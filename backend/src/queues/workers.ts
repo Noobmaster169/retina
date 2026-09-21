@@ -6,14 +6,14 @@ import type { LlmClient } from "../agents";
 import { config } from "../config";
 import { transactor } from "../db";
 import type { DocExtractClient } from "../doc-extract";
-import { type IngestDeps, replayRun } from "../ingest";
+import { type IngestDeps, ingestEmail, replayRun } from "../ingest";
 import { TerminalError } from "../lib/errors";
 import { childLogger } from "../lib/logger";
 import type { LiveCalls } from "../live";
 import { emailRuns, runs } from "../ontology/repositories";
 import { isFinalFailure, type PausedAt, pausingOnOutage, type QueuePauser } from "./failure-policy";
 import { recordJobFailure } from "./record-failure";
-import { ClassifyJob, CompareJob, DEFAULT_PRIORITY, IngestJob, type JobAdder, JOB_NAMES, OntologyJob, ontologyJobOptions, QUEUES } from "./names";
+import { ClassifyJob, CompareJob, DEFAULT_PRIORITY, IngestJob, type JobAdder, JOB_NAMES, OntologyJob, ontologyJobOptions, QUEUES, ReleaseJob } from "./names";
 import { processClassify } from "./processors/classify.processor";
 import { processCompare } from "./processors/compare.processor";
 import { backfillConcepts } from "./backfill-concepts";
@@ -96,6 +96,13 @@ function onEmailJobFailed(deps: WorkerDeps, stage: string): FailedListener {
 
 function onIngestJobFailed(deps: WorkerDeps): FailedListener {
   return async (job, error) => {
+    // A release that failed is one email nobody could let out of the holding
+    // pen. Failing its whole run over that would be a far larger blast radius
+    // than the thing that went wrong.
+    if (job?.name === JOB_NAMES.release) {
+      log.error({ jobId: job.id, err: error.message }, "a released email could not be ingested");
+      return;
+    }
     const data = IngestJob.safeParse(job?.data);
     if (!job || !data.success || !isFinalFailure(job, error)) return;
     log.error({ runId: data.data.runId, err: error.message }, "ingest failed for good");
@@ -115,6 +122,13 @@ export function startWorkers(deps: WorkerDeps, connection: Redis): RunningWorker
     QUEUES.ingest,
     (job, token) =>
       noRetryOnTerminal(async () => {
+        // A person took this one out of the holding pen, so the gate is not
+        // asked again: it already reached a verdict and was overruled.
+        if (job.name === JOB_NAMES.release) {
+          const { runId, emailId } = parse(ReleaseJob, job);
+          await ingestEmail(deps, runId, emailId, true);
+          return;
+        }
         const outcome = await replayRun(deps, parse(IngestJob, job), {
           stopping: () => stopping,
           onProgress: (fraction) => job.updateProgress(Math.round(fraction * 100)),

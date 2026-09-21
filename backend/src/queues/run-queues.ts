@@ -5,7 +5,7 @@ import { RetryableError } from "../lib/errors";
 import { runIdOfJob } from "../lib/ids";
 import { withTimeout } from "../lib/time";
 import { redisIsDown } from "./connection";
-import { type ClassifyJob, ingestJobOptions, JOB_NAMES } from "./names";
+import { type ClassifyJob, ingestJobOptions, JOB_NAMES, releaseJobOptions } from "./names";
 import { getQueues } from "./queues";
 
 /** What the run routes need from the queues. */
@@ -21,6 +21,12 @@ export interface RunQueues {
    * it completes and BullMQ refuses a second under the same one.
    */
   rerun(queue: "classify" | "compare", data: ClassifyJob, options: JobsOptions): Promise<void>;
+  /**
+   * Sends one email the gate held back through ingest, with the gate bypassed.
+   * On the ingest queue and not inline, because a release still has to copy
+   * the attachments nobody copied the first time.
+   */
+  releaseEmail(runId: string, emailId: string): Promise<void>;
 }
 
 // With Redis down a command waits for the reconnect forever. An HTTP request cannot.
@@ -72,6 +78,12 @@ export function bullRunQueues(): RunQueues {
         "queue counts",
       );
       return { classify: classifyCounts, compare: compareCounts };
+    },
+    async releaseEmail(runId, emailId) {
+      await bounded(
+        () => getQueues().ingest.add(JOB_NAMES.release, { runId, emailId }, releaseJobOptions(runId, emailId)),
+        "release an email",
+      );
     },
     async rerun(queue, data, options) {
       await bounded(() => getQueues()[queue].add(JOB_NAMES[queue], data, options), `rerun on ${queue}`);

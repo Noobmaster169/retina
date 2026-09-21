@@ -49,6 +49,11 @@ export const DESTINATIONS: Destination[] = [
   { key: "port", label: "Ports", icon: "port", path: "/port", cluster: "business", global: true },
   { key: "shipment", label: "Shipments", icon: "ship", path: "/shipment", cluster: "business", global: true },
   { key: "clients", label: "Senders", icon: "client", path: "/clients", cluster: "business", global: true },
+  // The second thing a person decides about a sender, beside its tier. Senders
+  // is which one is served first; this is whether we spend anything on it at
+  // all, and putting a blocklist on a page whose copy promises a tier decides
+  // nothing else would make both harder to trust.
+  { key: "gate", label: "Traffic", icon: "scale", path: "/gate", cluster: "business", global: true },
 ];
 
 /**
