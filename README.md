@@ -133,7 +133,7 @@ All routes except `/health` need `Authorization: Bearer <key>`. The key is
 | `POST /runs/:id/submit?force=false` | sends the run to the organisers' scorer → `{ submissionId, finalScore, scoreboard }`. 409 while the run is still ingesting, and 409 `{ incomplete }` while emails are unfinished, both unless forced; 409 while an earlier submission of the same run is still being scored. 502 when the scorer refuses, which leaves an unscored submission row pointing at the stored payload |
 | `GET /runs/:id/submission.json` | the payload as it would be sent now: `{ email_id: { category, status, review_reason, has_defect, defect_fields, decided_by } }`, the organisers' enums only |
 | `GET /runs/:id/submissions` | `{ submissions: [{ id, finalScore, nEmails, forced, createdAt, scoreboard }] }` |
-| `GET /eval/runs/:id` | dev only, 404 unless `EVAL_GROUND_TRUTH_PATH` is set: the run scored locally, `{ full, holdout, run, wrong }` |
+| `GET /eval/runs/:id` | 404 unless this api can reach the answer key (`EVAL_GROUND_TRUTH_PATH` on a dev machine, `EVAL_GROUND_TRUTH_URL` on the box): the run scored locally, `{ full, holdout, run, wrong }` |
 | `GET /runs/:id/emails?stage=&category=&decidedBy=&q=&page=&pageSize=` | `{ emails: [{ emailId, from, subject, stage, attachmentCount, outcome, category, decidedBy, confidence, verifierCategory, error }], total, page, pageSize }` |
 | `GET /runs/:id/calls?after=` | the run's newest model calls as summaries, for a live feed |
 | `GET /runs/:id/live` | the run's model calls running now, each with the answer written so far |

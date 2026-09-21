@@ -116,7 +116,9 @@ Backend (`deploy/.env`, mirrored in `backend/.env.example`):
 | `GATE_BURST_REFILL_SECONDS` | `600`. How long an empty burst bucket takes to refill. Its capacity divided by this is the sustained rate | worker |
 | `API_SHARED_SECRET`, `TEAM_API_KEY` | hex | api |
 | `SITE_PASSWORD` | string | frontend gate in `proxy.ts` (Vercel env) |
-| `EVAL_GROUND_TRUTH_PATH` | local path only, unset on the VPS containers | eval CLI |
+| `EVAL_GROUND_TRUTH_PATH` | local path only, unset on the VPS containers | eval CLI, `/eval/*` |
+| `EVAL_GROUND_TRUTH_URL` | VPS only, `http://inbox:8000/ground_truth` | `/eval/*` on the box |
+| `EVAL_JUDGE_TOKEN` | optional hex, guards that endpoint | api and `inbox` |
 
 Frontend (Vercel): `BACKEND_URL`, `API_SHARED_SECRET`, `SITE_PASSWORD`. There is no separate
 session secret: `lib/site-gate.ts` derives the cookie as an HMAC of `SITE_PASSWORD`, so changing
@@ -1356,10 +1358,17 @@ repository root configures it.
   rolled-back transaction, and write the profiles out as Markdown for a person to read. Nothing
   reads that folder back.
 
-On the VPS, `ground_truth.json` reaches only the `inbox` container, which mounts it read-only
-from the clone. `api` and `worker` never see it, and `EVAL_GROUND_TRUTH_PATH` is unset there.
-`api` and `worker` cannot read it, so `/eval/*` routes are disabled there and scoring goes
-through `POST /submit`.
+On the VPS, `ground_truth.json` is a file inside the `inbox` container and nowhere else, which
+mounts it read-only from the clone. `EVAL_GROUND_TRUTH_PATH` is unset on every container, so
+nothing but `inbox` has a copy on disk.
+
+The api still scores a run locally there, by asking `inbox` for the key over the compose network:
+`REVEAL_GT=1` turns on the organisers' own `GET /ground_truth` and `EVAL_GROUND_TRUTH_URL` points
+the api at it, guarded by `EVAL_JUDGE_TOKEN` where `.env` names one. That service publishes no
+port, so the endpoint is reachable from this network and nowhere else. The `worker` is left out of
+it on purpose: `eval/` is reached from routes and CLIs, never from a queue. `ground-truth.ts`
+prefers the path where both are set, so a dev machine never calls out, and `loadGroundTruth` is
+the one door either way.
 
 ## 13. Frontend
 

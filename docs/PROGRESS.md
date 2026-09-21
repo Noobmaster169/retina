@@ -7,6 +7,19 @@ and merged into 13 afterwards.
 **Start at `docs/phases/phase-13-business-data.md`.** Phase 7's two `[~]` items are still under
 "Deferred" below.
 
+**2026-09-22: local scoring works on the box.** "Score it here" and the second half of
+`/runs/<id>/results` used to answer "No answer key on this machine" in production, because
+`/eval/runs/:id` 404s unless the api can reach `ground_truth.json` and on the VPS that file is a
+mount inside the `inbox` container alone. It still is: nothing was copied and nothing new was
+mounted. Instead `inbox` now runs with the organisers' own `REVEAL_GT=1`, and the api reads the
+key from its `GET /ground_truth` over the compose network (`EVAL_GROUND_TRUTH_URL`, optionally
+guarded by `EVAL_JUDGE_TOKEN` in `~/retina/.env`). That service publishes no port, so the endpoint
+is reachable from that network and nowhere else, and the `worker` is deliberately not given the
+variables. `ground-truth.ts` prefers the path where both are set, so a dev machine is unchanged.
+**Not yet checked on the box**: after the next deploy tick, open a scored run's results page and
+confirm the email-by-email half renders. `EVAL_JUDGE_TOKEN` is optional, so no `.env` edit is
+needed first.
+
 **2026-09-21: phase 15, the streaming chat, is built on `phase-15-streaming-chat`.** The chat
 used to answer nothing visibly until the whole turn was done. `POST /chat/:id/messages` now has
 two shapes chosen by `Accept`: the blocking one it always had, and an event stream carrying
