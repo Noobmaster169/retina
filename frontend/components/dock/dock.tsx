@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import useSWR from "swr";
 import { z } from "zod";
@@ -10,8 +9,7 @@ import { Composer } from "@/components/chat/composer";
 import { LiveSteps } from "@/components/chat/live-steps";
 import { Turn } from "@/components/chat/turn";
 import { useChat } from "@/components/chat/use-chat";
-import { runIdFrom } from "@/components/shell/nav";
-import { Icon } from "@/components/ui/icons";
+import { Icon, type IconName } from "@/components/ui/icons";
 import type { ChatTurn } from "@/lib/api/chat-agent-schemas";
 import { ChatThread } from "@/lib/api/chat-thread-schemas";
 import { parsedFetcher } from "@/lib/poll";
@@ -33,6 +31,25 @@ import { attached } from "./page-context";
 /** There are no accounts in this build; a reviewer types their name once. This is the dock's. */
 const ACTOR = "the reviewer";
 
+const ICON_BUTTON =
+  "flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-ink-secondary transition-colors duration-150 hover:bg-active hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent";
+
+function IconButton({ name, label, on = false, onClick, disabled = false }: { name: IconName; label: string; on?: boolean; onClick(): void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      aria-pressed={on}
+      disabled={disabled}
+      className={`${ICON_BUTTON} ${on ? "bg-accent-tint text-accent" : ""}`}
+    >
+      <Icon name={name} size={13} />
+    </button>
+  );
+}
+
 const Held = z.object({ thread: ChatThread.nullable() });
 
 const noop = () => () => undefined;
@@ -46,7 +63,8 @@ function useHydrated(): boolean {
   );
 }
 
-export function Dock() {
+/** `runId` is the run the shell has in context: the one in the URL, or the newest, which is where the wide page lives. */
+export function Dock({ runId }: { runId: string | null }) {
   const dock = useDock();
   // The remembered conversation is read from local storage, which the server
   // cannot see; seeding before hydration would resume nothing every time.
@@ -58,7 +76,7 @@ export function Dock() {
       className="fixed inset-y-0 right-0 z-30 flex w-[380px] shrink-0 flex-col border-l border-hairline bg-surface shadow-overlay xl:static xl:shadow-none"
     >
       {/* Keyed on the thread counter, so New and an opened history item start fresh while the first question's own conversation does not remount it. */}
-      <DockSeed key={dock.thread} />
+      <DockSeed key={dock.thread} runId={runId} />
     </aside>
   );
 }
@@ -68,7 +86,7 @@ export function Dock() {
  * `useChat` seeds from `initial` on mount, so the thread is rendered only when
  * there is something to seed it with, or nothing to fetch.
  */
-function DockSeed() {
+function DockSeed({ runId }: { runId: string | null }) {
   const dock = useDock();
   // Captured at mount: the id the first question sets afterwards must not refetch.
   const [seedId] = useState(dock.conversationId);
@@ -80,13 +98,12 @@ function DockSeed() {
   }
   // A conversation nobody holds any more starts the dock fresh rather than failing it.
   const initial: ChatTurn[] = data?.thread?.turns ?? [];
-  return <DockThread initial={initial} />;
+  return <DockThread initial={initial} title={data?.thread?.conversation.title ?? null} runId={runId} />;
 }
 
-function DockThread({ initial }: { initial: ChatTurn[] }) {
+function DockThread({ initial, title, runId }: { initial: ChatTurn[]; title: string | null; runId: string | null }) {
   const dock = useDock();
   const [view, setView] = useState<"thread" | "history">("thread");
-  const runId = runIdFrom(usePathname());
   const chat = useChat({
     conversationId: dock.conversationId,
     openWith: { actor: ACTOR, runId: runId ?? undefined },
@@ -104,43 +121,38 @@ function DockThread({ initial }: { initial: ChatTurn[] }) {
 
   return (
     <>
-      <header className="flex h-14 shrink-0 items-center gap-2.5 border-b border-hairline px-[18px]">
-        <Icon name="chat" size={15} className="text-accent" />
-        <h2 className="text-[14px] font-semibold tracking-[-0.01em]">Ask Retina</h2>
-        <span className="grow" />
-        <button
-          type="button"
-          onClick={() => setView((was) => (was === "history" ? "thread" : "history"))}
-          aria-pressed={view === "history"}
-          className={`h-[26px] rounded-sm px-2 text-caption ${view === "history" ? "bg-accent-tint text-accent" : "text-ink-secondary hover:bg-active"}`}
-        >
-          History
-        </button>
-        {chat.turns.length > 0 ? (
+      <header className="shrink-0 border-b border-hairline">
+        <div className="flex h-14 items-center gap-2.5 px-[18px]">
+          <Icon name="chat" size={15} className="text-accent" />
+          <h2 className="text-[14px] font-semibold tracking-[-0.01em]">Ask Retina</h2>
+          <span className="grow" />
           <button
             type="button"
-            onClick={dock.startNew}
-            className="h-[26px] rounded-sm px-2 text-caption text-ink-secondary hover:bg-active"
+            onClick={() => dock.setOpen(false)}
+            aria-label="Close the dock"
+            className="flex h-6 w-6 items-center justify-center rounded-sm text-ink-faint hover:bg-active hover:text-ink-secondary"
           >
-            New
+            <Icon name="panel" size={14} />
           </button>
-        ) : null}
-        {wide ? (
-          <Link
-            href={wide}
-            className="flex h-[26px] items-center rounded-sm border border-hairline bg-canvas px-2.5 text-caption text-ink-secondary hover:border-hairline-strong"
-          >
-            Open wide
-          </Link>
-        ) : null}
-        <button
-          type="button"
-          onClick={() => dock.setOpen(false)}
-          aria-label="Close the dock"
-          className="flex h-6 w-6 items-center justify-center rounded-sm text-ink-faint hover:bg-active hover:text-ink-secondary"
-        >
-          <Icon name="panel" size={14} />
-        </button>
+        </div>
+        {/* The conversation's own line: its title, and the three things one can do with it. */}
+        <div className="flex h-9 items-center gap-1 px-[18px] pb-1.5">
+          <span className="min-w-0 grow truncate text-caption text-ink-tertiary">
+            {view === "history" ? "Every conversation" : (title ?? chat.turns[0]?.content ?? "A new question")}
+          </span>
+          <IconButton
+            name="clock"
+            label={view === "history" ? "Back to the conversation" : "History"}
+            on={view === "history"}
+            onClick={() => setView((was) => (was === "history" ? "thread" : "history"))}
+          />
+          <IconButton name="plus" label="New conversation" onClick={dock.startNew} disabled={chat.turns.length === 0 && !dock.conversationId} />
+          {wide ? (
+            <Link href={wide} title="Open wide" aria-label="Open wide" className={ICON_BUTTON}>
+              <Icon name="expand" size={13} />
+            </Link>
+          ) : null}
+        </div>
       </header>
 
       {view === "history" ? (

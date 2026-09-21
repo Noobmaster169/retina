@@ -47,6 +47,9 @@ const PATHS = {
   map: "M2 4 l4 -1.5 l4 1.5 l4 -1.5 v9.5 l-4 1.5 l-4 -1.5 l-4 1.5 z M6 2.5 v9.5 M10 4 v9.5",
   cards: "M2.5 3 h4.5 v4.5 h-4.5 z M9 3 h4.5 v4.5 h-4.5 z M2.5 9.5 h4.5 v4.5 h-4.5 z M9 9.5 h4.5 v4.5 h-4.5 z",
   dock: "M2.5 3 h11 v10 h-11 z M9.5 3 v10",
+  plus: "M8 3.5 v9 M3.5 8 h9",
+  expand: "M9.5 2.5 h4 v4 M13.5 2.5 L9 7 M6.5 13.5 h-4 v-4 M2.5 13.5 L7 9",
+  close: "M4 4 L12 12 M12 4 L4 12",
 } as const;
 
 export type IconName = keyof typeof PATHS;

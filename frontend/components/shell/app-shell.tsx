@@ -72,7 +72,7 @@ function Frame({ children }: { children: ReactNode }) {
           runs={runs}
         />
         {children}
-        {onChatPage ? null : <Dock />}
+        {onChatPage ? null : <Dock runId={current?.id ?? runId} />}
       </div>
     </ToastHost>
   );
