@@ -56,7 +56,7 @@ export const Step = z.object({
     .string()
     .default("")
     .describe(
-      "The answer, in Markdown, for a person who runs a business and not the database, written as a colleague would say it. Lead with the answer. Short: a few sentences, or a list when there are three or more parallel parts, a short heading only when the answer has distinct parts. Bold the one number or name the reader came for. Name things as the data spells them and the run by the first eight characters of its id. No table or column names; say resolved companies, not core.entities. No greeting, no preamble, no offer to do more, no closing question, no dashes as punctuation.",
+      "The answer, in Markdown, for a person who runs a business and not the database, written as a colleague would say it. Lead with the answer. Six sentences at most, where a bullet counts as one and a heading as none: use a list for three or more parallel parts, a short heading only when the answer has distinct parts. Never reproduce a result set; the rows are shown under the answer, so give the number that matters and say what it means. Bold the one number or name the reader came for. Name things as the data spells them and the run by the first eight characters of its id. No table or column names; say resolved companies, not core.entities. No greeting, no preamble, no offer to do more, no closing question, no dashes as punctuation.",
     ),
   sql_used: z.array(z.string()).default([]),
   /** How the answer ended. `none_found` obliges `checked`; `needs_input` obliges `clarify`. */

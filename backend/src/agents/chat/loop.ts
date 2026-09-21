@@ -33,7 +33,7 @@ const log = childLogger({ module: "chat.loop" });
 
 /** Two or three steps answer most questions; the rest is room to recover from a refusal. Never tuned upward without a measurement. */
 const MAX_STEPS = 8;
-const CHAT_PROMPT = "v6";
+const CHAT_PROMPT = "v7";
 
 export interface TurnInput {
   question: string;
@@ -162,6 +162,12 @@ export async function runTurn(deps: LoopDeps, input: TurnInput): Promise<TurnRes
       // A conversation's tokens are not a run's cost, even when the
       // conversation is about one. See NewLlmCall.runId.
       runId: null,
+      // One flat schema stands for two shapes here, a tool step and a final
+      // answer, so half its fields belong to whichever shape this step is not.
+      // Told they are required, the model writes all of them every time: an
+      // empty answer and an empty `next` on every look, and `thing`, `count`
+      // and `basis` spelled out as null on every move.
+      defaultsOptional: true,
       onPreview: deps.onProgress ? watch(step) : undefined,
     });
 
