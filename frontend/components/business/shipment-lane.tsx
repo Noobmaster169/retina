@@ -14,15 +14,17 @@ export function ShipmentLane({ pol, pod, compact = false }: { pol: ShipmentRef |
       <Link
         href={hrefFor("port", ref.id) ?? "#"}
         onClick={(event) => event.stopPropagation()}
-        className={`truncate font-medium text-kind-port hover:underline ${compact ? "max-w-[140px]" : ""}`}
+        className={`font-medium text-kind-port hover:underline ${compact ? "min-w-0 truncate" : ""}`}
       >
         {ref.name}
       </Link>
     ) : (
-      <span className="text-ink-faint">{fallback}</span>
+      <span className={`text-ink-faint ${compact ? "min-w-0 truncate" : ""}`}>{fallback}</span>
     );
   return (
-    <span className="inline-flex min-w-0 items-center gap-2 text-small">
+    // Compact shares the cell between both ends, each cut short with an
+    // ellipsis; full size wraps instead, since there the lane is the point.
+    <span className={`min-w-0 items-center gap-x-2 text-small ${compact ? "flex w-full" : "flex flex-wrap"}`}>
       {port(pol, "no loading port")}
       <Icon name="chevron" size={11} className="shrink-0 text-ink-faint" />
       {port(pod, "no discharge port")}

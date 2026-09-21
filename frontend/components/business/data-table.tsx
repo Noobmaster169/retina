@@ -19,6 +19,8 @@ interface DataTableProps<T> {
   keyOf(row: T): string;
   hrefOf?(row: T): string | null;
   empty: string;
+  /** Below this width in pixels the table scrolls sideways instead of squeezing every column. Its header then stops sticking. */
+  minWidth?: number;
 }
 
 type Sort = { key: string; dir: 1 | -1 } | null;
@@ -35,7 +37,7 @@ function sorted<T>(rows: T[], column: Column<T> | undefined, sort: Sort): T[] {
   });
 }
 
-export function DataTable<T>({ columns, rows, keyOf, hrefOf, empty }: DataTableProps<T>) {
+export function DataTable<T>({ columns, rows, keyOf, hrefOf, empty, minWidth }: DataTableProps<T>) {
   const router = useRouter();
   const [sort, setSort] = useState<Sort>(null);
   const column = sort ? columns.find((c) => c.key === sort.key) : undefined;
@@ -43,8 +45,8 @@ export function DataTable<T>({ columns, rows, keyOf, hrefOf, empty }: DataTableP
 
   if (rows.length === 0) return <p className="py-10 text-center text-body text-ink-tertiary">{empty}</p>;
 
-  return (
-    <table className="w-full border-collapse text-small">
+  const table = (
+    <table className="w-full border-collapse text-small" style={minWidth ? { minWidth } : undefined}>
       <thead className="sticky top-0 z-10 bg-canvas">
         <tr className="border-b border-hairline-strong text-left">
           {columns.map((c) => (
@@ -100,4 +102,5 @@ export function DataTable<T>({ columns, rows, keyOf, hrefOf, empty }: DataTableP
       </tbody>
     </table>
   );
+  return minWidth ? <div className="overflow-x-auto">{table}</div> : table;
 }

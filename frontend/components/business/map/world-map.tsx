@@ -22,34 +22,40 @@ export type { MapLane, MapPin } from "./types";
  * every browser.
  *
  * Wheel zooms about the pointer, drag pans, a pin picks a port into a panel
- * beside the drawing. At rest only the pins are drawn; hovering or picking a
+ * in the drawing's bottom-left corner, the legend above it in the top-left. At rest only the pins are drawn; hovering or picking a
  * port draws its lanes, flowing from loading to discharge, and dims the rest.
  * `visible` is the page's filter: a port outside it is not drawn until it is
  * the far end of a lit port's lane, and then only as a ghost, so a filter on
  * one region still shows where that region's ports ship. `focus` opens with
  * that port lit, its lanes framed and no panel, because the page it sits on
- * is that port's panel already.
+ * is that port's panel already. `initial` opens with that port picked.
  */
 export function WorldMap({
   pins,
   lanes = [],
   focus,
+  initial,
+  wheel = true,
   visible,
   className = "",
 }: {
   pins: MapPin[];
   lanes?: MapLane[];
   focus?: string;
+  /** The pin picked when the map opens. */
+  initial?: string;
+  /** False lets the wheel scroll the page; the buttons and a drag still move the map. */
+  wheel?: boolean;
   /** Ids of the pins the page's filter kept. Undefined keeps every pin. */
   visible?: string[];
   className?: string;
 }) {
   const svg = useRef<SVGSVGElement>(null);
   const box = useRef<HTMLDivElement>(null);
-  const view = useMapView(svg);
+  const view = useMapView(svg, wheel);
   const [hoverPin, setHoverPin] = useState<PlacedPin | null>(null);
   const [hoverLane, setHoverLane] = useState<PlacedLane | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(initial ?? null);
   // Where the pointer is over the box, and whether that is far enough right
   // for the tooltip to sit on its left. Measured on the move, never in render.
   const [pointer, setPointer] = useState({ x: 0, y: 0, flip: false });
@@ -120,6 +126,7 @@ export function WorldMap({
   const { k, x, y } = view.transform;
   const pick = (pin: PlacedPin) => setSelected((held) => (held === pin.id ? null : pin.id));
 
+  const sameCountry = picked ? placed.pins.filter((pin) => pin.id !== picked.id && !!pin.countryCode && pin.countryCode === picked.countryCode) : [];
   return (
     <div ref={box} className={`relative w-full overflow-hidden rounded-lg border border-hairline bg-canvas @container ${className}`}>
       <svg
@@ -166,7 +173,9 @@ export function WorldMap({
       {!view.dragging ? (
         <MapTooltip at={pointer} flip={pointer.flip} pin={hoverPin} lane={hoverPin ? null : hoverLane} />
       ) : null}
-      {picked ? <MapPanel pin={picked} lanes={pickedLanes} onPick={(pin) => setSelected(pin.id)} onFrame={() => frameAround(picked)} onClose={() => setSelected(null)} /> : null}
+      {picked ? (
+        <MapPanel pin={picked} lanes={pickedLanes} country={sameCountry} onPick={(pin) => setSelected(pin.id)} onFrame={() => frameAround(picked)} onClose={() => setSelected(null)} />
+      ) : null}
       <MapControls onIn={view.zoomIn} onOut={view.zoomOut} onReset={view.reset} />
       <MapLegend ports={drawnPins.filter((pin) => pin.visible).length} lanes={placed.lanes.length} />
     </div>

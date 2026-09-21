@@ -29,7 +29,8 @@ export interface MapView {
   wasClick(): boolean;
 }
 
-export function useMapView(svg: RefObject<SVGSVGElement | null>): MapView {
+/** `wheel` false leaves the wheel to the page, for a map a person scrolls past rather than into. */
+export function useMapView(svg: RefObject<SVGSVGElement | null>, wheel = true): MapView {
   const [transform, setTransform] = useState<Transform>(IDENTITY);
   const [dragging, setDragging] = useState(false);
   const press = useRef<{ x: number; y: number; moved: boolean } | null>(null);
@@ -38,7 +39,7 @@ export function useMapView(svg: RefObject<SVGSVGElement | null>): MapView {
   // scrolling under the map, so it is attached by hand.
   useEffect(() => {
     const node = svg.current;
-    if (!node) return;
+    if (!node || !wheel) return;
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
       const [cx, cy] = toViewBox(node.getBoundingClientRect(), event.clientX, event.clientY);
@@ -47,7 +48,7 @@ export function useMapView(svg: RefObject<SVGSVGElement | null>): MapView {
     };
     node.addEventListener("wheel", onWheel, { passive: false });
     return () => node.removeEventListener("wheel", onWheel);
-  }, [svg]);
+  }, [svg, wheel]);
 
   const onPointerDown = useCallback((event: React.PointerEvent<SVGSVGElement>) => {
     if (event.button !== 0) return;

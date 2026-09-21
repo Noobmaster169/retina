@@ -4,9 +4,12 @@ import { notFound } from "next/navigation";
 import { DetailHeader } from "@/components/business/detail-header";
 import { PageContext } from "@/components/dock/page-context-announcer";
 import { TopBar } from "@/components/shell/top-bar";
-import { getShipment } from "@/lib/api-client";
+import { located } from "@/components/business/map-scale";
+import { getShipment, listEntities } from "@/lib/api-client";
+import type { ShipmentRef } from "@/lib/api/shipments-schemas";
 
 import { ShipmentRecord } from "./shipment-record";
+import { type RoutePort, ShipmentRoute } from "./shipment-route";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Shipment · Retina SDOC" };
@@ -15,6 +18,14 @@ export default async function Page({ params }: PageProps<"/shipment/[emailId]">)
   const { emailId } = await params;
   const shipment = await getShipment(emailId);
   if (!shipment) notFound();
+  // The port list carries where each port sits; a shipment names its ports only by id.
+  const ports = shipment.pol || shipment.pod ? (await listEntities("port")).entities : [];
+  const routePort = (ref: ShipmentRef | null): RoutePort | null => {
+    if (!ref) return null;
+    const row = ports.find((port) => port.id === ref.id);
+    const at = row ? located([row])[0] : undefined;
+    return { ref, lat: at?.lat ?? null, lon: at?.lon ?? null, countryCode: row?.attributes.countryCode ?? null };
+  };
   const reference = shipment.ocNo ?? shipment.blNo ?? shipment.bookingRef ?? emailId;
   const chips = [
     shipment.ocNo ? `OC ${shipment.ocNo}` : null,
@@ -36,7 +47,7 @@ export default async function Page({ params }: PageProps<"/shipment/[emailId]">)
       <TopBar crumbs={[{ label: "Shipments", href: "/shipment" }, { label: reference, mono: true }]} />
       <main className="min-h-0 grow overflow-y-auto">
         <DetailHeader type="shipment" name={reference} chips={chips} />
-        <ShipmentRecord shipment={shipment} />
+        <ShipmentRecord shipment={shipment} route={<ShipmentRoute pol={routePort(shipment.pol)} pod={routePort(shipment.pod)} />} />
       </main>
     </div>
   );

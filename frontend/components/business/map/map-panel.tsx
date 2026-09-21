@@ -11,17 +11,22 @@ import type { PlacedLane, PlacedPin } from "./types";
  * The port a person picked, beside the map rather than on a new page: its
  * flag, code and country, what loads and discharges, and each lane it sits
  * on. A lane's other end is a button, so a person can walk the network
- * without leaving the map. Open goes to the page.
+ * without leaving the map, and so is every other port in the same country.
+ * Open goes to the page. It floats in the map's bottom-left corner, over
+ * open ocean at the world view, and its lists scroll so it stays short.
  */
 export function MapPanel({
   pin,
   lanes,
+  country = [],
   onPick,
   onFrame,
   onClose,
 }: {
   pin: PlacedPin;
   lanes: PlacedLane[];
+  /** The other located ports in this port's country. */
+  country?: PlacedPin[];
   onPick(pin: PlacedPin): void;
   onFrame(): void;
   onClose(): void;
@@ -29,7 +34,7 @@ export function MapPanel({
   const chips = [pin.locode, pin.country].filter((value): value is string => !!value);
   return (
     <aside
-      className="absolute right-3 top-3 z-10 w-[280px] max-w-[calc(100%-1.5rem)] rounded-lg border border-hairline bg-canvas shadow-overlay"
+      className="absolute bottom-3 left-3 z-10 w-[280px] max-w-[calc(100%-4.5rem)] rounded-lg border border-hairline bg-canvas shadow-overlay"
       aria-label={`${pin.name} on the map`}
     >
       <div className="flex items-start gap-2 border-b border-hairline px-3 py-2.5">
@@ -59,7 +64,7 @@ export function MapPanel({
         {lanes.length === 0 ? (
           <p className="text-small text-ink-tertiary">No shipment names both ends yet.</p>
         ) : (
-          <ul className="max-h-40 space-y-0.5 overflow-y-auto">
+          <ul className="max-h-28 space-y-0.5 overflow-y-auto">
             {lanes.map((lane) => {
               const outbound = lane.polId === pin.id;
               const other = outbound ? lane.pod : lane.pol;
@@ -74,7 +79,6 @@ export function MapPanel({
                     <Flag code={other.countryCode} height={10} />
                     <span className="min-w-0 grow truncate">{other.name}</span>
                     <span className="shrink-0 font-mono text-mono-sm text-ink-tertiary">{lane.count}</span>
-                    {lane.disputed > 0 ? <span className="shrink-0 rounded bg-differ-tint px-1 font-mono text-[10px] text-differ">{lane.disputed} disputed</span> : null}
                   </button>
                 </li>
               );
@@ -82,6 +86,23 @@ export function MapPanel({
           </ul>
         )}
       </div>
+      {country.length ? (
+        <div className="border-t border-hairline px-3 py-2.5">
+          <p className="mb-1 text-caption text-ink-tertiary">
+            Also in {pin.country ?? "this country"} <span className="font-mono">{country.length}</span>
+          </p>
+          <ul className="max-h-20 space-y-0.5 overflow-y-auto">
+            {country.map((other) => (
+              <li key={other.id}>
+                <button type="button" onClick={() => onPick(other)} className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left text-small hover:bg-sunken">
+                  <span className="min-w-0 grow truncate">{other.name}</span>
+                  <span className="shrink-0 font-mono text-mono-sm text-ink-tertiary">{other.count}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       <div className="flex items-center justify-between gap-2 border-t border-hairline px-3 py-2">
         <button type="button" onClick={onFrame} className="text-small text-ink-secondary hover:text-ink">
           Frame its lanes
@@ -121,7 +142,6 @@ export function MapTooltip({ at, flip, pin, lane }: { at: { x: number; y: number
           </span>
           <span className="block text-caption text-ink-tertiary">
             {lane.count} {lane.count === 1 ? "shipment" : "shipments"}
-            {lane.disputed > 0 ? `, ${lane.disputed} disputed at a port` : ""}
           </span>
         </>
       ) : null}

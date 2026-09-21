@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 import { ShipmentLane } from "@/components/business/shipment-lane";
 import { Chip, toneOf } from "@/components/ui/chip";
@@ -6,12 +7,13 @@ import type { ShipmentDetail } from "@/lib/api/shipments-schemas";
 
 import { none, Row, Section, Thing } from "./record-parts";
 
-/** The whole record, in sections: who, where, what, on what terms, and the email it came from. */
-export function ShipmentRecord({ shipment: s }: { shipment: ShipmentDetail }) {
+/** The whole record, in sections: who, where, what, on what terms, and the email it came from. `route` heads the left column, a picture of the lane. */
+export function ShipmentRecord({ shipment: s, route }: { shipment: ShipmentDetail; route?: ReactNode }) {
   const extras = Object.entries(s.attributes);
   return (
     <div className="grid grid-cols-1 gap-8 px-7 py-6 xl:grid-cols-2">
       <div className="space-y-8">
+        {route}
         <Section title="Parties">
           <Row label="Shipper"><Thing type="party" item={s.shipper} /></Row>
           <Row label="Consignee"><Thing type="party" item={s.consignee} /></Row>

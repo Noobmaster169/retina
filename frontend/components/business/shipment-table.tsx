@@ -4,7 +4,7 @@ import Link from "next/link";
 
 import { Chip } from "@/components/ui/chip";
 import type { ShipmentRow } from "@/lib/api/shipments-schemas";
-import { formatWhenShort } from "@/lib/when";
+import { formatWhen } from "@/lib/when";
 
 import { type Column, DataTable } from "./data-table";
 import { hrefFor } from "./kind";
@@ -44,7 +44,7 @@ export const SHIPMENT_COLUMNS: Column<ShipmentRow>[] = [
     label: "Mail date",
     width: "110px",
     sort: (r) => r.mailDate ?? "",
-    cell: (r) => (r.mailDate ? formatWhenShort(r.mailDate) : <span className="text-ink-faint">not stated</span>),
+    cell: (r) => (r.mailDate ? formatWhen(r.mailDate, false) : <span className="text-ink-faint">not stated</span>),
   },
   {
     key: "disputed",
@@ -62,10 +62,21 @@ export const SHIPMENT_COLUMNS: Column<ShipmentRow>[] = [
   },
 ];
 
-export function ShipmentTable({ rows, empty = "No shipment has been read yet." }: { rows: ShipmentRow[]; empty?: string }) {
+export function ShipmentTable({
+  rows,
+  columns = SHIPMENT_COLUMNS,
+  minWidth = 1080,
+  empty = "No shipment has been read yet.",
+}: {
+  rows: ShipmentRow[];
+  columns?: Column<ShipmentRow>[];
+  minWidth?: number;
+  empty?: string;
+}) {
   return (
     <DataTable
-      columns={SHIPMENT_COLUMNS}
+      columns={columns}
+      minWidth={minWidth}
       rows={rows}
       keyOf={(r) => r.emailId}
       hrefOf={(r) => `/shipment/${encodeURIComponent(r.emailId)}`}
