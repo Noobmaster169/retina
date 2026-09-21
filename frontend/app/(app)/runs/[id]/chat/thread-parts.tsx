@@ -1,8 +1,6 @@
 "use client";
 
-import { LiveCalls } from "@/components/chat/live-calls";
-import { Markdown } from "@/components/chat/markdown";
-import { withoutUnfinishedLink } from "@/components/chat/mention";
+import { PendingBody } from "@/components/chat/pending-body";
 import { StatusLine } from "@/components/chat/status-line";
 import type { ChatToolCall } from "@/lib/api/chat-agent-schemas";
 import type { ChatProgress } from "@/lib/api/chat-thread-schemas";
@@ -27,15 +25,7 @@ export function Pending({ progress, calls, since }: { progress: ChatProgress | n
   return (
     <div className="space-y-3">
       <StatusLine progress={progress} since={since} />
-      <LiveCalls calls={calls} />
-      {progress?.answer ? (
-        <Markdown text={withoutUnfinishedLink(progress.answer)} />
-      ) : (
-        <>
-          <div className="h-4 w-2/3 rounded-xs bg-sunken" />
-          <div className="h-4 w-1/2 rounded-xs bg-sunken" />
-        </>
-      )}
+      <PendingBody progress={progress} calls={calls} />
     </div>
   );
 }

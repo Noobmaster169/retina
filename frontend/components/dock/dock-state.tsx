@@ -45,7 +45,9 @@ interface DockState {
   off: string[];
   suggestions: string[];
   note: string | null;
-  announce(refs: OfferedRef[], suggestions: string[], note: string | null): void;
+  /** True while the page is still reading what it offered, so the harness can say so. */
+  pageLoading: boolean;
+  announce(refs: OfferedRef[], suggestions: string[], note: string | null, loading?: boolean): void;
   toggle(ref: OfferedRef): void;
   pin(ref: OfferedRef): void;
   unpin(ref: OfferedRef): void;
@@ -107,6 +109,7 @@ export function DockProvider({ children }: { children: ReactNode }) {
   const [off, setOff] = useState<string[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [note, setNote] = useState<string | null>(null);
+  const [pageLoading, setPageLoading] = useState(false);
   const [asked, setAsked] = useState<Asked | null>(null);
 
   const setOpen = useCallback((next: boolean) => {
@@ -129,10 +132,11 @@ export function DockProvider({ children }: { children: ReactNode }) {
   );
   const takeAsked = useCallback(() => setAsked(null), []);
 
-  const announce = useCallback((refs: OfferedRef[], nextSuggestions: string[], nextNote: string | null) => {
+  const announce = useCallback((refs: OfferedRef[], nextSuggestions: string[], nextNote: string | null, loading = false) => {
     setPage(refs);
     setSuggestions(nextSuggestions);
     setNote(nextNote);
+    setPageLoading(loading);
     // A new page's refs start attached; what was switched off belonged to the last page.
     setOff([]);
   }, []);
@@ -168,9 +172,9 @@ export function DockProvider({ children }: { children: ReactNode }) {
   const value = useMemo<DockState>(
     () => ({
       open, setOpen, asked, ask, takeAsked, conversationId, setConversationId, thread, startNew, openThread,
-      page, pinned, off, suggestions, note, announce, toggle, pin, unpin,
+      page, pinned, off, suggestions, note, pageLoading, announce, toggle, pin, unpin,
     }),
-    [open, setOpen, asked, ask, takeAsked, conversationId, setConversationId, thread, startNew, openThread, page, pinned, off, suggestions, note, announce, toggle, pin, unpin],
+    [open, setOpen, asked, ask, takeAsked, conversationId, setConversationId, thread, startNew, openThread, page, pinned, off, suggestions, note, pageLoading, announce, toggle, pin, unpin],
   );
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }

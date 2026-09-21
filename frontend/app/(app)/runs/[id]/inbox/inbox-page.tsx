@@ -73,6 +73,7 @@ export function InboxPage({ runId, initialList, params }: InboxPageProps) {
             ? [{ kind: "email", id: selected, title: detail.subject }, { kind: "run", id: runId, title: `run ${runId.slice(0, 8)}` }]
             : [{ kind: "run", id: runId, title: `run ${runId.slice(0, 8)}` }]
         }
+        loading={Boolean(selected && detail.loading)}
         note={trace ? openingLine(trace) : null}
         suggestions={
           trace?.review
