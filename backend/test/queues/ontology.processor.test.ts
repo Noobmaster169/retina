@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { FakeLlmClient } from "../../src/agents/__fakes__/fake.llm-client";
 import type { LlmRequest } from "../../src/agents/llm-client";
-import { documents, emailRuns, extractions } from "../../src/ontology/repositories";
+import { documents, emailRuns, entityResolution, extractions } from "../../src/ontology/repositories";
 import { processOntology } from "../../src/queues/processors/ontology.processor";
 import { keys } from "../../src/storage";
 import { MemoryStore } from "../../src/storage/__fakes__/memory.store";
@@ -55,9 +55,9 @@ const deps = (tx: PoolClient, llm: FakeLlmClient, store: MemoryStore) => ({
 const resolved = (sameAs: string | null) =>
   JSON.stringify({ rationale: "nothing like it", sameAs, ambiguous: false, confidence: 0.9 });
 
-/** Answers `shipment-read` with the scripted reading and every `entity-resolve` with "it is new". */
-function scripted(shipment: string): (request: LlmRequest) => string {
-  return (request) => (request.system.includes("You read what one email states") ? shipment : resolved(null));
+/** Answers `shipment-read` with the scripted reading and every `entity-resolve` with `judge`, which says "it is new" unless told otherwise. */
+function scripted(shipment: string, judge: (request: LlmRequest) => string = () => resolved(null)): (request: LlmRequest) => string {
+  return (request) => (request.system.includes("You read what one email states") ? shipment : judge(request));
 }
 
 /** An email past its comparison, with one readable SI document and its extracted fields. */
@@ -196,13 +196,105 @@ describe("the ontology processor", () => {
 
       const first = new FakeLlmClient(scripted(reading()));
       await processOntology(deps(tx, first, store), job);
-      // Two spellings, two entity-resolve calls, plus the reading itself.
-      expect(first.requests).toHaveLength(3);
+      // Nothing is near either spelling, so neither needs a judge: only the reading itself is paid for.
+      expect(first.requests).toHaveLength(1);
 
       const again = new FakeLlmClient(scripted(reading()));
       await processOntology(deps(tx, again, store), job);
       // The reading is reused from the stored call, and both spellings are now held.
       expect(again.requests).toHaveLength(0);
+    });
+  });
+
+  it("asks a judge about a spelling with something near it, and shows it what is near", async () => {
+    await inRollback(async (tx) => {
+      const store = new MemoryStore();
+      const { emailId, emailRunId } = await readEmail(tx, store);
+      const nearby = await entityResolution.insertFromSighting(tx, "vessel", "MMSS 2507 V.257087", new Date());
+      const llm = new FakeLlmClient(
+        scripted(reading(), (request) => resolved(request.user.includes(`[${nearby}]`) ? String(nearby) : null)),
+      );
+
+      await processOntology(deps(tx, llm, store), { emailId, emailRunId: Number(emailRunId) });
+
+      const asked = llm.requests.filter((request) => request.system.includes("You decide whether a name"));
+      expect(asked).toHaveLength(1);
+      const { shipment } = await rows(tx, emailId);
+      expect(shipment.vessel_id).toBe(String(nearby));
+    });
+  });
+});
+
+/**
+ * Two readings at once. Each judges against what was committed when it began, so
+ * one that meets a thing for the first time cannot know another is about to
+ * create it. `raced` runs a competing write in the gap between this reading's
+ * judgement and its commit, which is exactly where it would land.
+ */
+describe("the ontology processor when another reading commits first", () => {
+  /** A `tx` seam that lets `competitor` commit once, just before this reading's first write transaction. */
+  const raced = (tx: PoolClient, competitor: () => Promise<unknown>) => {
+    let injected = false;
+    return async <T,>(fn: (inner: PoolClient) => Promise<T>): Promise<T> => {
+      if (!injected) {
+        injected = true;
+        await competitor();
+      }
+      return fn(tx);
+    };
+  };
+
+  it("joins a near spelling the other reading created, instead of making a second thing", async () => {
+    await inRollback(async (tx) => {
+      const store = new MemoryStore();
+      const { emailId, emailRunId } = await readEmail(tx, store);
+      let rival = 0;
+      const llm = new FakeLlmClient(
+        scripted(reading(), (request) => resolved(request.user.includes(`[${rival}]`) ? String(rival) : null)),
+      );
+      const job = { emailId, emailRunId: Number(emailRunId) };
+      const withRace = { ...deps(tx, llm, store), tx: raced(tx, async () => { rival = await entityResolution.insertFromSighting(tx, "vessel", "MMSS 2507 V.257087", new Date()); }) };
+
+      await processOntology(withRace, job);
+
+      const vessels = await tx.query<{ id: string }>("select id::text as id from core.entities where kind = 'vessel' and merged_into is null");
+      expect(vessels.rows.map((row) => row.id)).toEqual([String(rival)]);
+      // The signer was judged once, before the race, and stood. The vessel was judged again, once.
+      expect(llm.requests.filter((request) => request.system.includes("You decide whether a name"))).toHaveLength(1);
+      const { shipment } = await rows(tx, emailId);
+      expect(shipment.vessel_id).toBe(String(rival));
+    });
+  });
+
+  it("uses the thing the other reading created when it holds this exact spelling, with no judge at all", async () => {
+    await inRollback(async (tx) => {
+      const store = new MemoryStore();
+      const { emailId, emailRunId } = await readEmail(tx, store);
+      let rival = 0;
+      const llm = new FakeLlmClient(scripted(reading()));
+      const withRace = { ...deps(tx, llm, store), tx: raced(tx, async () => { rival = await entityResolution.insertFromSighting(tx, "vessel", "MMSS 2507 V.257087E", new Date()); }) };
+
+      await processOntology(withRace, { emailId, emailRunId: Number(emailRunId) });
+
+      const vessels = await tx.query<{ id: string }>("select id::text as id from core.entities where kind = 'vessel' and merged_into is null");
+      expect(vessels.rows.map((row) => row.id)).toEqual([String(rival)]);
+      expect(llm.requests).toHaveLength(1);
+    });
+  });
+
+  it("commits at once, in one round, when nothing near its spellings changed", async () => {
+    await inRollback(async (tx) => {
+      const store = new MemoryStore();
+      const { emailId, emailRunId } = await readEmail(tx, store);
+      const llm = new FakeLlmClient(scripted(reading()));
+      // A competing write of a different kind of thing moves nothing this reading was shown.
+      const withRace = { ...deps(tx, llm, store), tx: raced(tx, async () => { await entityResolution.insertFromSighting(tx, "port", "ROTTERDAM, NETHERLANDS", new Date()); }) };
+
+      await processOntology(withRace, { emailId, emailRunId: Number(emailRunId) });
+
+      expect(llm.requests).toHaveLength(1);
+      const vessels = await tx.query("select 1 from core.entities where kind = 'vessel' and merged_into is null");
+      expect(vessels.rowCount).toBe(1);
     });
   });
 });

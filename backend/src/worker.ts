@@ -23,12 +23,15 @@ const redis = getRedis();
 const pool = getPool();
 const priority = redisPriorityCache(redis);
 const llm = proxyLlmClient({ maxConcurrency: config.LLM_MAX_CONCURRENCY });
+// A lane of its own, as wide as the queue it serves: see WorkerDeps.ontologyLlm.
+const ontologyLlm = proxyLlmClient({ maxConcurrency: config.ONTOLOGY_CONCURRENCY });
 const workers = startWorkers(
   {
     pool,
     source: new AverisSource(config.EMAIL_SERVER_URL),
     store,
     llm,
+    ontologyLlm,
     docExtract: httpDocExtractClient(config.DOC_EXTRACT_URL),
     live,
     classify: queues.classify,
@@ -48,6 +51,7 @@ log.info(
     compare: config.COMPARE_CONCURRENCY,
     ontology: config.ONTOLOGY_CONCURRENCY,
     llm: config.LLM_MAX_CONCURRENCY,
+    ontologyLlm: config.ONTOLOGY_CONCURRENCY,
   },
   "worker started",
 );

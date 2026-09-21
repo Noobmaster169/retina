@@ -25,6 +25,13 @@ const log = childLogger({ module: "workers" });
 
 export interface WorkerDeps extends IngestDeps {
   llm: LlmClient;
+  /**
+   * The semantic layer's own lane to the model, capped on its own. A reading is
+   * one call of about two minutes, and the shared semaphore hands slots out
+   * first come first served, so ontology jobs sharing it would hold slots a
+   * scored email is waiting for. Absent, they share `llm`.
+   */
+  ontologyLlm?: LlmClient;
   docExtract: DocExtractClient;
   live?: LiveCalls;
   classify: JobAdder<ClassifyJob> & QueuePauser;
@@ -162,12 +169,13 @@ export function startWorkers(deps: WorkerDeps, connection: Redis): RunningWorker
     async (job) => {
       // Three job names on one queue: one email's reading, and the two
       // maintenance passes the clock enqueues rather than running itself.
-      if (job.name === JOB_NAMES.profiles) return void (await refreshProfiles(deps));
-      if (job.name === JOB_NAMES.concepts) return void (await backfillConcepts(deps));
+      const lane = { ...deps, llm: deps.ontologyLlm ?? deps.llm };
+      if (job.name === JOB_NAMES.profiles) return void (await refreshProfiles(lane));
+      if (job.name === JOB_NAMES.concepts) return void (await backfillConcepts(lane));
 
       const data = parse(OntologyJob, job);
       const pauser = deps.ontology;
-      const read = () => processOntology({ ...deps, tx: transactor(deps.pool) }, data);
+      const read = () => processOntology({ ...lane, tx: transactor(deps.pool) }, data);
       return noRetryOnTerminal(() =>
         pauser ? pausingOnOutage(pauser, { stage: "ontology", jobId: job.id, runId: "", emailId: data.emailId }, read) : read(),
       );
