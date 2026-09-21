@@ -49,4 +49,14 @@ describe("clusters", () => {
     const company = DESTINATIONS.find((destination) => destination.key === "company");
     expect(company && hrefFor(company, null)).toBe("/company");
   });
+
+  // A cluster says what a screen is about, not how it is addressed. Traffic is
+  // an operations screen that no run scopes, so it must still lead to its own
+  // path rather than to the run list the rest of that cluster falls back to.
+  it("leads a global operations destination to its own path, with or without a run", () => {
+    const gate = DESTINATIONS.find((destination) => destination.key === "gate");
+    expect(gate?.cluster).toBe("operations");
+    expect(gate && hrefFor(gate, null)).toBe("/gate");
+    expect(gate && hrefFor(gate, "11111111-1111-1111-1111-111111111111")).toBe("/gate");
+  });
 });
