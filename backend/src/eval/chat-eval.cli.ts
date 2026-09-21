@@ -75,7 +75,7 @@ async function main(): Promise<void> {
   const turns: Record<string, unknown> = {};
 
   for (const question of questions) {
-    const scope = { runId: question.scoped ? runId : null, emailId: null };
+    const scope = { runId: question.scoped ? runId : null, emailId: null, context: [] };
     llm.reset();
     const started = Date.now();
     const result = await runTurn(

@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 
-import { ChatTurnsAfter, type ChatTurn } from "@/lib/api/chat-agent-schemas";
+import { type ChatTurn } from "@/lib/api/chat-agent-schemas";
+import { ChatTurnsAfter } from "@/lib/api/chat-thread-schemas";
 
 /**
  * The steps of the turn in flight, polled while its own POST is still open.

@@ -13,7 +13,7 @@
 export const MAX_INJECTED = 3;
 
 export interface TurnFacts {
-  scope: { runId: string | null; emailId: string | null };
+  scope: { runId: string | null; emailId: string | null; contextKinds?: string[] };
   /** A call on this turn was refused by the literal guard. */
   guardRefused: boolean;
   /** A lookup on this turn found nothing, or nothing exact. */
@@ -60,8 +60,10 @@ export function skillsToInject(facts: TurnFacts, known: ReadonlySet<string>): In
   if (facts.cameUpEmpty) wanted.push({ name: "near-misses", how: "injected" });
   if (facts.ambiguous) wanted.push({ name: "ask-back", how: "injected" });
   if (facts.gaveMeaning) wanted.push({ name: "meaning-terms", how: "injected" });
-  if (facts.scope.emailId) wanted.push({ name: "explain-an-email", how: "injected" });
-  if (facts.scope.runId && !facts.scope.emailId) wanted.push({ name: "pick-the-run", how: "injected" });
+  // An email attached to the question is an email in front of the agent, as one the conversation opened on is.
+  const emailInFront = facts.scope.emailId !== null || (facts.scope.contextKinds ?? []).includes("email");
+  if (emailInFront) wanted.push({ name: "explain-an-email", how: "injected" });
+  if (facts.scope.runId && !emailInFront) wanted.push({ name: "pick-the-run", how: "injected" });
   wanted.push(...facts.sticky.map((name) => ({ name, how: "loaded" as const })));
 
   const seen = new Set<string>();

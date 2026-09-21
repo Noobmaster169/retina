@@ -16,7 +16,7 @@ import { toTurn, type TurnRow } from "./chat.turns";
  * working twice.
  */
 
-const COLUMNS = "id, role, content, tool_name, tool_args, tool_result, duration_ms, sql_used, created_at";
+const COLUMNS = "id, role, content, tool_name, tool_args, tool_result, duration_ms, sql_used, context, created_at";
 
 /** What a tool row's single call looks like before the row's own fields are laid over it. */
 const BARE_CALL: ChatToolCall = {

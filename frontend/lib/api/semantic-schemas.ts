@@ -10,8 +10,10 @@ export type EntityKind = z.infer<typeof EntityKind>;
 
 /** Where one attribute came from. `model` is the model's own knowledge and is drawn as unverified. */
 export const AttributeSource = z.object({
-  source: z.enum(["mail", "model"]),
-  confidence: z.number(),
+  /** `search` is the locate step's web search; `model` its own knowledge when the search found nothing. */
+  source: z.enum(["mail", "model", "search"]),
+  /** The model's own confidence on its knowledge; null for a `mail` basis, where the value is in the dossier or it is not. */
+  confidence: z.number().min(0).max(1).nullable().default(null),
   llmCallId: z.number().int().nullable().default(null),
 });
 export type AttributeSource = z.infer<typeof AttributeSource>;

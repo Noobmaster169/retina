@@ -46,8 +46,14 @@ export const PortAttributes = z.object({
   /** The UN/LOCODE, where the model is sure of it. Never matched on alone: a code on a document can name another port. */
   locode: text(10),
   coast: text(60),
+  /** Decimal degrees as text, like every other attribute. Written by the port-locate step, never by the profile. */
+  lat: text(20),
+  lon: text(20),
 });
 export type PortAttributes = z.infer<typeof PortAttributes>;
+
+/** The keys the locate step owns. The profile write keeps them; the profile schema leaves them out. */
+export const LOCATED_KEYS = ["lat", "lon"] as const;
 
 export const PartyAttributes = z.object({
   country: text(80),
@@ -104,7 +110,8 @@ export const ATTRIBUTES: Record<EntityKind, z.ZodType> = {
  * separate number to give: the value is in the dossier or it is not.
  */
 export const AttributeSource = z.object({
-  source: z.enum(["mail", "model"]),
+  /** `search` is the locate step's web search; `model` its own knowledge when the search found nothing. */
+  source: z.enum(["mail", "model", "search"]),
   confidence: z.number().min(0).max(1).nullable().default(null),
   llmCallId: z.number().int().nullable().default(null),
 });

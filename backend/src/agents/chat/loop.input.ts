@@ -1,4 +1,5 @@
 import type { StructuredCall } from "../structured";
+import type { ResolvedContext } from "./context";
 import type { FinishedCall } from "./loop.steps";
 import { transcribe } from "./loop.steps";
 import type { Standing } from "./standing";
@@ -16,6 +17,8 @@ import { toolDescriptions } from "./tools";
 export interface Scope {
   runId: string | null;
   emailId: string | null;
+  /** What the person had attached when they asked. Empty on most turns. */
+  context: ResolvedContext[];
 }
 
 export interface InputParts {
@@ -40,7 +43,10 @@ export function scopeText(scope: Scope): string {
     scope.runId ? `run ${scope.runId}` : "no particular run",
     scope.emailId ? `the email ${scope.emailId}` : null,
   ].filter((part): part is string => part !== null);
-  return `This conversation was opened about ${parts.join(", and ")}. Use it where the question does not say otherwise, and go wider when the question asks something wider.`;
+  const opened = `This conversation was opened about ${parts.join(", and ")}. Use it where the question does not say otherwise, and go wider when the question asks something wider.`;
+  if (scope.context.length === 0) return opened;
+  const looking = `The person is looking at: ${scope.context.map((item) => item.title).join(", ")}. Answer about them unless the question says otherwise; a question about something else is answered as asked.`;
+  return [opened, looking, ...scope.context.map((item) => `- ${item.line}`)].join("\n");
 }
 
 function historyText(history: InputParts["history"]): string[] {

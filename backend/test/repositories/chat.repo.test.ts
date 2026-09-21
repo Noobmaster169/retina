@@ -123,3 +123,15 @@ describe("a turn's steps while it runs", () => {
     });
   });
 });
+
+describe("a question's context", () => {
+  it("is stored on the user turn and read back", async () => {
+    await inRollback(async (tx) => {
+      const conversation = await chat.create(tx, { actor: "a test" });
+      const asked = await chat.addUserTurn(tx, conversation.id, "who are they?", [{ kind: "party", id: "12" }]);
+      expect(asked.context).toEqual([{ kind: "party", id: "12" }]);
+      const [read] = await chat.turns(tx, conversation.id);
+      expect(read.context).toEqual([{ kind: "party", id: "12" }]);
+    });
+  });
+});

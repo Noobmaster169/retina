@@ -633,6 +633,10 @@ images, OCR text is used and the reviewer sees the PNG.
 - One transport. The proxy is the `llm-proxy` service of the same compose stack; the second
   transport to another Retina API's `/ai/chat` was removed with the remote proxy it existed for,
   and `config.ts` refuses to boot an `LLM_PROXY_URL` that still names one.
+- `port-locate` (phase 13) is the one step on the `sonnet-web` alias, the proxy's `claudecli_web`
+  rail with `WebSearch`. Its input is a port's name, country and locode from its own attributes,
+  never email text. It writes `lat` and `lon` with source `search` or `model`, once per port, from
+  the profile refresh after the profile is written.
 - A `claude` with no login is the proxy's `provider_not_logged_in`, 502 with `retryable: false`,
   so the backend fails the email at once with a message naming `CLAUDE_CODE_OAUTH_TOKEN` instead
   of reading a missing secret as an outage and requeueing forever.
@@ -949,8 +953,10 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 | `POST /chat/:id/messages` | `{ content, actor, skills? }` runs one turn and answers `{ turn, exhausted }`. `skills` is up to three names the person picked in the composer, refused with 400 when the registry does not know one, and injected exactly as an event-injected skill is. The question is stored before the model is asked, so a turn that fails halfway still leaves the person's words on the page. No streaming; the frontend route handler declares `maxDuration = 300` and the client times out just under it. Aborting the request stops the turn between steps, and what it had is still stored |
 | `GET /chat/:id/turns?after=<id>` | every turn newer than one id, **including the `role: tool` rows** a turn writes as each call finishes. The only read that returns them. The page polls it once a second while its own POST is in flight, which is how the steps appear one by one |
 | `GET /chat/skills` | the skill cards for the composer's `/` menu: `{ name, version, when }`. The bodies are never sent; they are for the agent |
-| `GET /ontology/types` | the five types the rail offers, with live counts and `built`: Emails, Ports, Parties, Shipments, Carriers. The last two are never built, because nothing in the seven fields yields a booking or a vessel, and the rail draws them dashed. The other seven `ObjectType`s are real and are reached through an object rather than browsed; `client` in particular folds into `party`, since a sender domain and a consignee are the same company read two ways |
+| `GET /ontology/types` | the types the rail offers, with live counts and `built`: Emails, then the six resolved kinds, then Shipments, which stays unbuilt in the ontology (one row per email, nothing groups them into a booking) and is listed at `/shipment` instead. A company and a port answer an `openHref` to their business pages since phase 13. The other seven `ObjectType`s are real and are reached through an object rather than browsed; `client` in particular folds into `party`, since a sender domain and a consignee are the same company read two ways |
 | `GET /ontology/:type`, `GET /ontology/:type/:id`, `/:id/detail`, `/:id/graph?hops=1\|2` | the index of a resolved kind; one object in the one shape every type shares; the four parts a resolved thing opens into; and one email's graph as nodes and named edges. The graph carries no coordinates: the layout is one pure function in the frontend with a table-driven test |
+| `GET /shipments?partyId&portId&disputed&q&page&pageSize`, `GET /shipments/:emailId` | shipments as the mail states them, each party and port a reference to the resolved thing; one shipment with everything shipment-read wrote (phase 13) |
+| `GET /ontology/:kind` for all six kinds; `GET /ontology/party/:id/people`, `/party/:id/ports`, `/port/:id/parties` | a kind's list carries attributes, the profile's first sentence and distinct emails per role; the three counterpart lists count distinct undisputed emails (phase 13) |
 | `GET /database/tables`, `/tables/:schema/:name?limit=&offset=`, `/tables/:schema/:name/rows/:id` | every relation of `core` and `analytics` with an exact count; a page of one with typed columns and the SQL that produced it; one row as fields plus what points at it by foreign key. Identifiers are read out of `pg_catalog` and checked against a pattern before they reach a query; this path composes its own SQL and takes nothing a caller wrote, which is why it does not use the RO pool |
 | `GET /eval/runs/:id` | holdout, full-set and this-run scoreboards computed locally, plus `emails`: each email of the run, its answer beside the truth, check by check on the scorer's definitions (`EmailVerdict`), shown at `/runs/[id]/results`. Dev only; 404 on the VPS where ground truth is absent |
 | `GET /lessons`, `POST /lessons/:id/approve|reject` | gated self-improvement |
@@ -988,6 +994,13 @@ A turn does not start blind. Besides the question it is given, in this order:
 | Orientation | `agents/chat/orientation.ts`, SQL in `orientation.repo.ts` | what the database holds right now: runs, the scoped or latest run's counts, every port (up to 60) and the top parties with ids, sender domains, what is not there. Computed on a conversation's first turn, kept in `chat_conversations.orientation` with a watermark, recomputed only when a run progressed or the resolver rebuilt |
 | Skills | `agents/chat/skills/<name>/SKILL.md`, versioned | how to do one kind of task here. A two-line card per skill is always shown; a body is injected or loaded |
 | Recipes | `agents/chat/skills/<name>/recipes/<recipe>.sql` | a named, parameterised query with declared parameters and columns. Passes `guardSql` when it loads, runs on `roPool`, tested as `retina_ro` |
+
+**Context on a question (phase 13).** `NewMessage.context` carries up to five refs to what the
+person was looking at, stored on the user turn in `chat_turns.context`. `agents/chat/context.ts`
+resolves each through the same repositories the pages read and the scope section says "The person
+is looking at: ..., answer about them unless the question says otherwise". A ref nothing holds is
+dropped and logged. It is the existing scope rule extended: a default the agent may widen, never a
+filter. An email in the context injects `explain-an-email` as a conversation opened on one does.
 
 **Structure is written, values are computed.** `CHAT.md`, the skills and the recipes name no
 company, port, sender or subject code (`chat-harness.test.ts` holds that); what exists is the

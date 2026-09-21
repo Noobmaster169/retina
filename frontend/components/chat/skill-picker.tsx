@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { ChatSkillCards, type ChatSkillCard } from "@/lib/api/chat-agent-schemas";
+import { ChatSkillCards, type ChatSkillCard } from "@/lib/api/chat-thread-schemas";
 
 import { matchingSkills } from "./slash";
 

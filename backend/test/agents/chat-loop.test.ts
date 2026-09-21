@@ -26,7 +26,7 @@ const final = (answer: string) => step({ action: "final", answer });
 
 const BASE: Omit<TurnInput, "question"> = {
   history: [],
-  scope: { runId: null, emailId: null },
+  scope: { runId: null, emailId: null, context: [] },
   orientation: "(an orientation)",
   today: "2026-09-20",
   stickySkills: [],
@@ -245,7 +245,7 @@ describe("the harness around the loop", () => {
       const llm = new FakeLlmClient([calls({ tool: "run_recipe", args: { name: "emails_for_entities", params: { entity_ids: ids } } }), final("Three emails.")]);
       const result = await runTurn(
         { llm, pool: tx, tools: { pool: getPool(), roPool: tx, runId: seeded.runId, emailId: null } },
-        { ...BASE, scope: { runId: seeded.runId, emailId: null }, question: "which emails involve them?" },
+        { ...BASE, scope: { runId: seeded.runId, emailId: null, context: [] }, question: "which emails involve them?" },
       );
 
       const [call] = result.toolCalls;

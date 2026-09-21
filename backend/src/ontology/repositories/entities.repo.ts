@@ -19,6 +19,20 @@ interface EntityDbRow {
   name_count: number;
   emails: string;
   last_seen_at: Date | null;
+  attributes: Record<string, string | null> | null;
+  profile_md: string | null;
+  roles: Record<string, number | string> | null;
+}
+
+/** The profile's first prose line: after the title and the "A port." line, before any section heading. */
+export function summaryOf(markdown: string | null): string | null {
+  if (!markdown) return null;
+  for (const line of markdown.split("\n")) {
+    const text = line.trim();
+    if (text === "" || text.startsWith("#") || /^A \w+\.$/.test(text)) continue;
+    return text;
+  }
+  return null;
 }
 
 function toRow(row: EntityDbRow): EntityRow {
@@ -30,16 +44,27 @@ function toRow(row: EntityDbRow): EntityRow {
     emails: Number(row.emails),
     names: row.name_count,
     lastSeen: row.last_seen_at?.toISOString() ?? null,
+    attributes: row.attributes ?? {},
+    summary: summaryOf(row.profile_md),
+    roles: Object.fromEntries(Object.entries(row.roles ?? {}).map(([role, n]) => [role, Number(n)])),
   };
 }
 
 /** Distinct emails a thing has been seen in, from either table. */
 const EMAILS = `(select count(distinct a.email_id) from core.entity_appearances a where a.entity_id = e.id)::text as emails`;
 
+/** Distinct emails per role, as one json object, so a list of 200 is one query. */
+const ROLES = `(select coalesce(jsonb_object_agg(r.role, r.n), '{}'::jsonb)
+                  from (select a.role, count(distinct a.email_id) as n
+                          from core.entity_appearances a where a.entity_id = e.id group by a.role) r) as roles`;
+
+const COLUMNS = `e.id::text as id, e.kind, e.canonical, e.mention_count, e.name_count, e.last_seen_at,
+                 e.attributes, e.profile_md, ${EMAILS}, ${ROLES}`;
+
 /** Most-seen first, which is the order a person scanning for the important ones wants. */
 export async function listByKind(db: Queryable, kind: EntityKind, limit = 200): Promise<EntityRow[]> {
   const { rows } = await db.query<EntityDbRow>(
-    `select e.id::text as id, e.kind, e.canonical, e.mention_count, e.name_count, e.last_seen_at, ${EMAILS}
+    `select ${COLUMNS}
        from core.entities e
       where e.kind = $1::text and e.merged_into is null
       order by e.mention_count + e.sighting_count desc, e.canonical asc
@@ -51,7 +76,7 @@ export async function listByKind(db: Queryable, kind: EntityKind, limit = 200): 
 
 export async function find(db: Queryable, id: string): Promise<EntityRow | null> {
   const { rows } = await db.query<EntityDbRow>(
-    `select e.id::text as id, e.kind, e.canonical, e.mention_count, e.name_count, e.last_seen_at, ${EMAILS}
+    `select ${COLUMNS}
        from core.entities e where e.id = $1::bigint and e.merged_into is null`,
     [id],
   );

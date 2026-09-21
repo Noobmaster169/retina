@@ -2,7 +2,8 @@
 
 import { useRef, useState } from "react";
 
-import { ChatAnswer, ChatConversation, type ChatTurn } from "@/lib/api/chat-agent-schemas";
+import { type ChatTurn, type ContextRef } from "@/lib/api/chat-agent-schemas";
+import { ChatAnswer, ChatConversation } from "@/lib/api/chat-thread-schemas";
 
 import { optimistic, whatLanded } from "./pending-turn";
 import { useLiveSteps, type Watched } from "./use-live-steps";
@@ -36,7 +37,7 @@ export interface NewConversationBody {
 
 export interface ChatState {
   turns: ChatTurn[];
-  ask(question: string, skills?: string[]): void;
+  ask(question: string, skills?: string[], context?: ContextRef[]): void;
   stop(): void;
   pending: boolean;
   /** The finished steps of the turn in flight, oldest first. Empty when nothing is pending. */
@@ -74,8 +75,10 @@ export function useChat(options: {
   openWith?: NewConversationBody;
   actor: string;
   initial: ChatTurn[];
+  /** Told the id of a conversation the first question opened, for a caller that shows it. */
+  onOpened?(id: string): void;
 }): ChatState {
-  const { conversationId, openWith, actor, initial } = options;
+  const { conversationId, openWith, actor, initial, onOpened } = options;
   const [turns, setTurns] = useState<ChatTurn[]>(initial);
   const [pending, setPending] = useState(false);
   const [since, setSince] = useState(() => Date.now());
@@ -94,7 +97,7 @@ export function useChat(options: {
     inFlight.current?.abort();
   }
 
-  function ask(question: string, skills: string[] = []): void {
+  function ask(question: string, skills: string[] = [], context: ContextRef[] = []): void {
     if (pending) return;
     setError(null);
     setPending(true);
@@ -125,6 +128,7 @@ export function useChat(options: {
           }
           id = start.conversation.id;
           opened.current = id;
+          onOpened?.(id);
         }
 
         // The last stored turn is the question just asked, so the steps of this
@@ -137,7 +141,7 @@ export function useChat(options: {
         const response = await fetch(`/api/chat/${id}/messages`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ content: question, actor, skills }),
+          body: JSON.stringify({ content: question, actor, skills, context }),
           signal: control.signal,
         });
         if (!response.ok) {

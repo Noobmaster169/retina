@@ -77,14 +77,34 @@ export interface ProfileWrite {
  * makes every verdict about this thing worth taking again, and nothing else's.
  */
 export async function write(tx: Queryable, entityId: string, profile: ProfileWrite): Promise<number> {
+  // The located keys are the locate step's and not the profile's. A profile
+  // rewrite would otherwise put null over a coordinate that cost a search.
   const { rows } = await tx.query<{ profile_version: number }>(
     `update core.entities
         set profile_md = $2::text, search_text = $3::text,
-            attributes = $4::jsonb, attributes_source = $5::jsonb,
+            attributes = $4::jsonb
+              || jsonb_strip_nulls(jsonb_build_object('lat', attributes->'lat', 'lon', attributes->'lon')),
+            attributes_source = $5::jsonb
+              || jsonb_strip_nulls(jsonb_build_object('lat', attributes_source->'lat', 'lon', attributes_source->'lon')),
             profile_version = profile_version + 1, profile_updated_at = now(), stale = false
       where id = $1::bigint
       returning profile_version`,
     [entityId, profile.markdown, profile.searchText, JSON.stringify(profile.attributes), JSON.stringify(profile.attributeSources)],
   );
   return rows[0]?.profile_version ?? 0;
+}
+
+/** Adds or replaces a few attributes and their sources, leaving the rest as they are. Does not touch the version. */
+export async function mergeAttributes(
+  tx: Queryable,
+  entityId: string,
+  attributes: Record<string, string | null>,
+  sources: Record<string, AttributeSource>,
+): Promise<void> {
+  await tx.query(
+    `update core.entities
+        set attributes = attributes || $2::jsonb, attributes_source = attributes_source || $3::jsonb
+      where id = $1::bigint`,
+    [entityId, JSON.stringify(attributes), JSON.stringify(sources)],
+  );
 }

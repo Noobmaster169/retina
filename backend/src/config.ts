@@ -71,6 +71,7 @@ const Env = z.object({
   LLM_MODEL_SHIPMENT_READ: optionalString,
   LLM_MODEL_ENTITY_RESOLVE: optionalString,
   LLM_MODEL_ENTITY_PROFILE: optionalString,
+  LLM_MODEL_PORT_LOCATE: optionalString,
   LLM_MODEL_CONCEPT_DEFINE: optionalString,
   LLM_MODEL_CONCEPT_JUDGE: optionalString,
   // How many model calls the worker has in flight at once, across every queue.

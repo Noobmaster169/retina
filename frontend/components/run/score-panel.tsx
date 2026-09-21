@@ -5,7 +5,7 @@ import { motion } from "motion/react";
 
 import { Bar, Panel, PanelFoot, PanelHead } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
-import type { RunActions } from "@/app/runs/[id]/use-run-actions";
+import type { RunActions } from "@/app/(app)/runs/[id]/use-run-actions";
 import { RunSummary } from "@/lib/api/runs-schemas";
 import { stagger } from "@/lib/motion";
 

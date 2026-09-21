@@ -19,6 +19,8 @@ export {
 } from "./api/clients-client";
 export {
   type AttributeSource,
+  type Beside,
+  type Counterpart,
   type EntityAppearance,
   type EntityDetail,
   type EntityKind,
@@ -30,6 +32,7 @@ export {
   getObjectRecord,
   type GraphEdge,
   type GraphNode,
+  listCounterparts,
   listEntities,
   listObjectTypes,
   type ObjectGraph,
@@ -68,6 +71,7 @@ export {
   type ChatTurn,
   type ChatTurnOutcome,
   type ClarifyingQuestion,
+  type ContextRef,
   createConversation,
   deleteConversation,
   getThread,
@@ -151,6 +155,15 @@ export {
   uploadToCase,
 } from "./api/review-client";
 export { fetchFile } from "./api/files-client";
+export {
+  getShipment,
+  listShipments,
+  type ShipmentDetail,
+  type ShipmentList,
+  type ShipmentQuery,
+  type ShipmentRef,
+  type ShipmentRow,
+} from "./api/shipments-client";
 export {
   type EmailVerdict,
   type EvalReport,

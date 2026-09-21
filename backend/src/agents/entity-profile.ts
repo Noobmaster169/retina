@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { ATTRIBUTES, type EntityKind, EntityProfile } from "../contracts";
+import { ATTRIBUTES, type EntityKind, EntityProfile, PortAttributes } from "../contracts";
 import type { Dossier } from "../pipeline/ontology";
 import { WORKER_PROJECT } from "./classify";
 import type { Prompt } from "./prompts/registry";
@@ -23,13 +23,18 @@ import { callStructured, type StructuredDeps, type StructuredResult } from "./st
  * top-level union is refused by the provider, and a schema that allowed every
  * kind's attributes would let a port answer with an HS chapter.
  */
+/** A port's profile leaves the located keys to the locate step; guessing a coordinate is worse than a missing pin. */
+function attributesFor(kind: EntityKind): z.ZodType {
+  return kind === "port" ? PortAttributes.omit({ lat: true, lon: true }) : ATTRIBUTES[kind];
+}
+
 export function profileSchema(kind: EntityKind): z.ZodType<ProfileOutput> {
   return z.object({
     summary: z.string().min(1).max(400),
     observed: z.string().min(1).max(2000),
     general: z.string().max(2000).nullable(),
     generalConfidence: z.number().min(0).max(1).nullable(),
-    attributes: ATTRIBUTES[kind],
+    attributes: attributesFor(kind),
     /** Per attribute you filled: `mail` if the dossier carried it, `model` if you knew it. */
     attributeBasis: z.record(z.string(), z.enum(["mail", "model"])),
     unknowns: z.array(z.string().max(200)).max(8),

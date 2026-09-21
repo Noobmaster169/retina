@@ -1,14 +1,17 @@
-import type {
-  ChatGraph,
-  ChatNextMove,
-  ChatOutcome,
-  ChatSkillUse,
-  ChatToolCall,
-  ChatTurn,
-  ClarifyingQuestion,
-  GroundedThing,
-  ProposedAction,
-  SemanticReading,
+import { z } from "zod";
+
+import {
+  type ChatGraph,
+  type ChatNextMove,
+  type ChatOutcome,
+  type ChatSkillUse,
+  type ChatToolCall,
+  type ChatTurn,
+  type ClarifyingQuestion,
+  type GroundedThing,
+  type ProposedAction,
+  type SemanticReading,
+  ContextRef,
 } from "../../contracts";
 import type { Queryable } from "../../db";
 
@@ -26,6 +29,7 @@ export interface TurnRow {
   tool_result: unknown;
   duration_ms: number | null;
   sql_used: string[];
+  context: unknown;
   created_at: Date;
 }
 
@@ -93,6 +97,7 @@ export function toTurn(row: TurnRow): ChatTurn {
     next: extras.next,
     clarify: extras.clarify,
     semantic: extras.semantic,
+    context: z.array(ContextRef).catch([]).parse(row.context ?? []),
     createdAt: row.created_at.toISOString(),
   };
 }
@@ -100,7 +105,7 @@ export function toTurn(row: TurnRow): ChatTurn {
 /** Oldest first, as a conversation reads. Tool turns are left out: they live on the assistant turn that made them. */
 export async function turns(db: Queryable, conversationId: string, limit = 200): Promise<ChatTurn[]> {
   const { rows } = await db.query<TurnRow>(
-    `select id, role, content, tool_name, tool_args, tool_result, duration_ms, sql_used, created_at
+    `select id, role, content, tool_name, tool_args, tool_result, duration_ms, sql_used, context, created_at
        from core.chat_turns
       where conversation_id = $1::uuid and role <> 'tool'
       order by id asc
@@ -122,7 +127,7 @@ export async function turns(db: Queryable, conversationId: string, limit = 200):
 export async function recentTurns(db: Queryable, conversationId: string, limit: number): Promise<ChatTurn[]> {
   const { rows } = await db.query<TurnRow>(
     `select * from (
-       select id, role, content, tool_name, tool_args, tool_result, duration_ms, sql_used, created_at
+       select id, role, content, tool_name, tool_args, tool_result, duration_ms, sql_used, context, created_at
          from core.chat_turns
         where conversation_id = $1::uuid and role <> 'tool'
         order by id desc
@@ -133,11 +138,16 @@ export async function recentTurns(db: Queryable, conversationId: string, limit: 
   return rows.map(toTurn);
 }
 
-export async function addUserTurn(db: Queryable, conversationId: string, content: string): Promise<ChatTurn> {
+export async function addUserTurn(
+  db: Queryable,
+  conversationId: string,
+  content: string,
+  context: ContextRef[] = [],
+): Promise<ChatTurn> {
   const { rows } = await db.query<TurnRow>(
-    `insert into core.chat_turns (conversation_id, role, content) values ($1::uuid, 'user', $2::text)
-     returning id, role, content, tool_name, tool_args, tool_result, duration_ms, sql_used, created_at`,
-    [conversationId, content],
+    `insert into core.chat_turns (conversation_id, role, content, context) values ($1::uuid, 'user', $2::text, $3::jsonb)
+     returning id, role, content, tool_name, tool_args, tool_result, duration_ms, sql_used, context, created_at`,
+    [conversationId, content, JSON.stringify(context)],
   );
   return toTurn(rows[0]);
 }
@@ -170,7 +180,7 @@ export async function addAssistantTurn(
   const { rows } = await db.query<TurnRow>(
     `insert into core.chat_turns (conversation_id, role, content, sql_used, tool_result)
      values ($1::uuid, 'assistant', $2::text, $3::text[], $4::jsonb)
-     returning id, role, content, tool_name, tool_args, tool_result, duration_ms, sql_used, created_at`,
+     returning id, role, content, tool_name, tool_args, tool_result, duration_ms, sql_used, context, created_at`,
     [conversationId, turn.answer, turn.sqlUsed, JSON.stringify(extras)],
   );
   await db.query("update core.chat_conversations set updated_at = now() where id = $1::uuid", [conversationId]);
