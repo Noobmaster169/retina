@@ -8,7 +8,7 @@ import { LaneMapPanel } from "@/components/run/lane-map";
 import { MachineryPanel } from "@/components/run/machinery-panel";
 import { OutcomesPanel } from "@/components/run/outcomes-panel";
 import { laneMap } from "@/components/run/progress";
-import { QueuePanel } from "@/components/run/queue-panel";
+import { stagePeeks } from "@/components/run/stage-peeks";
 import { SendersPanel } from "@/components/run/senders-panel";
 import { RunHeader, statusWord } from "@/components/run/run-header";
 import { PageContext } from "@/components/dock/page-context-announcer";
@@ -110,13 +110,11 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
               note={laneNote(live, paused, queues.compare.heldUntil !== null)}
               slots={{ classify: queues.classify.concurrency, compare: queues.compare.concurrency }}
               flowing={live && !paused}
+              peeks={stagePeeks(queues)}
+              runId={id}
             />
           ) : null}
 
-          {/*
-            Tall enough for the flow to be read at, and no taller. `grow` here
-            would go back to dividing a fixed height between the panels.
-          */}
           {/*
             The flow first in both states, and at full width while a run is
             live. It used to come third in that row, behind two fixed panels,
@@ -132,30 +130,10 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
               paused={paused}
               className="min-w-0 grow"
             />
-            {live ? null : <MachineryPanel run={run} className="w-[372px] shrink-0" />}
+            {/* Always, now the queues have no panel of their own: while a run
+                works this is the only thing on the page whose numbers climb. */}
+            <MachineryPanel run={run} className="w-[372px] shrink-0" />
           </div>
-
-          {live && queues ? (
-            <div className="flex min-h-[300px] shrink-0 gap-4">
-              <QueuePanel
-                title="Sorting now"
-                queue={queues.classify}
-                runId={id}
-                paused={paused}
-                drained="Every email has been read. Only a comparison request crossed into the second queue, and that queue is still working."
-                className="min-w-0 grow"
-              />
-              <QueuePanel
-                title="Checking now"
-                queue={queues.compare}
-                runId={id}
-                paused={paused}
-                drained="Nothing is waiting for a check. Every pair that crossed has been judged; the rest of the inbox never needed one."
-                className="min-w-0 grow"
-              />
-              <MachineryPanel run={run} className="w-[372px] shrink-0" />
-            </div>
-          ) : null}
 
           {/*
             Under everything, because it is the one control on this page and
