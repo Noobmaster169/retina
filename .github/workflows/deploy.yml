@@ -183,9 +183,6 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: services/doc-extract/uv.lock
-      # The OCR test needs the same engine and language packs the image carries.
-      - name: Install tesseract
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim
       - name: Install
         run: uv sync --frozen
         working-directory: services/doc-extract
@@ -199,11 +196,14 @@ jobs:
       # cannot build should fail here, not on a box nobody can SSH into.
       - name: Build the doc-extract image
         run: docker build -t retina-doc-extract services/doc-extract
-      - name: The image answers its health route with tesseract present
+      # `ok` and nothing else: the service carries no character recogniser to
+      # report a version for, and asserting on one is what failed the publish
+      # when tesseract was removed.
+      - name: The image answers its health route
         run: |
           docker run -d --name probe -p 127.0.0.1:8010:8000 retina-doc-extract
           for _ in $(seq 1 20); do curl -fsS 127.0.0.1:8010/healthz && break; sleep 1; done
-          curl -fsS 127.0.0.1:8010/healthz | grep -q '"tesseract":"5'
+          curl -fsS 127.0.0.1:8010/healthz | grep -q '"ok":true'
           docker rm -f probe
 
   # score.ts is a hand port of the organisers' scoring.py, which this repo does

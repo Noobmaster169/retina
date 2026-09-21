@@ -401,7 +401,7 @@ cd "$STACK"
 # run picks up proxy/ as it is now rather than whatever image a past run left.
 say "building the llm-proxy image from the clone (node and the claude CLI, a few minutes the first time)."
 docker compose build llm-proxy || fail "the llm-proxy image would not build"
-say "building the doc-extract image from the clone (python and tesseract)."
+say "building the doc-extract image from the clone."
 docker compose build doc-extract || fail "the doc-extract image would not build"
 docker compose up -d || fail "docker compose up failed; docker compose logs will say why"
 
