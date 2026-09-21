@@ -2,7 +2,7 @@ import { Router } from "express";
 import type { Pool } from "pg";
 import { z } from "zod";
 
-import { type CounterpartList, type EntityDetail, EntityKind, type EntityList, type LaneList, ObjectType } from "../contracts";
+import { type CounterpartList, type EntityDetail, EntityKind, type EntityList, type EntityRow, type LaneList, ObjectType } from "../contracts";
 import { emailGraph, isBuilt, listTypes, objectRecord } from "../ontology/objects";
 import { buildInsight } from "../pipeline/ontology";
 import {
@@ -69,6 +69,31 @@ export function ontologyRouter(deps: OntologyRouteDeps): Router {
   /** Every lane the shipments state between two resolved ports, busiest first. What the port map draws. */
   router.get("/lanes", async (_req, res) => {
     const body: LaneList = { lanes: await lanes.list(pool) };
+    res.json(body);
+  });
+
+  /**
+   * One resolved thing, small, for the card that opens when a reader hovers a
+   * name the chat linked.
+   *
+   * By id alone and not by kind, because a link carries the id the agent was
+   * shown and the kind is the answer here rather than the question. Registered
+   * above `/:type/...` so `entity` is read as the literal it is.
+   *
+   * The row a list already draws, and no more: what a hover owes the reader is
+   * the sentence and the counts, not the eight queries behind the full page.
+   */
+  router.get("/entity/:id/preview", async (req, res) => {
+    if (!/^\d+$/.test(req.params.id)) {
+      res.status(404).json({ error: "an entity id is a number" });
+      return;
+    }
+    const row = await entities.find(pool, req.params.id);
+    if (!row) {
+      res.status(404).json({ error: "no such thing" });
+      return;
+    }
+    const body: EntityRow = row;
     res.json(body);
   });
 

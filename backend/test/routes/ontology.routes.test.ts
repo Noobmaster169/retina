@@ -152,3 +152,20 @@ describe("where a resolved thing opens", () => {
     expect(record.body.openHref).toBe(`/company/${first.id}`);
   });
 });
+
+describe("GET /ontology/entity/:id/preview", () => {
+  // Registered above `/:type/:id/:beside`, which would otherwise read `entity`
+  // as a type and a preview as a counterpart list. The message says which
+  // handler answered, so a route added above this one fails here.
+  it("is reached rather than read as a type, and says an id is a number", async () => {
+    const response = await get("/ontology/entity/not-a-number/preview");
+    expect(response.status).toBe(404);
+    expect(response.body.error).toBe("an entity id is a number");
+  });
+
+  it("404s an id nothing holds, which a merged thing also is", async () => {
+    const response = await get("/ontology/entity/999999999/preview");
+    expect(response.status).toBe(404);
+    expect(response.body.error).toBe("no such thing");
+  });
+});

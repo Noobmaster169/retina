@@ -35,6 +35,7 @@ export {
   type EntityRow,
   getConsignment,
   getEntityDetail,
+  getEntityPreview,
   getObjectGraph,
   getObjectRecord,
   type GraphEdge,

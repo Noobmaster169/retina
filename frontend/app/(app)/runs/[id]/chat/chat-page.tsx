@@ -6,6 +6,7 @@ import { useEffect, useRef } from "react";
 import { Composer } from "@/components/chat/composer";
 import { LiveCalls } from "@/components/chat/live-calls";
 import { Markdown } from "@/components/chat/markdown";
+import { withoutUnfinishedLink } from "@/components/chat/mention";
 import { StatusLine } from "@/components/chat/status-line";
 import { Turn } from "@/components/chat/turn";
 import { openConversation, useChat } from "@/components/chat/use-chat";
@@ -137,7 +138,7 @@ function Pending({ progress, calls, since }: { progress: ChatProgress | null; ca
       <StatusLine progress={progress} since={since} />
       <LiveCalls calls={calls} />
       {progress?.answer ? (
-        <Markdown text={progress.answer} />
+        <Markdown text={withoutUnfinishedLink(progress.answer)} />
       ) : (
         <>
           <div className="h-4 w-2/3 rounded-xs bg-sunken" />

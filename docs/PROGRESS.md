@@ -1,11 +1,12 @@
 # Progress
 
-Current phase: **13, on `phase-13-business-data`.** 10a to 10f are merged to `main`, and so are
+Current phase: **16, on `phase-16-linked-answers`.** 10a to 10f are merged to `main`, and so are
 10g and phase 11's first slice (the results page's failure view), which were built in parallel
 and merged into 13 afterwards.
 
-**Start at `docs/phases/phase-13-business-data.md`.** Phase 7's two `[~]` items are still under
-"Deferred" below.
+**Start at `docs/phases/phase-16-linked-answers.md`.** Phase 13's list is
+`docs/phases/phase-13-business-data.md` and phase 7's two `[~]` items are still under "Deferred"
+below.
 
 **2026-09-22: local scoring works on the box.** "Score it here" and the second half of
 `/runs/<id>/results` used to answer "No answer key on this machine" in production, because
@@ -19,6 +20,16 @@ variables. `ground-truth.ts` prefers the path where both are set, so a dev machi
 **Not yet checked on the box**: after the next deploy tick, open a scored run's results page and
 confirm the email-by-email half renders. `EVAL_JUDGE_TOKEN` is optional, so no `.env` edit is
 needed first.
+
+**2026-09-22: phase 16, linked answers, is built on `phase-16-linked-answers`.** The chat named
+the things it resolved in flat prose and the reader had to go and find them again. An answer now
+links each one: the agent writes `[Evergreen Marine Corp](entity:412)` with an id a tool printed,
+`agents/chat/mentions.ts` keeps that link only where a call on the turn reported the id, and the
+page draws it in the kind's hue with a hover card and a click through to its page. The chat prompt
+is **v8**. `GET /ontology/entity/:id/preview` is the card's read. `docs/phases/phase-16-linked-answers.md`
+is the spec; everything on it is done but the live look, which is the user's because it spends
+tokens. Emails and shipments are not linkable yet and a hover card does not open on touch; both
+are under "Deferred" there.
 
 **2026-09-21: phase 15, the streaming chat, is built on `phase-15-streaming-chat`.** The chat
 used to answer nothing visibly until the whole turn was done. `POST /chat/:id/messages` now has
