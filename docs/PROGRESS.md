@@ -7,14 +7,23 @@ and merged into 13 afterwards.
 **Start at `docs/phases/phase-13-business-data.md`.** Phase 7's two `[~]` items are still under
 "Deferred" below.
 
-**2026-09-21: phase 15, the streaming chat, is open on `phase-15-streaming-chat`.** The chat
-answers nothing visibly until the whole turn is done: `POST /chat/:id/messages` holds, there is
-no SSE in the repository, and `structured.ts` switches streaming off for the chat because the
-loop passes `runId: null`. Measured on the local stack, the simplest question in the system
-("how many emails are in this run?", no tool calls, a seven word answer) took 8.5 s, and chat
-calls run 8 s to 24 s with latency tracking output tokens at roughly 100 a second. The alias is
-not the cost: a four token reply is 3.25 s on opus and 2.80 s on haiku, which is `claude -p`
-starting a session per call. `docs/phases/phase-15-streaming-chat.md` is the spec.
+**2026-09-21: phase 15, the streaming chat, is built on `phase-15-streaming-chat`.** The chat
+used to answer nothing visibly until the whole turn was done. `POST /chat/:id/messages` now has
+two shapes chosen by `Accept`: the blocking one it always had, and an event stream carrying
+`progress` events and then the same `{ turn, exhausted }`. The page draws the answer as it is
+written, one status line stands for the working, and the working itself (the reading, the
+queries with their rows, every call) is inside one collapsed control under the answer.
+
+The measurements, same question, opus, on the local stack. Before: nothing on screen for 8.5 s
+to 14.7 s, 929 output tokens mean. After: first prose at 3.4 s, 633 output tokens mean, turn
+8.5 s mean. The alias was never the cost, a four token reply is 3.25 s on opus and 2.80 s on
+haiku, which is `claude -p` starting an agent session per call. The cost was output length, and
+most of that was the provider being told all nine fields of a two-shape schema were required.
+
+Chat prompt is **v7** and gives the answer six sentences and forbids reproducing a result set.
+On the first six eval questions, 4 of 6 to 5 of 6, mean sentences 8.0 to 6.3, median steps 3 to
+2. **The full chat eval has not been run and is the user's**, as `eval:chat` says of itself.
+`docs/phases/phase-15-streaming-chat.md` is the spec and carries what is left.
 
 **2026-09-21: classify is on `v6` and the verifier on `v3`** (migration 025). The single
 classification the pipeline had never got right, `email_504`, was a gap in the prompts' own

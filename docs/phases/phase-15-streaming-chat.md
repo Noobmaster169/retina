@@ -123,18 +123,36 @@ answer has distinct parts, and never reproduces a result set. No second model ca
 
 ### 7. The schema
 
-`checked`, `next` and `clarify` are described as conditional and the prompt says when to fill
-them. Measured with `pnpm chat:eval` on the same questions before and after, and the output
-token count from `core.llm_calls` quoted in the commit.
+The cause turned out to be one line rather than the field list. `z.toJSONSchema` describes the
+shape after parsing, where every default has been applied, so all nine fields of `Step` went to
+the provider as `required` and the model wrote all of them on every step: an empty `answer` and
+an empty `next` on every look, and `thing`, `count` and `basis` spelled out as null on every
+move. `toOutputSchema` gains `defaultsOptional`, which describes the shape the model may write
+instead, and only `action` stays required. Zod still fills the defaults, so nothing downstream
+changes. Off for every pipeline step, whose numbers were measured against the schema they have.
 
 ## Exit checklist
 
-- [ ] `pnpm type-check` and `pnpm test` pass in `backend/`, `pnpm type-check` in `frontend/`.
-- [ ] `answerSoFar` has a table-driven test covering a truncated escape.
-- [ ] The blocking form of `POST /chat/:id/messages` returns what it returned before.
-- [ ] A question that calls no tool shows moving prose before it is finished.
-- [ ] The finished turn shows the graph, the prose and the outcome, and nothing else unopened.
-- [ ] An answer never reproduces a result set; the rows are under the collapsed working.
-- [ ] Output tokens for a short answer, before and after item 7, are in the commit message.
-- [ ] `03-infra-deep.md` carries the streaming form of the route.
+- [x] `pnpm type-check` and `pnpm test` pass in `backend/` (1240 tests, 100 files), `pnpm type-check` and `eslint` in `frontend/`.
+- [x] `answerSoFar` has a table-driven test covering a truncated escape. It is `valueSoFar`, in `agents/chat/partial.ts`, 20 cases.
+- [x] The blocking form of `POST /chat/:id/messages` returns what it returned before: `{ turn, exhausted }`, `application/json`, checked against the live stack.
+- [x] A question that calls no tool shows moving prose before it is finished. First prose at 3.4 s against a turn that ends at 6.5 s to 7.7 s.
+- [x] The finished turn shows the graph, the prose, the outcome and the next moves, and nothing else unopened.
+- [x] An answer never reproduces a result set: the rule is in v7 and beside the field, and the rows are inside `Working`.
+- [x] Output tokens for a short answer, before and after item 7, are in the commit message: 929 to 633 mean.
+- [x] `03-infra-deep.md` carries both shapes of the route.
 - [ ] `PROGRESS.md` updated and the branch merged to `main`.
+
+## What is left, and what was found on the way
+
+- **The CLI rewrites its own answer about one turn in four.** `claude -p` validates its
+  structured output and, when it fails, writes the whole object again inside the same call. A
+  turn that costs 450 output tokens and 6.5 s costs 1080 and 13.5 s when it happens. It is
+  visible from outside only because the stream shows the answer restarting, and the contract
+  says so. Trimming the schema made it rarer, not gone. Nobody has found what fails validation.
+- **The full chat eval is the user's to run.** Six questions were used here, which is a
+  development slice and not a verdict. Every failure in all three runs was `reads_plainly`; no
+  correctness, grounding or step-budget check failed in any of them.
+- **`reading` is generated on every step and read by almost nobody** now that it sits inside the
+  collapsed working. It is about 100 characters of output per step. Whether it earns them is a
+  question for the next measurement, not a change to make blind.
