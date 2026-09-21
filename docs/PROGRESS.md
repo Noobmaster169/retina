@@ -1,7 +1,8 @@
 # Progress
 
-Current phase: **10f, merged to `main`.** 10a to 10f are all on it. Phase 7's two `[~]` items are
-still under "Deferred" below.
+Current phase: **11, first slice on `main`.** 10a to 10f are all on it, and so is the results
+page's failure view, which is phase 11's first item. Phase 7's two `[~]` items are still under
+"Deferred" below.
 
 **Start at `docs/phases/phase-10f-semantic-layer.md`**, whose header now carries the list of every
 place the repo and that spec disagreed and what the bench found. Then
@@ -26,6 +27,45 @@ Phase 6 is built and tested; left for the user there: the holdout run and the fu
 decide its exit checklist's score lines (`pnpm eval:score --run <id> --holdout`), and phase 5's
 open items (the box check of doc-extract, the classify `v5` holdout). Phase 4's open items (the
 few-shot `v4` holdout, the model comparison) are still the user's.
+
+## Phase 11, first slice: the results page says where it went wrong
+
+The scorer reports totals and the results table reported an answer beside a truth. Neither said
+which reader produced the answer, so a wrong category could not be traced to a prompt without
+opening the email and reading its calls one at a time. That is now on the page.
+
+**Built.**
+
+- `EmailVerdict` carries `classify`: the chain that settled the email (`gen` and `ver` category and
+  confidence, `decidedBy`, a reviewer's category where there is one, model, prompt version) and
+  `effect`, what the verifier did to the generator's answer measured against the truth. The effect
+  is `eval/verifier-effect.ts`, pure and table-driven: `not_run`, `fixed`, `broke`, `agreed_right`,
+  `agreed_wrong`, `changed_still_wrong`. A human correction settles the submitted answer and never
+  enters the effect, because it says nothing about either prompt.
+- `classifications.eval.ts`, one read of a whole run's chains, joined into the report by
+  `evaluateRun`. `03-infra-deep.md` carries the new shape.
+- The results table is a folder now, not a file: filters, row, chain strip, detail, and the note.
+  `filters.ts` and `prompt-note.ts` are pure with their own tests.
+- **Filters, one per way of being wrong**: each scored check with the count it would show, anything
+  at all, the clean ones, each verifier effect, the truth's category, the answered category, the
+  split, and a search on the id. Nothing about the dataset is keyed on: every filter is a reading
+  of a verdict the backend settled.
+- **A row opens**, and only then fetches that email's trace: the generator's rationale, the
+  verifier's counter-cases word for word, the seven fields as the judge read them with both
+  documents' values, and every model call with what it was given and what it wrote.
+- **`Copy the whole case`** puts the email, both readers, the judge and every call on the clipboard
+  as plain text, for pasting into the session where the prompt is rewritten. The system prompts are
+  named rather than pasted: they are files in `agents/prompts` and the reader of the note has them.
+- Two fields of the frontend's `Scoreboard` mirror had drifted from the backend's (`rule_pct`,
+  `escalation_f1`) and were being stripped silently by zod. Closed in the same pass.
+
+**Numbers.** 89 frontend tests, up from 70. Backend type-check clean; the two eval suites pass.
+
+**Not yet done, and it needs the user.** The page has not been seen against a real run: Docker
+Desktop was not running on this machine, so the backend suite (which wants the compose Postgres)
+and the page itself were not exercised end to end. What to do: start the stack, run the backend
+suite, then open `/runs/<id>/results` for a run with `EVAL_GROUND_TRUTH_PATH` set and confirm the
+chain strip and the filter counts against an email whose answer you already know.
 
 ## Phase 10f
 
