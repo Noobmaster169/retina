@@ -458,12 +458,22 @@ the files turned out to be) and then lets the person answer it.
 
 Chat anatomy, top to bottom: the title and a New control; a row of scope chips naming exactly what
 this conversation can see (`email_004`, `2 documents`, `6 calls`, `17 memories`); the turns; **the
-proposed action, drawn before anything is written**; then the composer with two suggestion chips.
+proposed action, drawn before anything is written**; the suggestion chips; the `Reading` strip naming
+what goes with the next question; then the composer.
 
 **The proposed action is the component that makes the chat honest.** It names the action kind and
 its target in mono (`correct_field`, `notify_party`), shows was and is, says in one sentence what
 writing it will do and what it will teach, and offers `Apply and remember` against `Just this
 once`. Nothing is written to `review_actions` until that button is pressed.
+
+**The draft reply card** sits where a turn draws one: `To`, `Subject` and the message, a black
+`Open in Gmail` and a quiet `Copy the message` beside it. `To` is shown exactly as `get_email`
+returned it, never shortened to a guessed first name, because it is the one field on the card a
+reader checks before trusting the rest. Gmail's own compose URL and not a `mailto:` link: the
+latter needs a mail client the operating system has registered, and a desk with none configured
+opens nothing and says nothing. Like the proposed action, nothing here writes or sends; unlike it,
+there is nothing to unblock, because opening a compose window is not a write this product could
+apply on its own.
 
 Responsive: below 1280px the chat becomes an overlay sheet from the right. Below 1024px the rail
 collapses to glyphs. Below 768px this is a read only view: list and detail only, no graph, no
@@ -476,12 +486,13 @@ Full specs in `docs/design/screen-blueprints.md` section 14. The distinctive one
 | Component | The one thing that makes it Retina |
 |---|---|
 | **Field comparison row** | The difference is marked at the word on both sides (4.5), never by colouring a column. Collapsed it is one line: name, a plain English verdict, nothing else. Expanded it shows both values and the judge's sentence |
-| **The seam** | A labelled rule that says where the sender stops and Retina starts. An icon, the sentence, and a hairline to the right edge. The email page is unreadable without it |
+| **The seam** | A labelled rule that says where the sender stops and Retina starts. An icon, the short label naming what is below (`Retina's reading`), and a hairline to the right edge. The email page is unreadable without it |
 | **Message card** | The email in a 1px `--hairline-strong` box at `--r-lg` with its own header strip, body and file chips. The only bordered card in the product |
 | **Proposed action card** | Section 7. The chat's write path, shown before it writes |
 | **Lesson card** | A step badge in mono, the lesson in one or two sentences, where it came from, and either Approve and Reject or a shipped version string |
 | **Slot row** | One row per email holding a queue slot: id in mono, what it is doing in words, elapsed, and a 2px rule along the bottom for how long it has held it |
 | **Verdict chip** | Tint background, strong text, the enum verbatim in mono, `--r-sm`, 21 to 26px tall. No dot |
+| **Inbox filter chip** | Drawn at one of three weights by what it holds, never by its label: chosen is filled in its hue, a chip asking for a person carries its hue in its border and its words, a chip merely holding rows carries it in its words, and an empty chip is grey whatever its tone. `Needs you 0` is not important, and a bar that shouted it would be lying about a quiet run |
 | **Entity chip** | A 10px type glyph plus label, neutral. Hover reveals a popover after 400ms; click opens the record |
 | **Type badge** | A 15px `--surface-sunken` tag in `mono-xs` carrying a column's type: `pk`, `abc`, `123`, `date`, `enum` |
 | **Evidence well** | `--surface-sunken` or a 2px left rule, `mono-xs`, never truncated mid quote |

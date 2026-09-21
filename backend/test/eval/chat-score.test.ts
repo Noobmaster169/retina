@@ -16,7 +16,7 @@ function turn(answer: string, toolCalls: Call[], extra: Partial<TurnResult> = {}
   return {
     answer, reading: "", sqlUsed: [], toolCalls, graph: { nodes: [], edges: [] }, skillsUsed: [],
     adhoc: toolCalls.some((item) => item.tool === "run_sql" && item.ok), exhausted: false,
-    outcome: "answered", checked: [], next: [], clarify: null, grounded: [], semantic: [], removedMoves: 0, ...extra,
+    outcome: "answered", checked: [], next: [], clarify: null, emailDraft: null, grounded: [], semantic: [], removedMoves: 0, ...extra,
   };
 }
 

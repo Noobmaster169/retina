@@ -294,6 +294,7 @@ subject code; `chat-harness.test.ts` holds that line.
 | `quality-and-review` | mismatches, fields that differ, review, corrections, cost | `mismatches_by_field`, `mismatches_for_entities`, `reviews_by_reason`, `human_corrections`, `cost_by_step` |
 | `lanes-and-ports` | where cargo loads or discharges, a route, country or region | `lanes`, `ports_by_role`, `emails_for_lane` |
 | `explain-an-email` | one email: what it is, how it was sorted, why it ended as it did | none (uses `explain_decision`) |
+| `recommend-action` | one email's documents disagree and the question is what to do, or asks for a reply to the sender | none (uses `explain_decision` and its own SQL over `agg_client_run` and `fact_field_diff`) |
 | `find-references` | an order, booking, BL, invoice or PO number, a vessel, carrier, term or goods | none (uses `search_emails`) |
 | `explore-values` | about to filter on a text column the notes do not list | none (uses `profile_column`) |
 | `time-questions` | when, how recently, in what order, a period | none |

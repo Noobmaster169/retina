@@ -14,13 +14,17 @@ import { useDictation } from "./use-dictation";
  * The elapsed counter that used to live here has moved into the live steps,
  * where the clock sits on the step actually running. What is left here while a
  * turn is in flight is the one control that matters then, which is Stop.
+ *
+ * The starter questions moved out to `suggestions.tsx`, so a caller can put
+ * them above whatever else sits over this box. One consequence is that a
+ * starter no longer carries skills picked here, which is right: a skill is
+ * picked for the question being typed, and a starter replaces that question.
  */
 
 interface ComposerProps {
   onAsk(question: string, skills: string[]): void;
   onStop(): void;
   pending: boolean;
-  suggestions: string[];
   placeholder: string;
   /** The dock's narrower gutter. */
   dense?: boolean;
@@ -33,7 +37,7 @@ interface ComposerProps {
   seam?: boolean;
 }
 
-export function Composer({ onAsk, onStop, pending, suggestions, placeholder, dense = false, seam = true }: ComposerProps) {
+export function Composer({ onAsk, onStop, pending, placeholder, dense = false, seam = true }: ComposerProps) {
   const [text, setText] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
   const field = useRef<HTMLTextAreaElement>(null);
@@ -76,22 +80,6 @@ export function Composer({ onAsk, onStop, pending, suggestions, placeholder, den
       }}
       className={`py-3 ${seam ? "border-t border-hairline" : "mx-auto w-full max-w-[720px]"} ${dense ? "px-[18px]" : "px-6"}`}
     >
-      {suggestions.length > 0 && !pending ? (
-        <ul className="mb-2.5 flex flex-wrap gap-1.5">
-          {suggestions.map((suggestion) => (
-            <li key={suggestion}>
-              <button
-                type="button"
-                onClick={() => ask(suggestion)}
-                className="rounded-sm bg-sunken px-2.5 py-1.5 text-left text-caption text-ink-secondary hover:bg-active"
-              >
-                {suggestion}
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-
       {menuOpen ? <SkillMenu cards={cards} filter={slash} onPick={pick} /> : null}
       <SkillChips picked={picked} onRemove={(name) => setPicked((was) => was.filter((item) => item !== name))} />
 

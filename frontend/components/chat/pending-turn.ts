@@ -51,6 +51,7 @@ export function optimistic(question: string): ChatTurn {
     sqlUsed: [],
     graph: null,
     proposal: null,
+    emailDraft: null,
     reading: "",
     skillsUsed: [],
     adhoc: false,

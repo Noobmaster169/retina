@@ -83,6 +83,30 @@ export const FILTERS: FilterDef[] = [
   { key: "failed", label: "Failed", tone: "fault", steady: false, matches: (row) => row.stage === "failed" },
 ];
 
+/**
+ * How loudly a chip is drawn.
+ *
+ * A bar where every chip is the same grey says nothing about which of them is
+ * worth a click; one where every chip is coloured says everything is urgent,
+ * which says the same nothing. So three steps, and the count decides which:
+ * a chip that is asking for a person carries its hue in its border and its
+ * words, a chip that merely holds rows carries it in its words, and a chip
+ * holding nothing is grey whatever its tone. `Needs you 0` is not important,
+ * and a bar that shouted it anyway would be lying about a quiet run.
+ *
+ * Pure.
+ */
+export type Emphasis = "chosen" | "asking" | "holding" | "empty";
+
+/** The tones that mean somebody has to do something about it. */
+const ASKING: Tone[] = ["review", "fault"];
+
+export function emphasisOf(tone: Tone, count: number, chosen: boolean): Emphasis {
+  if (chosen) return "chosen";
+  if (count === 0 || tone === "neutral") return "empty";
+  return ASKING.includes(tone) ? "asking" : "holding";
+}
+
 export const SORTS: { key: SortKey; label: string }[] = [
   { key: "id", label: "Email id" },
   { key: "attention", label: "Needs you first" },

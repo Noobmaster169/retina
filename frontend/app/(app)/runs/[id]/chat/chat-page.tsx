@@ -5,6 +5,7 @@ import { useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "motion/react";
 
 import { Composer } from "@/components/chat/composer";
+import { Suggestions } from "@/components/chat/suggestions";
 import { Turn } from "@/components/chat/turn";
 import { openConversation, useChat } from "@/components/chat/use-chat";
 
@@ -134,11 +135,11 @@ export function ChatPage({ runId, conversations, thread }: ChatPageProps) {
           <>
             <AnimatePresence>{opening ? <Opening key="opening" scope={scopeWords} /> : null}</AnimatePresence>
             <motion.div layout transition={SETTLE} className="shrink-0">
+              <Suggestions items={opening ? SUGGESTIONS : []} onAsk={chat.ask} />
               <Composer
                 onAsk={chat.ask}
                 onStop={chat.stop}
                 pending={chat.pending}
-                suggestions={opening ? SUGGESTIONS : []}
                 placeholder="Ask about this inbox"
                 seam={!opening}
               />

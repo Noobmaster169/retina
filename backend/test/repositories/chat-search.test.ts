@@ -199,7 +199,7 @@ describe("sticky skills", () => {
     await inRollback(async (tx) => {
       const conversation = await chat.create(tx, { actor: "a test" });
       await chat.addAssistantTurn(tx, conversation.id, {
-        answer: "an answer", sqlUsed: [], toolCalls: [], graph: null, proposal: null, reading: "", adhoc: false,
+        answer: "an answer", sqlUsed: [], toolCalls: [], graph: null, proposal: null, emailDraft: null, reading: "", adhoc: false,
         outcome: "answered", checked: [], next: [], clarify: null, semantic: [], standingVersion: 1, grounded: [],
         skillsUsed: [
           { name: "time-questions", version: 1, how: "loaded" },
@@ -244,7 +244,7 @@ describe("as retina_ro, the role the chat reads as", () => {
 
 describe("what a conversation remembers", () => {
   const turn = (over: Record<string, unknown>) => ({
-    answer: "an answer", sqlUsed: [], toolCalls: [], graph: null, proposal: null, reading: "",
+    answer: "an answer", sqlUsed: [], toolCalls: [], graph: null, proposal: null, emailDraft: null, reading: "",
     skillsUsed: [], adhoc: false, outcome: "answered" as const, checked: [], next: [],
     clarify: null, semantic: [], standingVersion: 2, grounded: [], ...over,
   });

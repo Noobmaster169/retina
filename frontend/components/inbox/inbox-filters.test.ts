@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { countsOf, FILTERS, narrow, search } from "./inbox-filters";
+import { countsOf, emphasisOf, FILTERS, narrow, search } from "./inbox-filters";
 import { type InboxRow, mergeRows, needsYou } from "./inbox-rows";
 import type { ReviewCaseItem } from "@/lib/api/review-schemas";
 import type { RunEmailItem } from "@/lib/api/trace-schemas";
@@ -189,5 +189,23 @@ describe("narrow", () => {
 describe("FILTERS", () => {
   it("names every key once, so a chip cannot be drawn twice", () => {
     expect(new Set(FILTERS.map((filter) => filter.key)).size).toBe(FILTERS.length);
+  });
+});
+
+describe("emphasisOf", () => {
+  const cases: [string, Parameters<typeof emphasisOf>, ReturnType<typeof emphasisOf>][] = [
+    ["the chosen chip is filled whatever it holds", ["review", 0, true], "chosen"],
+    ["a chosen neutral chip is still filled", ["neutral", 30, true], "chosen"],
+    ["Needs you with rows asks", ["review", 4, false], "asking"],
+    ["Failed with rows asks", ["fault", 1, false], "asking"],
+    ["Needs you at zero is not important", ["review", 0, false], "empty"],
+    ["Differences with rows holds", ["differ", 10, false], "holding"],
+    ["Agreed with rows holds", ["match", 30, false], "holding"],
+    ["Still moving with rows holds", ["signal", 2, false], "holding"],
+    ["a neutral chip stays grey however many rows it has", ["neutral", 520, false], "empty"],
+  ];
+
+  it.each(cases)("%s", (_name, args, want) => {
+    expect(emphasisOf(...args)).toBe(want);
   });
 });

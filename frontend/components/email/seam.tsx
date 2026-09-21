@@ -9,14 +9,19 @@ import { SeamGlyph } from "@/components/ui/icons";
  * that had no obvious problem until someone tried to tell the two apart.
  *
  * The email page is unreadable without it, so it is a component and not a
- * border, and it carries the sentence rather than leaving it to the caller.
+ * border, and it carries the label rather than leaving it to the caller.
+ *
+ * The label names what is below instead of explaining the rule. It read
+ * "Below this line is Retina, not the sender", which spent a sentence on a
+ * boundary the bordered card above already draws, and left the rule itself
+ * too short to read as a separator.
  */
-export function Seam({ label = "Below this line is Retina, not the sender" }: { label?: string }) {
+export function Seam({ label = "Retina's reading" }: { label?: string }) {
   return (
-    <div className="flex h-10 items-center gap-2.5" role="separator" aria-label={label}>
+    <div className="flex h-11 items-center gap-2.5" role="separator" aria-label={label}>
       <SeamGlyph size={14} />
-      <span className="shrink-0 text-small font-medium text-ink-tertiary">{label}</span>
-      <span className="block h-px grow bg-hairline" aria-hidden="true" />
+      <span className="shrink-0 text-small font-medium text-ink-secondary">{label}</span>
+      <span className="block h-px grow bg-hairline-strong" aria-hidden="true" />
     </div>
   );
 }

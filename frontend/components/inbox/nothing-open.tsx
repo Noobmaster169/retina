@@ -1,4 +1,3 @@
-import { TopBar } from "@/components/shell/top-bar";
 import { Icon } from "@/components/ui/icons";
 
 /**
@@ -7,22 +6,16 @@ import { Icon } from "@/components/ui/icons";
  */
 
 interface NothingOpenProps {
-  runId: string;
   /** An email is chosen and its reading has not arrived, which is a different sentence from nothing chosen. */
   chosen: boolean;
   loading: boolean;
   waiting: number;
-  onBack: () => void;
   className?: string;
 }
 
-export function NothingOpen({ runId, chosen, loading, waiting, onBack, className = "" }: NothingOpenProps) {
+export function NothingOpen({ chosen, loading, waiting, className = "" }: NothingOpenProps) {
   return (
     <div className={`min-w-0 grow flex-col ${className}`}>
-      <TopBar
-        crumbs={[{ label: "Runs", href: "/runs" }, { label: runId.slice(0, 8), href: `/runs/${runId}`, mono: true }, { label: "Inbox" }]}
-        onBack={chosen ? onBack : undefined}
-      />
       <div className="flex min-h-0 grow flex-col items-center justify-center px-6">
         <Icon name="mail" size={22} className="text-ink-faint" />
         <p className="mt-3 max-w-[46ch] text-center text-body text-ink-tertiary">{line(chosen, loading, waiting)}</p>

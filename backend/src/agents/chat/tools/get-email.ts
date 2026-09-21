@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { emails } from "../../../ontology/repositories";
 import { buildEmailTrace, latestRunFor } from "../../../ontology/trace";
 import { type ChatTool, refused, type ToolContext, type ToolOutcome } from "./types";
 
@@ -33,12 +34,17 @@ export const getEmail: ChatTool<Input> = {
     const trace = await buildEmailTrace(ctx.pool, runId, input.emailId);
     if (!trace) return refused(`${input.emailId} was not part of run ${runId}`, "core.email_runs");
 
+    // Who sent it and what it said is never part of what the pipeline
+    // decided, so it is a second, cheap read against the inbox row.
+    const stored = await emails.get(ctx.pool, input.emailId);
     const { classification: sorted, comparison } = trace;
     const differed = comparison?.fields.filter((field) => !field.same && !field.missing) ?? [];
 
     const lines = [
       `email_id: ${trace.emailId}`,
       `run_id: ${runId}`,
+      stored ? `from: ${stored.from}` : null,
+      stored ? `subject: ${stored.subject}` : null,
       `stage: ${trace.stage}`,
       `category: ${sorted ? (sorted.humanCategory ?? sorted.finalCategory) : "not sorted yet"}`,
       sorted ? `confidence: ${sorted.generator.confidence}` : null,
@@ -57,6 +63,7 @@ export const getEmail: ChatTool<Input> = {
       text: lines.join("\n"),
       preview: `${trace.emailId}: ${comparison?.status ?? trace.stage}`,
       touched: [
+        { relation: "core.emails", count: stored ? 1 : 0 },
         { relation: "core.classifications", count: sorted ? 1 : 0 },
         { relation: "core.comparisons", count: comparison ? 1 : 0 },
         { relation: "core.field_diffs", count: comparison?.fields.length ?? 0 },
