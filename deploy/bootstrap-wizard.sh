@@ -344,18 +344,35 @@ ensure_secret MINIO_SECRET_KEY 16 "MinIO root password, and the secret key the a
 
 # Not generated: only the Claude account can issue it. Optional for the stack
 # to come up (the proxy starts and refuses every model call as "not logged in"),
-# so a skip is recorded rather than fatal.
-if [[ -n "$(_existing CLAUDE_CODE_OAUTH_TOKEN || true)" ]]; then
+# so a skip is recorded rather than fatal. Unlike the generated secrets it is
+# offered for replacement when set: a subscription token is revoked or reissued
+# from outside the box, and the wizard is the only place that knows where .env is.
+CURRENT_TOKEN="$(_existing CLAUDE_CODE_OAUTH_TOKEN || true)"
+REPLACE_TOKEN=0
+if [[ -n "$CURRENT_TOKEN" && "$NON_INTERACTIVE" != "1" ]] &&
+   confirm "CLAUDE_CODE_OAUTH_TOKEN is already set. Replace it?"; then
+  REPLACE_TOKEN=1
+fi
+
+if [[ -n "$CURRENT_TOKEN" && "$REPLACE_TOKEN" == "0" ]]; then
   note "CLAUDE_CODE_OAUTH_TOKEN already set, keeping it"
 else
   say "The llm-proxy container logs in to the Claude subscription with a token."
   say "Make one with \`claude setup-token\` on any machine logged in to that account."
-  ask_secret CLAUDE_CODE_OAUTH_TOKEN "Paste CLAUDE_CODE_OAUTH_TOKEN (Enter to skip for now):"
-  if [[ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]]; then
-    write_env CLAUDE_CODE_OAUTH_TOKEN "$CLAUDE_CODE_OAUTH_TOKEN"
+  if [[ "$REPLACE_TOKEN" == "1" ]]; then
+    ask_secret CLAUDE_CODE_OAUTH_TOKEN "Paste the new CLAUDE_CODE_OAUTH_TOKEN:"
   else
+    ask_secret CLAUDE_CODE_OAUTH_TOKEN "Paste CLAUDE_CODE_OAUTH_TOKEN (Enter to skip for now):"
+  fi
+
+  if [[ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]]; then
     warn "no token: every model call will fail as not logged in until one is set"
     SKIPPED+=("put CLAUDE_CODE_OAUTH_TOKEN in $ENV_FILE, then: cd $STACK && docker compose up -d llm-proxy")
+  elif [[ "$CLAUDE_CODE_OAUTH_TOKEN" == "$CURRENT_TOKEN" ]]; then
+    note "the token is unchanged"
+  else
+    write_env CLAUDE_CODE_OAUTH_TOKEN "$CLAUDE_CODE_OAUTH_TOKEN"
+    note "the llm-proxy container is recreated with it in the next stage"
   fi
 fi
 
