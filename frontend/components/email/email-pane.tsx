@@ -11,7 +11,6 @@ import type { EmailTrace } from "@/lib/api/trace-schemas";
 
 import { CaseTab } from "./case-tab";
 import { ClassificationChip, classificationLabel } from "./classification-chip";
-import { firstCorrectable } from "./case-fields";
 import { CallsTab } from "./calls-tab";
 import { CheckTab, rowsOf } from "./check-tab";
 import { DocumentsTab } from "./documents-tab";
@@ -115,20 +114,14 @@ export function EmailPane({ runId, trace, message, subject, tab, onTab, onChange
         </TabPanel>
       </div>
 
-      <ActionBar
-        review={review}
-        actions={actions}
-        actor={reviewer.name}
-        onName={reviewer.set}
-        onCorrect={
-          correctable
-            ? () => {
-                onTab("check");
-                setCorrectingField(firstCorrectable(trace));
-              }
-            : undefined
-        }
-      />
+      {review?.kind === "failure" ? (
+        <ActionBar
+          review={review}
+          actions={actions}
+          actor={reviewer.name}
+          onName={reviewer.set}
+        />
+      ) : null}
     </Tabs>
   );
 }
