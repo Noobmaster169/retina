@@ -8,6 +8,37 @@ and merged into 13 afterwards.
 `docs/phases/phase-13-business-data.md` and phase 7's two `[~]` items are still under "Deferred"
 below.
 
+**2026-09-22: a comparison request with no draft yet is its own outcome** (migration
+`028_awaiting_draft_outcome.sql`). 91 of the shipped inbox's 520 are `BL_COMPARISON` emails asking us
+to send a draft BL rather than attaching one, which the organisers' own README calls "a realistic
+classify-but-can't-compare case" and their generator makes 45 per cent of the category
+(`BL_WITH_ATTACH = 0.55`). The pipeline had them right all along and the submission is unchanged: the
+comparison row stays the organisers' `OK`.
+
+What was wrong was every screen that counted them. `email_runs.outcome` said `OK` too, so the inbox's
+`Agreed` chip held 152 where 61 pairs had been read, the run page's outcome panel left them out
+entirely (it totalled 429 of 520), and the compare lane read "Checked 129 of 220" with nothing saying
+where the other 91 went. That is what made a finished run look like one that had skipped work.
+
+Now `email_runs.outcome` is `awaiting_draft`, which is ours like `not_comparable` already was.
+`handoff` carries `awaitingDraft` beside `needCheck` and `notComparable`, the lane has a fourth end,
+the panel's slices add up to every email, the `Checked` denominator counts only pairs that had a
+draft, and the inbox has an `Awaiting a draft` chip. Migration 028 backfills the runs already stored.
+`progress.test.ts` was split at the 200-line rule: the fixtures are in `progress.fixtures.ts` and the
+new cases in `progress.crossing.test.ts`.
+
+**027 holds two files and both are applied**, `027_extract_party_lines.sql` and `027_run_name.sql`
+from a session running in parallel. Neither may be renamed now; `migrations.test.ts` records the
+collision the way it already records 023, 024 and 025.
+
+**Still open from this:** `replayRun` sets a run's status to `completed` when ingestion finishes, not
+when the work does. On the 520 run `startedAt` and `finishedAt` are four seconds apart while
+`elapsedMs` is eleven minutes, so the badge said completed with eleven minutes of work left. The page
+hides it behind `processingDone`; the status and `finishedAt` still both lie, and
+`submissions.routes.ts` reads that status to decide whether a submission is refused. Not touched here.
+Also open: `llm.inputTokens` was 3,736 against 1,482,174 output over 1,351 calls, which cannot be
+right, and `costUsd` is computed from it.
+
 **2026-09-22: extract is on `v2` and extract-verify on `v2`** (migration `027_extract_party_lines.sql`).
 A party field was read one way on the SI and another on the BL when the party's block carried its
 identification over more than one line. `email_407` and `email_059` both hold the identical shipper

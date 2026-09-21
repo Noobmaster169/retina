@@ -16,7 +16,17 @@ import { type InboxRow, needsYou } from "./inbox-rows";
  * what its label promises.
  */
 
-export const FilterKey = z.enum(["all", "needs-you", "differences", "agreed", "no-check", "settled", "moving", "failed"]);
+export const FilterKey = z.enum([
+  "all",
+  "needs-you",
+  "differences",
+  "agreed",
+  "awaiting-draft",
+  "no-check",
+  "settled",
+  "moving",
+  "failed",
+]);
 export type FilterKey = z.infer<typeof FilterKey>;
 
 export const SortKey = z.enum(["id", "attention", "differences", "sender"]);
@@ -47,6 +57,16 @@ export const FILTERS: FilterDef[] = [
   { key: "needs-you", label: "Needs you", tone: "review", steady: true, matches: needsYou },
   { key: "differences", label: "Differences", tone: "differ", steady: true, matches: (row) => row.defects > 0 },
   { key: "agreed", label: "Agreed", tone: "match", steady: true, matches: (row) => row.outcome === "OK" },
+  // Sorted as a check, and there was nothing to check: the draft has not been
+  // sent yet. Its own chip because `Agreed` used to hold it, which said two
+  // documents had been read and agreed when none had been read at all.
+  {
+    key: "awaiting-draft",
+    label: "Awaiting a draft",
+    tone: "neutral",
+    steady: true,
+    matches: (row) => row.outcome === "awaiting_draft",
+  },
   { key: "no-check", label: "No check", tone: "neutral", steady: true, matches: (row) => row.outcome === "not_comparable" },
   {
     // A reason that was raised and answered. Rare, and worth being able to find again.

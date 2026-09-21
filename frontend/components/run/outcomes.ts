@@ -49,6 +49,10 @@ export interface OutcomeBreakdown {
 /** What each outcome is called on screen, and what it means. Both trace to the organisers' definitions. */
 const WORDS: Record<string, { label: string; says: string }> = {
   not_comparable: { label: "No check needed", says: "Sorted into a category that asks for no document check." },
+  awaiting_draft: {
+    label: "Awaiting a draft",
+    says: "A comparison request whose draft bill of lading has not been sent yet, so there was nothing to compare.",
+  },
   OK: { label: "Documents agree", says: "Both documents were read and every compared field agreed." },
   MISMATCH: { label: "Documents differ", says: "Both documents were read and at least one field differed." },
   wrong_doc_type: { label: "Wrong document", says: "An attachment was not the document the email asked about." },
@@ -57,16 +61,27 @@ const WORDS: Record<string, { label: string; says: string }> = {
   missing_value: { label: "Detail missing", says: "A field the comparison needs was absent from a document." },
 };
 
-const TONES: Record<string, SliceTone> = { not_comparable: "muted", OK: "match", MISMATCH: "differ" };
+const TONES: Record<string, SliceTone> = { not_comparable: "muted", awaiting_draft: "muted", OK: "match", MISMATCH: "differ" };
 
 /**
- * `notComparable` comes from the handoff rather than from the summary: it
- * counts the emails that never crossed into the second queue, which is a fact
- * about the queues and not about a comparison that happened.
+ * `notComparable` and `awaitingDraft` come from the handoff rather than from
+ * the summary: one counts the emails that never crossed into the second queue
+ * and the other those that crossed and found no draft waiting, and both are
+ * facts about the queues rather than about a comparison that happened.
+ *
+ * Both are here so the slices add up to every email the run has landed. While
+ * `awaitingDraft` was missing, the panel's own total was short by it and the
+ * emails were nowhere on the page, which is the whole reason a reader could
+ * not tell a finished run from one that had skipped work.
  */
-export function outcomeBreakdown(run: Pick<RunSummary, "outcomes" | "review">, notComparable: number): OutcomeBreakdown {
+export function outcomeBreakdown(
+  run: Pick<RunSummary, "outcomes" | "review">,
+  notComparable: number,
+  awaitingDraft: number,
+): OutcomeBreakdown {
   const finished: [string, number][] = [
     ["not_comparable", notComparable],
+    ["awaiting_draft", awaitingDraft],
     ["OK", run.outcomes.ok],
     ["MISMATCH", run.outcomes.mismatch],
   ];

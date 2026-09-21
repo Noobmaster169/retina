@@ -69,7 +69,11 @@ describe("compare processor: the structural escalations, decided before any fiel
 
       await processCompare({ pool: tx, llm, docExtract: new MemoryDocExtractClient(), store: new MemoryStore() }, { runId, emailId });
 
-      expect(await outcome(tx, emailRunId)).toMatchObject({ stage: "done", outcome: "OK", status: "OK", detail: { awaiting_draft: true } });
+      // The comparison is the organisers' `OK`, which is what gets submitted.
+      // The email's own outcome is ours and says why there was no comparison,
+      // so nothing counts these inside "Documents agree" where no document was
+      // read. The two deliberately differ; see migration 028.
+      expect(await outcome(tx, emailRunId)).toMatchObject({ stage: "done", outcome: "awaiting_draft", status: "OK", detail: { awaiting_draft: true } });
       expect(llm.requests).toHaveLength(1);
       expect(llm.requests[0].user).toContain("## body\nHi Mitchelle, please compare the SI and draft BL.");
       expect(await llmCalls.listForEmail(tx, runId, emailId)).toMatchObject([{ step: "triage", ok: true }]);

@@ -112,6 +112,7 @@ describe("countsOf", () => {
       "needs-you": 3,
       differences: 1,
       agreed: 1,
+      "awaiting-draft": 0,
       "no-check": 1,
       settled: 1,
       moving: 1,
@@ -121,6 +122,39 @@ describe("countsOf", () => {
 
   it("counts over what the search left and not over the run", () => {
     expect(countsOf(search(ROWS, "busan")).all).toBe(5);
+  });
+});
+
+/**
+ * A comparison request whose draft has not been sent yet. It is sorted as a
+ * check and ends with nothing checked, so it is neither a clean pair nor an
+ * email that never needed one. Its own rows here rather than in ROWS, whose
+ * order several sort cases above are written against.
+ */
+describe("the emails waiting for a draft", () => {
+  const rows = mergeRows(
+    [
+      email({ emailId: "email_003", outcome: "awaiting_draft", attachmentCount: 0 }),
+      email({ emailId: "email_004", outcome: "awaiting_draft", attachmentCount: 0 }),
+      email({ emailId: "email_005", outcome: "OK" }),
+    ],
+    [],
+  );
+
+  it("has a chip of its own that finds exactly them", () => {
+    expect(narrow(rows, "awaiting-draft", "id").map((row) => row.emailId)).toEqual(["email_003", "email_004"]);
+  });
+
+  it("leaves Agreed to the pairs that were actually read", () => {
+    expect(narrow(rows, "agreed", "id").map((row) => row.emailId)).toEqual(["email_005"]);
+  });
+
+  it("is not a row that never needed a check, which is a different thing entirely", () => {
+    expect(narrow(rows, "no-check", "id")).toEqual([]);
+  });
+
+  it("is finished, so it is not still moving", () => {
+    expect(narrow(rows, "moving", "id")).toEqual([]);
   });
 });
 

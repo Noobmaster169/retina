@@ -113,8 +113,14 @@ async function compareOnce(deps: CompareDeps, run: Run, ids: EmailRunIds, fresh:
     return;
   }
   if (outcome.kind === "awaiting_draft") {
+    // The comparison is `OK` because that is what the organisers' enum says a
+    // comparison request with no draft yet scores as, and it is what gets
+    // submitted. The email's own outcome is ours to name, and naming it `OK`
+    // too put these emails inside "Documents agree" on every screen that
+    // counts them, where no documents were read at all. They are their own
+    // end of the lane: classified as a check, with nothing yet to check.
     await comparisons.upsert(deps.pool, { emailRunId: ids.emailRunId, status: "OK", reviewReason: null, detail: outcome.detail });
-    await emailRuns.moveStage(deps.pool, ids.runId, ids.emailId, ["comparing"], "done", { outcome: "OK", finished: true });
+    await emailRuns.moveStage(deps.pool, ids.runId, ids.emailId, ["comparing"], "done", { outcome: "awaiting_draft", finished: true });
     await resolveCase(deps.pool, ids);
     log.info({ runId: ids.runId, emailId: ids.emailId, stage: "compare", outcome: outcome.kind }, "compared");
     return;

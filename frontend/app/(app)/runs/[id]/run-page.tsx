@@ -98,12 +98,18 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
                 <OutcomesPanel
                   run={run}
                   notComparable={queues.handoff.notComparable}
+                  awaitingDraft={queues.handoff.awaitingDraft}
                   className="min-w-0 grow"
                 />
               </>
             ) : (
               <>
-                <OutcomesPanel run={run} notComparable={queues?.handoff.notComparable ?? 0} className="min-w-0 grow" />
+                <OutcomesPanel
+                  run={run}
+                  notComparable={queues?.handoff.notComparable ?? 0}
+                  awaitingDraft={queues?.handoff.awaitingDraft ?? 0}
+                  className="min-w-0 grow"
+                />
                 <MachineryPanel run={run} className="w-[372px] shrink-0" />
               </>
             )}

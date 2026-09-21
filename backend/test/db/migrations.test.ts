@@ -33,6 +33,9 @@ const DOUBLED = new Map([
   ["023", 2],
   ["024", 2],
   ["025", 2],
+  // Two sessions took 027 on the same day and both are applied, so neither may
+  // be renamed now: the extract prompt bump and the run rename.
+  ["027", 2],
 ]);
 
 async function filenames(): Promise<string[]> {

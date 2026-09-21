@@ -42,18 +42,32 @@ export async function lastFinishedForRuns(db: Queryable, runIds: string[]): Prom
 
 /**
  * The crossing between the two queues: how many of the run's sorted emails
- * need a document check, and how many stopped at the first queue. Counted here
- * because the run page draws the handoff and CLAUDE.md keeps that arithmetic
- * out of the frontend.
+ * need a document check, how many stopped at the first queue, and how many
+ * crossed with nothing yet to check. Counted here because the run page draws
+ * the handoff and CLAUDE.md keeps that arithmetic out of the frontend.
+ *
+ * `awaitingDraft` is the organisers' own class: a comparison request whose
+ * draft has not been sent yet, which their generator makes 45 per cent of
+ * (`BL_WITH_ATTACH`). It crosses into the second queue and ends there without
+ * a pair, so a page that shows only `needCheck` and the checked pairs leaves
+ * it unaccounted for.
  */
-export async function handoff(db: Queryable, runId: string): Promise<{ needCheck: number; notComparable: number }> {
-  const { rows } = await db.query<{ need_check: string; not_comparable: string }>(
+export async function handoff(
+  db: Queryable,
+  runId: string,
+): Promise<{ needCheck: number; notComparable: number; awaitingDraft: number }> {
+  const { rows } = await db.query<{ need_check: string; not_comparable: string; awaiting_draft: string }>(
     `select count(*) filter (where c.final_category = 'BL_COMPARISON') as need_check,
-            count(*) filter (where er.outcome = 'not_comparable')      as not_comparable
+            count(*) filter (where er.outcome = 'not_comparable')      as not_comparable,
+            count(*) filter (where er.outcome = 'awaiting_draft')      as awaiting_draft
        from core.email_runs er
        left join core.classifications c on c.email_run_id = er.id
       where er.run_id = $1`,
     [runId],
   );
-  return { needCheck: Number(rows[0].need_check), notComparable: Number(rows[0].not_comparable) };
+  return {
+    needCheck: Number(rows[0].need_check),
+    notComparable: Number(rows[0].not_comparable),
+    awaitingDraft: Number(rows[0].awaiting_draft),
+  };
 }
