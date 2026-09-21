@@ -633,10 +633,6 @@ images, OCR text is used and the reviewer sees the PNG.
 - One transport. The proxy is the `llm-proxy` service of the same compose stack; the second
   transport to another Retina API's `/ai/chat` was removed with the remote proxy it existed for,
   and `config.ts` refuses to boot an `LLM_PROXY_URL` that still names one.
-- `port-locate` (phase 13) is the one step on the `sonnet-web` alias, the proxy's `claudecli_web`
-  rail with `WebSearch`. Its input is a port's name, country and locode from its own attributes,
-  never email text. It writes `lat` and `lon` with source `search` or `model`, once per port, from
-  the profile refresh after the profile is written.
 - A `claude` with no login is the proxy's `provider_not_logged_in`, 502 with `retryable: false`,
   so the backend fails the email at once with a message naming `CLAUDE_CODE_OAUTH_TOKEN` instead
   of reading a missing secret as an outage and requeueing forever.
@@ -824,6 +820,24 @@ appearance read twice, and the same email replayed in three runs is still one ap
 sides it was read from as a field. Listing mentions put one subject on screen four times and told
 a reader nothing the sides and the count do not.
 
+### 8.3b Reference data and a person's corrections (phase 13)
+
+`backend/reference/ports.json` (12,608 ports with coordinates, from UN/LOCODE and the sea-ports
+set) and `countries.json` (249 countries with the UN geoscheme region and subregion) ship with
+the backend, built by `scripts/reference-build.ts`. `src/reference/ports.ts` places a port by the
+words of its name inside the country its name carries; a bracketed code only breaks a tie among
+candidates it agrees with, because the dataset writes stale codes. `entities.locate.ts` writes
+country, `countryCode`, `locode`, coordinates, region and subregion with source `reference` the
+moment the resolver creates a port, and `pnpm ontology:locate` walks what exists. A company's
+`countryCode` is the reference list's reading of the country its profile names.
+
+Migration `024` adds `human_name`, `edited_by`, `edited_at`. An attribute a person sets carries
+source `human`; a profile write lays every `reference` or `human` key back over the model's. A
+rename sets `canonical` and `human_name`; `applyResolution` keeps `coalesce(human_name, most
+seen)`. A merge inserts the loser's spellings into the survivor as `human` joins with
+`joined_step`, which `loadResolveJoins` reads back as verdicts, then tombstones the loser as a
+model's merge would, and pins the survivor's name.
+
 ### 8.3a The semantic layer (phase 10f)
 
 Migrations `017` to `021`. Nothing here runs before an email's verdict is written, so nothing here
@@ -955,6 +969,7 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 | `GET /chat/skills` | the skill cards for the composer's `/` menu: `{ name, version, when }`. The bodies are never sent; they are for the agent |
 | `GET /ontology/types` | the types the rail offers, with live counts and `built`: Emails, then the six resolved kinds, then Shipments, which stays unbuilt in the ontology (one row per email, nothing groups them into a booking) and is listed at `/shipment` instead. A company and a port answer an `openHref` to their business pages since phase 13. The other seven `ObjectType`s are real and are reached through an object rather than browsed; `client` in particular folds into `party`, since a sender domain and a consignee are the same company read two ways |
 | `GET /ontology/:type`, `GET /ontology/:type/:id`, `/:id/detail`, `/:id/graph?hops=1\|2` | the index of a resolved kind; one object in the one shape every type shares; the four parts a resolved thing opens into; and one email's graph as nodes and named edges. The graph carries no coordinates: the layout is one pure function in the frontend with a table-driven test |
+| `PATCH /ontology/:kind/:id/attributes`, `POST /ontology/:kind/:id/rename`, `POST /ontology/:kind/:id/merge` | a person correcting a thing from its page (phase 13): attributes with source `human`, which no profile rewrite touches; a chosen name kept as `human_name`, which every resolution pass prefers; and a merge recorded as the person's join of every spelling, so the pass keeps the two together. Each takes `actor` and answers the row |
 | `GET /shipments?partyId&portId&disputed&q&page&pageSize`, `GET /shipments/:emailId` | shipments as the mail states them, each party and port a reference to the resolved thing; one shipment with everything shipment-read wrote (phase 13) |
 | `GET /ontology/:kind` for all six kinds; `GET /ontology/party/:id/people`, `/party/:id/ports`, `/port/:id/parties` | a kind's list carries attributes, the profile's first sentence and distinct emails per role; the three counterpart lists count distinct undisputed emails (phase 13) |
 | `GET /database/tables`, `/tables/:schema/:name?limit=&offset=`, `/tables/:schema/:name/rows/:id` | every relation of `core` and `analytics` with an exact count; a page of one with typed columns and the SQL that produced it; one row as fields plus what points at it by foreign key. Identifiers are read out of `pg_catalog` and checked against a pattern before they reach a query; this path composes its own SQL and takes nothing a caller wrote, which is why it does not use the RO pool |

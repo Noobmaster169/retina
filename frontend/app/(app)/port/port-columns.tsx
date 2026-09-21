@@ -1,10 +1,11 @@
 import type { Column } from "@/components/business/data-table";
 import type { EntityRow } from "@/lib/api/ontology-schemas";
+import { flagOf } from "@/lib/flag";
 
 const unknown = <span className="text-ink-faint">unknown</span>;
 
 export const PORT_COLUMNS: Column<EntityRow>[] = [
-  { key: "name", label: "Port", sort: (r) => r.name, cell: (r) => <span className="font-medium text-kind-port">{r.name}</span> },
+  { key: "name", label: "Port", sort: (r) => r.name, cell: (r) => <span className="font-medium text-kind-port">{flagOf(r.attributes.countryCode) ? `${flagOf(r.attributes.countryCode)} ` : ""}{r.name}</span> },
   { key: "locode", label: "Locode", width: "90px", mono: true, sort: (r) => r.attributes.locode ?? "", cell: (r) => r.attributes.locode ?? "" },
   { key: "country", label: "Country", width: "160px", sort: (r) => r.attributes.country ?? "", cell: (r) => r.attributes.country ?? unknown },
   {

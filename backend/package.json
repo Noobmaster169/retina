@@ -22,6 +22,7 @@
     "derive": "node --env-file-if-exists=.env --import tsx scripts/derive.ts",
     "ontology:backfill": "node --env-file-if-exists=.env --import tsx scripts/ontology-backfill.ts",
     "ontology:bench": "node --env-file-if-exists=.env --import tsx scripts/ontology-bench.ts",
+    "ontology:locate": "node --env-file-if-exists=.env --import tsx scripts/ontology-locate.ts",
     "ontology:export": "node --env-file-if-exists=.env --import tsx scripts/ontology-export.ts",
     "mcp": "node --env-file-if-exists=.env --import tsx src/mcp.ts"
   },

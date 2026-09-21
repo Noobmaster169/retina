@@ -112,6 +112,7 @@ All routes except `/health` need `Authorization: Bearer <key>`. The key is
 | --- | --- |
 | `GET /health` | `{ status: "ok" \| "degraded" \| "down", checks, version, queues }`. A check is `{ status, latencyMs }` plus what that dependency says about itself: `inbox` its email count, `docExtract` its tesseract build, `llmProxy` its alias count, `worker` its last heartbeat. 503 only when postgres or redis is down, which is what auto-deploy rolls back on; everything else is `degraded` and still 200 |
 | `GET /shipments`, `GET /shipments/:emailId`; `GET /ontology/:kind` for six kinds; `GET /ontology/party/:id/people|ports`, `/ontology/port/:id/parties` | the business pages' readers (phase 13): shipments as the mail states them, a kind's list with attributes, summary and roles, and what sits beside a thing |
+| `PATCH /ontology/:kind/:id/attributes`, `POST /ontology/:kind/:id/rename`, `POST /ontology/:kind/:id/merge` | a person correcting a thing from its page, each with `actor` |
 | `GET /clients`, `PUT /clients/:domain` | every sender domain seen, with its tier, kind and counts, and `known: false` for one nobody has ranked. The `PUT` takes `{ name?, tier?, kind? }`. A tier orders the queue and decides no category |
 | `GET /review`, `GET /review/stats`, `GET /review/:id` | the cases waiting for a person, the queue's own numbers, and one case with its evidence and its history |
 | `POST /review/:id/actions`, `POST /review/:id/upload` | what a person does to a case: confirm, correct a field, reclassify, note, retry, reopen, or supply a document. 409 when the case is not in a state where the action means anything |
@@ -169,6 +170,7 @@ curl -s 127.0.0.1:8091/ai/chat -H "authorization: Bearer $TEAM_API_KEY" \
 | Change how a document is parsed | an extractor in `services/doc-extract/extractors/`, then `docker compose -f compose.local.yaml up -d --build doc-extract` in `backend/` |
 | Debug the proxy | `curl -i 127.0.0.1:4000/v1/messages ...`. Look at the `X-LLM-Proxy-*` headers |
 | Rebuild the analytics views and the ontology | `pnpm derive` in `backend/`. The worker does it every five minutes when `core` has moved; this is for straight after a deploy and before a demo |
+| Place every port and code every company from the reference lists | `pnpm ontology:locate` in `backend/`. Free and idempotent; the resolver does the same for each new port as it creates it |
 | Read the mail's shipments into the ontology | `pnpm ontology:backfill [--limit N]` in `backend/`, with a worker running. It spends tokens: development runs stay at 20 to 30 and the full backfill is the user's to start |
 | Check the semantic layer at scale | `pnpm ontology:bench` in `backend/`: 200,000 things and 2,000,000 sightings inside a transaction that is rolled back, then `explain analyze` on the four lookups a question makes. No model is called and it is not part of `pnpm test` |
 | Read the profiles as files | `pnpm ontology:export` in `backend/`. One folder per kind; nothing reads it back, because the rows are the source of truth |

@@ -1,5 +1,6 @@
 import type { Queryable } from "../../db";
 import type { ReconcilePlan, ResolvedEntity } from "../../pipeline/ontology";
+import { locateEntity } from "./entities.locate";
 
 /**
  * Writes a resolution pass without changing an id that still means the same
@@ -43,7 +44,7 @@ async function writeNames(tx: Queryable, id: string, entity: ResolvedEntity): Pr
  * question nobody asked about this thing. The survivor is marked stale, so its
  * profile is rewritten and the next question judges it once.
  */
-async function applyMerge(tx: Queryable, from: number, into: number): Promise<void> {
+export async function applyMerge(tx: Queryable, from: number, into: number): Promise<void> {
   await tx.query("update core.entity_sightings set entity_id = $2::bigint where entity_id = $1::bigint", [from, into]);
   for (const column of ["shipper_id", "consignee_id", "notify_party_id", "pol_id", "pod_id", "carrier_id", "vessel_id", "commodity_id"]) {
     await tx.query(`update core.email_shipments set ${column} = $2::bigint where ${column} = $1::bigint`, [from, into]);
@@ -89,15 +90,17 @@ export async function applyResolution(tx: Queryable, plan: ReconcilePlan): Promi
   await park(tx, plan.keep);
 
   for (const { id, cluster } of plan.keep) {
+    // A name a person chose outranks the most-seen spelling, on every pass.
     await tx.query(
       `update core.entities
-          set canonical = $2::text, mention_count = $3::int, name_count = $4::int, sighting_count = $5::int,
+          set canonical = coalesce(human_name, $2::text), mention_count = $3::int, name_count = $4::int, sighting_count = $5::int,
               first_seen_at = $6::timestamptz, last_seen_at = $7::timestamptz, resolved_at = now(),
               stale = stale or mention_count is distinct from $3::int or sighting_count is distinct from $5::int
         where id = $1::bigint`,
       [id, cluster.canonical, cluster.mentions.length, cluster.names.length, cluster.sightingCount, cluster.firstSeenAt, cluster.lastSeenAt],
     );
     await writeNames(tx, String(id), cluster);
+    await keepHumanName(tx, String(id));
   }
 
   for (const cluster of plan.insert) {
@@ -108,9 +111,20 @@ export async function applyResolution(tx: Queryable, plan: ReconcilePlan): Promi
       [cluster.kind, cluster.canonical, cluster.mentions.length, cluster.names.length, cluster.sightingCount, cluster.firstSeenAt, cluster.lastSeenAt],
     );
     await writeNames(tx, rows[0].id, cluster);
+    await locateEntity(tx, rows[0].id, cluster.kind, cluster.canonical);
   }
 
   return plan.keep.length + plan.insert.length;
+}
+
+/** The chosen name is a spelling of the thing too, so a search by it finds it after every pass rewrote the names. */
+async function keepHumanName(tx: Queryable, id: string): Promise<void> {
+  await tx.query(
+    `insert into core.entity_names (entity_id, value, seen_count, joined_by)
+     select e.id, e.human_name, 0, 'human' from core.entities e where e.id = $1::bigint and e.human_name is not null
+     on conflict (entity_id, value) do nothing`,
+    [id],
+  );
 }
 
 /**
@@ -135,6 +149,7 @@ export async function insertFromSighting(tx: Queryable, kind: string, surface: s
      values ($1::bigint, $2::text, 1, 'kept') on conflict (entity_id, value) do nothing`,
     [id, surface],
   );
+  await locateEntity(tx, String(id), kind, surface);
   return id;
 }
 

@@ -155,6 +155,7 @@ export {
   uploadToCase,
 } from "./api/review-client";
 export { fetchFile } from "./api/files-client";
+export { editAttributes, type EditOutcome, mergeEntity, renameEntity } from "./api/edit-client";
 export {
   getShipment,
   listShipments,

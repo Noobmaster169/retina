@@ -39,16 +39,14 @@ providers:
   # Template for a tool-using rail, off until needed. Uncomment this and the
   # `sonnet-web` alias below: that alias gets web search, `sonnet` keeps none.
   # Any built-in the CLI lists works here (WebSearch, WebFetch, Read...).
-  # Phase 13: the `port-locate` step runs here. Its input is a port's name,
-  # country and locode from its own attributes, never email text.
-  claudecli_web:
-    type: claudecli
-    binary: claude
-    max_concurrency: 8
-    timeout_s: 1200
-    stream_mode: native
-    neutralise_anthropic_key: true
-    tools: [WebSearch]
+  # claudecli_web:
+  #   type: claudecli
+  #   binary: claude
+  #   max_concurrency: 8
+  #   timeout_s: 1200
+  #   stream_mode: native
+  #   neutralise_anthropic_key: true
+  #   tools: [WebSearch]
 
   mock:
     type: mock
@@ -67,9 +65,9 @@ model_list:
   - model_name: haiku
     params: { model: claudecli/haiku }
 
-  # The web-searching rail. Only port-locate names it.
-  - model_name: sonnet-web
-    params: { model: claudecli_web/sonnet }
+  # With the claudecli_web provider above:
+  # - model_name: sonnet-web
+  #   params: { model: claudecli_web/sonnet }
 
   # Scripted, free, offline: echoes the prompt back. For smoke tests.
   - model_name: test
@@ -88,7 +86,8 @@ capabilities:
     tools: deny
     images: deny
     system: merge_into_first_user
-  "claudecli_web/*": { sampling: deny, tools: deny, images: deny, system: merge_into_first_user }
+  # With the claudecli_web template: capabilities match by provider name.
+  # "claudecli_web/*": { sampling: deny, tools: deny, images: deny, system: merge_into_first_user }
 
 # What to do with a parameter the target model cannot take: strip it and say so in
 # the X-LLM-Proxy-Warnings response header. `strip_silent` and `reject` also exist.

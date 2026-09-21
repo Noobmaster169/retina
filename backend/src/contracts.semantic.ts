@@ -46,17 +46,21 @@ export const PortAttributes = z.object({
   /** The UN/LOCODE, where the model is sure of it. Never matched on alone: a code on a document can name another port. */
   locode: text(10),
   coast: text(60),
-  /** Decimal degrees as text, like every other attribute. Written by the port-locate step, never by the profile. */
+  /** ISO 3166 code, from the reference list or a person. The flag the pages draw comes from it. */
+  countryCode: text(2),
+  /** Decimal degrees as text, like every other attribute. From the reference list or a person, never from the profile. */
   lat: text(20),
   lon: text(20),
 });
 export type PortAttributes = z.infer<typeof PortAttributes>;
 
-/** The keys the locate step owns. The profile write keeps them; the profile schema leaves them out. */
-export const LOCATED_KEYS = ["lat", "lon"] as const;
+/** The keys the reference list or a person owns on a port. The profile schema leaves them out; a profile write keeps them. */
+export const REFERENCE_PORT_KEYS = ["countryCode", "lat", "lon"] as const;
 
 export const PartyAttributes = z.object({
   country: text(80),
+  /** ISO 3166 code derived from `country` by the reference list, or set by a person. Never the model's. */
+  countryCode: text(2),
   city: text(80),
   /** What it does in the trade, in the model's own words: a mill, a converter, a distributor, a forwarder. */
   kind: text(40),
@@ -110,8 +114,8 @@ export const ATTRIBUTES: Record<EntityKind, z.ZodType> = {
  * separate number to give: the value is in the dossier or it is not.
  */
 export const AttributeSource = z.object({
-  /** `search` is the locate step's web search; `model` its own knowledge when the search found nothing. */
-  source: z.enum(["mail", "model", "search"]),
+  /** `reference` is the world's list of ports and countries; `human` is a person's edit, which nothing overwrites. */
+  source: z.enum(["mail", "model", "reference", "human"]),
   confidence: z.number().min(0).max(1).nullable().default(null),
   llmCallId: z.number().int().nullable().default(null),
 });
