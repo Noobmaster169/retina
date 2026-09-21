@@ -1,22 +1,22 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { Suspense, useEffect, useRef } from "react";
+import { AnimatePresence, motion } from "motion/react";
 
 import { Composer } from "@/components/chat/composer";
-import { LiveCalls } from "@/components/chat/live-calls";
-import { Markdown } from "@/components/chat/markdown";
-import { withoutUnfinishedLink } from "@/components/chat/mention";
-import { StatusLine } from "@/components/chat/status-line";
+import { Suggestions } from "@/components/chat/suggestions";
 import { Turn } from "@/components/chat/turn";
 import { openConversation, useChat } from "@/components/chat/use-chat";
 
 import { DockSync } from "@/components/dock/dock-sync";
 
 import { ConversationRail } from "./conversation-rail";
+import { Opening } from "./opening";
+import { Seed } from "./seed";
+import { Empty, Pending } from "./thread-parts";
 import { TopBar } from "@/components/shell/top-bar";
-import type { ChatToolCall } from "@/lib/api/chat-agent-schemas";
-import type { ChatConversation, ChatProgress, ChatThread } from "@/lib/api/chat-thread-schemas";
+import type { ChatConversation, ChatThread } from "@/lib/api/chat-thread-schemas";
 
 /**
  * The conversation, wide.
@@ -30,23 +30,72 @@ import type { ChatConversation, ChatProgress, ChatThread } from "@/lib/api/chat-
 /** There are no accounts in this build; a reviewer types their name once. This is the chat's. */
 const ACTOR = "the analyst";
 
+/** The store is where a thread's turns live, so nothing is seeded from a prop. Stable, or the effect that hands it over never settles. */
+const NO_TURNS: never[] = [];
+
+/**
+ * How the question box travels from the middle of the page to its foot. Long
+ * enough to read as one movement and not a jump, short enough that it is over
+ * before the first tool call comes back. Eased out, because the box is coming
+ * to rest against the bottom of the page and should look like it.
+ */
+const SETTLE = { duration: 0.42, ease: [0.22, 1, 0.36, 1] } as const;
+
+/**
+ * Three, and short. They are an offer and not a menu: a fourth row of them
+ * pushed the question box off the middle of the page, and a person reading
+ * four long sentences is choosing between them rather than asking their own.
+ */
 const SUGGESTIONS = [
-  "Which client had the most mismatches in the latest run, and on which field?",
+  "Which client had the most mismatches?",
   "Which of the seven fields differs most often?",
   "How many emails needed a person, by reason?",
-  "Which spellings were judged to be the same port?",
 ];
 
 interface ChatPageProps {
   runId: string;
   conversations: ChatConversation[];
-  thread: ChatThread | null;
+  /** Which conversation the address names, or the newest there is. */
+  openId: string | null;
+  /**
+   * The server's copy of that thread, still arriving. Never awaited before the
+   * page draws: the turns come from the store, which already has them for any
+   * conversation this session has read, and this merges in behind.
+   */
+  thread: Promise<ChatThread | null> | null;
 }
 
-export function ChatPage({ runId, conversations, thread }: ChatPageProps) {
+export function ChatPage({ runId, conversations, openId, thread }: ChatPageProps) {
   const router = useRouter();
-  const chat = useChat({ conversationId: thread?.conversation.id ?? null, actor: ACTOR, initial: thread?.turns ?? [] });
+  const conversation = conversations.find((one) => one.id === openId) ?? null;
+  const chat = useChat({ conversationId: openId, actor: ACTOR, initial: NO_TURNS });
   const foot = useRef<HTMLDivElement>(null);
+
+  // Nothing has ever been asked here, so the box sits in the middle. `turns`
+  // holds the person's own question the moment they send it, so this turns
+  // false on the keystroke that sends rather than when the model comes back:
+  // the box starts travelling while they are still looking at what they typed.
+  //
+  // The turn count comes from the list and
+  // not from the turns, which arrive after the page draws: without it a
+  // conversation with a thread showed the centred opening for the moment
+  // before its turns landed, and the box travelled down as they did.
+  const opening = chat.turns.length === 0 && !chat.pending && (conversation?.turnCount ?? 0) === 0;
+  const scopeWords = conversation?.scope.chips.map((chip) => chip.label).join(" and ") ?? "every run";
+
+  // A conversation is named from its first question, by the server, and the
+  // rail is drawn from a server render: until this, the one conversation a
+  // person was actually in was the one row the rail was wrong about, and it
+  // stayed wrong until the page was loaded again. The row shows dots from the
+  // keystroke that sends, and this fetches the name that replaces them.
+  //
+  // Twice, deliberately. The name is written before the model is called, so
+  // the first of these usually has it; the second is for when that race goes
+  // the other way, and both stop the moment a name exists.
+  const naming = conversation !== null && conversation.title === null && chat.turns.length > 0;
+  useEffect(() => {
+    if (naming) router.refresh();
+  }, [naming, chat.pending, router]);
 
   // A new answer is long, and the thing a person wants to read is its top, not
   // its bottom. Scrolling to the end of the list puts the question they just
@@ -62,14 +111,25 @@ export function ChatPage({ runId, conversations, thread }: ChatPageProps) {
 
   return (
     <>
-      <DockSync conversationId={thread?.conversation.id ?? null} />
-      <ConversationRail conversations={conversations} runId={runId} openId={thread?.conversation.id ?? null} onNew={start} />
+      <DockSync conversationId={openId} />
+      {thread ? (
+        <Suspense fallback={null}>
+          <Seed id={openId} thread={thread} />
+        </Suspense>
+      ) : null}
+      <ConversationRail
+        conversations={conversations}
+        runId={runId}
+        openId={openId}
+        namingId={naming ? openId : null}
+        onNew={start}
+      />
 
       <div className="flex min-w-0 grow flex-col">
-        <TopBar crumbs={[{ label: "Ask Retina" }, { label: thread?.conversation.title ?? "A new question" }]}>
-          {thread ? (
+        <TopBar crumbs={[{ label: "Ask Retina" }, { label: conversation?.title ?? "A new question" }]}>
+          {conversation ? (
             <span className="flex h-[26px] items-center gap-1.5">
-              {thread.conversation.scope.chips.map((chip) => (
+              {conversation.scope.chips.map((chip) => (
                 <span
                   key={chip.label}
                   className={`inline-flex h-[21px] items-center rounded-sm border border-hairline bg-canvas px-2 font-mono text-mono-xs ${
@@ -84,7 +144,7 @@ export function ChatPage({ runId, conversations, thread }: ChatPageProps) {
         </TopBar>
 
         <div className="min-h-0 grow overflow-y-auto px-6 py-5">
-          {thread === null ? (
+          {conversation === null ? (
             <Empty onNew={start} />
           ) : (
             <div className="mx-auto max-w-[900px] space-y-6">
@@ -108,61 +168,32 @@ export function ChatPage({ runId, conversations, thread }: ChatPageProps) {
           )}
         </div>
 
-        {thread ? (
-          <Composer
-            onAsk={chat.ask}
-            onStop={chat.stop}
-            pending={chat.pending}
-            suggestions={chat.turns.length === 0 ? SUGGESTIONS : []}
-            placeholder="Ask about this inbox"
-          />
+        {/*
+         * An empty conversation puts the question box in the middle of the
+         * page, where the only thing to do is ask, and travels it to the foot
+         * once there is a thread to read above it. The box itself never
+         * unmounts: `layout` animates the one element from where it was to
+         * where it now belongs, so the movement is the box moving and not one
+         * box disappearing while another appears. The spacer under it is what
+         * centres it, and its going is what sends the box down.
+         */}
+        {conversation ? (
+          <>
+            <AnimatePresence>{opening ? <Opening key="opening" scope={scopeWords} /> : null}</AnimatePresence>
+            <motion.div layout transition={SETTLE} className="shrink-0">
+              <Suggestions items={opening ? SUGGESTIONS : []} onAsk={chat.ask} centred={opening} />
+              <Composer
+                onAsk={chat.ask}
+                onStop={chat.stop}
+                pending={chat.pending}
+                placeholder="Ask about this inbox"
+                seam={!opening}
+              />
+            </motion.div>
+            {opening ? <motion.div layout transition={SETTLE} className="min-h-0 grow" /> : null}
+          </>
         ) : null}
       </div>
     </>
-  );
-}
-
-/**
- * A turn in flight, in the order it happens: what it is doing, what it has
- * looked at, and the answer as it is written.
- *
- * The calls are open here and folded away once the turn is done, because they
- * are the only thing to read during the wait and the wrong thing to read after
- * it. The skeleton lasts only until the first words do: once the model is
- * writing, the prose is what stands for the wait, and the person can start
- * reading it seconds before it is finished.
- */
-function Pending({ progress, calls, since }: { progress: ChatProgress | null; calls: ChatToolCall[]; since: number }) {
-  return (
-    <div className="space-y-3">
-      <StatusLine progress={progress} since={since} />
-      <LiveCalls calls={calls} />
-      {progress?.answer ? (
-        <Markdown text={withoutUnfinishedLink(progress.answer)} />
-      ) : (
-        <>
-          <div className="h-4 w-2/3 rounded-xs bg-sunken" />
-          <div className="h-4 w-1/2 rounded-xs bg-sunken" />
-        </>
-      )}
-    </div>
-  );
-}
-
-function Empty({ onNew }: { onNew(): void }) {
-  return (
-    <div className="mx-auto max-w-[560px] pt-16 text-center">
-      <h1 className="font-display text-display font-normal tracking-[-0.01em]">Ask Retina</h1>
-      <p className="mt-1 text-body text-ink-tertiary">
-        A conversation that reads the whole model and answers from it, with the query it ran shown under every answer.
-      </p>
-      <button
-        type="button"
-        onClick={onNew}
-        className="mt-5 h-9 rounded-md bg-ink px-4 text-strong font-medium text-ink-inverse"
-      >
-        Start a conversation
-      </button>
-    </div>
   );
 }

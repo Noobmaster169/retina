@@ -8,7 +8,8 @@ import { agreementNote, anythingInDoubt, groupRows } from "./check-groups";
 import { checkSentence } from "./field-reading";
 import { Folded, Group } from "./field-groups";
 import { FieldRow, type FieldRowData } from "./field-row";
-import { type FileSizes, MessageCard, type Message } from "./message-card";
+import { MessageCard, type Message } from "./message-card";
+import { RecommendActionButton } from "./recommend-action-button";
 import { Reading, type ReadingFact, Seam } from "./seam";
 
 /**
@@ -21,15 +22,18 @@ import { Reading, type ReadingFact, Seam } from "./seam";
  * of lading and wrong for a screen, because five rows of `agree` above the one
  * row that differs is five rows of nothing. The enum's order is kept inside
  * each group, so the reading order a clerk knows survives the grouping.
+ *
+ * A footer carries `Recommend action` where there is one to recommend: this is
+ * the tab a reader lands on, so the step after the finding belongs here and
+ * not on a second tab they may not open.
  */
 
 interface CheckTabProps {
   trace: EmailTrace;
   message: Message;
-  sizes: FileSizes;
 }
 
-export function CheckTab({ trace, message, sizes }: CheckTabProps) {
+export function CheckTab({ trace, message }: CheckTabProps) {
   const rows = rowsOf(trace);
   const groups = groupRows(rows);
   const doubt = anythingInDoubt(groups);
@@ -43,44 +47,55 @@ export function CheckTab({ trace, message, sizes }: CheckTabProps) {
   );
 
   return (
-    <div className="px-6 pb-4">
-      <div className="pt-4">
-        <MessageCard message={message} sizes={sizes} />
+    <div className="flex min-h-0 grow flex-col">
+      <div className="min-h-0 grow overflow-y-auto px-6 pb-4">
+        <div className="pt-4">
+          <MessageCard message={message} documents={trace.documents} />
+        </div>
+        <Seam />
+        <Reading facts={factsOf(trace)}>{readingOf(trace)}</Reading>
+
+        {rows.length === 0 ? (
+          <p className="max-w-[68ch] py-3 text-small text-ink-tertiary">
+            Nothing has been compared yet. A pair is judged once both documents have been read.
+          </p>
+        ) : (
+          <>
+            {groups.differing.length > 0 ? (
+              <Group title="What differs" count={groups.differing.length} tone="differ">
+                {groups.differing.map(draw)}
+              </Group>
+            ) : null}
+
+            {groups.blank.length > 0 ? (
+              <Group title="Nothing to compare" count={groups.blank.length} tone="review">
+                {groups.blank.map(draw)}
+              </Group>
+            ) : null}
+
+            {settled ? <p className="max-w-[68ch] pt-3 text-body text-ink-secondary">{settled}</p> : null}
+
+            {groups.agreed.length > 0 ? (
+              <Folded
+                open={showAgreed}
+                onToggle={() => setShowAgreed((was) => !was)}
+                label={doubt ? `The other ${groups.agreed.length} agree` : `Show the ${groups.agreed.length} fields`}
+              >
+                {groups.agreed.map(draw)}
+              </Folded>
+            ) : null}
+          </>
+        )}
       </div>
-      <Seam />
-      <Reading facts={factsOf(trace)}>{readingOf(trace)}</Reading>
 
-      {rows.length === 0 ? (
-        <p className="max-w-[68ch] py-3 text-small text-ink-tertiary">
-          Nothing has been compared yet. A pair is judged once both documents have been read.
-        </p>
-      ) : (
-        <>
-          {groups.differing.length > 0 ? (
-            <Group title="What differs" count={groups.differing.length} tone="differ">
-              {groups.differing.map(draw)}
-            </Group>
-          ) : null}
-
-          {groups.blank.length > 0 ? (
-            <Group title="Nothing to compare" count={groups.blank.length} tone="review">
-              {groups.blank.map(draw)}
-            </Group>
-          ) : null}
-
-          {settled ? <p className="max-w-[68ch] pt-3 text-body text-ink-secondary">{settled}</p> : null}
-
-          {groups.agreed.length > 0 ? (
-            <Folded
-              open={showAgreed}
-              onToggle={() => setShowAgreed((was) => !was)}
-              label={doubt ? `The other ${groups.agreed.length} agree` : `Show the ${groups.agreed.length} fields`}
-            >
-              {groups.agreed.map(draw)}
-            </Folded>
-          ) : null}
-        </>
-      )}
+      {groups.differing.length > 0 ? (
+        <footer className="flex shrink-0 items-center gap-2.5 border-t border-hairline bg-surface px-6 py-3">
+          <p className="min-w-0 grow truncate text-small text-ink-tertiary">
+            {groups.differing.length} field{groups.differing.length === 1 ? "" : "s"} {groups.differing.length === 1 ? "differs" : "differ"}.
+          </p>
+          <RecommendActionButton emailId={trace.emailId} differing={groups.differing.map((row) => row.judgement.field)} />
+        </footer>
+      ) : null}
     </div>
   );
 }

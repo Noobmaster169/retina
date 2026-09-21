@@ -8,6 +8,7 @@ import {
   type ChatToolCall,
   type ChatTurn,
   type ClarifyingQuestion,
+  type EmailDraft,
   type GroundedThing,
   type ProposedAction,
   type SemanticReading,
@@ -42,6 +43,8 @@ interface AssistantExtras {
   toolCalls: ChatToolCall[];
   graph: ChatGraph | null;
   proposal: ProposedAction | null;
+  /** A reply to the sender, drafted from what this turn found. Null unless a skill drafted one. */
+  emailDraft: EmailDraft | null;
   reading: string;
   skillsUsed: ChatSkillUse[];
   adhoc: boolean;
@@ -61,6 +64,7 @@ const NO_EXTRAS: AssistantExtras = {
   toolCalls: [],
   graph: null,
   proposal: null,
+  emailDraft: null,
   reading: "",
   skillsUsed: [],
   adhoc: false,
@@ -89,6 +93,7 @@ export function toTurn(row: TurnRow): ChatTurn {
     sqlUsed: row.sql_used,
     graph: extras.graph,
     proposal: extras.proposal,
+    emailDraft: extras.emailDraft,
     reading: extras.reading,
     skillsUsed: extras.skillsUsed,
     adhoc: extras.adhoc,
@@ -158,6 +163,7 @@ export interface NewAssistantTurn {
   toolCalls: ChatToolCall[];
   graph: ChatGraph | null;
   proposal: ProposedAction | null;
+  emailDraft: EmailDraft | null;
   reading: string;
   skillsUsed: ChatSkillUse[];
   adhoc: boolean;

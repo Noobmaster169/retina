@@ -26,6 +26,8 @@ const PATHS = {
   back: "M10 3.5 L5.5 8 L10 12.5",
   warning: "M8 2.2 L14.5 13.5 h-13 z M8 6.4 v3.1 M8 11.3 v0.6",
   send: "M8 12.5 V3.5 M4.5 7 L8 3.5 L11.5 7",
+  /* The dictation button: a capsule, its pickup arc, and the stand under it. */
+  mic: "M8 2 a2 2 0 0 1 2 2 v3.5 a2 2 0 0 1 -4 0 V4 a2 2 0 0 1 2 -2 M4 7.2 v0.6 a4 4 0 0 0 8 0 v-0.6 M8 11.8 V14",
   ship: "M2 11 h12 l-1.5 3 h-9 z M4 11 V5 h8 v6 M8 5 V2.5",
   client: "M8 3 a2.2 2.2 0 1 0 0.01 0 M3.5 13 a4.5 4.5 0 0 1 9 0",
   diff: "M4.5 2.5 v11 M11.5 2.5 v11 M2 6 h5 M9 10 h5",

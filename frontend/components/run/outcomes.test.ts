@@ -30,11 +30,12 @@ function counts(ok: number, mismatch: number, byReason: Partial<Counts["review"]
 }
 
 describe("outcomeBreakdown", () => {
-  const breakdown = outcomeBreakdown(counts(62, 46, { wrong_doc_type: 5, missing_attachment: 5, unreadable: 5, missing_value: 5 }), 300);
+  const breakdown = outcomeBreakdown(counts(62, 46, { wrong_doc_type: 5, missing_attachment: 5, unreadable: 5, missing_value: 5 }), 300, 91);
 
   it("keeps the organisers' enum on every slice, whatever the panel calls it", () => {
     expect(breakdown.slices.map((slice) => slice.key)).toEqual([
       "not_comparable",
+      "awaiting_draft",
       "OK",
       "MISMATCH",
       "wrong_doc_type",
@@ -47,6 +48,7 @@ describe("outcomeBreakdown", () => {
   it("names each one in plain English, because the enums are not what a business owner reads", () => {
     expect(breakdown.slices.map((slice) => slice.label)).toEqual([
       "No check needed",
+      "Awaiting a draft",
       "Documents agree",
       "Documents differ",
       "Wrong document",
@@ -60,20 +62,38 @@ describe("outcomeBreakdown", () => {
     const unknown = outcomeBreakdown(
       { outcomes: counts(0, 0).outcomes, review: { open: 1, byReason: { wrong_doc_type: 1 } } } as Counts,
       0,
+      0,
     );
     expect(unknown.slices.map((slice) => slice.label)).toContain("Wrong document");
   });
 
   it("counts every landed email once, which is what a pie's whole has to be", () => {
-    expect(breakdown.total).toBe(428);
+    expect(breakdown.total).toBe(519);
     expect(breakdown.slices.reduce((sum, slice) => sum + slice.count, 0)).toBe(breakdown.total);
+  });
+
+  /**
+   * The failure this slice exists for. A comparison request whose draft has
+   * not been sent yet was counted nowhere: the panel's whole was short by it,
+   * and a reader comparing that whole with the run's own email count saw work
+   * the run appeared to have skipped.
+   */
+  it("holds the comparison requests that had no draft, so the whole is every email and not only the compared ones", () => {
+    const withDraft = breakdown.slices.find((slice) => slice.key === "awaiting_draft");
+    expect(withDraft).toMatchObject({ count: 91, group: "finished", tone: "muted" });
+    expect(breakdown.total).toBe(300 + 91 + 62 + 46 + 20);
+  });
+
+  it("keeps them out of Documents agree, where no document was read at all", () => {
+    expect(breakdown.slices.find((slice) => slice.key === "OK")?.count).toBe(62);
   });
 
   it("takes every share against that one total, so two equal bars mean the same thing", () => {
     const shares = Object.fromEntries(breakdown.slices.map((slice) => [slice.key, slice.pct]));
-    expect(shares.not_comparable).toBeCloseTo((300 / 428) * 100, 5);
-    expect(shares.OK).toBeCloseTo((62 / 428) * 100, 5);
-    expect(shares.unreadable).toBeCloseTo((5 / 428) * 100, 5);
+    expect(shares.not_comparable).toBeCloseTo((300 / 519) * 100, 5);
+    expect(shares.awaiting_draft).toBeCloseTo((91 / 519) * 100, 5);
+    expect(shares.OK).toBeCloseTo((62 / 519) * 100, 5);
+    expect(shares.unreadable).toBeCloseTo((5 / 519) * 100, 5);
     expect(breakdown.slices.reduce((sum, slice) => sum + slice.pct, 0)).toBeCloseTo(100, 5);
   });
 
@@ -101,7 +121,7 @@ describe("outcomeBreakdown", () => {
   });
 
   it("does not divide by zero before anything has landed", () => {
-    const empty = outcomeBreakdown(counts(0, 0), 0);
+    const empty = outcomeBreakdown(counts(0, 0), 0, 0);
     expect(empty.total).toBe(0);
     expect(empty.slices.every((slice) => slice.pct === 0)).toBe(true);
   });

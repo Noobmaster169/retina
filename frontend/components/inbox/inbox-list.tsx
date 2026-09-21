@@ -2,6 +2,8 @@
 
 import type { MouseEvent } from "react";
 
+import { MoreBelow } from "@/components/business/more-below";
+import { useSoftPage } from "@/components/business/use-soft-page";
 import { senderInitials, senderName } from "@/components/email/sender";
 import { Chip, toneOf } from "@/components/ui/chip";
 
@@ -38,22 +40,32 @@ interface InboxListProps {
   className?: string;
 }
 
+/** Rows at 86px, so a screenful is a dozen and a step is three screenfuls. */
+const STEP = 40;
+
 export function InboxList({ rows, total, selectedId, onSelect, view, onView, counts, loading, className = "" }: InboxListProps) {
+  // The open email is settled on the server and can be anywhere in the run, so
+  // its row is drawn whatever the scroll has reached.
+  const page = useSoftPage(
+    rows,
+    STEP,
+    `${view.filter}|${view.sort}|${view.query}`,
+    rows.findIndex((row) => row.emailId === selectedId),
+  );
   return (
     <div className={`w-full shrink-0 flex-col border-r border-hairline md:w-[300px] ${className}`}>
-      <div className="flex h-14 shrink-0 items-center px-[18px]">
-        <h2 className="text-[16px] font-semibold tracking-[-0.015em]">Inbox</h2>
-        <span className="grow" />
-        <span className="font-mono text-mono-sm text-ink-tertiary tabular-nums">{total}</span>
-      </div>
-
       <FilterBar view={view} onView={onView} counts={counts} shown={rows.length} />
 
       <div className="min-h-0 grow overflow-y-auto">
         {rows.length === 0 ? (
           <p className="px-[18px] py-4 text-small leading-5 text-ink-tertiary">{nothing(loading, view, total)}</p>
         ) : (
-          rows.map((row) => <Row key={row.emailId} row={row} selected={row.emailId === selectedId} onSelect={onSelect} />)
+          <>
+            {page.shown.map((row) => (
+              <Row key={row.emailId} row={row} selected={row.emailId === selectedId} onSelect={onSelect} />
+            ))}
+            <MoreBelow rest={page.rest} sentinel={page.sentinel} />
+          </>
         )}
       </div>
     </div>

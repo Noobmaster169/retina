@@ -18,13 +18,16 @@ const ID = /^\d+$/;
 export default async function Page({ params }: PageProps<"/company/[id]">) {
   const { id } = await params;
   if (!ID.test(id)) notFound();
-  const detail = await getEntityDetail("party", id);
-  if (!detail) notFound();
-  const [people, ports, shipments] = await Promise.all([
+  // All four in one flight. The counterparts and the shipments are keyed by
+  // the id in the address, not by anything the detail returns, so waiting for
+  // it first bought nothing and cost a second round trip to the backend.
+  const [detail, people, ports, shipments] = await Promise.all([
+    getEntityDetail("party", id),
     listCounterparts("party", id, "people"),
     listCounterparts("party", id, "ports"),
     listShipments({ partyId: id, pageSize: 100 }),
   ]);
+  if (!detail) notFound();
   const a = detail.row.attributes;
   const chips = [a.kind, [a.city, a.country].filter(Boolean).join(", "), a.sector, a.group ? `part of ${a.group}` : null].filter(
     (value): value is string => !!value,

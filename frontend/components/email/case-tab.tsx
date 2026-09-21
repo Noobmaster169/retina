@@ -7,7 +7,7 @@ import { CaseFields, type Correcting } from "./case-fields";
 import { FailureBody } from "./case-failure";
 import { CaseHistory } from "./case-history";
 import { CaseReason } from "./case-reason";
-import { type FileSizes, MessageCard, type Message } from "./message-card";
+import { MessageCard, type Message } from "./message-card";
 import { Reading, Seam } from "./seam";
 
 /**
@@ -23,18 +23,17 @@ import { Reading, Seam } from "./seam";
 interface CaseTabProps {
   trace: EmailTrace;
   message: Message;
-  sizes: FileSizes;
   review: ReviewCaseView;
   /** Present while the case is open, so a value can be corrected on the row it belongs to. */
   correcting?: Correcting;
 }
 
-export function CaseTab({ trace, message, sizes, review, correcting }: CaseTabProps) {
+export function CaseTab({ trace, message, review, correcting }: CaseTabProps) {
   const failure = review.kind === "failure";
   return (
     <div className="px-6">
       <div className="pt-4">
-        <MessageCard message={message} sizes={sizes} />
+        <MessageCard message={message} documents={trace.documents} />
       </div>
       <Seam />
       <Reading facts={factsOf(trace, review)}>{readingOf(trace, review)}</Reading>

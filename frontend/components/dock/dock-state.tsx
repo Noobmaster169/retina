@@ -16,9 +16,22 @@ import { rememberedConversation } from "./remembered";
  * conversation seen at two widths.
  */
 
+/** A question a page put to the dock, with the skills to answer it under. Taken once by the thread. */
+export interface Asked {
+  /** Rises per ask, so the thread can tell a repeat of the same words from a re-render. */
+  id: number;
+  question: string;
+  skills: string[];
+}
+
 interface DockState {
   open: boolean;
   setOpen(open: boolean): void;
+  /** What a page asked on someone's behalf, waiting for the thread to put it. */
+  asked: Asked | null;
+  /** Opens the dock and puts a question in it, as a control on a page rather than a person typing. */
+  ask(question: string, skills?: string[]): void;
+  takeAsked(): void;
   conversationId: string | null;
   /** Records the conversation the thread is in without remounting it: the first question sets it mid-flight. */
   setConversationId(id: string | null): void;
@@ -94,6 +107,7 @@ export function DockProvider({ children }: { children: ReactNode }) {
   const [off, setOff] = useState<string[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [note, setNote] = useState<string | null>(null);
+  const [asked, setAsked] = useState<Asked | null>(null);
 
   const setOpen = useCallback((next: boolean) => {
     setOverride(next);
@@ -103,6 +117,17 @@ export function DockProvider({ children }: { children: ReactNode }) {
       // A private window keeps nothing; the dock still opens.
     }
   }, []);
+
+  // The dock is opened here and not by the caller: a question nobody can see
+  // being answered is worse than no question.
+  const ask = useCallback(
+    (question: string, skills: string[] = []) => {
+      setAsked((was) => ({ id: (was?.id ?? 0) + 1, question, skills }));
+      setOpen(true);
+    },
+    [setOpen],
+  );
+  const takeAsked = useCallback(() => setAsked(null), []);
 
   const announce = useCallback((refs: OfferedRef[], nextSuggestions: string[], nextNote: string | null) => {
     setPage(refs);
@@ -142,10 +167,10 @@ export function DockProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<DockState>(
     () => ({
-      open, setOpen, conversationId, setConversationId, thread, startNew, openThread,
+      open, setOpen, asked, ask, takeAsked, conversationId, setConversationId, thread, startNew, openThread,
       page, pinned, off, suggestions, note, announce, toggle, pin, unpin,
     }),
-    [open, setOpen, conversationId, setConversationId, thread, startNew, openThread, page, pinned, off, suggestions, note, announce, toggle, pin, unpin],
+    [open, setOpen, asked, ask, takeAsked, conversationId, setConversationId, thread, startNew, openThread, page, pinned, off, suggestions, note, announce, toggle, pin, unpin],
   );
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }

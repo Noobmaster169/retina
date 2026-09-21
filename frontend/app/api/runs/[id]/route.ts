@@ -1,4 +1,7 @@
+import { revalidateTag } from "next/cache";
+
 import { deleteRun, getRun } from "@/lib/api-client";
+import { RUNS } from "@/lib/api/cached";
 import { backendFailure, passThrough } from "@/lib/api-route";
 import { hasSiteAccess } from "@/lib/site-gate";
 
@@ -18,7 +21,11 @@ export async function DELETE(_request: Request, ctx: RouteContext<"/api/runs/[id
   const { id } = await ctx.params;
   try {
     const outcome = await deleteRun(id);
-    if (outcome.ok) return new Response(null, { status: 204 });
+    if (outcome.ok) {
+    // A run changed shape, so the ten seconds of reuse in `lib/api/cached.ts` end here.
+    revalidateTag(RUNS, { expire: 0 });
+      return new Response(null, { status: 204 });
+    }
     return Response.json({ error: outcome.message }, { status: outcome.status });
   } catch (error) {
     return backendFailure("delete run", error);

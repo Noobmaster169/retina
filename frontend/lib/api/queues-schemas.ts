@@ -45,7 +45,8 @@ export type QueueView = z.infer<typeof QueueView>;
 export const RunQueuesView = z.object({
   classify: QueueView,
   compare: QueueView,
-  handoff: z.object({ needCheck: z.number(), notComparable: z.number() }),
+  /** `awaitingDraft` is a subset of `needCheck`: it crossed, and had no draft to check yet. */
+  handoff: z.object({ needCheck: z.number(), notComparable: z.number(), awaitingDraft: z.number() }),
   reachable: z.boolean(),
 });
 export type RunQueuesView = z.infer<typeof RunQueuesView>;

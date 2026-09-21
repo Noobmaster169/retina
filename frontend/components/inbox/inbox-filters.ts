@@ -16,7 +16,17 @@ import { type InboxRow, needsYou } from "./inbox-rows";
  * what its label promises.
  */
 
-export const FilterKey = z.enum(["all", "needs-you", "differences", "agreed", "no-check", "settled", "moving", "failed"]);
+export const FilterKey = z.enum([
+  "all",
+  "needs-you",
+  "differences",
+  "agreed",
+  "awaiting-draft",
+  "no-check",
+  "settled",
+  "moving",
+  "failed",
+]);
 export type FilterKey = z.infer<typeof FilterKey>;
 
 export const SortKey = z.enum(["id", "attention", "differences", "sender"]);
@@ -47,6 +57,16 @@ export const FILTERS: FilterDef[] = [
   { key: "needs-you", label: "Needs you", tone: "review", steady: true, matches: needsYou },
   { key: "differences", label: "Differences", tone: "differ", steady: true, matches: (row) => row.defects > 0 },
   { key: "agreed", label: "Agreed", tone: "match", steady: true, matches: (row) => row.outcome === "OK" },
+  // Sorted as a check, and there was nothing to check: the draft has not been
+  // sent yet. Its own chip because `Agreed` used to hold it, which said two
+  // documents had been read and agreed when none had been read at all.
+  {
+    key: "awaiting-draft",
+    label: "Awaiting a draft",
+    tone: "neutral",
+    steady: true,
+    matches: (row) => row.outcome === "awaiting_draft",
+  },
   { key: "no-check", label: "No check", tone: "neutral", steady: true, matches: (row) => row.outcome === "not_comparable" },
   {
     // A reason that was raised and answered. Rare, and worth being able to find again.
@@ -62,6 +82,30 @@ export const FILTERS: FilterDef[] = [
   // `failed` count links to, so the two agree on what it counted.
   { key: "failed", label: "Failed", tone: "fault", steady: false, matches: (row) => row.stage === "failed" },
 ];
+
+/**
+ * How loudly a chip is drawn.
+ *
+ * A bar where every chip is the same grey says nothing about which of them is
+ * worth a click; one where every chip is coloured says everything is urgent,
+ * which says the same nothing. So three steps, and the count decides which:
+ * a chip that is asking for a person carries its hue in its border and its
+ * words, a chip that merely holds rows carries it in its words, and a chip
+ * holding nothing is grey whatever its tone. `Needs you 0` is not important,
+ * and a bar that shouted it anyway would be lying about a quiet run.
+ *
+ * Pure.
+ */
+export type Emphasis = "chosen" | "asking" | "holding" | "empty";
+
+/** The tones that mean somebody has to do something about it. */
+const ASKING: Tone[] = ["review", "fault"];
+
+export function emphasisOf(tone: Tone, count: number, chosen: boolean): Emphasis {
+  if (chosen) return "chosen";
+  if (count === 0 || tone === "neutral") return "empty";
+  return ASKING.includes(tone) ? "asking" : "holding";
+}
 
 export const SORTS: { key: SortKey; label: string }[] = [
   { key: "id", label: "Email id" },

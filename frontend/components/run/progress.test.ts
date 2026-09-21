@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { RunQueuesView, QueueView } from "@/lib/api/queues-schemas";
-import type { RunSummary } from "@/lib/api/runs-schemas";
-
 import { laneMap } from "./progress";
+import { card, queue, queues, run } from "./progress.fixtures";
 
 /**
  * The six cards of "How the work moves". What is under test is arrangement,
@@ -11,54 +9,6 @@ import { laneMap } from "./progress";
  * dependency down, paused, finished, and one that has not ingested yet. Where
  * the emails end up is outcomes.test.ts.
  */
-
-function queue(over: Partial<QueueView> = {}): QueueView {
-  return { name: "classify", concurrency: 8, waiting: 0, active: 0, failed: 0, heldUntil: null, slots: [], next: [], ...over };
-}
-
-function queues(over: Partial<RunQueuesView> = {}): RunQueuesView {
-  return {
-    classify: queue(),
-    compare: queue({ name: "compare", concurrency: 4 }),
-    handoff: { needCheck: 220, notComparable: 300 },
-    reachable: true,
-    ...over,
-  };
-}
-
-function run(over: Partial<RunSummary> = {}): RunSummary {
-  return {
-    id: "044367f9-109f-4766-9c65-df4a30b2bc11",
-    name: null,
-    status: "running",
-    ratePerSecond: 2,
-    totalEmails: 520,
-    finishedEmails: 436,
-    processingDone: false,
-    elapsedMs: 252_000,
-    stageCounts: { ingested: 0, classifying: 8, classified: 45, comparing: 4, review: 3, done: 460, failed: 0 },
-    queues: null,
-    createdAt: "2026-09-20T14:00:00.000Z",
-    startedAt: "2026-09-20T14:00:00.000Z",
-    finishedAt: null,
-    promptSet: {},
-    llm: { calls: 595, failedCalls: 0, inputTokens: 1, outputTokens: 1, costUsd: 1, verifierShare: 0.08 },
-    review: { open: 3, byReason: { wrong_doc_type: 0, missing_attachment: 0, unreadable: 2, missing_value: 1 } },
-    outcomes: {
-      ok: 105,
-      mismatch: 28,
-      byField: { shipper: 0, consignee: 12, notify_party: 9, port_of_loading: 0, port_of_discharge: 0, container_count: 0, gross_weight_kg: 7 },
-    },
-    lastSubmission: null,
-    ...over,
-  };
-}
-
-function card(map: ReturnType<typeof laneMap>, key: string) {
-  const found = map.cards.find((c) => c.key === key);
-  if (!found) throw new Error(`no ${key} card`);
-  return found;
-}
 
 describe("laneMap, a run in flight", () => {
   const map = laneMap(run(), queues({ classify: queue({ active: 8 }), compare: queue({ name: "compare", concurrency: 4, active: 4, waiting: 45 }) }));

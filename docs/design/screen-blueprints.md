@@ -203,27 +203,28 @@ Boards: `EmailCheck.dc.html` (MISMATCH), `EmailReview.dc.html` (NEEDS_REVIEW),
 `DocsDiff.dc.html` (the documents tab). Feeds: `GET /emails/:runId/:emailId`.
 
 ```
-+--------+----------+-----------------------------------+-----------------+
-| rail   | Inbox    | TO CONFIRM DOCS _ OC1182      MIS | Ask Retina  New |
-| 232    | [tabs]   | email_004                         +-----------------+
-|        +----------+-----------------------------------+ Reading         |
-| nav    | AG  Al   | The check | Both documents | Calls | email_004 2 doc |
++--------+----------------------------------------------+-----------------+
+| rail   | Runs / bf1996a3 / Inbox / email_004      Ask | Ask Retina  New |
+| 232    +----------+-----------------------------------+-----------------+
+|        | [search] | TO CONFIRM DOCS _ OC1182      MIS | Reading         |
+| nav    | [chips]  | email_004                         | email_004 2 doc |
+|        |          +-----------------------------------+-----------------+
+| views  | AG  Al   | The check | Both documents | Calls |                 |
 |        | Gurg     +-----------------------------------+-----------------+
-| views  | email_004| +-------------------------------+ |                 |
+|        | email_004| +-------------------------------+ |                 |
 |        | MISMATCH | | AG  Al Gurg documentation desk| | Two fields name |
 | run    |          | |     docs@algurg.ae to ops@... | | different comp. |
 | card   | RX  Rox  | |                               | |                 |
 |        | email_074| | Dear Team, please find...     | |      Al Gurg    |
 |        | NEEDS_REV| | [SI.txt    ] [BL.txt        ] | |      and AL...  |
 |        |          | +-------------------------------+ |                 |
-|        |          | -- Below this line is Retina --   | Then notify_... |
+|        |          | -- Retina's reading ------------  | Then notify_... |
 |        |          | [ reading, in plain English     ] | +-------------+ |
 |        |          | The check                         | | correct_field |
 |        |          |  shipper          the same        | | notify_party  |
 |        |          |  consignee        differ  [SI][BL]| | was ... is ...|
 |        |          |  notify_party     differ          | | [Apply][Once] |
 |        |          +-----------------------------------+ +-------------+ |
-|        |          | Links to [Differences 2][Client 1] | [ composer    ] |
 |        |          | [Confirm][Correct a field][Reclass]|                 |
 +--------+----------+-----------------------------------+-----------------+
 ```
@@ -233,18 +234,72 @@ Retina started. Three things fix it, and none of them is optional:
 
 1. **The message is a bordered card.** 1px `--hairline-strong` at `--r-lg`, with its own header
    strip (avatar, sender, to, time), its own body, and its files as chips. It is the only bordered
-   card in the product, and it means "this is not ours".
-2. **The seam.** A labelled rule directly under it: an icon, the sentence *Below this line is
-   Retina, not the sender*, and a hairline to the right edge.
+   card in the product, and it means "this is not ours". The body folds at fourteen lines, under a
+   control that names how many are hidden: a forty line shipping instruction pushed the seam and
+   the check off the screen, and the verdict is what the page is for. Nothing is stripped or
+   summarised, only folded, and the files stay outside the fold so a document is never a press
+   further away than the message that carried it.
+2. **The seam.** A labelled rule directly under it: an icon, a short label naming what is below
+   (*Retina's reading*), and a hairline to the right edge. It carried the sentence *Below this
+   line is Retina, not the sender*, which spent a sentence on a boundary the bordered card above
+   already draws, and left the rule too short to read as a separator.
 3. **The reading comes before the evidence.** Under the seam, a `--surface` block carries the
    verdict in plain English and then four facts as chips: how it was sorted, how sure, who decided,
    and how many fields differ. Only then the seven fields.
 
-**Tabs**, above the message: `The check`, `Both documents`, `Model calls`. The message card, the
-seam and the chat do not move between tabs.
+**Tabs**, above the message: `The check`, `Report`, `Both documents`, `Model calls`. The message
+card, the seam and the chat do not move between tabs. Only `The check` is always drawn: `Report`
+needs judged fields to report, `Both documents` needs documents to show, `Model calls` needs a
+call to have been made, and most of this inbox has no pair at all. A tab that opened on an empty
+table said the check had been skipped rather than that there was never one to run. The tab being
+read belongs to the screen, so moving down a list of cases keeps the reading; an email that does
+not offer it falls back to `The check` without forgetting it.
 
-**Links to**, a 44px strip above the action bar: the record's links as counted chips. This is
-`search around` (`ontology-patterns.md` section 2.6) at its smallest.
+**`Report` is the field table**: every field, its value in each document, and the judge's
+sentence under the chosen row. **`Both documents` is the two files themselves**, embedded side by
+side under one reading control, because opening a sheet over the page to read one and closing it
+to read the other was never reading them against each other. A file with no such reading says so
+in its own column rather than taking the other one's reading away.
+
+**`Model calls` is a timeline**: one rule, a dot per call, oldest first, because the calls are a
+sequence and the order is the argument. One line each, folded: the step name, its clock, what it
+decided in a sentence read out of the structured answer (`call-reading.ts`, per step), and its
+latency. Ten calls each carrying a paragraph of the model's reasoning is a wall of prose nobody
+reads, and the shape of the run, which is what the tab is for, was lost inside it. How sure it
+was, why, what it cost and exactly what it wrote are all one press away. A failed call says its
+reason on the folded line, because that is the one thing a person opening this tab is looking
+for.
+
+**The report's footer bar** carries the judge's sentence for the chosen row, set in ink and given
+the width to be read, with the field, the verdict and the confidence above it. The evidence check
+is drawn only when a quote was **not** found: "both quotes found in their documents" on every
+settled row was a line nobody read twice. Two controls sit at its right.
+
+**`Recommend action`**, drawn only where the judge called a field different, puts a question to
+the dock with the email attached and the `recommend-action` skill picked. It decides nothing
+itself: what to do turns on whether the quotes were found and on how often this sender has
+differed, which is a read of the model and of the ontology, not a rule that could live in a
+button. The answer comes back in a fixed shape (what differs, whether it is real, one named
+action per field, a draft reply to copy, and the counts it rests on) and nothing it recommends is
+written anywhere. The action names are ours and stay in the conversation; the organisers' enums
+are not added to.
+
+**`Export`**, opens `/report/{runId}/{emailId}?print=1` in a tab of
+its own: the same check as a document, outside the shell, which opens the print dialog on
+arrival. The export is a print to PDF and not a file drawn in JavaScript, so the type is real,
+the text in the saved file can still be searched and copied, and no library was added to draw
+it. The document carries the verdict, the differing fields with the judge's reasoning, the seven
+field table, the documents and a closing block of what it cost and which prompt decided it. Not
+the timeline: ten model calls are how the answer was reached and the document is the answer.
+
+**An attachment chip opens the document sheet**, the same sheet the report tab's `Open` opens:
+the file as it arrived and as the parser read it, sliding in over the page. The chips used to be
+labels, so the only way into a file was another tab.
+
+**One breadcrumb bar over both columns**, as on every other screen, carrying the open email as its
+last segment and the control that reopens the chat. The list used to start at the top of the
+window under its own `Inbox` heading, with the bar beginning only where the email did, so the
+shell's header stopped halfway across.
 
 **The chat rail, 340px.** `05-design.md` section 7. It replaces the read only summary pane this
 document first specified. **Phase 10 builds it.** In phase 7 the column still exists and carries

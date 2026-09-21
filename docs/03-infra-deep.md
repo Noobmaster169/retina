@@ -677,6 +677,40 @@ email; `Apply and remember` fixes this email and asks for the prompt to be chang
 ships if the holdout score does not get worse. Phase 11 adds that column in the same commit as the
 drafter that reads it.
 
+### 5.7 What a chat turn may draft
+
+`EmailDraft` in `contracts.chat-agent.ts`, on the assistant turn as `emailDraft`, nullable. Built
+for `recommend-action` (`agents/chat/skills/recommend-action/`), the skill that answers "what
+should I do about this mismatch" with a named action per differing field and a reply to send.
+
+**The model writes `to`, `subject` and `body`, and code decides whether `to` is real.**
+`draftIsReal` (`agents/chat/draft.ts`) checks `to` against `grounds`, the concatenated text of
+every tool result on the turn, the same way `next-moves.ts` checks an alternative's `thing` and
+`count`. `get_email` is the only tool that emits an address (`from: ...`, added alongside
+`subject: ...` to its summary lines), so a draft survives only when the turn actually called it
+for this email. A draft that fails the check is dropped in `loop.result.ts`'s `assemble`, silently:
+the prose still stands, and no empty card is drawn under it.
+
+There is no write and no send behind this. The card opens Gmail's own compose URL, built from the
+three fields as an ordinary `https://` link; the tab that opens is the person's own, signed in as
+they already are, and they send it or not. This was a `mailto:` link first, and it needs a mail
+client the operating system has registered; a desk with none configured opens nothing and says
+nothing, because the browser handed off to the OS and the OS had nowhere to hand it. Gmail's link
+needs none of that. Nothing under `EmailDraft` is stored anywhere but the turn, and nothing applies
+it.
+
+| Field | Meaning |
+|---|---|
+| `to` | A header value a `get_email` call returned on this turn, exactly. May carry a display name |
+| `subject` | The reply's subject line |
+| `body` | The message, addressed to the sender, in the reader's language of the thread |
+
+The chat prompt is `v7` for this (`agents/prompts/chat/v7.md`): a fifth field beside `outcome`,
+`checked`, `next` and `clarify`, and one rule in "How to write the answer" that the prose must not
+restate a drafted message, because the card is where it is read.
+
+## 6. doc-extract service
+
 ## 6. doc-extract service
 
 `services/doc-extract`, Python 3.12 on uv, FastAPI. Reads bytes from MinIO by key so large
@@ -1153,7 +1187,7 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 | `POST /runs/:id/submit?force=false` | build submission, post to averis, store scoreboard. 409 when the run holds fewer rows than `totalEmails` (still ingesting) or holds unfinished emails, both overridden by `?force=true`; 409 while another submission for the same run is being scored. The `core.submissions` row is written before the scorer is called and updated with the scoreboard after, so a scorer failure leaves an unscored row (null `scoreboard`, null `final_score`) pointing at the stored payload rather than an orphan payload. Only scored rows count as a run's last submission |
 | `GET /runs/:id/submission.json` | download the payload |
 | `GET /runs/:id/emails?stage=&category=&decidedBy=&outcome=&q=` | paginated list with `category`, `decidedBy`, `confidence`, `verifierCategory`, `outcome` (`not_comparable`, `OK`, `MISMATCH` or a review reason), `defectFields`, `error` |
-| `GET /runs/:id/queues` | who holds each slot of each queue and who is next: per queue `concurrency` (from the worker's env), `waiting`, `active`, `failed`, `heldUntil` (set while `failure-policy.ts` has it rate limited, an instant so a stale poll cannot skew the countdown), `slots` (`emailId`, what the model is doing in plain English, `startedAt`, `elapsedMs`) and `next` (the five oldest waiting, with their attachments read as "two files, txt and pdf" and how long they have held). Plus `handoff: { needCheck, notComparable }`, the crossing between the two queues, aggregated here because the frontend holds no business logic. `reachable: false` with empty queues when Redis cannot be reached, never zeroes, which would read as a finished run |
+| `GET /runs/:id/queues` | who holds each slot of each queue and who is next: per queue `concurrency` (from the worker's env), `waiting`, `active`, `failed`, `heldUntil` (set while `failure-policy.ts` has it rate limited, an instant so a stale poll cannot skew the countdown), `slots` (`emailId`, what the model is doing in plain English, `startedAt`, `elapsedMs`) and `next` (the five oldest waiting, with their attachments read as "two files, txt and pdf" and how long they have held). Plus `handoff: { needCheck, notComparable, awaitingDraft }`, the crossing between the two queues, aggregated here because the frontend holds no business logic. `awaitingDraft` is a subset of `needCheck`: a comparison request whose draft has not been sent yet, which crosses into the second queue and ends there with no pair to read. It carries `email_runs.outcome = 'awaiting_draft'` (migration 028) while its comparison row stays the organisers' `OK`, so the submission is unchanged and no screen counts it inside "Documents agree". `reachable: false` with empty queues when Redis cannot be reached, never zeroes, which would read as a finished run |
 | `GET /runs/:id/calls?after=&limit=` | the run's newest `llm_calls` as summaries (no prompt or email text), newest first, for a live feed; `after` returns only newer ids |
 | `GET /runs/:id/live` | the run's model calls running now, each with the answer written so far (`LiveCallView`) |
 | `GET /runs/:id/emails/:emailId/trace` | one email: stage, error, how its category was settled (each reader's category, confidence, reasoning, counter-cases, verifier error), its documents (the role the filename claims, the model's type with confidence and rationale, format, pages, scanned, unreadable, warnings, `pageConfidence`: the mean OCR word confidence per page in page order, empty for a document with a text layer, and since phase 15 `objectKey` and `textObjectKey`: where the file itself and the text the parser read out of it sit in the store, both streamed by `GET /files/:key`, so a page can show a document and not only the seven quotes taken from it. `textObjectKey` is null exactly when the document is unreadable), its open review case, its `extractions` (per document: the place it filled, whether the verifier ran, the seven fields with value, placeholder, quote, confidence, evidence and any human value), its `comparison` (status, reason, defect fields, every field's judgement), the call running now, and every finished call oldest first with system prompt, input, answer text, parsed answer, tokens, cost, latency |
@@ -1425,7 +1459,8 @@ Pages (all behind the `proxy.ts` password gate; the cookie is an HMAC of `SITE_P
 | `/login` | password form | |
 | `/runs` | table of runs with score, the env concurrency, start-run form (dev sample, holdout, all 520 or first N; rate; optional prompt version and model) | 3 s |
 | `/runs/[id]` | the two queues left to right, one panel per queue with a row per email holding a slot, and where they end up. Replaces its panels rather than emptying them: a held queue says what is holding it and when it retries, a finished run shows outcomes, what it took and the score | 2 s while live, not at all once `processingDone` |
-| `/runs/[id]/inbox` | the one screen over a run's emails: the 300px list with a search, filter chips (`All`, `Needs you`, `Differences`, `Agreed`, `No check`, and `Settled` and `Still moving` where either has rows) and one ordering; the open email in the middle as a bordered message card, the seam, then the check, with tabs for `The check` (or `The case`), `Both documents` and `Model calls`, the `Links to` strip and the action bar; the 340px chat column on the right. Every row of the run is loaded, so narrowing costs no request. Which email is open lives in React, echoes to the URL through `history.replaceState`, and is remembered in the `retina_inbox` cookie so another destination and back lands where it left. Below 768px the list and the email take turns | emails 4 s while anything is moving, 30 s once nothing is; the open email 2.5 s while it moves, 8 s while its case is open, not at all once settled |
+| `/runs/[id]/inbox` | the one screen over a run's emails: one breadcrumb bar over both columns, carrying the open email as its last segment; under it the 300px list with a search, filter chips (`All`, `Needs you`, `Differences`, `Agreed`, `No check`, and `Settled` and `Still moving` where either has rows) and one ordering; the open email in the middle as a bordered message card, the seam, then the check, with tabs for `The check` (or `The case`), `Report`, `Both documents` and `Model calls`, and the action bar. Only `The check` is always drawn: `Report` needs judged fields, `Both documents` needs documents, `Model calls` needs a call. An attachment chip on the message card opens the document sheet; the 340px chat column on the right. Every row of the run is loaded, so narrowing costs no request. Which email is open lives in React, echoes to the URL through `history.replaceState`, and is remembered in the `retina_inbox` cookie so another destination and back lands where it left. Below 768px the list and the email take turns | emails 4 s while anything is moving, 30 s once nothing is; the open email 2.5 s while it moves, 8 s while its case is open, not at all once settled |
+| `/report/[runId]/[emailId]` | one email's check as a document, outside the shell: the verdict in a sentence, the differing fields with the judge's own reasoning, the seven field table, the documents, and a closing block of what it cost and which prompt decided it. No timeline. `?print=1` opens the browser's print dialog on arrival, which is the export; the same URL without it is a page somebody can be sent, though the password gate still stands in front of it | none |
 | `/runs/[id]/emails/[emailId]` | redirects to `/runs/[id]/inbox?email=...`. The route stays because the ontology, the chat, the queue panel and the results table all link an email by it | |
 | `/runs/[id]/review` | redirects to `/runs/[id]/inbox?filter=needs-you`, carrying `?email=` through. `Needs a person` was a page of its own until phase 15: it listed the same emails from a second component set with a second idea of what was selected, and its count is an alert beside `Inbox` in the rail now | |
 | `/chat` | conversations, messages, SQL shown in a collapsible block, result tables | on send |

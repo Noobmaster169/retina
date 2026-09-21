@@ -32,13 +32,15 @@ type View = "pie" | "bars";
 interface OutcomesPanelProps {
   run: RunSummary;
   notComparable: number;
+  /** Crossed into the second queue and found no draft to check. Its own slice, or the panel is short by it. */
+  awaitingDraft: number;
   className?: string;
 }
 
-export function OutcomesPanel({ run, notComparable, className = "" }: OutcomesPanelProps) {
+export function OutcomesPanel({ run, notComparable, awaitingDraft, className = "" }: OutcomesPanelProps) {
   const [view, setView] = useState<View>("pie");
   const [lit, setLit] = useState<string | null>(null);
-  const { slices, total } = outcomeBreakdown(run, notComparable);
+  const { slices, total } = outcomeBreakdown(run, notComparable, awaitingDraft);
   const open = run.review.open;
 
   return (

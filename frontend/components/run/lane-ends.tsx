@@ -23,6 +23,9 @@ const TINT = {
   differ: "bg-differ-tint text-differ",
   review: "bg-review-tint text-review",
   fault: "bg-fault-tint text-fault",
+  // No verdict was reached, so no verdict hue. The same weight the outcomes
+  // panel gives `No check needed`, which is the other end that read nothing.
+  muted: "bg-sunken text-ink-secondary",
 } as const;
 
 /** The short rule that hangs one of these under its card. */

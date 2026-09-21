@@ -18,14 +18,16 @@ const ID = /^\d+$/;
 export default async function Page({ params }: PageProps<"/port/[id]">) {
   const { id } = await params;
   if (!ID.test(id)) notFound();
-  const detail = await getEntityDetail("port", id);
-  if (!detail) notFound();
-  const [parties, shipments, ports, lanes] = await Promise.all([
+  // All five in one flight. Only the id in the address keys any of them, so
+  // waiting for the detail first bought nothing and cost a second round trip.
+  const [detail, parties, shipments, ports, lanes] = await Promise.all([
+    getEntityDetail("port", id),
     listCounterparts("port", id, "parties"),
     listShipments({ portId: id, pageSize: 100 }),
     listEntities("port"),
     listLanes(),
   ]);
+  if (!detail) notFound();
   const a = detail.row.attributes;
   const chips = [a.locode, a.country, a.subregion ?? a.region, a.coast].filter((value): value is string => !!value);
 

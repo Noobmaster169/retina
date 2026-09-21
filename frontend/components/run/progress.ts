@@ -42,7 +42,7 @@ export interface LaneMap {
    * Named in plain English like the outcomes panel beside it: one screen, one
    * vocabulary. outcomes.ts says why, and why the enum is not lost.
    */
-  ends: { label: string; count: number; tone: "match" | "differ" | "review" | "fault"; filter: FilterKey }[];
+  ends: { label: string; count: number; tone: "match" | "differ" | "review" | "fault" | "muted"; filter: FilterKey }[];
 }
 
 function pct(part: number, whole: number): number {
@@ -69,7 +69,12 @@ export function laneMap(run: RunSummary, queues: RunQueuesView): LaneMap {
   const left = Math.max(0, (run.totalEmails ?? seen) - seen);
   const sorted = Math.max(0, seen - stages.ingested - stages.classifying);
   const needCheck = queues.handoff.needCheck;
+  const awaitingDraft = queues.handoff.awaitingDraft;
   const checked = run.outcomes.ok + run.outcomes.mismatch + run.review.open;
+  // Only the emails that had a draft to check can ever be checked. Counting
+  // the rest in the denominator read as work the run had skipped: "129 of 220"
+  // on a run that was finished, with nothing on the page holding the other 91.
+  const checkable = Math.max(0, needCheck - awaitingDraft);
   const compareHeld = queues.compare.heldUntil !== null;
   const classifyHeld = queues.classify.heldUntil !== null;
   const paused = run.status === "paused";
@@ -78,6 +83,9 @@ export function laneMap(run: RunSummary, queues: RunQueuesView): LaneMap {
     crossing: needCheck,
     notComparable: queues.handoff.notComparable,
     ends: [
+      ...(awaitingDraft > 0
+        ? ([{ label: "Awaiting a draft", count: awaitingDraft, tone: "muted", filter: "awaiting-draft" }] as const)
+        : []),
       { label: "Documents agree", count: run.outcomes.ok, tone: "match", filter: "agreed" },
       { label: "Documents differ", count: run.outcomes.mismatch, tone: "differ", filter: "differences" },
       ...(run.stageCounts.failed > 0
@@ -131,8 +139,8 @@ export function laneMap(run: RunSummary, queues: RunQueuesView): LaneMap {
         label: "Checked",
         icon: "check",
         value: String(checked),
-        unit: needCheck > 0 && checked >= needCheck ? "all of them" : `of ${needCheck}`,
-        pct: pct(checked, Math.max(needCheck, 1)),
+        unit: checkable > 0 && checked >= checkable ? "all of them" : `of ${checkable}`,
+        pct: pct(checked, Math.max(checkable, 1)),
         state: "done",
       },
     ],

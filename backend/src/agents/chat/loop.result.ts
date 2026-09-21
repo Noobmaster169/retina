@@ -4,9 +4,11 @@ import type {
   ChatOutcome,
   ChatToolCall,
   ClarifyingQuestion,
+  EmailDraft,
   GroundedThing,
   SemanticReading,
 } from "../../contracts";
+import { draftIsReal } from "./draft";
 import { buildGraph } from "./graph";
 import type { How } from "./inject";
 import { linkAnswer } from "./mentions";
@@ -39,6 +41,8 @@ export interface TurnResult {
   checked: string[];
   next: ChatNextMove[];
   clarify: ClarifyingQuestion | null;
+  /** A reply to the sender, drafted from what this turn found. Null unless a skill drafted one, and dropped if its address was never shown. */
+  emailDraft: EmailDraft | null;
   /** The resolved things this turn grounded, for the turns after it to remember by name. */
   grounded: GroundedThing[];
   /** Every term this turn had to give a meaning to, in the order it did. */
@@ -72,6 +76,7 @@ export interface FinalStep {
   checked: string[];
   next: ChatNextMove[];
   clarify: ClarifyingQuestion | null;
+  emailDraft: EmailDraft | null;
   exhausted: boolean;
 }
 
@@ -96,11 +101,8 @@ function groundedIn(calls: FinishedCall[]): GroundedThing[] {
 export function assemble(so: TurnSoFar, final: FinalStep): TurnResult {
   const ran = so.calls.flatMap((call) => (call.sql ? [call.sql] : []));
   const claims = settle({ outcome: final.outcome, checked: final.checked, clarify: final.clarify });
-  const kept = keepReal(
-    final.next,
-    so.calls.map((call) => call.grounds),
-    so.question,
-  );
+  const grounds = so.calls.map((call) => call.grounds);
+  const kept = keepReal(final.next, grounds, so.question);
   return {
     // The answer's own links, kept only where a tool on this turn printed that
     // id. One the agent wrote from memory loses its markup and stays as words.
@@ -116,6 +118,10 @@ export function assemble(so: TurnSoFar, final: FinalStep): TurnResult {
     checked: claims.checked,
     next: kept,
     clarify: claims.clarify,
+    // Dropped rather than drawn if its address never appeared in what a tool
+    // returned: a draft nobody could verify is worse than none, the same
+    // choice `keepReal` makes for an alternative above.
+    emailDraft: final.emailDraft && draftIsReal(final.emailDraft, grounds) ? final.emailDraft : null,
     grounded: groundedIn(so.calls),
     semantic: so.calls.flatMap((call) => call.semantic),
     removedMoves: final.next.length - kept.length,

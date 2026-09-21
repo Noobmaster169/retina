@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { countsOf, FILTERS, narrow, search } from "./inbox-filters";
+import { countsOf, emphasisOf, FILTERS, narrow, search } from "./inbox-filters";
 import { type InboxRow, mergeRows, needsYou } from "./inbox-rows";
 import type { ReviewCaseItem } from "@/lib/api/review-schemas";
 import type { RunEmailItem } from "@/lib/api/trace-schemas";
@@ -112,6 +112,7 @@ describe("countsOf", () => {
       "needs-you": 3,
       differences: 1,
       agreed: 1,
+      "awaiting-draft": 0,
       "no-check": 1,
       settled: 1,
       moving: 1,
@@ -121,6 +122,39 @@ describe("countsOf", () => {
 
   it("counts over what the search left and not over the run", () => {
     expect(countsOf(search(ROWS, "busan")).all).toBe(5);
+  });
+});
+
+/**
+ * A comparison request whose draft has not been sent yet. It is sorted as a
+ * check and ends with nothing checked, so it is neither a clean pair nor an
+ * email that never needed one. Its own rows here rather than in ROWS, whose
+ * order several sort cases above are written against.
+ */
+describe("the emails waiting for a draft", () => {
+  const rows = mergeRows(
+    [
+      email({ emailId: "email_003", outcome: "awaiting_draft", attachmentCount: 0 }),
+      email({ emailId: "email_004", outcome: "awaiting_draft", attachmentCount: 0 }),
+      email({ emailId: "email_005", outcome: "OK" }),
+    ],
+    [],
+  );
+
+  it("has a chip of its own that finds exactly them", () => {
+    expect(narrow(rows, "awaiting-draft", "id").map((row) => row.emailId)).toEqual(["email_003", "email_004"]);
+  });
+
+  it("leaves Agreed to the pairs that were actually read", () => {
+    expect(narrow(rows, "agreed", "id").map((row) => row.emailId)).toEqual(["email_005"]);
+  });
+
+  it("is not a row that never needed a check, which is a different thing entirely", () => {
+    expect(narrow(rows, "no-check", "id")).toEqual([]);
+  });
+
+  it("is finished, so it is not still moving", () => {
+    expect(narrow(rows, "moving", "id")).toEqual([]);
   });
 });
 
@@ -155,5 +189,23 @@ describe("narrow", () => {
 describe("FILTERS", () => {
   it("names every key once, so a chip cannot be drawn twice", () => {
     expect(new Set(FILTERS.map((filter) => filter.key)).size).toBe(FILTERS.length);
+  });
+});
+
+describe("emphasisOf", () => {
+  const cases: [string, Parameters<typeof emphasisOf>, ReturnType<typeof emphasisOf>][] = [
+    ["the chosen chip is filled whatever it holds", ["review", 0, true], "chosen"],
+    ["a chosen neutral chip is still filled", ["neutral", 30, true], "chosen"],
+    ["Needs you with rows asks", ["review", 4, false], "asking"],
+    ["Failed with rows asks", ["fault", 1, false], "asking"],
+    ["Needs you at zero is not important", ["review", 0, false], "empty"],
+    ["Differences with rows holds", ["differ", 10, false], "holding"],
+    ["Agreed with rows holds", ["match", 30, false], "holding"],
+    ["Still moving with rows holds", ["signal", 2, false], "holding"],
+    ["a neutral chip stays grey however many rows it has", ["neutral", 520, false], "empty"],
+  ];
+
+  it.each(cases)("%s", (_name, args, want) => {
+    expect(emphasisOf(...args)).toBe(want);
   });
 });
