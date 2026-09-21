@@ -83,6 +83,7 @@ export function Rail({ open, onToggle, active, counts, alerts, current, runId, c
               <Link
                 key={destination.key}
                 href={`${hrefFor(destination, current?.id ?? runId)}${destination.key === "chat" && conversationId ? `?c=${conversationId}` : ""}`}
+                prefetch={destination.preload ? true : undefined}
                 aria-label={open ? undefined : destination.label}
                 aria-current={here ? "page" : undefined}
                 title={open ? undefined : destination.label}

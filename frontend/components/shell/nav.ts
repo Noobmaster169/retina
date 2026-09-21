@@ -11,9 +11,11 @@ import type { IconName } from "@/components/ui/icons";
  * The clusters say what a screen is about and not how it is addressed, so a
  * global destination may sit in either. `Traffic` is the one that does: the
  * gate admits mail before any run exists to scope it to, and it is still the
- * pipeline's own screen rather than a thing the mail resolved. docs/05-design.md section 7 calls putting the entity
- * types in the navigation the cheapest way to say this product has a
- * knowledge model and not just a list of emails.
+ * pipeline's own screen rather than a thing the mail resolved.
+ *
+ * docs/05-design.md section 7 calls putting the entity types in the navigation
+ * the cheapest way to say this product has a knowledge model and not just a
+ * list of emails.
  *
  * The active destination is derived from the pathname here rather than
  * declared by each page, because the shell mounts once in the layout and the
@@ -48,6 +50,21 @@ export interface Destination {
   global?: true;
   /** Built and reachable by URL, kept out of the rail. */
   hidden?: true;
+  /**
+   * Fetch this one whole before it is clicked, rather than only as far as its
+   * loading shell.
+   *
+   * For the destinations a person actually moves between, which is the four
+   * global ones and the chat. It costs a read of each on every page load, and
+   * that read is nearly free: the business data behind them is reused for a
+   * minute (`lib/api/cached.ts`), so the first person to open a page pays for
+   * it and the prefetch after that is a cache hit. It is deliberately not set
+   * on the run-scoped screens, whose reads are live and would be paid again
+   * every time anyone looked at anything.
+   *
+   * Next only prefetches in production, so this changes nothing in `pnpm dev`.
+   */
+  preload?: true;
 }
 
 export const DESTINATIONS: Destination[] = [
@@ -60,11 +77,11 @@ export const DESTINATIONS: Destination[] = [
   { key: "gate", label: "Traffic", icon: "scale", path: "/gate", cluster: "operations", global: true },
   { key: "database", label: "Database", icon: "table", path: "/database", cluster: "operations" },
   { key: "ontology", label: "Ontology", icon: "graph", path: "/ontology", cluster: "operations" },
-  { key: "chat", label: "Ask Retina", icon: "chat", path: "/chat", cluster: "operations" },
-  { key: "company", label: "Companies", icon: "party", path: "/company", cluster: "business", global: true },
-  { key: "port", label: "Ports", icon: "port", path: "/port", cluster: "business", global: true },
-  { key: "shipment", label: "Shipments", icon: "ship", path: "/shipment", cluster: "business", global: true },
-  { key: "clients", label: "Senders", icon: "client", path: "/clients", cluster: "business", global: true },
+  { key: "chat", label: "Ask Retina", icon: "chat", path: "/chat", cluster: "operations", preload: true },
+  { key: "company", label: "Companies", icon: "party", path: "/company", cluster: "business", global: true, preload: true },
+  { key: "port", label: "Ports", icon: "port", path: "/port", cluster: "business", global: true, preload: true },
+  { key: "shipment", label: "Shipments", icon: "ship", path: "/shipment", cluster: "business", global: true, preload: true },
+  { key: "clients", label: "Senders", icon: "client", path: "/clients", cluster: "business", global: true, preload: true },
 ];
 
 /**
