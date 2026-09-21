@@ -5,6 +5,7 @@ export * as chatLive from "./chat.live";
 export * as chatMemory from "./chat.memory";
 export * as chatState from "./chat.state";
 export * as classifications from "./classifications.repo";
+export * as classificationChains from "./classifications.eval";
 export * as clients from "./clients.repo";
 export * as comparisons from "./comparisons.repo";
 export * as conceptCandidates from "./concept-candidates.repo";

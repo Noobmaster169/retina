@@ -4,6 +4,8 @@
  */
 import { z } from "zod";
 
+import { DecidedBy } from "./contracts.enums";
+
 // The organisers' enums and shapes, value for value, from emails/data_v2/README.md
 // and emails/server/scoring.py. Field names stay snake_case: this is their JSON,
 // in and out. The database check constraints repeat these lists.
@@ -110,6 +112,43 @@ export type SubmitRefused = z.infer<typeof SubmitRefused>;
 const Answer = SubmissionRow.omit({ decided_by: true });
 
 /**
+ * Ours, not an organiser enum: what the verifier did to the generator's
+ * answer, judged against the truth. `not_run` is the generator being sure
+ * enough that no second call was made.
+ */
+export const VerifierEffect = z.enum([
+  "not_run",
+  "fixed",
+  "broke",
+  "agreed_right",
+  "agreed_wrong",
+  "changed_still_wrong",
+]);
+export type VerifierEffect = z.infer<typeof VerifierEffect>;
+
+/**
+ * How the two readers settled this email, beside the verdict on their answer.
+ * Only what a row can show without opening the email: the rationales and the
+ * counter-cases are in the trace, one call away.
+ */
+export const ClassifyChain = z.object({
+  genCategory: Category,
+  genConfidence: z.number(),
+  /** Null when the generator's confidence was above the threshold and the verifier did not run. */
+  verCategory: Category.nullable(),
+  verConfidence: z.number().nullable(),
+  decidedBy: DecidedBy,
+  /** A reviewer's category, where one was recorded. It settles the submitted answer, never the effect. */
+  humanCategory: Category.nullable(),
+  model: z.string().nullable(),
+  promptVersion: z.string().nullable(),
+});
+export type ClassifyChain = z.infer<typeof ClassifyChain>;
+
+export const VerdictClassify = ClassifyChain.extend({ effect: VerifierEffect });
+export type VerdictClassify = z.infer<typeof VerdictClassify>;
+
+/**
  * One email, the submission against the truth, check by check on the scorer's
  * definitions. A check is null where the scorer does not score it for this email.
  */
@@ -128,6 +167,8 @@ export const EmailVerdict = z.object({
     defectFields: z.boolean().nullable(),
     endToEnd: z.boolean().nullable(),
   }),
+  /** Null when the email was never classified: an ingest that failed, or a run stopped before it. */
+  classify: VerdictClassify.nullable(),
 });
 export type EmailVerdict = z.infer<typeof EmailVerdict>;
 

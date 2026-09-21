@@ -58,12 +58,30 @@ describe("compareEmail", () => {
       { category: true, status: null, reviewReason: null, defect: null, defectFields: null, endToEnd: null },
     ],
   ] as const)("%s", (_name, gold, given, checks) => {
-    expect(compareEmail("email_001", gold, { ...given, defect_fields: [...given.defect_fields] }, false).checks).toEqual(checks);
+    expect(
+      compareEmail("email_001", gold, { ...given, defect_fields: [...given.defect_fields] }, false, undefined).checks,
+    ).toEqual(checks);
   });
 
   it("scores an email the run has no answer for as the scorer does: GENERAL", () => {
-    const verdict = compareEmail("email_002", truth({ category: "SPAM" }), undefined, true);
+    const verdict = compareEmail("email_002", truth({ category: "SPAM" }), undefined, true, undefined);
     expect(verdict).toMatchObject({ submitted: false, inHoldout: true, answer: { category: "GENERAL" } });
     expect(verdict.checks.category).toBe(false);
+    expect(verdict.classify).toBeNull();
+  });
+
+  it("carries the chain and what the verifier did to it", () => {
+    const chain = {
+      genCategory: "GENERAL",
+      genConfidence: 0.62,
+      verCategory: "SPAM",
+      verConfidence: 0.91,
+      decidedBy: "verifier",
+      humanCategory: null,
+      model: "sonnet",
+      promptVersion: "v5",
+    } as const;
+    const verdict = compareEmail("email_003", truth({ category: "SPAM" }), answer({ category: "SPAM" }), false, chain);
+    expect(verdict.classify).toEqual({ ...chain, effect: "fixed" });
   });
 });
