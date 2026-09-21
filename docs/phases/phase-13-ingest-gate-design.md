@@ -125,10 +125,10 @@ email) and `ageDays` (days since the first). Then, in order, first match wins:
 | `established` | `daysSeen >= 10 and ageDays >= 30` | 300         | 6000        |
 | `regular`     | `daysSeen >= 3 and ageDays >= 7`   | 120         | 1200        |
 | `new`         | `daysSeen >= 1`                    | 45          | 300         |
-| `unknown`     | nothing has ever arrived from it   | 15          | 60          |
+| `unknown`     | nothing has ever arrived from it   | 20          | 60          |
 
-A flood on day one is `unknown`: 15 units of burst, which is one ordinary email with two documents,
-and 60 units in a day. A domain that has been mailing us for two months is `established` and can
+A flood on day one is `unknown`: 20 units of burst, which is exactly one ordinary email with two
+documents and not two of them, and 60 units in a day. A domain that has been mailing us for two months is `established` and can
 send 6000 units a day without anyone doing anything. Nothing in between can be skipped, because the
 conditions are on days and days pass at one rate.
 

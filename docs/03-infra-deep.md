@@ -110,6 +110,10 @@ Backend (`deploy/.env`, mirrored in `backend/.env.example`):
 | `SHIPMENT_TEXT_CHARS` | `14000`. How much of an email and its documents the shipment reader sees. A cost guard, not a judgement | worker |
 | `ONTOLOGY_CONCURRENCY` | `2`. Left out of `LLM_MAX_CONCURRENCY`'s sum on purpose: its jobs take the same model slots and so wait behind scored work | worker |
 | `CLASSIFY_CONCURRENCY`, `COMPARE_CONCURRENCY` | `2`, `4`. Classify is 2 because the `claudecli` provider serves two calls at a time; more workers only queue inside the proxy with their request timeout already running | worker |
+| `GATE_MODE` | `off \| observe \| enforce`, default `observe`. What the ingest gate does with a verdict it reached. `observe` prices every email, charges every bucket and records every row, then admits anyway; only a policy a person set holds anything. The default is not timidity: the Averis replay is 520 emails from fifteen domains, all unknown senders on their first day, and a live gate would hold most of a demo | worker |
+| `GATE_DAILY_BUDGET_USD` | `25`. What a day of model calls may cost before the gate refuses by standing. Summed from `core.llm_calls.cost_usd`, so it measures what was actually spent | worker, api |
+| `GATE_GLOBAL_BURST`, `GATE_GLOBAL_DAILY` | `4000`, `60000`. The bucket no sender can rotate around | worker, api |
+| `GATE_BURST_REFILL_SECONDS` | `600`. How long an empty burst bucket takes to refill. Its capacity divided by this is the sustained rate | worker |
 | `API_SHARED_SECRET`, `TEAM_API_KEY` | hex | api |
 | `SITE_PASSWORD` | string | frontend gate in `proxy.ts` (Vercel env) |
 | `EVAL_GROUND_TRUTH_PATH` | local path only, unset on the VPS containers | eval CLI |
@@ -287,6 +291,66 @@ Replay controller (`ingest/replay.ts`), driven by `core.runs`:
   `core.attachments` and `core.email_runs`, then enqueue `classify`. Downloads and uploads
   happen before the transaction opens, so a slow inbox or MinIO never holds a pooled connection.
 - `ratePerSecond: 0` means burst: enqueue everything immediately.
+
+#### 5.1a The admission gate (phase 13)
+
+Between `source.getEmail` and the first attachment download, `ingest/gate/` decides whether this
+email is worth what reading it will cost. It is deterministic arithmetic over counts, sizes and
+timestamps. It never reads the words in an email, it makes no model call, and its verdict is
+`admit` or `hold` and never a category: the model classifies everything admitted, whoever sent it.
+
+The deciding functions are pure and live in `pipeline/gate/`:
+
+- **`cost.ts`** prices an email in units of roughly one model call: 3 for the email (classify,
+  its verifier, triage), 3 per attachment (doc-type, extract, its verifier), 7 once when two or
+  more documents make a comparison, and 1 per 100 KB past 256 KB. An ordinary email with an SI and
+  a BL is 16 units. Counting envelopes per minute would miss the attack, which is volume of text
+  and documents. `EmailRecord.attachment_bytes` is optional; an unmeasured attachment is charged
+  at 128 KB rather than zero, so withholding a size is not the cheapest way in.
+- **`standing.ts`** turns a policy and two integers into a bracket and its two caps. Standing is
+  earned by distinct active days and never by volume: `unknown` 20 burst and 60 a day, `new`
+  (1 day) 45 and 300, `regular` (3 days over 7) 120 and 1200, `established` (10 days over 30)
+  300 and 6000, `trusted` (a person said so) 600 and 20000, `blocked` nothing. A flood on day one
+  is still a stranger. An unknown sender's 20 is exactly one ordinary email and not two.
+- **`growth.ts`** clamps the day's cap to three times the median of the sender's last 14 daily
+  totals, floored at a newcomer's 300 and capped by the bracket. It applies to `regular` and
+  `established` only. Gradual growth passes; a spike does not, and yesterday's tripling becomes
+  the baseline today's is measured against.
+- **`decide.ts`** is the one place the signals meet: mode, standing, three bucket readings,
+  budget level, whether the meter answered. Order: mode `off` admits; a person's `block` holds in
+  every mode; an unreadable meter admits `regular` and above and holds the rest; the budget
+  breaker holds by standing; then the first bucket to refuse, address before domain before global.
+
+Each email is charged against three buckets at once, in `ingest/gate/meter.ts`: one Lua script,
+one round trip, atomic. `address` is the narrowest name, `domain` catches an attacker rotating the
+local part, `global` catches one rotating domains. Buckets are charged even when the verdict is
+`hold`, in every mode, so a flood at exactly the limit gets no free retry and `observe` shows the
+numbers `enforce` would have seen.
+
+**Only a person may block.** `From` is forgeable, so an automatic rule that could blacklist could
+be made to blacklist a customer. Automatic rules produce `hold` and nothing else, a hold is
+visible and releasable, and nothing the gate does deletes mail.
+
+A held email costs one inbox read, two indexed queries, one Redis round trip and two small writes.
+Its `core.emails` row is written, because that is what the holding pen shows; no attachment is
+fetched or stored, no job is added, and `core.llm_calls` never hears about it. **It gets no
+`core.email_runs` row**, deliberately: `Stage` is a closed enum parsed on both sides and a
+rollback would meet a value it refuses. `RunSummary.heldByGate` counts them instead, and
+`processingDone` adds it to `finishedEmails`, without which a run that held anything could never
+read as finished.
+
+Releasing adds a `release-email` job to the `ingest` queue carrying `{ runId, emailId }`; the
+worker calls `ingestEmail(..., bypassGate: true)`, which copies the attachments nobody copied the
+first time. An older image would parse that job as an ingest job at epoch 0 and answer
+`superseded`, which is a harmless no-op.
+
+`refresh-gate-budget` runs every five minutes, sums today's `cost_usd` and writes it to
+`gate:budget:today`. Below 0.8 of `GATE_DAILY_BUDGET_USD` it changes nothing; at 0.8 `unknown` and
+`new` wait; past 1.0 only `established` and `trusted` are served. It degrades by standing rather
+than stopping: an attacker whose flood stops your real customers has achieved the outage.
+
+`pnpm gate:drill` pushes synthetic mail past `admit` with an in-memory meter. No model, no
+attachment, no run, no email row, so it costs nothing and is safe before a demo.
 
 ### 5.2 Classify
 
@@ -769,6 +833,23 @@ explainability. Indexes: `email_runs(run_id, stage)`, `review_cases(status)`,
 `llm_calls(email_run_id)`, `emails(sender_domain)`, `review_actions(email_run_id)`,
 `review_actions(kind, created_at)`.
 
+**Phase 13, the ingest gate.** Three tables, and not one change to an existing one, which is what
+makes the rollback trivial: an image from before the phase queries none of them.
+
+- `gate_policy(principal, scope in (address, domain), policy in (allow, block), reason, note,
+  set_by, set_at)`, primary key `(principal, scope)`. What a person decided. Empty at migration
+  time: seeding it would ship a sender list fitted to one seed of one dataset, which is the same
+  argument 009 makes for not seeding the phishing senders.
+- `gate_activity(principal, scope, day, emails, units, held)`, primary key
+  `(principal, scope, day)`. The whole memory the standing bracket is computed from, and counts
+  only. `day` being in the key is the mechanism, not a detail: standing is earned by distinct
+  active days, so it cannot be bought by sending more on one of them.
+- `gate_decisions(id, run_id, email_id, from_addr, principal, scope, decision in (admit, hold),
+  enforced, reason, standing, units, breakdown jsonb, buckets jsonb, decided_at, released_by,
+  released_at)`. Append only; a release stamps the row. `buckets` holds what each bucket read at
+  the moment of the decision, so a row can justify itself long after they refilled. No foreign key
+  on `email_id`: a decision may exist for an email the gate declined to store.
+
 ### 8.2 `analytics`
 
 Built in phase 10, migration `010_analytics.sql`. Refreshed by the `refresh-analytics` scheduled
@@ -933,6 +1014,10 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 | Method, path | Purpose |
 |---|---|
 | `GET /health` | `{ status: ok \| degraded \| down, checks, version, queues }`, 2 s per check, unauthenticated. A check is an object: `{ status, latencyMs }` plus whatever that dependency says about itself, which comes free from its own health payload (`inbox` its email count and whether scoring is available, `docExtract` its tesseract build, `llmProxy` its alias count, `worker` its last heartbeat). `worker` is not a probe but the mark the worker leaves in Redis every 10 s, read back; null when none stands. `down` and 503 only for postgres or redis, which is the signal auto-deploy rolls back on: everything else, a stale heartbeat included, is `degraded` and still 200. `llmProxy` is read through its `/healthz`, which lists aliases and starts no session, so a cold model never reads as an outage. `version` is `GIT_SHA` from the build arg, `dev` outside an image. `queues` is null when Redis cannot be reached |
+| `GET /gate` | what the gate is doing: `mode`, `budget` (today's spend, the day's budget, the two thresholds), the `global` bucket read from Postgres rather than the meter so the page stays readable exactly when Redis is what went wrong, and `decisionsToday`, `heldToday`, `waiting` |
+| `GET /gate/senders?limit=`, `PUT /gate/senders/:principal` | every principal seen or decided about, busiest today first, `limit` 500 by default and 100000 at most, with its standing, the two numbers that earned it, today's units against its clamped cap, and how many of its emails were held. The caps come from the same pure functions the enqueue path calls, so the page and the gate cannot quote different numbers. The `PUT` takes `{ scope: address \| domain, policy: auto \| allow \| block, note? }`; `auto` deletes the row rather than storing a third value. It decides no category |
+| `GET /gate/held`, `GET /gate/decisions` | the holding pen, and the whole log. The pen lists only holds that were enforced, are unreleased, and belong to a run: a hold with no run cannot be released, so listing one would put a button on the page that could only refuse |
+| `POST /gate/held/:id/release` | admit that email after all. Stamps the row first, then enqueues, so a second click is a 409 and never a second copy. 409 for a hold with no run |
 | `GET /clients`, `PUT /clients/:domain` | every sender domain seen, full-outer-joined to `core.clients`, with its tier, kind, email count and mismatch count, and `known: false` for one nobody has ranked. The `PUT` upserts `{ name?, tier?, kind? }`, writes the `client:priority` hash after Postgres, and changes no category: `kind` is a label a person sets and nothing in the pipeline reads it |
 | `POST /runs` | start a run `{ source, ratePerSecond, limit?, emailIds?, subset?: dev \| holdout, promptSet?: { step: vN }, models?: { step: alias } }`. `subset` reads the id lists in `backend/eval/` (ids only). 400 for an unknown prompt version or a model that is not a proxy alias, before anything is queued |
 | `GET /runs`, `GET /runs/:id` | list, detail with stage counts, `finishedEmails` (done, failed and review), `processingDone`, `elapsedMs` (start to the last email finishing, or to now), queue depth, `promptSet`, `llm` usage with `verifierShare`, `review: { open, byReason }`, `outcomes: { ok, mismatch, byField }` over the compared pairs, score (`lastSubmission.scores` carries the scorer's own `weights`, so a page never assumes them). The list also carries `concurrency: { classify, llm }` from the env. `queues` is `null` when Redis cannot be reached; the rest comes from Postgres and is still served |

@@ -11,6 +11,27 @@ See "Design decisions (classify stage invariant)" below for what was wrong and w
 measured against. **The holdout and the full 520 have not been rerun under the new prompts** and
 are the two numbers that decide whether E2E moves off 0.97.
 
+**2026-09-21: phase 13, the ingest gate, is built** (migration `025_ingest_gate.sql`, which
+shares its number with the classify one above; both are applied and neither may be renamed now).
+An email cannot cost a model call until deterministic arithmetic over counts, sizes and timestamps
+has said it may. `docs/phases/phase-13-ingest-gate-design.md` is the design and
+`phase-13-ingest-gate.md` the work list; both are done except the two live checks below.
+
+**`GATE_MODE` defaults to `observe` and must stay there for the demo.** In `observe` the gate
+prices every email, charges every bucket and records every verdict, and then admits the email
+anyway; only a blacklist a person set holds anything. That is not caution, it is the finding: over
+the day's real traffic the gate reached 30 verdicts and 21 of them were holds, because every
+Averis domain is an unknown sender on its first day and a replay at 2/s empties a burst bucket in
+seconds. Under `enforce` a demo would hold most of its own inbox.
+
+**Two live checks are left and both are the user's, because both spend real tokens on a box a
+second session is using.** Each is already covered by a test; what is missing is the live look.
+
+- A replay under `GATE_MODE=enforce`, to watch a real run produce releasable holds and release one
+  through to a verdict on `/gate`. `pnpm gate:drill` cannot stand in: its holds carry no run, so
+  they are deliberately kept out of the holding pen.
+- The `/gate` page during a burst run, to see the bars fill.
+
 **Start at `docs/phases/phase-10f-semantic-layer.md`**, whose header now carries the list of every
 place the repo and that spec disagreed and what the bench found. Then
 `docs/phases/phase-10f-handover.md` for what 10e left and the traps, which all still apply.

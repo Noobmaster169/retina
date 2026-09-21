@@ -59,13 +59,29 @@ function reads counts, sizes and timestamps, never the words in an email, and it
 
 ## Exit checklist
 
-- [ ] `pnpm type-check` and `pnpm test` green in `backend/`; `pnpm type-check` green in `frontend/`.
-- [ ] A held email leaves `core.llm_calls` untouched, proven by a test.
-- [ ] Four pure modules, each with a table-driven test covering its boundaries.
-- [ ] `GATE_MODE=observe` over a replay holds nothing and records a verdict for every email.
-- [ ] `GATE_MODE=enforce` over a burst from one unknown domain holds the overflow and admits the
-      first emails.
-- [ ] Blacklisting a domain on `/traffic` holds its next email in `observe`; `auto` admits again.
-- [ ] Releasing a held email carries it to a verdict.
-- [ ] `03-infra-deep.md` carries the three tables, the six routes and `RunSummary.heldByGate`.
+- [x] `pnpm type-check` and `pnpm test` green in `backend/` (1146 tests); `pnpm type-check`,
+      `eslint` and `vitest` green in `frontend/`.
+- [x] A held email leaves `core.llm_calls` untouched and writes no object, proven by a test
+      (`test/ingest/gate.test.ts`).
+- [x] Four pure modules, each with a table-driven test covering its boundaries (82 tests).
+- [x] `GATE_MODE=observe` records a verdict for every email and holds nothing an automatic rule
+      decided. Seen live: 30 decisions over the day's real traffic, 21 of them holds that would
+      have bitten, none enforced.
+- [x] `GATE_MODE=enforce` over a burst from one unknown domain admits the first email and holds
+      the rest: `pnpm gate:drill --emails 10` gave 1 admitted, 9 held, blamed on the address
+      burst. Covered by test as well.
+- [x] Blacklisting a domain holds its next email in `observe`, and `auto` admits again. Covered
+      by `test/ingest/gate.test.ts` and by the route tests.
+- [x] Releasing a held email carries it into the pipeline with its attachments, and a second
+      release is refused.
+- [x] `03-infra-deep.md` carries the three tables, the six routes, `RunSummary.heldByGate` and the
+      five env vars. `README.md` has the routes and the two tasks.
 - [ ] `PROGRESS.md` updated and the phase merged to `main`.
+
+**Left for the user, because both spend real tokens on a shared box.** Neither blocks the phase:
+each is covered by a test, and what is missing is only the live confirmation.
+
+- A replay under `GATE_MODE=enforce`, to watch a real run produce releasable holds and to release
+  one through to a verdict on the page. The drill cannot stand in for this: its holds carry no
+  run, so they are deliberately kept out of the holding pen.
+- A look at the `/gate` page during a burst run, to see the bars fill.

@@ -112,6 +112,9 @@ All routes except `/health` need `Authorization: Bearer <key>`. The key is
 | --- | --- |
 | `GET /health` | `{ status: "ok" \| "degraded" \| "down", checks, version, queues }`. A check is `{ status, latencyMs }` plus what that dependency says about itself: `inbox` its email count, `docExtract` its tesseract build, `llmProxy` its alias count, `worker` its last heartbeat. 503 only when postgres or redis is down, which is what auto-deploy rolls back on; everything else is `degraded` and still 200 |
 | `GET /clients`, `PUT /clients/:domain` | every sender domain seen, with its tier, kind and counts, and `known: false` for one nobody has ranked. The `PUT` takes `{ name?, tier?, kind? }`. A tier orders the queue and decides no category |
+| `GET /gate` | what the admission gate is doing: the mode, today's model spend against `GATE_DAILY_BUDGET_USD`, the global bucket, and how many decisions it reached and holds it is sitting on |
+| `GET /gate/senders`, `PUT /gate/senders/:principal` | every sender the gate has an opinion about, with the standing it earned and today's units against its cap. The `PUT` takes `{ scope: "address" \| "domain", policy: "auto" \| "allow" \| "block", note? }`. `auto` is the absence of a decision. It decides no category |
+| `GET /gate/held`, `POST /gate/held/:id/release` | the emails nobody has paid to read yet, and letting one through. A second release of the same row is a 409 |
 | `GET /review`, `GET /review/stats`, `GET /review/:id` | the cases waiting for a person, the queue's own numbers, and one case with its evidence and its history |
 | `POST /review/:id/actions`, `POST /review/:id/upload` | what a person does to a case: confirm, correct a field, reclassify, note, retry, reopen, or supply a document. 409 when the case is not in a state where the action means anything |
 | `GET /files/*key` | streams one object from MinIO: an attachment, a reviewer's upload, or a rendered page |
@@ -153,6 +156,8 @@ curl -s 127.0.0.1:8091/ai/chat -H "authorization: Bearer $TEAM_API_KEY" \
 | Task | Where |
 | --- | --- |
 | Add a model alias | `proxy/proxy.yaml`, then rebuild the llm-proxy container |
+| See what the gate would hold, spending nothing | `cd backend && pnpm gate:drill --emails 20` |
+| Turn the gate on | `GATE_MODE=enforce` in `backend/.env`, then restart the worker. It defaults to `observe`, which records every verdict and holds nothing but a blacklist |
 | Add a table | new file in `backend/db/migrations/`, then `pnpm db:migrate` |
 | Add a backend route | a router in `backend/src/routes/`, mounted in `backend/src/app.ts`; its shapes in `backend/src/contracts.ts`; then call it from `frontend/lib/api-client.ts` |
 | Add an env var | `backend/src/config.ts` (the only reader) and `backend/.env.example` |
