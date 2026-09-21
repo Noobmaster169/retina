@@ -5,7 +5,7 @@ import { z } from "zod";
 import { type EntityDetail, EntityKind, type EntityList, ObjectType } from "../contracts";
 import { emailGraph, isBuilt, listTypes, objectRecord } from "../ontology/objects";
 import { buildInsight } from "../pipeline/ontology";
-import { entityDetail, entityDossier, entityInsight, entityProfile, entityValues, entities } from "../ontology/repositories";
+import { entityDetail, entityDossier, entityInsight, entityProfile, entityValues, entities, shipmentsRead } from "../ontology/repositories";
 
 /**
  * The model as a model: what types exist, what one object holds, what links
@@ -34,6 +34,26 @@ export function ontologyRouter(deps: OntologyRouteDeps): Router {
   /** The rail on both the database page and the ontology page, with live counts. */
   router.get("/types", async (_req, res) => {
     res.json({ types: await listTypes(pool) });
+  });
+
+  /** The consignments the mail is about, newest first. Its own route: a shipment is a group, not a spelling. */
+  router.get("/shipment", async (_req, res) => {
+    res.json(await shipmentsRead.list(pool));
+  });
+
+  router.get("/shipment/:id", async (req, res) => {
+    // A shipment's id is a number. A word here is a link from somewhere that
+    // does not know that, and it is a 404 rather than a failed cast.
+    if (!/^\d+$/.test(req.params.id)) {
+      res.status(404).json({ error: "no such shipment" });
+      return;
+    }
+    const detail = await shipmentsRead.find(pool, req.params.id);
+    if (!detail) {
+      res.status(404).json({ error: "no such shipment" });
+      return;
+    }
+    res.json(detail);
   });
 
   /** The index of one type. Only the resolved kinds have a list of their own; the rest are tables. */

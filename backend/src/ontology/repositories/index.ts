@@ -37,6 +37,8 @@ export * as promptVersions from "./prompt-versions.repo";
 export * as reviewActions from "./review-actions.repo";
 export * as reviewCases from "./review-cases.repo";
 export * as runs from "./runs.repo";
+export * as shipments from "./shipments.repo";
+export * as shipmentsRead from "./shipments.read";
 export * as submissions from "./submissions.repo";
 
 export type { NewAttachment, StoredAttachment } from "./attachments.repo";

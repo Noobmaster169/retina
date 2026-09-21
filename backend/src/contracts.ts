@@ -156,4 +156,5 @@ export * from "./contracts.prompts";
 export * from "./contracts.queues";
 export * from "./contracts.review";
 export * from "./contracts.scoring";
+export * from "./contracts.shipment";
 export * from "./contracts.trace";
