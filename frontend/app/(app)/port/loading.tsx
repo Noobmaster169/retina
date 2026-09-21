@@ -1,0 +1,9 @@
+import { CardGridSkeleton, PageSkeleton } from "@/components/shell/page-skeleton";
+
+export default function Loading() {
+  return (
+    <PageSkeleton crumbs={["Ports"]}>
+      <CardGridSkeleton />
+    </PageSkeleton>
+  );
+}
