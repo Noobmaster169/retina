@@ -3,6 +3,7 @@ from io import BytesIO
 from openpyxl import load_workbook
 
 from extractors.base import Extracted, ExtractedPage, cell_text
+from extractors.media import images_in_package
 
 
 def _row_text(values: list[str]) -> str:
@@ -30,4 +31,5 @@ def extract_xlsx(data: bytes) -> Extracted:
             pages.append(ExtractedPage(index=index, text="\n".join(lines), source="text_layer"))
     finally:
         workbook.close()
-    return Extracted(pages=pages)
+    images, warnings = images_in_package(data, "xl", start=len(pages) + 1)
+    return Extracted(pages=pages, images=images, warnings=warnings)

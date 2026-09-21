@@ -9,10 +9,9 @@ class Settings(BaseSettings):
     minio_secret_key: str = ""
     minio_bucket: str = "retina"
     minio_use_ssl: bool = False
-    # Both languages the bilingual BL word documents use. A missing pack falls back to eng.
-    ocr_langs: str = "eng+chi_sim"
-    ocr_dpi: int = 220
-    render_dpi: int = 110
+    # What a page with no text layer is drawn at before a model looks at it. High
+    # enough for small print on a bill of lading, low enough not to send a poster.
+    render_dpi: int = 160
 
 
 settings = Settings()

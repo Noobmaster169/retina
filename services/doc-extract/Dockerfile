@@ -4,15 +4,16 @@
 # on a laptop, deploy/compose.yaml on the box). Built from this directory:
 #   docker build -t retina-doc-extract services/doc-extract
 #
-# Tesseract lives here and nowhere else: a scanned page is read inside this
-# container, so the worker image stays a Node image. The Python dependencies
-# come from uv.lock, so the image runs exactly what `uv run pytest` tested.
+# No character recogniser: a page with no text layer is drawn and handed to a model
+# that can see it, which is why this image carries no tesseract and no language
+# packs. The Python dependencies come from uv.lock, so the image runs exactly what
+# `uv run pytest` tested.
 
 FROM python:3.12-slim
 COPY --from=ghcr.io/astral-sh/uv:0.11 /uv /bin/uv
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim curl \
+    && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -24,8 +25,12 @@ COPY extractors ./extractors
 RUN useradd --create-home --uid 10002 docextract
 USER docextract
 
+# UVICORN_WORKERS=4: one process is bound by the GIL, and parsing a document is
+# CPU work. Four processes was measured as the point where the cores rather than
+# the interpreter became the limit. Each carries roughly 0.4 GB.
 ENV PATH="/app/.venv/bin:$PATH" \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    UVICORN_WORKERS=4
 EXPOSE 8000
 
 HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=5 \

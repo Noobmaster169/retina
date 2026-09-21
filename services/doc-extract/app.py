@@ -3,20 +3,28 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from extractors.base import Extracted, ExtractedPage
-from extractors.ocr import installed_langs, tesseract_version
+from extractors.base import Extracted
 from extractors.pdf import render_pdf
-from models import ErrorBody, ExtractRequest, ExtractResponse, Health, Page, RenderedPage, RenderRequest, RenderResponse
+from models import (
+    ErrorBody,
+    ExtractRequest,
+    ExtractResponse,
+    Health,
+    Page,
+    RenderedPage,
+    RenderRequest,
+    RenderResponse,
+    UnreadImage,
+)
 from registry import extractor_for, format_of
 from settings import settings
 from storage import MinioStorage, NoSuchObject, Storage, StorageError
 
 log = logging.getLogger("doc-extract")
 
-# Under this much text, after OCR, the document is not something a reader could work from.
+# Under this much text a page has said nothing a reader could work from, so what it
+# holds is pixels rather than prose.
 MIN_TOTAL_CHARS = 40
-# An OCR page whose mean word confidence is under this is treated as unread.
-MIN_OCR_CONFIDENCE = 40.0
 
 
 def create_app(storage: Storage | None = None) -> FastAPI:
@@ -36,19 +44,23 @@ def create_app(storage: Storage | None = None) -> FastAPI:
 
     @app.get("/healthz", response_model=Health)
     def healthz() -> Health:
-        version = tesseract_version()
-        return Health(ok=True, tesseract=version, langs=list(installed_langs()))
+        return Health(ok=True)
 
     @app.post("/extract", response_model=ExtractResponse)
     def extract(request: ExtractRequest) -> ExtractResponse:
         data = app.state.storage.get(request.key)
-        return extract_bytes(data, request.filename, request.content_type)
+        result = extract_bytes(data, request.filename, request.content_type)
+        return store_images(app.state.storage, result, request.out_prefix)
 
     @app.post("/render", response_model=RenderResponse)
     def render(request: RenderRequest) -> RenderResponse:
-        if format_of(request.filename, None) != "pdf":
+        # On the name first, so asking to render a text file does not cost a read of
+        # it. `unknown` still gets fetched: only the bytes can say what it really is.
+        if format_of(request.filename, None) not in ("pdf", "unknown"):
             return RenderResponse(pages=[])
         data = app.state.storage.get(request.key)
+        if format_of(request.filename, None, data) != "pdf":
+            return RenderResponse(pages=[])
         pages = []
         for index, png, width, height in render_pdf(data, request.dpi or settings.render_dpi):
             key = f"{request.out_prefix.rstrip('/')}/{index}.png"
@@ -59,30 +71,34 @@ def create_app(storage: Storage | None = None) -> FastAPI:
     return app
 
 
-def page_is_readable(page: ExtractedPage) -> bool:
-    """Whether anything on this page can be worked from: it yielded text, and where
-    that text came from OCR the recogniser was confident enough to be believed."""
-    if page.source == "none":
-        return False
-    if page.source == "ocr":
-        return (page.ocr_confidence or 0.0) >= MIN_OCR_CONFIDENCE
-    return True
+class Extraction:
+    """What `extract_bytes` found, before the pixels have anywhere to live."""
+
+    def __init__(self, response: ExtractResponse, extracted: Extracted) -> None:
+        self.response = response
+        self.extracted = extracted
 
 
 def is_unreadable(size: int, extracted: Extracted) -> bool:
-    """A fact about the file, never a judgement: empty, would not open, or no page
-    it could recover text from. Judged per page and then over the document, so a
-    page with no text beside a page OCR could not read counts as neither."""
-    if size == 0 or not extracted.opened or not extracted.pages:
+    """Nobody could read this, a person included: empty, would not open, or nothing
+    in it to read or to look at.
+
+    A document whose pixels can be looked at is not unreadable. It is a document
+    that has not been read yet, and saying otherwise was how a legible scan and a
+    corrupt file came to mean the same thing.
+    """
+    if size == 0 or not extracted.opened:
         return True
-    if not any(page_is_readable(page) for page in extracted.pages):
+    if extracted.images:
+        return False
+    if not extracted.pages:
         return True
     return sum(len(page.text.strip()) for page in extracted.pages) < MIN_TOTAL_CHARS
 
 
-def extract_bytes(data: bytes, filename: str, content_type: str | None) -> ExtractResponse:
+def extract_bytes(data: bytes, filename: str, content_type: str | None) -> Extraction:
     """Never raises for a bad file: whatever goes wrong inside an extractor is a warning on an unreadable answer."""
-    fmt = format_of(filename, content_type)
+    fmt = format_of(filename, content_type, data)
     extractor = extractor_for(fmt, settings)
     if extractor is None:
         extracted = Extracted(opened=False, warnings=[f"unknown format for {filename}"])
@@ -95,18 +111,44 @@ def extract_bytes(data: bytes, filename: str, content_type: str | None) -> Extra
             log.warning("extractor failed for %s: %s", filename, error)
             extracted = Extracted(opened=False, warnings=[f"could not read: {error}"])
 
-    pages = [
-        Page(index=p.index, text=p.text, source=p.source, ocr_confidence=p.ocr_confidence) for p in extracted.pages
-    ]
-    return ExtractResponse(
-        format=fmt,
-        text="\f".join(page.text for page in pages),
-        pages=pages,
-        unreadable=is_unreadable(len(data), extracted),
-        scanned=any(page.source == "ocr" for page in pages),
-        warnings=extracted.warnings,
-        bytes=len(data),
+    pages = [Page(index=p.index, text=p.text, source=p.source) for p in extracted.pages]
+    return Extraction(
+        ExtractResponse(
+            format=fmt,
+            text="\f".join(page.text for page in pages),
+            pages=pages,
+            unreadable=is_unreadable(len(data), extracted),
+            has_images=bool(extracted.images),
+            images=[],
+            warnings=extracted.warnings,
+            bytes=len(data),
+        ),
+        extracted,
     )
+
+
+def store_images(storage: Storage, found: Extraction, out_prefix: str | None) -> ExtractResponse:
+    """The pixels written where the caller asked for them.
+
+    Without a prefix they are reported and not kept: the caller still learns that
+    this document is partly or wholly something to look at, which is what stops a
+    covering sentence passing as a whole bill of lading.
+    """
+    response = found.response
+    if not found.extracted.images:
+        return response
+    if out_prefix is None:
+        response.warnings.append(
+            f"{len(found.extracted.images)} image(s) here were not read: "
+            "no out_prefix was given to write them to"
+        )
+        return response
+    prefix = out_prefix.rstrip("/")
+    for image in found.extracted.images:
+        key = f"{prefix}/{image.index}.png"
+        storage.put(key, image.png, "image/png")
+        response.images.append(UnreadImage(index=image.index, key=key, origin=image.origin))
+    return response
 
 
 app = create_app()

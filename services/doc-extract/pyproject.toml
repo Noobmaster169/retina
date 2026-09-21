@@ -1,7 +1,7 @@
 [project]
 name = "retina-doc-extract"
 version = "0.1.0"
-description = "Turns a stored attachment into text: txt, pdf (with OCR), docx, xlsx"
+description = "Turns a stored attachment into text, or into pixels for a model that can see"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
@@ -12,7 +12,6 @@ dependencies = [
     "pymupdf>=1.24",
     "python-docx>=1.1",
     "openpyxl>=3.1",
-    "pytesseract>=0.3.10",
     "pillow>=10.3",
 ]
 

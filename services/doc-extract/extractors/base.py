@@ -8,7 +8,20 @@ class ExtractedPage:
     index: int
     text: str
     source: Source
-    ocr_confidence: float | None = None
+
+
+@dataclass
+class ExtractedImage:
+    """Pixels this extractor could not turn into text, for a reader that can see.
+
+    `origin` is what it came from: a page of a PDF that carries no text layer, or a
+    picture embedded in a word or excel document. `index` numbers it within the
+    document so a caller can say which part of which file it is.
+    """
+
+    index: int
+    png: bytes
+    origin: str
 
 
 @dataclass
@@ -16,6 +29,7 @@ class Extracted:
     """What one extractor found. `opened` is False when the file could not be read at all."""
 
     pages: list[ExtractedPage] = field(default_factory=list)
+    images: list[ExtractedImage] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     opened: bool = True
 
