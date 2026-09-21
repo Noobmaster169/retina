@@ -77,6 +77,31 @@ export async function askQuestion(
   return { ok: true, value: await parseAs(ChatAnswer, response, `POST /chat/${id}/messages`) };
 }
 
+/**
+ * The same question, asked for as a stream of events.
+ *
+ * The response is handed back whole, body unread, because the caller is a route
+ * whose job is to pass it to the browser rather than to understand it. Nothing
+ * is parsed here: a frame is parsed by the client that draws it, and reading
+ * the body here would be reading the answer nobody is waiting on yet.
+ */
+export async function streamQuestion(
+  id: string,
+  content: string,
+  actor: string,
+  skills: string[] = [],
+  context: ContextRef[] = [],
+  signal?: AbortSignal,
+): Promise<Response> {
+  return request(`/chat/${id}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ content, actor, skills, context }),
+    headers: { accept: "text/event-stream" },
+    timeoutMs: TURN_TIMEOUT_MS,
+    signal,
+  });
+}
+
 /** The turns newer than one id, tool rows included. What the page polls while its own question is in flight. */
 export async function turnsAfter(id: string, after: number): Promise<ChatTurnsAfter> {
   return get(ChatTurnsAfter, `/chat/${id}/turns?after=${after}`);

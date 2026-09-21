@@ -6,7 +6,9 @@ import useSWR from "swr";
 import { z } from "zod";
 
 import { Composer } from "@/components/chat/composer";
-import { LiveSteps } from "@/components/chat/live-steps";
+import { LiveCalls } from "@/components/chat/live-calls";
+import { Markdown } from "@/components/chat/markdown";
+import { StatusLine } from "@/components/chat/status-line";
 import { Turn } from "@/components/chat/turn";
 import { useChat } from "@/components/chat/use-chat";
 import { Icon, type IconName } from "@/components/ui/icons";
@@ -171,8 +173,9 @@ function DockThread({ initial, title, runId }: { initial: ChatTurn[]; title: str
         ))}
         {chat.pending ? (
           <div className="space-y-3">
-            <LiveSteps steps={chat.steps} since={chat.since} />
-            <div className="h-4 w-2/3 rounded-xs bg-sunken" />
+            <StatusLine progress={chat.progress} since={chat.since} />
+            <LiveCalls calls={chat.calls} />
+            {chat.progress?.answer ? <Markdown text={chat.progress.answer} /> : <div className="h-4 w-2/3 rounded-xs bg-sunken" />}
           </div>
         ) : null}
         {chat.error ? (

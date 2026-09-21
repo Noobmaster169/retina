@@ -2,6 +2,9 @@ import { z } from "zod";
 
 import type { ChatRequest, ChatResult } from "./llm-contract";
 import { asLlmError, messageParams, proxyClient, REQUEST_TIMEOUT_MS } from "./llm-wire";
+import { childLogger } from "./lib/logger";
+
+const log = childLogger({ module: "llm-stream" });
 
 /**
  * The proxy's final `message_delta` of a stream. `usage.cost_usd` and
@@ -19,8 +22,12 @@ const FinalDelta = z.object({
   structured_output: z.unknown().optional(),
 });
 
-/** With a schema, each block is one attempt at the answer; a new one means the last failed validation. */
-const BlockStart = z.object({ type: z.literal("content_block_start") });
+/**
+ * A block boundary. With a schema `claude -p` writes the object across more
+ * than one block, the last of which is the one `structured_output` comes from,
+ * so `text` follows the last block and not their concatenation.
+ */
+const BlockStart = z.object({ type: z.literal("content_block_start"), index: z.number().nullish() });
 
 const TextDelta = z.object({
   type: z.literal("content_block_delta"),
@@ -46,8 +53,18 @@ export async function chatStream(
       .withResponse();
     model = response.headers.get("x-llm-proxy-model");
     for await (const event of data) {
-      // A new attempt: the preview restarts rather than running two attempts together.
-      if (BlockStart.safeParse(event).success && text) {
+      // A second content block, which `claude -p` sends with a schema: it
+      // writes the object once, then writes it again as the block the
+      // validated answer comes from. `text` follows the last block, because
+      // that is the one `structured_output` corresponds to and the one this
+      // falls back to when there is no structured output at all.
+      //
+      // The preview a caller is watching must not follow it backwards. That is
+      // the caller's to handle, and the chat loop does it by only ever moving
+      // its preview forward; there is nothing to do here but say so.
+      const started = BlockStart.safeParse(event);
+      if (started.success && text) {
+        log.debug({ model: req.model, blockIndex: started.data.index ?? null, chars: text.length }, "a streamed answer began a second block");
         text = "";
         continue;
       }

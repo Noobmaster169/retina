@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { FakeLlmClient } from "../../src/agents/__fakes__/fake.llm-client";
 import { runTurn, type TurnInput } from "../../src/agents/chat/loop";
+import type { ChatProgress } from "../../src/contracts";
 import { getPool } from "../../src/db";
 import { ACME_FE, ACME_ME, seedInbox, type SeededInbox } from "../chat-seed";
 import { inRollback } from "../db";
@@ -35,7 +36,8 @@ const BASE: Omit<TurnInput, "question"> = {
 };
 
 async function turn(
-  replies: string[],
+  /** A step's answer, or one with the preview a streaming caller hears on the way to it. */
+  replies: (string | { text: string; preview?: string[] })[],
   options: {
     question?: string;
     input?: Partial<TurnInput>;
@@ -50,6 +52,7 @@ async function turn(
     const seeded: SeededInbox | null = options.seed ? await seedInbox(tx) : null;
     const llm = new FakeLlmClient(replies);
     const steps: { tool: string; preview: string }[][] = [];
+    const progress: ChatProgress[] = [];
     const result = await runTurn(
       {
         llm,
@@ -60,10 +63,11 @@ async function turn(
           await options.onStep?.(finished.map((call) => ({ tool: call.tool, preview: call.preview })));
         },
         stopped: () => options.stopAfter !== undefined && steps.length >= options.stopAfter,
+        onProgress: (event) => progress.push(event),
       },
       { ...BASE, question: options.question ?? "which client had the most mismatches?", ...options.input },
     );
-    return { result, seeded, requests: llm.requests, steps };
+    return { result, seeded, requests: llm.requests, steps, progress };
   });
 }
 
@@ -96,6 +100,50 @@ describe("runTurn", () => {
     // Two model calls for three tool calls: the point of a step carrying several.
     expect(requests).toHaveLength(2);
     expect(requests[1].user).toContain("### you called list_entities");
+  });
+
+  /**
+   * `claude -p` writes its object, then writes it again in a second content
+   * block, so the preview a caller is handed drops back to empty partway
+   * through. Drawn as it arrives, the answer appears, vanishes and is retyped.
+   */
+  it("reports the answer forwards only, when the provider writes it twice", async () => {
+    const whole = '{"action":"final","reading":"How I read it.","answer":"Twenty emails, all at review."}';
+    const { result, progress } = await turn([
+      {
+        text: whole,
+        preview: [
+          '{"action":"final","reading":"How I read it.","answer":"Twenty emails, all at',
+          whole,
+          // The second block, from the beginning.
+          '{"action":"final","reading":"How I',
+          whole,
+        ],
+      },
+    ]);
+
+    expect(result.answer).toBe("Twenty emails, all at review.");
+
+    const answers = progress.map((event) => event.answer);
+    const started = answers.findIndex((answer) => answer !== "");
+    expect(started).toBeGreaterThanOrEqual(0);
+    // Once there are words, there are always words, and never fewer than before.
+    expect(answers.slice(started).every((answer) => answer !== "")).toBe(true);
+    for (let i = started + 1; i < answers.length; i++) {
+      expect(answers[i].length).toBeGreaterThanOrEqual(answers[i - 1].length);
+    }
+    expect(answers.at(-1)).toBe("Twenty emails, all at review.");
+    // The reading is held the same way; the second block restates it from nothing.
+    expect(progress.at(-1)?.reading).toBe("How I read it.");
+  });
+
+  it("names the tools of a step before they run", async () => {
+    const { progress } = await turn([calls(sql("select 1 as n"), { tool: "list_entities", args: { kind: "port" } }), final("Both.")]);
+
+    const looking = progress.filter((event) => event.phase === "looking");
+    expect(looking).toHaveLength(1);
+    expect(looking[0].tools).toEqual(["run_sql", "list_entities"]);
+    expect(looking[0].step).toBe(1);
   });
 
   it("feeds a guardrail refusal back so the next step can correct it", async () => {

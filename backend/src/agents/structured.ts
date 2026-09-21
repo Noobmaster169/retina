@@ -27,6 +27,26 @@ export interface StructuredCall<T> {
   /** Null for a call that belongs to no run: the chat agent's loop is the only one. */
   runId: string | null;
   emailRunId?: string;
+  /**
+   * Called with the answer so far, for a caller holding the connection the
+   * answer is going back over.
+   *
+   * With a schema that text is the JSON being written, not prose, so a caller
+   * that wants a field out of it reads one with `chat/partial.ts`. It restarts
+   * from empty when an attempt is retried, so a consumer must take a shorter
+   * string than last time as a correction rather than an error.
+   *
+   * A run's own live store wins where there is one: that path already streams
+   * to the run page, and two writers of one preview would fight.
+   */
+  onPreview?(soFar: string): Promise<void> | void;
+  /**
+   * Whether a field with a default may be left out of the answer.
+   *
+   * Off for every pipeline step, whose schemas describe one shape and whose
+   * numbers were measured against the schema they have. See `toOutputSchema`.
+   */
+  defaultsOptional?: boolean;
 }
 
 export interface StructuredResult<T> {
@@ -102,9 +122,18 @@ function parseOrUndefined(text: string): unknown {
  *
  * The fix is always the same: one flat object with the discriminant as a
  * field, narrowed in code after it parses.
+ *
+ * `defaultsOptional` decides what the provider is told about a field that has
+ * a default. By default it is told the shape after parsing, where a default has
+ * already been applied and every field is therefore present and required. Set
+ * it, and it is told the shape the model may write, where a field with a
+ * default may simply be left out. Zod fills it in either way, so this changes
+ * nothing about what the caller receives and a great deal about what the model
+ * has to write: on a flat schema that covers two shapes, it is the difference
+ * between writing the fields that belong to this step and writing all of them.
  */
-export function toOutputSchema(schema: z.ZodType): Record<string, unknown> {
-  const { $schema: _dialect, ...rest } = z.toJSONSchema(schema);
+export function toOutputSchema(schema: z.ZodType, defaultsOptional = false): Record<string, unknown> {
+  const { $schema: _dialect, ...rest } = z.toJSONSchema(schema, defaultsOptional ? { io: "input" } : {});
   for (const combinator of ["oneOf", "anyOf", "allOf"]) {
     if (combinator in rest) {
       throw new TerminalError(
@@ -131,7 +160,7 @@ function describe(error: z.ZodError): string {
  */
 export async function callStructured<T>(deps: StructuredDeps, call: StructuredCall<T>): Promise<StructuredResult<T>> {
   const { prompt } = call;
-  const outputSchema = toOutputSchema(call.schema);
+  const outputSchema = toOutputSchema(call.schema, call.defaultsOptional);
   const system = prompt.text.replace("{{schema}}", JSON.stringify(outputSchema, null, 2));
   let user = renderInput(call.input);
   let problem = "no attempt made";
@@ -156,8 +185,11 @@ export async function callStructured<T>(deps: StructuredDeps, call: StructuredCa
       attempt,
     };
 
-    // Streamed only where someone can watch it: an email's call of a run, with
-    // a live store. A call that belongs to no run has no run page to stream to.
+    // Streamed where someone can watch it, which is two different people. An
+    // email's call of a run is watched through the live store, by anyone on the
+    // run page. A call that belongs to no run has no run page, but its caller
+    // may be holding the connection the answer goes back over, and that is what
+    // `onPreview` is. A call nobody is watching is not streamed at all.
     const preview =
       deps.live && call.emailRunId && call.runId
         ? livePreview(deps.live, {
@@ -169,7 +201,8 @@ export async function callStructured<T>(deps: StructuredDeps, call: StructuredCa
             attempt,
           })
         : null;
-    if (preview) request.onText = (soFar) => preview.onText(soFar);
+    const onText = preview ? (soFar: string) => preview.onText(soFar) : call.onPreview;
+    if (onText) request.onText = onText;
 
     let response;
     const started = Date.now();

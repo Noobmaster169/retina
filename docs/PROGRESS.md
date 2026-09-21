@@ -7,6 +7,31 @@ and merged into 13 afterwards.
 **Start at `docs/phases/phase-13-business-data.md`.** Phase 7's two `[~]` items are still under
 "Deferred" below.
 
+**2026-09-21: phase 15, the streaming chat, is built on `phase-15-streaming-chat`.** The chat
+used to answer nothing visibly until the whole turn was done. `POST /chat/:id/messages` now has
+two shapes chosen by `Accept`: the blocking one it always had, and an event stream carrying
+`progress` and `step` events and then the same `{ turn, exhausted }`. The page draws the answer
+as it is written, with a status line and the calls it has finished open above it; when the
+answer lands those calls fold into one collapsed control under it, with the reading and the
+queries and their rows.
+
+**`claude -p` sometimes writes its whole object twice, in two content blocks**, which is not
+what `llm-stream.ts` assumed: the second block carries `index: 1` and the discarded first one is
+a complete object breaking no constraint. It used to reach the page as the answer appearing,
+blanking and being retyped. The loop's preview now only moves forward, so it is invisible. It
+still costs the answer twice in tokens when it happens, and nobody knows why it happens.
+
+The measurements, same question, opus, on the local stack. Before: nothing on screen for 8.5 s
+to 14.7 s, 929 output tokens mean. After: first prose at 3.4 s, 633 output tokens mean, turn
+8.5 s mean. The alias was never the cost, a four token reply is 3.25 s on opus and 2.80 s on
+haiku, which is `claude -p` starting an agent session per call. The cost was output length, and
+most of that was the provider being told all nine fields of a two-shape schema were required.
+
+Chat prompt is **v7** and gives the answer six sentences and forbids reproducing a result set.
+On the first six eval questions, 4 of 6 to 5 of 6, mean sentences 8.0 to 6.3, median steps 3 to
+2. **The full chat eval has not been run and is the user's**, as `eval:chat` says of itself.
+`docs/phases/phase-15-streaming-chat.md` is the spec and carries what is left.
+
 **2026-09-21: classify is on `v6` and the verifier on `v3`** (migration 025). The single
 classification the pipeline had never got right, `email_504`, was a gap in the prompts' own
 definitions rather than a hard email, and the verifier was making it worse rather than better.

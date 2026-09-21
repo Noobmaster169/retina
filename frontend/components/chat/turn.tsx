@@ -7,18 +7,19 @@ import { Clarify } from "./clarify";
 import { NextMoves } from "./next-moves";
 import { OutcomeLine } from "./outcome-line";
 import { Markdown } from "./markdown";
-import { Reading } from "./reading";
 import { ResultGraph } from "./result-graph";
-import { SqlBlock } from "./sql-block";
-import { ToolsUsed } from "./tools-used";
+import { Working } from "./working";
 
 /**
  * One turn.
  *
- * An answer is artefacts in a fixed order: what it touched, how it read the
- * question, what it said, where it looked, what it ran, what came back, and
- * what to ask next. The prose is the shortest of them on purpose. A reader can
- * check the others, and the sentence is only there to say what they mean.
+ * What is on the page is the answer: the graph of what the question touched,
+ * the prose, how it ended, and what to ask next. How it got there is real and
+ * is kept, one click down, in `Working`.
+ *
+ * That order is the point. A reader who trusts the answer reads four things; a
+ * reader who does not can open every query and every call and check it. Putting
+ * the evidence above the sentence served neither of them.
  */
 
 export function Turn({
@@ -44,15 +45,9 @@ export function Turn({
     );
   }
 
-  // The SQL a tool ran is shown with the rows it returned, so the query and
-  // its answer are never a scroll apart.
-  const queries = turn.toolCalls.filter((call) => call.sql !== null);
-
   return (
     <div className="space-y-3">
       {turn.graph ? <ResultGraph graph={turn.graph} /> : null}
-
-      <Reading turn={turn} />
 
       <Markdown text={turn.content} />
 
@@ -66,19 +61,9 @@ export function Turn({
         </p>
       ) : null}
 
-      {queries.map((call, index) => (
-        <SqlBlock key={`${call.sql}-${index}`} sql={call.sql as string} result={call.result} />
-      ))}
-
-      {turn.sqlUsed.length > queries.length ? (
-        <p className="text-caption text-ink-faint">
-          {turn.sqlUsed.length - queries.length} earlier{" "}
-          {turn.sqlUsed.length - queries.length === 1 ? "query is" : "queries are"} under Tools used.
-        </p>
-      ) : null}
-
       {turn.proposal ? <ActionCard proposal={turn.proposal} /> : null}
-      {turn.toolCalls.length > 0 ? <ToolsUsed calls={turn.toolCalls} /> : null}
+
+      <Working turn={turn} />
 
       {onAsk ? <NextMoves moves={turn.next} onAsk={onAsk} disabled={answered} /> : null}
     </div>

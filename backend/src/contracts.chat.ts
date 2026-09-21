@@ -130,6 +130,37 @@ export type ChatSkillCard = z.infer<typeof ChatSkillCard>;
 export const ChatSkillCards = z.object({ skills: z.array(ChatSkillCard) });
 export type ChatSkillCards = z.infer<typeof ChatSkillCards>;
 
+/**
+ * Where a turn has got to, sent while it is getting there.
+ *
+ * `reading` is the model deciding, which is most of a turn's time and used to
+ * be a blank screen. `looking` is tool calls actually running, and names them.
+ * `writing` is the answer arriving, a piece at a time.
+ */
+export const ChatPhase = z.enum(["reading", "looking", "writing"]);
+export type ChatPhase = z.infer<typeof ChatPhase>;
+
+/**
+ * One `progress` event of a streamed turn.
+ *
+ * Every field carries what is known so far and not what changed, so a client
+ * that missed an event is not behind, and a client that joins late is correct
+ * after one. `answer` can get shorter: a step whose answer failed its schema is
+ * asked again and starts writing from the beginning.
+ */
+export const ChatProgress = z.object({
+  /** Which step of the loop, from one. */
+  step: z.number().int().min(1),
+  phase: ChatPhase,
+  /** How the question was read, once the model has written it. Empty until then. */
+  reading: z.string().default(""),
+  /** The answer so far, once this step turned out to be the final one. Empty on a tool step. */
+  answer: z.string().default(""),
+  /** The tools this step is running. Empty except while `looking`. */
+  tools: z.array(z.string()).default([]),
+});
+export type ChatProgress = z.infer<typeof ChatProgress>;
+
 /** What one turn answers with. The page draws these four in this order. */
 export const ChatAnswer = z.object({
   turn: ChatTurn,

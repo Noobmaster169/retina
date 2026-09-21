@@ -6,18 +6,27 @@ import type { ChatSkillCards, ChatThread, ChatTurnsAfter, ProposedAction } from 
 import { NewConversation, NewMessage } from "../contracts";
 import { skills } from "../agents/chat/skills/registry";
 import type { LlmClient } from "../agents/llm-client";
+import { childLogger } from "../lib/logger";
 import { chat, chatLive } from "../ontology/repositories";
 import { answerTurn } from "./chat.turn";
+import { eventStream, wantsStream } from "./sse";
 
 /**
  * Asking a question and getting an answer with its working shown.
  *
- * The POST holds until the answer, as it always has: there is no streaming
- * (`docs/01-product.md` section 7) and no queue. What is new is that the turn's
- * steps are readable while it runs, through `GET /:id/turns?after=`, which the
- * page polls against the id of the question it just asked. Stopping is the
- * client aborting the POST.
+ * The POST has two shapes and the caller picks with `Accept`. Without
+ * `text/event-stream` it holds until the answer and returns one `ChatAnswer`,
+ * which is what it has always done and what scripts and the eval rely on. With
+ * it, the same work reports itself: `progress` events while the turn runs, a
+ * `step` event with each step's finished calls, then one `answer` event
+ * carrying that same `ChatAnswer`. The body is identical, so this is the
+ * contract extended and not replaced.
+ *
+ * `GET /:id/turns?after=` is still there and still the record of what a turn
+ * did. Stopping is the client aborting the POST, either way.
  */
+
+const log = childLogger({ module: "chat.routes" });
 
 export interface ChatRouteDeps {
   pool: Pool;
@@ -138,10 +147,37 @@ export function chatRouter(deps: ChatRouteDeps): Router {
       if (!res.writableEnded) stopped = true;
     });
 
-    const answer = await answerTurn({ ...deps, stopped: () => stopped }, conversation, body.data);
-    // A stopped turn is stored, so the thread keeps what it found, and then has
-    // nobody to answer: the client that aborted is gone.
-    if (!stopped) res.json(answer);
+    if (!wantsStream(req.headers.accept)) {
+      const answer = await answerTurn({ ...deps, stopped: () => stopped }, conversation, body.data);
+      // A stopped turn is stored, so the thread keeps what it found, and then has
+      // nobody to answer: the client that aborted is gone.
+      if (!stopped) res.json(answer);
+      return;
+    }
+
+    const stream = eventStream(res);
+    try {
+      const answer = await answerTurn(
+        {
+          ...deps,
+          stopped: () => stopped,
+          onProgress: (progress) => stream.send("progress", progress),
+          onCalls: (calls) => stream.send("step", { calls }),
+        },
+        conversation,
+        body.data,
+      );
+      if (!stopped) stream.send("answer", answer);
+    } catch (error) {
+      // The 200 went out with the headers, before the work had a chance to
+      // fail, so this cannot be a status. The client reads `failure` the way it
+      // reads a non-2xx body on the other shape.
+      const message = error instanceof Error ? error.message : String(error);
+      log.error({ conversationId: id.data, err: message }, "a streamed chat turn failed");
+      stream.send("failure", { error: message });
+    } finally {
+      stream.end();
+    }
   });
 
   router.delete("/:id", async (req, res) => {
