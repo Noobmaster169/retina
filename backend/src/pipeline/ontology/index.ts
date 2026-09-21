@@ -1,6 +1,7 @@
 export { type ExistingEntity, reconcile, type ReconcilePlan } from "./reconcile";
 export type { EntityKind } from "../../contracts";
-export { resolveEntities } from "./resolve";
+export { kindOfField, resolveEntities } from "./resolve";
+export { referenceJoins } from "./reference-joins";
 export type { JoinedBy, Mention, ResolvedEntity, ResolvedName, Sighting, Verdict } from "./resolved";
 export {
   EXTRACTED_ROLES,

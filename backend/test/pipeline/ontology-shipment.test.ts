@@ -148,6 +148,27 @@ describe("assembling one email's shipment", () => {
     expect(shipment.disputedFields).toEqual(["port_of_discharge"]);
   });
 
+  it("links every party the extractor settled, whether or not this reading repeated it", () => {
+    // The reader is told not to repeat the four parties, so most readings list
+    // none. The link has to come from the settled value on its own.
+    const { shipment } = assembleShipment(
+      { ...NOTHING, parties: [{ role: "on_behalf_of", name: "VITAL SOLUTIONS PTE LTD", address: null, source_quote: "ON BEHALF OF VITAL SOLUTIONS PTE LTD", source: "body" }] },
+      SI_REQUEST,
+      [
+        { field: "shipper", value: "APRIL FINE PAPER TRADING", disputed: false },
+        { field: "consignee", value: "AL GURG STATIONERY LLC", disputed: false },
+        { field: "notify_party", value: "PACIFIC OFFICE (M) SDN BHD", disputed: true },
+      ],
+    );
+
+    expect(shipment.links).toEqual([
+      { column: "shipper_id", surface: "APRIL FINE PAPER TRADING" },
+      { column: "consignee_id", surface: "AL GURG STATIONERY LLC" },
+      { column: "notify_party_id", surface: "PACIFIC OFFICE (M) SDN BHD" },
+    ]);
+    expect(shipment.disputedFields).toEqual(["notify_party"]);
+  });
+
   it("prefers a settled count that is a number and falls back where it is not", () => {
     const reading = { ...NOTHING, container_count: { value: 9, source_quote: "No. of Containers or Packages: 1 x 40'HC", source: "document" as const } };
     const written = assembleShipment(reading, WITH_DOCUMENT, [{ field: "container_count", value: "1 x 40'HC", disputed: false }]);

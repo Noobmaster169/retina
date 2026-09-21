@@ -51,7 +51,7 @@ function cut(text: string): string {
  * documents differed, which is what keeps a port off a wrong draft bill out of
  * a question about where cargo went.
  */
-async function settledFields(db: Queryable, emailRunId: string): Promise<SettledField[]> {
+export async function settledFields(db: Queryable, emailRunId: string): Promise<SettledField[]> {
   const readings = await extractions.listForEmailRun(db, emailRunId);
   const si = readings.find((reading) => reading.role === "SI") ?? readings[0];
   if (!si) return [];

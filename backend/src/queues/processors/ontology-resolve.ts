@@ -5,7 +5,8 @@ import type { EntityKind } from "../../contracts";
 import type { Queryable } from "../../db";
 import { childLogger } from "../../lib/logger";
 import type { LiveCalls } from "../../live";
-import { entityInputs, entityProfile, entitySearch, sightings as sightingsRepo } from "../../ontology/repositories";
+import { entityInputs, entityLocate, entityProfile, entitySearch, type JoinStep, sightings as sightingsRepo } from "../../ontology/repositories";
+import { locatePort } from "../../reference/ports";
 import { type AssembledShipment, kindOfRole, planSighting, type ShipmentColumn, type SightingRole } from "../../pipeline/ontology";
 import type { EmailRunIds } from "./ids";
 
@@ -37,7 +38,7 @@ export interface ResolveDeps {
 export type Decision =
   | { action: "use"; entityId: number }
   | { action: "create"; kind: EntityKind; surface: string }
-  | { action: "join"; entityId: number; surface: string; confidence: number };
+  | { action: "join"; entityId: number; surface: string; confidence: number | null; step: JoinStep };
 
 export interface PlannedSighting {
   /** The key into `decisions`. The writer swaps it for an id. */
@@ -95,6 +96,15 @@ async function decide(
   const plan = planSighting(kind, surface, hits);
   if (plan.decision === "use") return { decision: { action: "use", entityId: plan.entityId }, ambiguous: false };
 
+  // A port is unique by its code. A spelling the world's list places at a code
+  // some port already holds is that port, without a model call and without a
+  // second row for the next pass to fold.
+  if (kind === "port") {
+    const locode = locatePort(surface)?.locode;
+    const holder = locode ? await entityLocate.holderOfLocode(deps.pool, locode) : null;
+    if (holder !== null) return { decision: { action: "join", entityId: holder, surface, confidence: null, step: "reference" }, ambiguous: false };
+  }
+
   const candidates = await candidatesFor(deps, kind, surface);
   const prompt = loadPrompt("entity-resolve", RESOLVE_PROMPT, config.LLM_MODEL_ENTITY_RESOLVE);
   const { value } = await resolveSighting(deps, prompt, { kind, surface, address, role, candidates }, { runId: ids.runId, emailRunId: ids.emailRunId });
@@ -107,7 +117,7 @@ async function decide(
     log.warn({ ...ids, surface, sameAs: value.sameAs }, "entity-resolve named an id it was not given; treated as new");
     return { decision: { action: "create", kind, surface }, ambiguous: true };
   }
-  return { decision: { action: "join", entityId: Number(value.sameAs), surface, confidence: value.confidence }, ambiguous: value.ambiguous };
+  return { decision: { action: "join", entityId: Number(value.sameAs), surface, confidence: value.confidence, step: "entity-resolve" }, ambiguous: value.ambiguous };
 }
 
 /** Which kind each shipment column holds. The columns are named for their role, not their kind. */

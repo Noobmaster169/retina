@@ -14,6 +14,7 @@ const JOINED_AS: Record<EntityName["joinedBy"], string> = {
   kept: "the spelling kept",
   judge: "same thing",
   human: "joined by a person",
+  reference: "the same port in the world's list",
 };
 
 export function verdictWords(name: EntityName): string {

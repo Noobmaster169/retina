@@ -794,10 +794,16 @@ Migration `013_ontology_entities.sql`. `core.entities`, `core.entity_names`,
 `core.entity_mentions`, all derived and rebuildable: `pipeline/ontology/resolve.ts` produces them
 from `extraction_fields` and `field_diffs` alone.
 
-**The only edge that joins two spellings is a `field_diffs` row with `same = true`.** No
-lowercasing, no punctuation stripping, no edit distance, no lookup table: all four are rules fitted
-to one seed of one dataset. Two spellings no judge ever compared stay two things, and
-`entity_names.joined_by` says how each one joined, so that reads as a fact about the data.
+**The only edge that joins two spellings is a verdict.** A `field_diffs` row with `same = true`,
+an `entity-resolve` answer, a person's fold, or, for a port, the world's port list placing two
+spellings at one UN/LOCODE (`pipeline/ontology/reference-joins.ts`, computed afresh on every pass
+and never stored). No lowercasing, no punctuation stripping, no edit distance, no lookup table
+fitted to the inbox: all four are rules fitted to one seed of one dataset. A port is unique by its
+code, so two spellings no judge ever compared still fold when the reference places both at one
+code; any other two stay two things. `entity_names.joined_by` says how each one joined (`kept`,
+`judge`, `human`, `reference`, migration `025`), so that reads as a fact about the data. A new
+spelling of a port the list places at a code some live port already holds joins that port in
+`ontology-resolve` without a model call.
 
 `kind` was `port` (from `port_of_loading`, `port_of_discharge`) or `party` (from `shipper`,
 `consignee`, `notify_party`). Phase 10f widened it to six: `carrier`, `person`, `commodity` and
@@ -970,6 +976,7 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 | `GET /ontology/types` | the types the rail offers, with live counts and `built`: Emails, then the six resolved kinds, then Shipments, built since phase 10g over `core.shipments` (a group of emails sharing an identifier). A company and a port answer an `openHref` to their business pages since phase 13. The other seven `ObjectType`s are real and are reached through an object rather than browsed; `client` in particular folds into `party`, since a sender domain and a consignee are the same company read two ways |
 | `GET /ontology/:type`, `GET /ontology/:type/:id`, `/:id/detail`, `/:id/graph?hops=1\|2` | the index of a resolved kind; one object in the one shape every type shares; the four parts a resolved thing opens into; and one email's graph as nodes and named edges. The graph carries no coordinates: the layout is one pure function in the frontend with a table-driven test. All six kinds of `EntityKind` list and open; a type that is a table of its own answers 404 naming `/database/tables`. `detail` carries `insight`: the summary, the identity facts with a `verified` flag per attribute, the scale (emails, appearances, spellings, disputed, first and last mail date) and at most three facets of the kind's own trade, built by the pure `pipeline/ontology/insight.ts` from the same `DossierInput` the profile prompt is rendered from |
 | `PATCH /ontology/:kind/:id/attributes`, `POST /ontology/:kind/:id/rename`, `POST /ontology/:kind/:id/merge` | a person correcting a thing from its page (phase 13): attributes with source `human`, which no profile rewrite touches; a chosen name kept as `human_name`, which every resolution pass prefers; and a merge recorded as the person's join of every spelling, so the pass keeps the two together. Each takes `actor` and answers the row |
+| `GET /ontology/lanes` | every lane the shipments state between two resolved ports, busiest first: `pol` and `pod` as `{id, name}`, `count` in shipments, and `disputed`, how many of those the judge called different at one of the two ports. What the port map draws between pins; it carries no coordinates, which the port rows already hold (business-data fix session) |
 | `GET /shipments?partyId&portId&disputed&q&page&pageSize`, `GET /shipments/:emailId` | shipments as the mail states them, each party and port a reference to the resolved thing; one shipment with everything shipment-read wrote (phase 13). One row per email, which is a different grain from `/ontology/shipment` below; the code calls that one a `Consignment` so the two contracts do not collide |
 | `GET /ontology/:kind` for all six kinds; `GET /ontology/party/:id/people`, `/party/:id/ports`, `/port/:id/parties` | a kind's list carries attributes, the profile's first sentence and distinct emails per role; the three counterpart lists count distinct undisputed emails (phase 13) |
 | `GET /ontology/shipment`, `/shipment/:id` | the consignments, newest first, and one opened: its references, the eight things on it in bill-of-lading order with the disputed ones marked, and what each email of the group stated with the line it was read from. A shipment is a group of emails sharing an identifier (`oc_no`, `bl_no`, `booking_ref`, `invoice_no`, `po_no`), grouped by the pure `pipeline/ontology/shipment-group.ts` and regrouped whole every minute by the `regroup-shipments` scheduler. On this inbox every group holds one email: the generator draws fresh references per mail |

@@ -13,8 +13,8 @@ import { sortKeyOf, sortRows } from "@/components/business/sort";
 import { SortSelect } from "@/components/business/sort-select";
 import { useView } from "@/components/business/use-view";
 import { ViewToggle } from "@/components/business/view-toggle";
-import { type MapPin, WorldMap } from "@/components/business/world-map";
-import type { EntityRow } from "@/lib/api/ontology-schemas";
+import { type MapLane, type MapPin, WorldMap } from "@/components/business/map/world-map";
+import type { EntityRow, Lane } from "@/lib/api/ontology-schemas";
 
 import { PORT_COLUMNS } from "./port-columns";
 
@@ -23,10 +23,24 @@ const VIEWS = ["map", "cards", "table"] as const;
 function pinOf(row: EntityRow, lat: number, lon: number): MapPin {
   const loading = row.roles.port_of_loading ?? 0;
   const discharge = row.roles.port_of_discharge ?? 0;
-  return { id: row.id, name: row.name, lat, lon, count: loading + discharge, href: hrefFor("port", row.id) ?? "#", loading, discharge, countryCode: row.attributes.countryCode };
+  return {
+    id: row.id,
+    name: row.name,
+    lat,
+    lon,
+    count: loading + discharge,
+    href: hrefFor("port", row.id) ?? "#",
+    loading,
+    discharge,
+    countryCode: row.attributes.countryCode,
+    locode: row.attributes.locode,
+    country: row.attributes.country,
+  };
 }
 
-export function PortList({ rows }: { rows: EntityRow[] }) {
+const laneOf = (lane: Lane): MapLane => ({ polId: lane.pol.id, podId: lane.pod.id, count: lane.count, disputed: lane.disputed });
+
+export function PortList({ rows, lanes }: { rows: EntityRow[]; lanes: Lane[] }) {
   const params = useSearchParams();
   const sort = sortKeyOf(params.get("sort"));
   const [view, setView] = useView("port", VIEWS);
@@ -69,7 +83,7 @@ export function PortList({ rows }: { rows: EntityRow[] }) {
     <ListPage
       crumb="Ports"
       title="Ports"
-      lede="Every port the mail named as a place of loading or discharge, placed on the map once the locate step has found it."
+      lede="Every port the mail named as a place of loading or discharge, one per UN/LOCODE, and every lane the shipments state between two of them."
       toolbar={
         <>
           <FilterBar
@@ -103,11 +117,11 @@ export function PortList({ rows }: { rows: EntityRow[] }) {
     >
       {view === "map" ? (
         <div className="space-y-4">
-          <WorldMap pins={pins} />
+          <WorldMap pins={pins} lanes={lanes.map(laneOf)} />
           {unplaced.length ? (
             <p className="text-small text-ink-tertiary">
-              Not located yet: {unplaced.map((row) => row.name).join(", ")}. The locate step places a port once its profile is
-              written.
+              Not located yet: {unplaced.map((row) => row.name).join(", ")}. The world&apos;s port list places a port by the words
+              of its name, and these it does not know.
             </p>
           ) : null}
         </div>
