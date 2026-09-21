@@ -7,7 +7,7 @@ import { Icon, Mark } from "@/components/ui/icons";
 import type { RunSummary } from "@/lib/api/runs-schemas";
 import { quick, spring } from "@/lib/motion";
 
-import { hrefFor, type NavCounts, RAIL_DESTINATIONS } from "./nav";
+import { hrefFor, type NavAlerts, type NavCounts, RAIL_DESTINATIONS } from "./nav";
 import { RunSwitcher } from "./run-switcher";
 
 /**
@@ -24,12 +24,14 @@ interface RailProps {
   onToggle: () => void;
   active: string;
   counts: NavCounts;
+  /** What is waiting on a person, per destination. Tinted, and absent where nothing is. */
+  alerts: NavAlerts;
   /** The run everything below is read through, and every run there is to switch to. */
   current: RunSummary | null;
   runs: RunSummary[];
 }
 
-export function Rail({ open, onToggle, active, counts, current, runs }: RailProps) {
+export function Rail({ open, onToggle, active, counts, alerts, current, runs }: RailProps) {
   return (
     <motion.nav
       initial={false}
@@ -63,6 +65,7 @@ export function Rail({ open, onToggle, active, counts, current, runs }: RailProp
       <div className={open ? "px-3 pt-2" : "flex flex-col items-center pt-2"}>
         {RAIL_DESTINATIONS.map((destination) => {
           const here = destination.key === active;
+          const waiting = alerts[destination.key] ?? 0;
           return (
             <Link
               key={destination.key}
@@ -84,6 +87,14 @@ export function Rail({ open, onToggle, active, counts, current, runs }: RailProp
                   </span>
                   <span className="grow" />
                   <span className="font-mono text-mono-sm text-ink-tertiary">{counts[destination.key] ?? ""}</span>
+                  {waiting > 0 ? (
+                    <span
+                      title={`${waiting} waiting for a person`}
+                      className="rounded-xs bg-review-tint px-1 font-mono text-mono-sm text-review tabular-nums"
+                    >
+                      {waiting}
+                    </span>
+                  ) : null}
                 </>
               ) : null}
             </Link>

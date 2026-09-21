@@ -51,7 +51,7 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
   const status = statusWord(run, trouble !== null);
 
   return (
-    <AppShell active="overview" runId={id} counts={{ inbox: run.totalEmails ?? undefined, review: run.review.open }}>
+    <AppShell active="overview" runId={id} counts={{ inbox: run.totalEmails ?? undefined }} alerts={{ inbox: run.review.open }}>
       <div className="flex min-w-0 grow flex-col">
         <TopBar crumbs={[{ label: "Runs", href: "/runs" }, { label: id.slice(0, 8), mono: true }]}>
           <Search />

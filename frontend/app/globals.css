@@ -38,6 +38,7 @@
   /* 4.4 verdict hues: strong for text and rules, tint for chips and washes */
   --verdict-match: #067647;
   --verdict-match-tint: #ecfdf3;
+  --verdict-match-line: #abefc6;
   --verdict-differ: #b54708;
   --verdict-differ-tint: #fffaeb;
   --verdict-differ-mark: #fef0c7;
@@ -48,6 +49,7 @@
   --verdict-review-line: #e9d7fe;
   --verdict-fault: #b42318;
   --verdict-fault-tint: #fef3f2;
+  --verdict-fault-line: #fecdca;
   --signal: #175cd3;
   --signal-tint: #eff4ff;
   --signal-line: #bbd2f5;
@@ -82,6 +84,7 @@
 
   --color-match: var(--verdict-match);
   --color-match-tint: var(--verdict-match-tint);
+  --color-match-line: var(--verdict-match-line);
   --color-differ: var(--verdict-differ);
   --color-differ-tint: var(--verdict-differ-tint);
   --color-differ-mark: var(--verdict-differ-mark);
@@ -92,6 +95,7 @@
   --color-review-line: var(--verdict-review-line);
   --color-fault: var(--verdict-fault);
   --color-fault-tint: var(--verdict-fault-tint);
+  --color-fault-line: var(--verdict-fault-line);
   --color-signal: var(--signal);
   --color-signal-tint: var(--signal-tint);
   --color-signal-line: var(--signal-line);

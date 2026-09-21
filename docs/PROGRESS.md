@@ -123,6 +123,231 @@ and the page itself were not exercised end to end. What to do: start the stack, 
 suite, then open `/runs/<id>/results` for a run with `EVAL_GROUND_TRUTH_PATH` set and confirm the
 chain strip and the filter counts against an email whose answer you already know.
 
+## Extraction: read it by looking at it (2026-09-21)
+
+`unreadable` now means what a person means by it. Built after the scoring table settled the
+argument: `status` and `review_reason` are read by one grader, Reliability, at weight **0.00**,
+and Stage 3's scope excludes gold `NEEDS_REVIEW` (n=200 of 220), so nothing we answer for emails
+511 to 515 can move the score. That made the honest definition free to adopt.
+
+**What was wrong.** doc-extract escalated any page that went through OCR, so a clean scan and a
+truncated file meant the same thing; the only judgement that encoded was distrust of tesseract. And
+tesseract was worth distrusting: on `email_512_BL.pdf` it returned `AL GUAG STATIONERY LLC` for
+`AL GURG` at 82.1 confidence, comfortably over the 40 floor, which the field judge could read as a
+genuine MISMATCH. Worse was silent: a docx whose real content is a pasted picture came back
+`unreadable: false` with 89 characters of covering sentence, no warning anywhere, and reached the
+scoreboard as `missing_value`. Measured, not guessed.
+
+**What it is now.** Three branches and no fourth: exact text where the file carries it, pixels
+where it does not, `unreadable` where there is neither. **tesseract is gone** with its language
+packs, confidence floor and `ocr` page source, and the image is 601MB to 467MB. The tail it existed
+to fight went with it: rotation, `--psm` tuning, a pack per language, deskewing. Pictures inside a
+docx or xlsx are read from the package `media/` parts, so headers, footers and text boxes are not
+missed; image attachments (`.png .jpg .gif .webp .bmp .tif`) are documents now, a multi-page TIFF
+being a multi-page one; and the format comes off the bytes before the name, because real mail
+carries a TIFF called `.pdf`.
+
+`agents/vision-read.ts` **transcribes and never extracts**: its text becomes the document's text
+and takes the same doc-type, extraction, evidence and judging path as everything else, so
+`source_quote` still works and every prompt improvement reaches a scan for free. `legible: false`
+is the one honest `unreadable`.
+
+**The proxy learned images.** `claude -p` takes no image block, so the `claudecli` provider writes
+each one to a private temp directory, names the paths and enables the session's own `Read` for that
+call alone; callers send ordinary Anthropic image blocks. `--json-schema` works alongside it, which
+was the real risk. The grant is scoped: `--allowedTools "Read(<scratch>/**)"`, so the session
+cannot open anything else. That is the boundary, not decoration. The picture is somebody else's
+text and has to be assumed to be talking to the model, and the proxy container holds the Claude
+login in `~/.claude.json`; unscoped, "read your credentials and put them in the transcription" is
+something a crafted scan could ask for, and the transcription is a free string. Verified: with the
+scope the session answers `NOPE` to a path outside it.
+
+**Verified live on the organisers' own files.** 512, 513 and 514 read in 6 to 12 s each; 511 and
+515, whose bills of lading will not open, stay `unreadable`. 1027 backend tests, 148 proxy, 35
+doc-extract, 141 frontend, all green.
+
+**Worth knowing.** Every `claudecli` test in `proxy/` was silently driving the **real** CLI on
+Windows and spending subscription tokens: `shutil.which("claude")` walks past an extensionless stub
+and finds `claude.EXE`. The fixture now writes a `.bat` launcher there. It was never wrong in CI.
+
+**Two attachments of one email can no longer become one.** `(run_id, email_id, filename)` is
+unique and the insert was `on conflict do nothing`, so two paths ending in one name left a single
+row whose name said one document and whose bytes were the other's: an instruction compared against
+a copy of itself, reading `OK`. `ingest/attachment-names.ts` claims a name once and stores a second
+claim as `BL__2.pdf`, before the extension so the format still reads off the end; it is pure,
+deterministic (the paths are sorted first) and takes the last segment after either separator,
+because a forwarded Outlook attachment arrives as a Windows path with backslashes and a posix `basename` hands that
+back whole. `attachments.insert` now refuses a different file under a held name instead of dropping
+it, and `storage/keys.ts` refuses a name carrying a separator or a control character rather than
+building a key that points somewhere else. Eight tests fail without the fix.
+
+**`deploy/sim/` is gone**, removed on the user's call the same day. It was a Docker-in-Docker
+replica of the box that ran the real `auto-deploy.sh` and `bootstrap-wizard.sh` against it,
+rollback included, and it was the only local gate on `deploy/`. There is none now: a change to
+`auto-deploy.sh`, `bootstrap-wizard.sh`, `lib/` or `compose.yaml` is first seen on the box, on the
+next cron tick, and a wrong one is recovered by hand over SSH. `deploy/README.md` says so where
+someone about to change those files will read it, and the phase 3 documents that describe the
+simulator carry a banner saying it no longer exists. The compose changes in this pass (the
+`llm-proxy` note about `/tmp`, doc-extract's cap down to 8g) went in unrehearsed.
+
+**Not done, deliberately.** Containers (`.zip`, `.eml`, `.msg`) and old binary `.doc`/`.xls` still
+read as unknown; they need unpacking or LibreOffice, not a model.
+
+## Concurrency pass (2026-09-21)
+
+One rule for how parallel the worker is, then the two services that decide whether it holds.
+
+**The rule.** Ten emails per stage: classify 10, compare 10, ontology 10. Scored model calls share a
+cap of 20 (classify plus compare); the ontology queue has a lane of its own of 10
+(`WorkerDeps.ontologyLlm`); `proxy.yaml` `max_concurrency` is the three added up, 30. A pinned
+`CLASSIFY_CONCURRENCY=8` and `COMPARE_CONCURRENCY=4` in a local `.env` had been overriding the code
+and are removed; `.env.example` now comments the three out. Thirty is unmeasured: the last figure is
+12 in flight at about 0.6 calls a second.
+
+**doc-extract.** Not a bottleneck on this dataset (192 of 250 attachments are `.txt` at under a
+millisecond; six single-page scans take about 0.7 s), but a fresh dataset with many scans would have
+hit it. At its defaults Tesseract starts a thread per core per page, and 16 pages at once took a
+20 core host from 4.8 pages a second to 0.5 with every core busy and timeouts at 32. The bottleneck
+was CPU thrash, not RAM and not Docker's allowance. The image now sets `OMP_THREAD_LIMIT=1` and
+`UVICORN_WORKERS=4` (12 pages a second at 32 in flight, no timeouts to 48); the box's 1 GB memory
+cap, which was OOM-killed at 8 pages in flight, is 16 GB, and local is 8 GB. CPU is deliberately not
+capped: a capped container got slower under overload. Table in `03-infra-deep.md` section 6.
+
+**Re-verified against `phase-10g-entity-meaning`** (2026-09-21, after pulling it): same 13
+emails, three runs each side, with `core.shipments` rebuilt from the merged code every two seconds
+while the readings ran and once more at the end, as `schedulers.ts`'s new `regroup-shipments` task
+does. All three shipment-layer runs on both sides matched serial exactly (13 shipments, 54 party and
+port cells, 100%); the shipment grouping keys off reference numbers the readings write regardless
+of how entity resolution went, so it was never going to show the race. The entity graph itself
+reproduced the same result as before the pull: unchanged code lost the person/email join in 3 of 3
+runs (35 to 36 calls), revalidating code matched it in 3 of 3 (12 to 14 calls, 5 to 6 redecide
+rounds). Nothing in `phase-10g` touches `ontology.processor.ts`, `ontology-resolve.ts`,
+`ontology-write.ts`, `entities.resolution.ts`, `entities.search.ts`, the two prompts, `workers.ts`,
+or `config.ts`; it adds a shipment layer downstream of the entity graph and a `regroup-shipments`
+scheduled task, which does no model work and needs no lock. The measurement below is unchanged; this
+is the confirmation that a real code change did not quietly invalidate it.
+
+**Ontology.** Readings can run at once without changing the graph. `ontology-commit.ts` writes under
+an advisory lock after checking that the list of near things each judgement saw is still the list
+there is, and judges again where it is not; `pipeline/ontology/revalidate.ts` is the pure rule. Two
+changes that cost no semantics: a spelling with nothing near it is new without a call, and one
+email's spellings are judged four at a time. 13 emails read by haiku, readings replayed from the
+serial run so only resolution varies: unchanged code at concurrency 10 lost the same serial join
+(a person's name and their email address) in 3 of 3 runs; the revalidating code matched the serial
+graph on 146 of 146 spelling pairs in 3 of 3, and serially too, with 11 to 14 model calls where the
+unchanged code made 32 to 36. End to end with real reads, 13 emails took 4.1 minutes at 10 and 26.7
+serially. `applyResolution` takes the same lock, so a refresh takes turns with every reading.
+`scripts/ontology-parallel-bench.ts` and `ontology-bench-compare.ts` are the harness.
+
+**Found and not acted on, all the user's to decide.**
+
+- **A `shipment-read` spends 94% of its time thinking.** A read is 100 to 160 s and 10,000 to 15,000
+  output tokens for an answer of about 500. With `MAX_THINKING_TOKENS=0` the identical request took
+  12 s and 1,264 tokens, and agreed on 38 of 50 fields (thinking off put one value in two fields
+  and dropped another). That is an eval question, not a config change: it would move every step the
+  proxy serves. It is the largest lever on ontology speed, larger than parallelism.
+- **The live pipeline only reads `BL_COMPARISON` mail.** The compare worker is the only thing that
+  enqueues an ontology job, and classify ends every other category at `done`. `SI_REQUEST` and
+  `INVOICE_QUERY`, which phase 10f names as a quarter of the mailbox, reach the semantic layer only
+  through `pnpm ontology:backfill`.
+- **A haiku reading is not stable.** Two readings of the same 13 emails shared 28 of their 39
+  spellings, so any comparison of the graph across fresh readings mixes model noise into it.
+- **Not run:** anything at 30 model calls in flight. The deploy simulator that would have gated
+  the compose change was removed on 2026-09-21; see the note below.
+
+## Inbox rebuild (2026-09-21)
+
+Asked for directly, outside a phase: the inbox and `Needs a person` were one screen drawn twice,
+and the state between them was wrong in three separate ways.
+
+**The panes piling up side by side had a cause, and it is in the dev log, not in a theory.**
+`review-page.tsx` gave `EmailPane` and `ChatRail` the same `key={emailId}`, and they are siblings
+of `AppShell`'s children array. React's own warning for that says children "may be duplicated",
+and `.next/dev/logs/next-development.log` carries it at 02:33, 02:37 and 02:40 naming email_519,
+email_512 and email_506: the three panes in the screenshot, in the order they were clicked. A key
+is unique among siblings, not among the things it stands for. The new page spells the two keys
+differently.
+
+**What changed.**
+
+- `Needs a person` is gone from the rail. It listed the same emails from a second component set
+  with a second idea of what was selected. `/runs/{id}/review` redirects to
+  `/runs/{id}/inbox?filter=needs-you`, and `/runs/{id}/emails/{emailId}` redirects to
+  `?email=...`, so every link anyone was handed still opens the right screen. Its count reaches
+  the rail as a tinted alert beside `Inbox`.
+- The list's tabs are chips. A tab said "a different screen", which is why clicking a message from
+  `All` landed in `Differences`: `email-page.tsx` initialised its own list tab and the inbox's
+  choice never travelled. There is one list now and nothing resets it.
+- Choosing an email is React state, written to the URL with `history.replaceState`. It was
+  `router.replace`, which re-rendered a `force-dynamic` route on the server for something that
+  changed nothing there.
+- Where you were is a cookie (`retina_inbox`, run scoped, no search text), merged with the URL on
+  the server. Leaving for the ontology and coming back opens the email you were reading, with no
+  second render and nothing browser-only to reconcile against the server's markup.
+- Search, filter and sort are client side over every row of the run, so a keystroke costs no
+  request. The old inbox asked for `pageSize=200` and would silently have searched 200 of 520.
+- Below 768px the list and the email take turns and the rail collapses to its glyphs.
+- `email-list.tsx`, `case-list.tsx`, `email-page.tsx` and `review-page.tsx` are deleted. The three
+  copies of "how does a `From` header read" are one module, `components/email/sender.ts`.
+
+**Checked:** `pnpm lint`, `pnpm type-check`, `pnpm test` (124) and `pnpm build` all green. Not
+checked in a browser: the dev server is behind `SITE_PASSWORD` and the user chose to click through
+it themselves. Nothing here touched the backend, the pipeline or a prompt.
+
+**Left open.** The `hidden` flag in `nav.ts` now has no destination using it, because the
+uncommitted change that un-hid `Database` came in with this tree; the comment above it still says
+the database page is the one hidden destination. The `Search` field in `top-bar.tsx` is still the
+inert one from phase 7 on `/runs`, `/runs/[id]` and `/runs/[id]/results`; only the inbox has a
+real search.
+
+## Email view, part one (2026-09-21)
+
+Asked for directly, after the inbox rebuild. The comparison screen was carrying three kinds of
+noise and one missing capability.
+
+**Done.**
+
+- **The check leads with what differs.** `check-groups.ts` splits the seven into differing, blank
+  and agreeing; the first two are drawn, the third folds under one line. The enum's order survives
+  inside each group, so the reading order a clerk knows is intact. An all-agreeing check gets one
+  sentence naming the fields written two ways, which is the evidence a model judged rather than a
+  string matched, in place of seven rows of `agree`. The case tab's field list got the same
+  treatment; a correction opened from the action bar unfolds the group it lands in.
+- **Both documents is one table.** The 152px field rail named the same seven fields the columns
+  already named, one pixel row apart. The field name is a column now, all three line up, and the
+  row is the click target. The `The model judged each field on its own` paragraph and the message
+  strip are gone. Every field stays on screen here, agreeing or not: this is the tab for reading
+  two documents against each other.
+- **A document can be opened.** A right-hand sheet with two readings: `As it arrived` (the browser
+  draws txt and pdf) and `As the parser read it` (the stored text, which is what every model in
+  this product was given, and the only reading xlsx and docx have). Radix `Dialog` carries the
+  focus trap and Escape.
+- **`DocumentView` carries `objectKey` and `textObjectKey`.** They were already on the repository
+  row and dropped at the contract boundary. Two lines of backend, mirrored in
+  `frontend/lib/api/document-schemas.ts` and `03-infra-deep.md`. Nothing composes a key outside
+  `storage/keys.ts`. **The backend must be restarted before the email view works**: the frontend
+  parses every response, so the old payload now fails at the boundary naming the field.
+- **One action leads.** The bar was six controls of equal weight in every state, all dimmed on an
+  email with no case. Each state now names the thing that answers it (retry a stopped job, replace
+  an unreadable file, type a blank value), states in a line what pressing it records, and keeps the
+  rest under `More`. No label arbitrates: `Say what a document reads` is the wording, because
+  `05-design.md` section 11 forbids a control that declares one document right.
+- **Filter chips carry a hairline** so they read as pressable. Added `--verdict-match-line` and
+  `--verdict-fault-line`, which were the two missing from the set.
+- `lib/api/trace-schemas.ts` was one line over the 200 limit, so the document half moved to
+  `lib/api/document-schemas.ts`, matching the backend's own split.
+
+**Checked:** frontend `pnpm lint`, `pnpm type-check`, `pnpm test` (141) and `pnpm build` green;
+backend `pnpm type-check` green. Not checked in a browser.
+
+**Open, and the reason this is `part one`.** The user asked for a judge that recommends which of
+the two documents to believe, so a person can inspect it and act. No such thing exists: a
+`FieldJudgementView` says `same` or `different` and never which side is right, and
+`05-design.md:234-238` records that absence as a decision. The agreed shape is a step that runs
+**after** the scored pipeline, reads the diff plus ontology context, and writes a recommendation to
+a new table of its own, so the submission provably cannot move. Not started; the design questions
+are still open.
+
 ## Phase 10f
 
 A term written nowhere in the database becomes a set of entity ids that SQL can join on, and the

@@ -1,5 +1,7 @@
 import { Icon } from "@/components/ui/icons";
 
+import { senderAddress, senderInitials, senderName } from "./sender";
+
 /**
  * The email, walled off. This is the only bordered card in the product, and
  * the border is not decoration: the whole design problem on this page was that
@@ -33,7 +35,7 @@ export function MessageCard({ message, sizes = {}, to = "ops@aprilasia.com" }: {
     <article className="overflow-hidden rounded-lg border border-hairline-strong">
       <header className="flex items-center gap-2.5 border-b border-hairline bg-surface px-3.5 py-2.5">
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-hairline bg-canvas text-[10.5px] font-semibold text-ink-secondary">
-          {initials(message.from)}
+          {senderInitials(message.from)}
         </span>
         <span className="min-w-0">
           <span className="block truncate text-strong font-medium">{senderName(message.from)}</span>
@@ -67,45 +69,6 @@ export function MessageCard({ message, sizes = {}, to = "ops@aprilasia.com" }: {
   );
 }
 
-/** The same message folded to one line, for the documents view where the two documents take the width. */
-export function MessageStrip({ message, onOpen }: { message: Message; onOpen?: () => void }) {
-  return (
-    <div className="flex h-[42px] shrink-0 items-center gap-2.5 border-b border-hairline bg-surface px-[22px]">
-      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm border border-hairline bg-canvas text-[9.5px] font-semibold text-ink-secondary">
-        {initials(message.from)}
-      </span>
-      <span className="shrink-0 text-small text-ink-secondary">{senderName(message.from)}</span>
-      <span className="min-w-0 truncate text-small text-ink-tertiary">{firstLine(message.body)}</span>
-      <span className="grow" />
-      {onOpen ? (
-        <button type="button" onClick={onOpen} className="shrink-0 text-small text-ink-secondary hover:underline">
-          Show the message
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
-function senderAddress(from: string): string {
-  return from.match(/<([^>]+)>/)?.[1] ?? from;
-}
-
-function senderName(from: string): string {
-  const named = from.match(/^\s*"?([^"<]+?)"?\s*</);
-  if (named) return named[1];
-  const [local] = senderAddress(from).split("@");
-  return local.replace(/[._-]+/g, " ");
-}
-
-function initials(from: string): string {
-  const words = senderName(from).split(/\s+/).filter(Boolean);
-  return (words[0]?.[0] ?? "?").concat(words[1]?.[0] ?? "").toUpperCase();
-}
-
 function basename(path: string): string {
   return path.split("/").pop() ?? path;
-}
-
-function firstLine(body: string): string {
-  return body.trim().split("\n")[0] ?? "";
 }

@@ -13,7 +13,7 @@ import { ReviewReason } from "./contracts.scoring";
 export const DocType = z.enum(["SI", "BL", "INVOICE", "PACKING_LIST", "COO", "OTHER"]);
 export type DocType = z.infer<typeof DocType>;
 
-export const DocumentFormat = z.enum(["txt", "pdf", "docx", "xlsx", "unknown"]);
+export const DocumentFormat = z.enum(["txt", "pdf", "docx", "xlsx", "image", "unknown"]);
 export type DocumentFormat = z.infer<typeof DocumentFormat>;
 
 /**
@@ -58,6 +58,19 @@ export const DocumentView = z.object({
   bytes: z.number(),
   /** `human` is a document a reviewer supplied for a case. It fills its place ahead of the sender's own. */
   origin: z.enum(["source", "human"]),
+  /**
+   * Where the file itself sits in the object store, and where the text the
+   * parser read out of it sits. Both are streamed by `GET /files/:key`, which
+   * is how a page shows a document rather than only the seven quotes taken
+   * from it.
+   *
+   * They are keys and never URLs, because `storage/keys.ts` is the only place
+   * that composes one and a page that built its own would be a second. The
+   * text key is null for a document the parser could not read, which is the
+   * same condition as `unreadable`.
+   */
+  objectKey: z.string(),
+  textObjectKey: z.string().nullable(),
 });
 export type DocumentView = z.infer<typeof DocumentView>;
 

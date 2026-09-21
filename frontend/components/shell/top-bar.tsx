@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { Icon } from "@/components/ui/icons";
+
 /**
  * The 56px top bar. The breadcrumb is the ontology path, not a page path:
  * every segment names a thing in the model, and the last one is the thing
@@ -14,9 +16,20 @@ export interface Crumb {
   mono?: boolean;
 }
 
-export function TopBar({ crumbs, children }: { crumbs: Crumb[]; children?: ReactNode }) {
+/** `onBack` is only drawn where the list it goes back to is off screen, which is a phone. */
+export function TopBar({ crumbs, children, onBack }: { crumbs: Crumb[]; children?: ReactNode; onBack?: () => void }) {
   return (
-    <header className="flex h-14 shrink-0 items-center gap-2.5 border-b border-hairline px-6">
+    <header className="flex h-14 shrink-0 items-center gap-2.5 border-b border-hairline px-4 md:px-6">
+      {onBack ? (
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label="Back to the list"
+          className="-ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-ink-secondary transition-colors duration-150 hover:bg-active md:hidden"
+        >
+          <Icon name="back" size={15} />
+        </button>
+      ) : null}
       <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-2.5">
         {crumbs.map((crumb, index) => (
           <span key={`${crumb.label}-${index}`} className="flex min-w-0 items-center gap-2.5">

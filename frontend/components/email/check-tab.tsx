@@ -4,19 +4,23 @@ import { useState } from "react";
 
 import type { EmailTrace } from "@/lib/api/trace-schemas";
 
+import { agreementNote, anythingInDoubt, groupRows } from "./check-groups";
 import { checkSentence } from "./field-reading";
+import { Folded, Group } from "./field-groups";
 import { FieldRow, type FieldRowData } from "./field-row";
 import { type FileSizes, MessageCard, type Message } from "./message-card";
 import { Reading, type ReadingFact, Seam } from "./seam";
 
 /**
  * The check: the message, the seam, what Retina made of it in plain English,
- * then the seven fields in the organisers' own order.
+ * then the fields that are asking for something.
  *
- * The order is the enum's, not the judge's and not "differences first". A
- * documentation clerk reads a bill of lading top to bottom and the seven
- * fields are that document's own order; re-sorting them to put the problems
- * up top would make the page faster to skim and harder to check.
+ * What differs comes first and open; what had nothing to compare comes next;
+ * what agreed folds away under a line naming how many. The seven used to be
+ * one flat list in the enum's order, which is right for a clerk reading a bill
+ * of lading and wrong for a screen, because five rows of `agree` above the one
+ * row that differs is five rows of nothing. The enum's order is kept inside
+ * each group, so the reading order a clerk knows survives the grouping.
  */
 
 interface CheckTabProps {
@@ -26,36 +30,56 @@ interface CheckTabProps {
 }
 
 export function CheckTab({ trace, message, sizes }: CheckTabProps) {
-  const comparison = trace.comparison;
-  const [open, setOpen] = useState<string | null>(comparison?.defectFields[0] ?? null);
   const rows = rowsOf(trace);
+  const groups = groupRows(rows);
+  const doubt = anythingInDoubt(groups);
+  const settled = agreementNote(groups);
+
+  const [open, setOpen] = useState<string | null>(groups.differing[0]?.judgement.field ?? groups.blank[0]?.judgement.field ?? null);
+  const [showAgreed, setShowAgreed] = useState(false);
+  const toggle = (field: string) => setOpen(open === field ? null : field);
+  const draw = (row: FieldRowData) => (
+    <FieldRow key={row.judgement.field} row={row} open={open === row.judgement.field} onToggle={() => toggle(row.judgement.field)} />
+  );
 
   return (
-    <div className="px-6">
+    <div className="px-6 pb-4">
       <div className="pt-4">
         <MessageCard message={message} sizes={sizes} />
       </div>
       <Seam />
       <Reading facts={factsOf(trace)}>{readingOf(trace)}</Reading>
 
-      <div className="flex h-8 items-center">
-        <h2 className="text-[14px] font-semibold tracking-[-0.01em]">The check</h2>
-        <span className="ml-2 text-small text-ink-tertiary">Seven fields, in the organisers&apos; order</span>
-      </div>
-
       {rows.length === 0 ? (
         <p className="max-w-[68ch] py-3 text-small text-ink-tertiary">
           Nothing has been compared yet. A pair is judged once both documents have been read.
         </p>
       ) : (
-        rows.map((row) => (
-          <FieldRow
-            key={row.judgement.field}
-            row={row}
-            open={open === row.judgement.field}
-            onToggle={() => setOpen(open === row.judgement.field ? null : row.judgement.field)}
-          />
-        ))
+        <>
+          {groups.differing.length > 0 ? (
+            <Group title="What differs" count={groups.differing.length} tone="differ">
+              {groups.differing.map(draw)}
+            </Group>
+          ) : null}
+
+          {groups.blank.length > 0 ? (
+            <Group title="Nothing to compare" count={groups.blank.length} tone="review">
+              {groups.blank.map(draw)}
+            </Group>
+          ) : null}
+
+          {settled ? <p className="max-w-[68ch] pt-3 text-body text-ink-secondary">{settled}</p> : null}
+
+          {groups.agreed.length > 0 ? (
+            <Folded
+              open={showAgreed}
+              onToggle={() => setShowAgreed((was) => !was)}
+              label={doubt ? `The other ${groups.agreed.length} agree` : `Show the ${groups.agreed.length} fields`}
+            >
+              {groups.agreed.map(draw)}
+            </Folded>
+          ) : null}
+        </>
       )}
     </div>
   );

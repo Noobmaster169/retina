@@ -1,10 +1,12 @@
 import { z } from "zod";
 
 import { ComparisonView, ExtractionView } from "./comparison-schemas";
+import { DocumentView } from "./document-schemas";
 import { ReviewActionView, ReviewCaseKind } from "./review-schemas";
 import { ComparisonField, Outcome, ReviewReason, Stage } from "./runs-schemas";
 
 export * from "./comparison-schemas";
+export * from "./document-schemas";
 
 /**
  * Mirrors backend/src/contracts.ts; change both or neither. No transport here,
@@ -119,42 +121,6 @@ export const ClassificationView = z.object({
   promptVersion: z.string().nullable(),
 });
 export type ClassificationView = z.infer<typeof ClassificationView>;
-
-/**
- * How a document's reading stands against the place its file name claims.
- * Decided by the compare stage, never by a page. Mirrors contracts.review.ts.
- */
-export const TypeVerdict = z.enum(["unknown", "ok", "crossed", "wrong_type"]);
-export type TypeVerdict = z.infer<typeof TypeVerdict>;
-
-/** Ours, not an organiser enum: what the model says a document is. */
-export const DocType = z.enum(["SI", "BL", "INVOICE", "PACKING_LIST", "COO", "OTHER"]);
-export type DocType = z.infer<typeof DocType>;
-
-/** One attachment of one email run, as the parser saw it and as the model typed it. Mirrors contracts.review.ts. */
-export const DocumentView = z.object({
-  filename: z.string(),
-  /** What the filename claims. */
-  role: z.enum(["SI", "BL", "UNKNOWN"]),
-  /** What the model says, or null before it has read the text or when there was none. */
-  docType: DocType.nullable(),
-  docTypeConfidence: z.number().nullable(),
-  docTypeRationale: z.string().nullable(),
-  /** What the compare stage makes of that reading. Shown as given; never recomputed here. */
-  typeVerdict: TypeVerdict,
-  format: z.enum(["txt", "pdf", "docx", "xlsx", "unknown"]),
-  pages: z.number(),
-  scanned: z.boolean(),
-  unreadable: z.boolean(),
-  warnings: z.array(z.string()),
-  /** Mean OCR word confidence per page, 0 to 100, in page order. Empty for a document with a text layer. */
-  pageConfidence: z.array(z.number()),
-  /** The file's size, which the message card states beside its name. */
-  bytes: z.number(),
-  /** `human` is a document a reviewer supplied for a case. It fills its place ahead of the sender's own. */
-  origin: z.enum(["source", "human"]),
-});
-export type DocumentView = z.infer<typeof DocumentView>;
 
 /**
  * Why the email is waiting for a person, with what the stage found and what

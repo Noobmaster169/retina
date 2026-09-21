@@ -42,7 +42,7 @@ export default async function ResultsPage({ params }: PageProps<"/runs/[id]/resu
   const { submission, report, failed } = await load(id);
 
   return (
-    <AppShell active="runs" counts={{ review: run.review.open }}>
+    <AppShell active="runs" counts={{}}>
       <div className="flex min-w-0 grow flex-col">
         <TopBar
           crumbs={[

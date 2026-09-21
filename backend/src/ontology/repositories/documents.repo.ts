@@ -101,6 +101,8 @@ export function toView(doc: StoredDocument, typeVerdict: TypeVerdict): DocumentV
     warnings: doc.warnings,
     pageConfidence: doc.pageConfidence,
     bytes: doc.bytes,
+    objectKey: doc.objectKey,
+    textObjectKey: doc.textObjectKey,
   };
 }
 

@@ -23,6 +23,13 @@ import type { IconName } from "@/components/ui/icons";
  * same questions in the model's own words. It is hidden rather than deleted
  * because `As rows` is the page that proves the ontology is not a mock-up, and
  * a demo may still want to open it.
+ *
+ * `Needs a person` was a destination of its own until it stopped earning one.
+ * It listed the same emails the inbox lists, from a second component set, with
+ * a second idea of what was selected, and moving between the two lost your
+ * place both ways. It is a chip on the inbox now, and `/runs/{id}/review`
+ * redirects to it. What it keeps is its count, which reaches the rail as an
+ * alert beside `Inbox`.
  */
 export interface Destination {
   key: string;
@@ -39,8 +46,7 @@ export interface Destination {
 export const DESTINATIONS: Destination[] = [
   { key: "overview", label: "Overview", icon: "home", path: "" },
   { key: "inbox", label: "Inbox", icon: "mail", path: "/inbox" },
-  { key: "review", label: "Needs a person", icon: "eye", path: "/review" },
-  { key: "database", label: "Database", icon: "table", path: "/database", hidden: true },
+  { key: "database", label: "Database", icon: "table", path: "/database" },
   { key: "ontology", label: "Ontology", icon: "graph", path: "/ontology" },
   { key: "chat", label: "Ask Retina", icon: "chat", path: "/chat" },
   { key: "clients", label: "Clients", icon: "client", path: "/clients", global: true },
@@ -64,3 +70,10 @@ export const RAIL_DESTINATIONS = DESTINATIONS.filter((destination) => !destinati
 
 /** Counts the rail shows against its destinations. Absent keys render no count. */
 export type NavCounts = Partial<Record<string, number>>;
+
+/**
+ * Counts the rail tints. An alert is not a bigger count, it is a different
+ * question: `Inbox 104` says how much there is and `3` beside it says how much
+ * of it is waiting on you. Zero draws nothing, so a quiet run stays quiet.
+ */
+export type NavAlerts = Partial<Record<string, number>>;
