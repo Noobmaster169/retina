@@ -102,7 +102,7 @@ export const DESCRIPTORS: TypeDescriptor[] = [
     plural: "Shipments",
     table: null,
     blurb:
-      "A booking across its instruction, its draft and its invoice query. Designed and not built: core.email_shipments holds one row per email, and nothing yet groups them into one shipment.",
+      "A booking across its instruction, its draft and its invoice query. Designed and not built here: core.email_shipments holds one row per email, listed at /shipment, and nothing yet groups them into one shipment.",
     navigable: true,
   },
   {

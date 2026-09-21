@@ -17,6 +17,9 @@ interface DockState {
   setOpen(open: boolean): void;
   conversationId: string | null;
   setConversationId(id: string | null): void;
+  /** Rises when a person presses New. The thread is keyed on it, not on the conversation id, which the first question sets mid-flight. */
+  thread: number;
+  startNew(): void;
   page: OfferedRef[];
   pinned: OfferedRef[];
   off: string[];
@@ -32,12 +35,15 @@ const Context = createContext<DockState | null>(null);
 
 const OPEN_KEY = "retina.dock.open";
 
+/** What was remembered; with nothing remembered, open only where the dock has a column of its own rather than covering the page. */
 function remembered(): boolean {
   try {
-    return window.localStorage.getItem(OPEN_KEY) !== "closed";
+    const held = window.localStorage.getItem(OPEN_KEY);
+    if (held !== null) return held !== "closed";
   } catch {
-    return true;
+    // Nothing remembered in a private window; fall through to the width rule.
   }
+  return window.matchMedia("(min-width: 1280px)").matches;
 }
 
 /** Storage fires for other tabs only; this tab's own change goes through `override` below. */
@@ -53,6 +59,7 @@ export function DockProvider({ children }: { children: ReactNode }) {
   const [override, setOverride] = useState<boolean | null>(null);
   const open = override ?? rememberedOpen;
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [thread, setThread] = useState(0);
   const [page, setPage] = useState<OfferedRef[]>([]);
   const [pinned, setPinned] = useState<OfferedRef[]>([]);
   const [off, setOff] = useState<string[]>([]);
@@ -76,6 +83,11 @@ export function DockProvider({ children }: { children: ReactNode }) {
     setOff([]);
   }, []);
 
+  const startNew = useCallback(() => {
+    setConversationId(null);
+    setThread((was) => was + 1);
+  }, []);
+
   const toggle = useCallback((ref: OfferedRef) => {
     const key = keyOf(ref);
     setOff((was) => (was.includes(key) ? was.filter((k) => k !== key) : [...was, key]));
@@ -87,8 +99,8 @@ export function DockProvider({ children }: { children: ReactNode }) {
   const unpin = useCallback((ref: OfferedRef) => setPinned((was) => was.filter((r) => keyOf(r) !== keyOf(ref))), []);
 
   const value = useMemo<DockState>(
-    () => ({ open, setOpen, conversationId, setConversationId, page, pinned, off, suggestions, note, announce, toggle, pin, unpin }),
-    [open, setOpen, conversationId, page, pinned, off, suggestions, note, announce, toggle, pin, unpin],
+    () => ({ open, setOpen, conversationId, setConversationId, thread, startNew, page, pinned, off, suggestions, note, announce, toggle, pin, unpin }),
+    [open, setOpen, conversationId, thread, startNew, page, pinned, off, suggestions, note, announce, toggle, pin, unpin],
   );
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }

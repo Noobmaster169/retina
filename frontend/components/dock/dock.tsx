@@ -34,8 +34,8 @@ export function Dock() {
       aria-label="Ask Retina"
       className="fixed inset-y-0 right-0 z-30 flex w-[380px] shrink-0 flex-col border-l border-hairline bg-surface shadow-overlay xl:static xl:shadow-none"
     >
-      {/* Keyed on the conversation, so New starts a fresh thread rather than carrying the last one's turns. */}
-      <DockThread key={dock.conversationId ?? "new"} />
+      {/* Keyed on the thread counter, so New starts fresh and the first question's own conversation does not remount it. */}
+      <DockThread key={dock.thread} />
     </aside>
   );
 }
@@ -67,7 +67,7 @@ function DockThread() {
         {chat.turns.length > 0 ? (
           <button
             type="button"
-            onClick={() => dock.setConversationId(null)}
+            onClick={dock.startNew}
             className="h-[26px] rounded-sm px-2 text-caption text-ink-secondary hover:bg-active"
           >
             New
