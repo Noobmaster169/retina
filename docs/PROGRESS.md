@@ -451,7 +451,7 @@ the database page is the one hidden destination. The `Search` field in `top-bar.
 inert one from phase 7 on `/runs`, `/runs/[id]` and `/runs/[id]/results`; only the inbox has a
 real search.
 
-## Email view, part one (2026-09-21)
+## Phase 15: one inbox screen, and an email view that leads with what differs (2026-09-21)
 
 Asked for directly, after the inbox rebuild. The comparison screen was carrying three kinds of
 noise and one missing capability.
@@ -491,7 +491,24 @@ noise and one missing capability.
 **Checked:** frontend `pnpm lint`, `pnpm type-check`, `pnpm test` (141) and `pnpm build` green;
 backend `pnpm type-check` green. Not checked in a browser.
 
-**Open, and the reason this is `part one`.** The user asked for a judge that recommends which of
+**Merged with phases 13 and 14** on the branch `phase-15-inbox-and-email-view`, which is a
+worktree at `../retina-phase-15` so the shared checkout stays on `main` for whoever else is in it.
+What the merge cost: the shell mounts once in `app/(app)/layout.tsx` now, so the inbox renders
+`<NavCounts>` instead of wrapping itself in `AppShell`, and alerts ride with the counts through
+that context rather than a prop. The chat rail is deleted upstream, so the inbox announces itself
+to the dock with `<PageContext>`: the open email and its run as refs, the judge's own reading as
+the note, the same two suggestions. `activeFor` maps `/review` and `/emails/:id` onto the inbox so
+the rail names the inbox while they redirect. `Tone` gained an `accent` hue and both sides had
+added a `close` glyph.
+
+**The migration guard earned itself immediately.** It found a third duplicate number nobody had
+noticed: 025 holds both `025_classify_stage_invariant.sql` and `025_ingest_gate.sql`. Harmless for
+the same reason as 023 and 024, which each hold two as well: `schema_migrations` keys on the
+filename, all six apply, and the one real dependency (`024_shipment_key` on `023_shipments`) holds
+under filename order. None can be renamed, because none guards its own statements. **The next
+migration is 026.**
+
+**Open, and the reason the recommender is not in this.** The user asked for a judge that recommends which of
 the two documents to believe, so a person can inspect it and act. No such thing exists: a
 `FieldJudgementView` says `same` or `different` and never which side is right, and
 `05-design.md:234-238` records that absence as a decision. The agreed shape is a step that runs
