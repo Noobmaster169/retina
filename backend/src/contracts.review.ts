@@ -13,7 +13,7 @@ import { ReviewReason } from "./contracts.scoring";
 export const DocType = z.enum(["SI", "BL", "INVOICE", "PACKING_LIST", "COO", "OTHER"]);
 export type DocType = z.infer<typeof DocType>;
 
-export const DocumentFormat = z.enum(["txt", "pdf", "docx", "xlsx", "unknown"]);
+export const DocumentFormat = z.enum(["txt", "pdf", "docx", "xlsx", "image", "unknown"]);
 export type DocumentFormat = z.infer<typeof DocumentFormat>;
 
 /**

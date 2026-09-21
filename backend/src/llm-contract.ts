@@ -4,9 +4,18 @@
  * API's own `/ai/chat` route speaks it to the frontend.
  */
 
+export interface ChatImage {
+  /** `image/png`, `image/jpeg`, `image/gif` or `image/webp`: what the proxy can hand the model. */
+  mediaType: string;
+  /** The bytes, base64 encoded, as the Anthropic wire carries them. */
+  base64: string;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  /** Sent alongside the text as image content blocks. Only a user message may carry them. */
+  images?: ChatImage[];
 }
 
 export interface ChatRequest {

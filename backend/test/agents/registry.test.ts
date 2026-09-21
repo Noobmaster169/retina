@@ -46,6 +46,7 @@ file("doc-type", "v1.md", prompt("doc-type", "v1", "Type one."));
 file("extract", "v1.md", prompt("extract", "v1", "Extract one."));
 file("extract-verify", "v1.md", prompt("extract-verify", "v1", "Verify extraction one."));
 file("field-judge", "v1.md", prompt("field-judge", "v1", "Judge one."));
+file("vision-read", "v1.md", prompt("vision-read", "v1", "Look at one."));
 
 const PHASE_5_AND_6 = {
   triage: { version: "v1", model: "sonnet" },
@@ -53,6 +54,7 @@ const PHASE_5_AND_6 = {
   extract: { version: "v1", model: "sonnet" },
   "extract-verify": { version: "v1", model: "sonnet" },
   "field-judge": { version: "v1", model: "sonnet" },
+  "vision-read": { version: "v1", model: "sonnet" },
 };
 
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -165,7 +167,7 @@ describe("completePromptSet", () => {
 
   it("leaves a fully pinned set alone", () => {
     const pin = { version: "v1", model: "haiku" };
-    const full = { classify: pin, "classify-verify": pin, triage: pin, "doc-type": pin, extract: pin, "extract-verify": pin, "field-judge": pin };
+    const full = { classify: pin, "classify-verify": pin, triage: pin, "doc-type": pin, extract: pin, "extract-verify": pin, "field-judge": pin, "vision-read": pin };
     expect(completePromptSet(full, {}, dir)).toBe(full);
   });
 });

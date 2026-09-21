@@ -4,5 +4,6 @@ export {
   ExtractResponse,
   type RenderRequest,
   RenderResponse,
+  UnreadImage,
 } from "./doc-extract-client";
 export { httpDocExtractClient, pingDocExtract } from "./http.client";

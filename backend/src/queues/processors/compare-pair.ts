@@ -3,7 +3,7 @@ import type { ComparisonField, PromptSet } from "../../contracts";
 import { TerminalError } from "../../lib/errors";
 import { childLogger } from "../../lib/logger";
 import { comparisons, emailRuns, fieldDiffs, llmCalls } from "../../ontology/repositories";
-import { assemble, type Assembled, decide, type Decision, decisionDetail, type ExtractedFields, judgeable, resolveRoles, type StructureOutcome } from "../../pipeline/compare";
+import { assemble, type Assembled, decide, type Decision, decisionDetail, type ExtractedFields, judgeable, type StructureOutcome } from "../../pipeline/compare";
 import type { CompareDeps } from "./compare.processor";
 import { escalate } from "./escalate";
 import { extractDocument } from "./extract-fields";
@@ -90,33 +90,4 @@ export async function compareDocuments(
   await emailRuns.moveStage(deps.pool, ids.runId, ids.emailId, ["comparing"], "done", { outcome: decision.status, finished: true });
   await resolveCase(deps.pool, ids);
   log.info({ ...ids, stage: "compare", status: decision.status, defectFields: decision.defectFields }, "compared");
-}
-
-/**
- * For a scanned pair: the comparison run on the OCR text, so the reviewer sees
- * a suggested result beside the page images. The verdict is already
- * `unreadable`, so a comparison that fails for good (an answer that never fits
- * its schema on garbled text) leaves the suggestion out rather than failing the
- * email; an outage still pauses the queue. Null when the scan makes no pair.
- */
-export async function provisionalResult(deps: CompareDeps, set: PromptSet, ids: EmailRunIds, docs: ParsedDocument[], fresh: boolean): Promise<Judged | null> {
-  const roles = resolveRoles(docs.filter((doc) => doc.text !== null));
-  const si = roles.attachments.find((file) => file.role === "SI");
-  const bl = roles.attachments.find((file) => file.role === "BL");
-  if (!si || !bl) return null;
-  try {
-    return await judgePair(deps, set, ids, docs, { si: si.filename, bl: bl.filename }, fresh);
-  } catch (error) {
-    if (!(error instanceof TerminalError)) throw error;
-    log.warn({ ...ids, stage: "compare", err: error.message }, "no provisional result for the scanned pair; the escalation stands");
-    return null;
-  }
-}
-
-/** The scanned pair's escalation with its provisional result, judgements stored first as on every other path. */
-export async function escalateScanned(deps: CompareDeps, ids: EmailRunIds, detail: Record<string, unknown>, provisional: Judged | null): Promise<void> {
-  const full = { ...detail, provisional: provisional ? decisionDetail(provisional.decision) : null };
-  const unreadable: Decision = { status: "NEEDS_REVIEW", reviewReason: "unreadable", defectFields: [], missing: [] };
-  if (provisional) await storeComparison(deps, ids, { decision: unreadable, detail: full, assembled: provisional.assembled });
-  await escalate(deps.pool, ids, "unreadable", full);
 }

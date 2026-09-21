@@ -37,7 +37,7 @@ export interface ClassifyDeps {
 async function attachmentContents(deps: ClassifyDeps, set: PromptSet, files: StoredAttachment[], ids: EmailRunIds): Promise<string | undefined> {
   const reads = promptFor("classify", set).readsAttachments || promptFor("classify-verify", set).readsAttachments;
   if (!reads) return undefined;
-  const docs = await parseDocuments(deps, ids, files);
+  const docs = await parseDocuments(deps, set, ids, files);
   return describeAttachments(docs, config.CLASSIFY_ATTACHMENT_CHARS);
 }
 

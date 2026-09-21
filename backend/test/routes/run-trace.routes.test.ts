@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import request from "supertest";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
+import { config } from "../../src/config";
 import { closePool, getPool } from "../../src/db";
 import { subsetIds } from "../../src/eval/id-lists";
 import { classifications, emailRuns, emails, llmCalls, runs } from "../../src/ontology/repositories";
@@ -39,6 +40,7 @@ describe("POST /runs, choosing what and how", () => {
       extract: { version: "v1", model: "sonnet" },
       "extract-verify": { version: "v1", model: "sonnet" },
       "field-judge": { version: "v1", model: "sonnet" },
+      "vision-read": { version: "v1", model: "sonnet" },
     });
     expect((await runs.get(getPool(), response.body.id))?.promptSet).toEqual(response.body.promptSet);
   });
@@ -56,6 +58,7 @@ describe("POST /runs, choosing what and how", () => {
       extract: { version: "v1", model: "sonnet" },
       "extract-verify": { version: "v1", model: "sonnet" },
       "field-judge": { version: "v1", model: "sonnet" },
+      "vision-read": { version: "v1", model: "sonnet" },
     });
   });
 
@@ -89,12 +92,13 @@ describe("POST /runs, choosing what and how", () => {
 
 describe("GET /runs", () => {
   // The llm cap is both concurrencies added up, not the classify one alone.
-  // Eight classify jobs used to be able to hold every model slot while four
-  // compare jobs sat blocked in the semaphore, which the run page drew as
-  // sorting unaffected and checking paused.
+  // Classify jobs used to be able to hold every model slot while compare jobs
+  // sat blocked in the semaphore, which the run page drew as sorting
+  // unaffected and checking paused. Asserted as the relationship and not as
+  // numbers, so moving a default does not touch it.
   it("says how parallel a run is, from the env, with the model cap covering both queues", async () => {
     const response = await request(app()).get("/runs").set(TEAM);
-    expect(response.body.concurrency).toEqual({ classify: 8, llm: 12 });
+    expect(response.body.concurrency).toEqual({ classify: config.CLASSIFY_CONCURRENCY, llm: config.CLASSIFY_CONCURRENCY + config.COMPARE_CONCURRENCY });
   });
 });
 
