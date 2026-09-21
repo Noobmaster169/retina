@@ -29,7 +29,10 @@ interface Props {
 export function ClientsTable({ initialList, initialError }: Props) {
   const { data, error, mutate } = useSWR("/api/clients", fetchClients, {
     fallbackData: initialList ?? undefined,
-    revalidateOnMount: initialError !== null,
+    // Fetch on mount unless the server already handed us the list. The run
+    // overview mounts this with neither a list nor an error, and a flat
+    // `false` here would have left that copy of the table empty for ever.
+    revalidateOnMount: initialList === null || initialError !== null,
     keepPreviousData: true,
   });
   const clients = data?.clients ?? [];
@@ -48,7 +51,7 @@ export function ClientsTable({ initialList, initialError }: Props) {
         <thead>
           <tr className="border-b border-hairline">
             <Th className="w-[260px]">Sender</Th>
-            <Th className="w-[148px]">Served</Th>
+            <Th className="w-[172px]">Served</Th>
             <Th className="w-[148px]">Kind</Th>
             <Th className="w-[96px] text-right">Emails</Th>
             <Th className="w-[128px] text-right">Mismatches</Th>

@@ -8,6 +8,7 @@ import { MachineryPanel } from "@/components/run/machinery-panel";
 import { OutcomesPanel } from "@/components/run/outcomes-panel";
 import { laneMap } from "@/components/run/progress";
 import { QueuePanel } from "@/components/run/queue-panel";
+import { SendersPanel } from "@/components/run/senders-panel";
 import { RunHeader, statusWord } from "@/components/run/run-header";
 import { PageContext } from "@/components/dock/page-context-announcer";
 import { NavCounts } from "@/components/shell/nav-counts";
@@ -118,6 +119,13 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
               </>
             )}
           </div>
+
+          {/*
+            Under everything, because it is the one control on this page and
+            not a reading of the run: who gets served first decides the shape
+            of the next replay rather than describing this one.
+          */}
+          <SendersPanel className="shrink-0" />
         </div>
       </div>
     </>

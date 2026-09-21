@@ -5,7 +5,8 @@ import { useState } from "react";
 import { useToast } from "@/components/ui/toast";
 import type { ClientKind, ClientRow as Client } from "@/lib/api/clients-schemas";
 
-import { KINDS, TIERS } from "./tiers";
+import { ServeSlider } from "./serve-slider";
+import { KINDS, labelOf } from "./tiers";
 
 /**
  * One sender, and the two things a person may decide about it.
@@ -51,7 +52,7 @@ export function ClientRow({ client, onSaved }: Props) {
     }
   }
 
-  const label = TIERS.find((one) => one.tier === client.tier)?.label ?? "Normal";
+  const label = labelOf(client.tier);
 
   return (
     <tr className="border-b border-hairline last:border-b-0">
@@ -61,12 +62,11 @@ export function ClientRow({ client, onSaved }: Props) {
       </td>
 
       <td className="py-2.5 pr-4 align-middle">
-        <Select
-          label={`Tier for ${client.domain}`}
-          value={String(client.tier)}
+        <ServeSlider
+          tier={client.tier}
+          domain={client.domain}
           disabled={pending}
-          onChange={(value) => void write({ tier: Number(value) }, `${client.domain} is served ${labelFor(value)}.`)}
-          options={TIERS.map((one) => ({ value: String(one.tier), label: one.label }))}
+          onCommit={(tier) => void write({ tier }, `${client.domain} is served ${labelOf(tier).toLowerCase()}.`)}
         />
       </td>
 
@@ -90,10 +90,6 @@ export function ClientRow({ client, onSaved }: Props) {
       </td>
     </tr>
   );
-}
-
-function labelFor(tier: string): string {
-  return (TIERS.find((one) => one.tier === Number(tier))?.label ?? "Normal").toLowerCase();
 }
 
 /** The same control as `Field` on the run list, without its stacked caption: the column heading already says what it is. */

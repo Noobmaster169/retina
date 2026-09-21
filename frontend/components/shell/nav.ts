@@ -22,8 +22,9 @@ import type { IconName } from "@/components/ui/icons";
  * page is below it.
  *
  * `hidden` keeps a destination built and reachable by its URL while taking it
- * out of the rail. None is hidden today: the database page is offered again,
- * because `As rows` is the page that proves the ontology is not a mock-up.
+ * out of the rail. `Senders` is the one that is: its table moved onto the run
+ * overview, where the dial it holds belongs, and the page it came from still
+ * answers on its own URL.
  *
  * `Needs a person` was a destination of its own until it stopped earning one.
  * It listed the same emails the inbox lists, from a second component set, with
@@ -79,7 +80,11 @@ export const DESTINATIONS: Destination[] = [
   { key: "company", label: "Companies", icon: "party", path: "/company", cluster: "business", global: true, preload: true },
   { key: "port", label: "Ports", icon: "port", path: "/port", cluster: "business", global: true, preload: true },
   { key: "shipment", label: "Shipments", icon: "ship", path: "/shipment", cluster: "business", global: true, preload: true },
-  { key: "clients", label: "Senders", icon: "client", path: "/clients", cluster: "business", global: true, preload: true },
+  // Hidden, not deleted: the page is still the whole table and still opens by
+  // its URL. It left the rail when `Who is served first` moved onto the run
+  // overview, because a sender's tier is a dial on the pipeline and not a
+  // thing the mail resolved, and two doors to one table is how the two drift.
+  { key: "clients", label: "Senders", icon: "client", path: "/clients", cluster: "business", global: true, hidden: true },
 ];
 
 /**
