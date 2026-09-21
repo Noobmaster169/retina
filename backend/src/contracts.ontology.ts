@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { EntityInsight } from "./contracts.insight";
 import { StoredProfile } from "./contracts.semantic";
 
 /**
@@ -199,7 +200,10 @@ export const EntityRow = z.object({
   id: z.string(),
   type: ObjectType,
   name: z.string(),
+  /** Times it was read out of one of the seven fields of a document. */
   mentions: z.number().int(),
+  /** Times it was read somewhere no extraction field reaches: a subject, a body, a header. */
+  sightings: z.number().int(),
   emails: z.number().int(),
   names: z.number().int(),
   lastSeen: z.string().nullable(),
@@ -214,6 +218,8 @@ export const EntityDetail = z.object({
   row: EntityRow,
   /** What this thing is, as the profile step wrote it. Null until it has been profiled once. */
   profile: StoredProfile.nullable().default(null),
+  /** What it means: the same dossier the profile was written from, as facets a page can draw. */
+  insight: EntityInsight,
   values: z.array(StoredValue),
   links: z.array(ObjectLink),
   names: z.array(EntityName),

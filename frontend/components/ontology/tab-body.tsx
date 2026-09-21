@@ -1,9 +1,15 @@
 import { ThingList } from "@/components/database/thing-list";
-import { getEntityDetail, getObjectGraph, getObjectRecord, listEntities, listRunEmails } from "@/lib/api-client";
+import { isResolved } from "@/components/graph/glyphs";
+import { getEntityDetail, getObjectGraph, getObjectRecord, getShipment, listEntities, listRunEmails, listShipments } from "@/lib/api-client";
+import type { ObjectType } from "@/lib/api/ontology-schemas";
 
 import { OntologyEmailList } from "./email-list";
+import { ShipmentList } from "./shipment-list";
+import { ShipmentRecord } from "./shipment-record";
 import { LinksTab } from "./links-tab";
 import { RecordTab } from "./record-tab";
+import type { EntityKind } from "@/lib/api/semantic-schemas";
+
 import type { OntologyTab } from "./tabs";
 import { ThingRecord } from "./thing-record";
 
@@ -17,11 +23,14 @@ import { ThingRecord } from "./thing-record";
  * page loading everything for whichever tab happens to be open.
  */
 
-const RESOLVED = ["port", "party"] as const;
-type Resolved = (typeof RESOLVED)[number];
-
-function isResolved(type: string): type is Resolved {
-  return (RESOLVED as readonly string[]).includes(type);
+/**
+ * Which kinds are resolved things rather than tables. One list, in
+ * components/graph/glyphs.ts, because the rail, the graph and this all have to
+ * agree: a second copy here is what left Carriers saying "not built yet" for a
+ * phase after the resolver had learned them.
+ */
+function resolved(type: string): boolean {
+  return isResolved(type as ObjectType);
 }
 
 interface BodyProps {
@@ -39,10 +48,16 @@ export async function tabBody({ runId, type, selected, tab, emails, base, hops }
   if (tab === "things") return things({ type, selected, emails, base });
   if (!selected) return <Nothing>Pick one from Things to read its record.</Nothing>;
 
-  if (isResolved(type)) {
-    const detail = await getEntityDetail(type, selected);
+  if (type === "shipment") {
+    const detail = await getShipment(selected);
+    if (!detail) return <Nothing>No shipment has that id.</Nothing>;
+    return <ShipmentRecord detail={detail} base={base} />;
+  }
+
+  if (resolved(type)) {
+    const detail = await getEntityDetail(type as EntityKind, selected);
     if (!detail) return <Nothing>Nothing is stored about that one.</Nothing>;
-    return <ThingRecord detail={detail} type={type} />;
+    return <ThingRecord detail={detail} type={type as EntityKind} base={base} />;
   }
 
   const [record, graph] = await Promise.all([
@@ -51,7 +66,7 @@ export async function tabBody({ runId, type, selected, tab, emails, base, hops }
   ]);
   if (!record) return <Nothing>No run has processed that email.</Nothing>;
   if (tab === "links") return <LinksTab runId={runId} graph={graph} record={record} />;
-  return <RecordTab record={record} />;
+  return <RecordTab record={record} base={base} />;
 }
 
 async function things({ type, selected, emails, base }: Omit<BodyProps, "tab" | "hops" | "runId">) {
@@ -64,11 +79,21 @@ async function things({ type, selected, emails, base }: Omit<BodyProps, "tab" | 
       />
     );
   }
-  if (!isResolved(type)) return <Nothing>This type is designed and not built yet.</Nothing>;
+  if (type === "shipment") {
+    const { shipments } = await listShipments();
+    return (
+      <ShipmentList
+        shipments={shipments}
+        openId={selected}
+        hrefFor={(id) => `${base}&id=${encodeURIComponent(id)}&tab=record`}
+      />
+    );
+  }
+  if (!resolved(type)) return <Nothing>This type is read through the database page, not as a list of things.</Nothing>;
 
   const [list, detail] = await Promise.all([
-    listEntities(type),
-    selected ? getEntityDetail(type, selected) : Promise.resolve(null),
+    listEntities(type as EntityKind),
+    selected ? getEntityDetail(type as EntityKind, selected) : Promise.resolve(null),
   ]);
   return (
     <ThingList

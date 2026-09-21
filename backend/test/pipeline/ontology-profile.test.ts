@@ -31,7 +31,7 @@ describe("a dossier", () => {
     const huge = buildDossier({
       ...EMPTY,
       names: many(5000, (at) => ({ value: `ROXCEL ${at}`, seenCount: 1_000_000 - at, joinedBy: "judge" })),
-      counterparties: many(900, (at) => ({ name: `PARTY ${at}`, kind: "party", emails: 900 - at })),
+      counterparties: many(900, (at) => ({ id: String(at), name: `PARTY ${at}`, kind: "party", emails: 900 - at })),
       quotes: many(40_000, (at) => `line ${at}`),
       emails: 1_000_000,
     });

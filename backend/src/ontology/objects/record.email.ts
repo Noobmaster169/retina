@@ -32,6 +32,8 @@ interface EmailRow {
   defect_fields: string[] | null;
   same_client_differed: string;
   same_consignee: string;
+  shipment_id: string | null;
+  shipment_emails: string | null;
 }
 
 const SQL = `
@@ -58,7 +60,12 @@ const SQL = `
            where m2.entity_id in (
              select m1.entity_id from core.entity_mentions m1
               where m1.email_run_id = er.id and m1.field = 'consignee')
-             and m2.email_run_id <> er.id)::text as same_consignee
+             and m2.email_run_id <> er.id)::text as same_consignee,
+         -- The consignment this mail is about, and how many emails are about it.
+         (select se.shipment_id::text from core.shipment_emails se where se.email_id = em.email_id) as shipment_id,
+         (select sh.email_count::text from core.shipment_emails se
+            join core.shipments sh on sh.id = se.shipment_id
+           where se.email_id = em.email_id) as shipment_emails
     from core.emails em
     join core.email_runs er on er.email_id = em.email_id
     left join core.classifications cl on cl.email_run_id = er.id
@@ -121,7 +128,21 @@ function linksOf(row: EmailRow): ObjectLink[] {
     tone: ObjectLink["tone"] = null,
   ): ObjectLink => ({ key, label, sub, count, target: null, targetType, derived, tone: count === 0 ? null : tone });
 
+  const shipment: ObjectLink = {
+    key: "shipment",
+    label: "Shipment",
+    // The one link on this record that leads to a thing rather than a count:
+    // the consignment this mail is about, with the other mail about it.
+    sub: row.shipment_id === null ? "not read yet" : `${row.shipment_emails} email${row.shipment_emails === "1" ? "" : "s"} about it`,
+    count: row.shipment_id === null ? 0 : 1,
+    target: row.shipment_id === null ? null : { type: "shipment", id: row.shipment_id },
+    targetType: "shipment",
+    derived: false,
+    tone: null,
+  };
+
   return [
+    shipment,
     link("attachments", "Attachments", "the files that arrived", Number(row.attachments), "attachment"),
     link("documents", "Documents", "one instruction, one draft", Number(row.documents), "document"),
     link("fields", "Fields", "seven read from each", Number(row.fields), "field"),

@@ -6,6 +6,7 @@ import { RowDrawer } from "@/components/database/row-drawer";
 import { RowGrid } from "@/components/database/row-grid";
 import { SchemaRail } from "@/components/database/schema-rail";
 import { ThingList } from "@/components/database/thing-list";
+import { isResolved } from "@/components/graph/glyphs";
 import { AppShell } from "@/components/shell/app-shell";
 import {
   getEntityDetail,
@@ -15,6 +16,9 @@ import {
   listObjectTypes,
   listTables,
 } from "@/lib/api-client";
+
+import type { ObjectType } from "@/lib/api/ontology-schemas";
+import type { EntityKind } from "@/lib/api/semantic-schemas";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Database · Retina SDOC" };
@@ -102,9 +106,9 @@ async function Things({
   type: string | null;
   openId: string | null;
 }) {
-  // Only a port and a party are resolved things with an index of their own.
-  // Everything else is a table, and the rows half is where it is read.
-  const kind = type === "party" ? "party" : "port";
+  // The six resolved kinds each have an index of their own. Everything else is
+  // a table, and the rows half is where it is read.
+  const kind: EntityKind = isResolved(type as ObjectType) ? (type as EntityKind) : "port";
   const [list, detail] = await Promise.all([
     listEntities(kind),
     openId ? getEntityDetail(kind, openId) : Promise.resolve(null),
@@ -139,8 +143,21 @@ async function Things({
   );
 }
 
-function blurbFor(kind: "port" | "party", count: number): string {
-  const what = kind === "port" ? "places" : "companies";
-  const fields = kind === "port" ? "loading and discharge fields" : "shipper, consignee and notify party fields";
-  return `${count} ${what}, read out of the ${fields} of every document that was proved. Nobody typed any of them in.`;
+/**
+ * What this index is, in one sentence, per kind. Each names where the thing
+ * was read from, because that is the claim the page is making: nobody typed
+ * any of them in.
+ */
+const READ_FROM: Record<EntityKind, { what: string; where: string }> = {
+  port: { what: "places", where: "the loading and discharge fields of every document that was proved" },
+  party: { what: "companies", where: "the shipper, consignee and notify party fields, senders included" },
+  carrier: { what: "shipping lines", where: "subject lines and documents, by a model rather than a list of carrier names" },
+  vessel: { what: "ships", where: "the mail that names one; a voyage of it is a column on the shipment" },
+  commodity: { what: "kinds of cargo", where: "how the mail describes what is being shipped" },
+  person: { what: "people", where: "who sent, signed or was written to, joined only where an address or a header tied two sightings" },
+};
+
+function blurbFor(kind: EntityKind, count: number): string {
+  const { what, where } = READ_FROM[kind];
+  return `${count} ${what}, read out of ${where}. Nobody typed any of them in.`;
 }

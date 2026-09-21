@@ -4,7 +4,7 @@ import type { Pool } from "pg";
 
 import { childLogger } from "../lib/logger";
 import { refreshIfStale } from "../ontology/derived";
-import { clients } from "../ontology/repositories";
+import { clients, shipments } from "../ontology/repositories";
 import { ageWaitingJobs } from "./aging";
 import { BACKFILL_EVERY_MS } from "./backfill-concepts";
 import { beat, HEARTBEAT_EVERY_MS } from "./heartbeat";
@@ -35,6 +35,7 @@ export const SCHEDULED = {
   refreshAnalytics: "refresh-analytics",
   refreshProfiles: "refresh-profiles",
   backfillConcepts: "backfill-concepts",
+  regroupShipments: "regroup-shipments",
 } as const;
 
 const EVERY_HOUR_MS = 60 * 60 * 1000;
@@ -51,6 +52,10 @@ const EVERY: Record<string, number> = {
   // refresh and takes at most PROFILE_BATCH things per tick.
   [SCHEDULED.refreshProfiles]: EVERY_TEN_MINUTES_MS,
   [SCHEDULED.backfillConcepts]: BACKFILL_EVERY_MS,
+  // No model work and two queries over a table of one row per email, so it can
+  // run here rather than on the ontology queue, and often enough that a
+  // shipment appears while a demo is still looking at the email it came from.
+  [SCHEDULED.regroupShipments]: EVERY_MINUTE_MS,
 };
 
 export interface SchedulerDeps {
@@ -104,6 +109,16 @@ async function refreshDerived(deps: SchedulerDeps): Promise<void> {
   if (result.views) log.info({ things: result.entities }, "the derived data caught up with core");
 }
 
+/**
+ * The consignments the mail is about. Whole each tick and idempotent: a group
+ * is keyed by its members, so an unchanged one is an update of two columns and
+ * keeps its id.
+ */
+async function regroupShipments(deps: SchedulerDeps): Promise<void> {
+  const result = await shipments.regroupAll(deps.pool);
+  log.debug({ shipments: result.shipments, emails: result.emails }, "regrouped the shipments");
+}
+
 /** A tick that cannot reach the queue is logged and dropped: the next one is ten minutes away. */
 async function enqueue(deps: SchedulerDeps, name: string): Promise<void> {
   const queue = deps.ontology ?? getQueues().ontology;
@@ -119,6 +134,7 @@ async function runTask(deps: SchedulerDeps, name: string): Promise<void> {
   if (name === SCHEDULED.ageWaitingJobs) return ageEmailQueues(deps);
   if (name === SCHEDULED.heartbeat) return beat(deps.redis);
   if (name === SCHEDULED.refreshAnalytics) return refreshDerived(deps);
+  if (name === SCHEDULED.regroupShipments) return regroupShipments(deps);
   // These two do model work, which takes minutes. They are enqueued here and
   // run on the ontology queue, because this worker is concurrency 1 and also
   // writes the heartbeat: doing the work here would let the key expire and

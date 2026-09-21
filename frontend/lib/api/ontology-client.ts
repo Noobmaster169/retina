@@ -8,6 +8,7 @@ import {
   type ObjectTypeSummary,
 } from "./ontology-schemas";
 import type { EntityKind } from "./semantic-schemas";
+import { ShipmentDetail, ShipmentList } from "./shipment-schemas";
 import { get } from "./transport";
 
 export type {
@@ -27,6 +28,8 @@ export type {
   WrittenBy,
 } from "./ontology-schemas";
 export type { AttributeSource, EntityKind, SemanticReading, StoredProfile } from "./semantic-schemas";
+export type { EntityInsight, IdentityFact, InsightFacet, InsightLine } from "./insight-schemas";
+export type { ShipmentDetail, ShipmentList, ShipmentParty, ShipmentRef, ShipmentRow, ShipmentStatement } from "./shipment-schemas";
 
 /** The rail on both the database page and the ontology page, with live counts. */
 export async function listObjectTypes(): Promise<ObjectTypeSummary[]> {
@@ -34,11 +37,22 @@ export async function listObjectTypes(): Promise<ObjectTypeSummary[]> {
 }
 
 /**
- * The resolved things of one kind. Only `port` and `party` have an index of
- * their own; everything else is a table and is read through the database page.
+ * The resolved things of one kind. All six have an index of their own; a type
+ * that is a table of its own, such as an email, is read through the database
+ * page instead.
  */
 export async function listEntities(type: EntityKind): Promise<EntityList> {
   return get(EntityList, `/ontology/${type}`);
+}
+
+/** The consignments the mail is about, newest first. */
+export async function listShipments(): Promise<ShipmentList> {
+  return get(ShipmentList, "/ontology/shipment");
+}
+
+/** One consignment: its references, the things on it, and what each email said. */
+export async function getShipment(id: string): Promise<ShipmentDetail | null> {
+  return orNull(get(ShipmentDetail, `/ontology/shipment/${encodeURIComponent(id)}`));
 }
 
 /** Null for an id nothing holds, and for a type that is designed and not built. */
