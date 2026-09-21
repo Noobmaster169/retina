@@ -41,7 +41,10 @@ const LADDER: { standing: GateStanding; burst: number; daily: number }[] = [
   { standing: "established", burst: 300, daily: 6000 },
   { standing: "regular", burst: 120, daily: 1200 },
   { standing: "new", burst: 45, daily: 300 },
-  { standing: "unknown", burst: 15, daily: 60 },
+  // Room for exactly one ordinary email and not two. A stranger gets one
+  // look, which is what makes a first contact from a real customer work; the
+  // second inside ten minutes is what waits.
+  { standing: "unknown", burst: 20, daily: 60 },
 ];
 
 /** A blacklisted sender is held; a whitelisted one is still metered, and simply never refused for it. */

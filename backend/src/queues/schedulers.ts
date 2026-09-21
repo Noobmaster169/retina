@@ -3,6 +3,7 @@ import type { Redis } from "ioredis";
 import type { Pool } from "pg";
 
 import { childLogger } from "../lib/logger";
+import { refreshBudget } from "../ingest";
 import { refreshIfStale } from "../ontology/derived";
 import { clients, shipments } from "../ontology/repositories";
 import { ageWaitingJobs } from "./aging";
@@ -36,6 +37,7 @@ export const SCHEDULED = {
   refreshProfiles: "refresh-profiles",
   backfillConcepts: "backfill-concepts",
   regroupShipments: "regroup-shipments",
+  refreshGateBudget: "refresh-gate-budget",
 } as const;
 
 const EVERY_HOUR_MS = 60 * 60 * 1000;
@@ -56,6 +58,10 @@ const EVERY: Record<string, number> = {
   // run here rather than on the ontology queue, and often enough that a
   // shipment appears while a demo is still looking at the email it came from.
   [SCHEDULED.regroupShipments]: EVERY_MINUTE_MS,
+  // An aggregate over a table that grows all day, feeding a number that only
+  // matters near a threshold. Five minutes is often enough to catch a run
+  // spending fast and rare enough to be free.
+  [SCHEDULED.refreshGateBudget]: EVERY_FIVE_MINUTES_MS,
 };
 
 export interface SchedulerDeps {
@@ -135,6 +141,7 @@ async function runTask(deps: SchedulerDeps, name: string): Promise<void> {
   if (name === SCHEDULED.heartbeat) return beat(deps.redis);
   if (name === SCHEDULED.refreshAnalytics) return refreshDerived(deps);
   if (name === SCHEDULED.regroupShipments) return regroupShipments(deps);
+  if (name === SCHEDULED.refreshGateBudget) return void (await refreshBudget(deps.pool, deps.redis));
   // These two do model work, which takes minutes. They are enqueued here and
   // run on the ontology queue, because this worker is concurrency 1 and also
   // writes the heartbeat: doing the work here would let the key expire and

@@ -43,10 +43,12 @@ describe("standingOf", () => {
   });
 
   it("gives an unknown sender room for one ordinary email and not two", () => {
+    // Sixteen units is an email with an SI and a BL: see gate-cost.test.ts.
+    const ORDINARY = 16;
     const { burst, daily } = standingOf({ policy: "auto", daysSeen: 0, ageDays: 0 });
-    expect(burst).toBe(15);
-    expect(burst).toBeLessThan(16 * 2);
-    expect(daily).toBe(60);
+    expect(burst).toBeGreaterThanOrEqual(ORDINARY);
+    expect(burst).toBeLessThan(ORDINARY * 2);
+    expect(daily).toBeGreaterThanOrEqual(ORDINARY * 3);
   });
 
   it("meters a whitelisted sender too, so a compromised one is not infinite", () => {

@@ -1,4 +1,5 @@
 import express, { type NextFunction, type Request, type Response } from "express";
+import type { Redis } from "ioredis";
 import type { Pool } from "pg";
 
 import type { LlmClient } from "./agents/llm-client";
@@ -20,6 +21,7 @@ import { requestLog } from "./routes/request-log";
 import { emailsRouter } from "./routes/emails.routes";
 import { evalRouter } from "./routes/eval.routes";
 import { filesRouter } from "./routes/files.routes";
+import { gateRouter } from "./routes/gate.routes";
 import { ontologyRouter } from "./routes/ontology.routes";
 import { reviewRouter } from "./routes/review.routes";
 import type { LiveCalls } from "./live";
@@ -50,6 +52,8 @@ export interface AppDeps {
   roPool: Pool | null;
   /** How the chat reaches a model. The api makes model calls now, not only the worker. */
   llm: LlmClient;
+  /** Where the day's spend is cached. Null without Redis: the gate page then reads a budget of zero and says so. */
+  redis?: Redis | null;
 }
 
 export function createApp(deps: AppDeps): express.Express {
@@ -82,6 +86,7 @@ export function createApp(deps: AppDeps): express.Express {
   app.use("/prompts", promptsRouter(deps));
   app.use("/clients", clientsRouter({ pool: deps.pool, priority: deps.priority }));
   app.use("/emails", emailsRouter());
+  app.use("/gate", gateRouter({ pool: deps.pool, redis: deps.redis ?? null, queues: deps.runQueues }));
   app.use("/ontology", ontologyRouter({ pool: deps.pool }));
   app.use("/database", databaseRouter({ pool: deps.pool }));
   app.use("/runs", runsRouter(deps));
