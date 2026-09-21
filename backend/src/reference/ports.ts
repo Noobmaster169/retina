@@ -72,14 +72,28 @@ function cityWords(city: string): string[] {
     .filter((word) => word.length > 2 && !NOISE.has(word));
 }
 
+/**
+ * How well one reference entry answers to these words: an exact name above an
+ * exact alias, and both above a partial hit on either.
+ *
+ * The two ranks of exactness are not decoration. The world's list gives Los
+ * Angeles the alias "Long Beach" and gives Long Beach the alias "Los Angeles",
+ * and both are real ports with their own code. Scoring the two the same left
+ * the tie to the order of the file, which put every spelling of Long Beach
+ * that carried no usable code at Los Angeles, and the two stayed two things.
+ */
 function matches(port: ReferencePort, words: string[]): number {
+  const wanted = words.join(" ");
   const names = [port.name, ...port.aliases].map(normaliseName);
   let best = 0;
-  for (const name of names) {
+  names.forEach((name, at) => {
+    if (name === wanted) {
+      best = Math.max(best, words.length + (at === 0 ? 2 : 1));
+      return;
+    }
     const hit = words.filter((word) => name.split(" ").some((part) => part === word || part.startsWith(word) || word.startsWith(part))).length;
     if (hit > best) best = hit;
-    if (name === words.join(" ")) return words.length + 1;
-  }
+  });
   return best;
 }
 
