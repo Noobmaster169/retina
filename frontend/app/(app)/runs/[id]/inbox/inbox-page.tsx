@@ -6,6 +6,7 @@ import useSWR from "swr";
 import { EmailList } from "@/components/email/email-list";
 import { Search, TopBar } from "@/components/shell/top-bar";
 import { Icon } from "@/components/ui/icons";
+import { PageContext } from "@/components/dock/page-context-announcer";
 import { NavCounts } from "@/components/shell/nav-counts";
 import { RunEmailsPage } from "@/lib/api/trace-schemas";
 import { parsedFetcher } from "@/lib/poll";
@@ -38,6 +39,7 @@ export function InboxPage({ runId, initialList, review }: InboxPageProps) {
 
   return (
     <>
+      <PageContext refs={[{ kind: "run", id: runId, title: `run ${runId.slice(0, 8)}` }]} />
       <NavCounts counts={{ inbox: list.total, review }} />
       <EmailList
         runId={runId}

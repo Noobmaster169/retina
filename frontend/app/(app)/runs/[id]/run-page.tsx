@@ -10,6 +10,7 @@ import { laneMap } from "@/components/run/progress";
 import { QueuePanel } from "@/components/run/queue-panel";
 import { RunHeader, statusWord } from "@/components/run/run-header";
 import { ScorePanel } from "@/components/run/score-panel";
+import { PageContext } from "@/components/dock/page-context-announcer";
 import { NavCounts } from "@/components/shell/nav-counts";
 import { HealthReport, RunQueuesView } from "@/lib/api/queues-schemas";
 import { RunSummary } from "@/lib/api/runs-schemas";
@@ -52,6 +53,7 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
 
   return (
     <>
+      <PageContext refs={[{ kind: "run", id: id, title: `run ${id.slice(0, 8)}` }]} />
       <NavCounts counts={{ inbox: run.totalEmails ?? undefined, review: run.review.open }} />
       <div className="flex min-w-0 grow flex-col">
         <TopBar crumbs={[{ label: "Runs", href: "/runs" }, { label: id.slice(0, 8), mono: true }]}>

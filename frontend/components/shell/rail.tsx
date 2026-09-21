@@ -26,10 +26,12 @@ interface RailProps {
   counts: NavCounts;
   /** The run everything below is read through, and every run there is to switch to. */
   current: RunSummary | null;
+  /** The run named by the URL, which is known before the run list has loaded. */
+  runId: string | null;
   runs: RunSummary[];
 }
 
-export function Rail({ open, onToggle, active, counts, current, runs }: RailProps) {
+export function Rail({ open, onToggle, active, counts, current, runId, runs }: RailProps) {
   return (
     <motion.nav
       initial={false}
@@ -75,7 +77,7 @@ export function Rail({ open, onToggle, active, counts, current, runs }: RailProp
             return (
               <Link
                 key={destination.key}
-                href={hrefFor(destination, current?.id ?? null)}
+                href={hrefFor(destination, current?.id ?? runId)}
                 aria-label={open ? undefined : destination.label}
                 aria-current={here ? "page" : undefined}
                 title={open ? undefined : destination.label}

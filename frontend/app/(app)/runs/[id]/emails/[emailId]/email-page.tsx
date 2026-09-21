@@ -3,8 +3,8 @@
 import { useState } from "react";
 import useSWR from "swr";
 
-import { ChatRail } from "@/components/email/chat-rail";
-import { chatScope, openingLine } from "@/components/email/email-reading";
+import { PageContext } from "@/components/dock/page-context-announcer";
+import { openingLine } from "@/components/email/email-reading";
 import { EmailPane } from "@/components/email/email-pane";
 import { EmailList } from "@/components/email/email-list";
 import type { Message } from "@/components/email/message-card";
@@ -58,12 +58,12 @@ export function EmailPage({ runId, initialTrace, message, subject, initialList }
 
       <EmailPane trace={trace} message={message} subject={subject} onChanged={() => void mutate()} />
 
-      <ChatRail
-        key={trace.emailId}
-        runId={runId}
-        emailId={trace.emailId}
-        scope={chatScope(trace)}
-        opening={openingLine(trace)}
+      <PageContext
+        refs={[
+          { kind: "email", id: trace.emailId, title: trace.emailId },
+          { kind: "run", id: runId, title: `run ${runId.slice(0, 8)}` },
+        ]}
+        note={openingLine(trace)}
         suggestions={
           trace.review
             ? ["Why did this need a person?", "What did the parser see?"]

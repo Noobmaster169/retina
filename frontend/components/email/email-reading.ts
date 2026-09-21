@@ -1,4 +1,3 @@
-import type { ChatScope } from "@/components/email/chat-rail";
 import type { Tone } from "@/components/ui/chip";
 import type { EmailTrace } from "@/lib/api/trace-schemas";
 
@@ -17,15 +16,6 @@ export function statusOf(trace: EmailTrace): { value: string; tone: Tone } {
   if (status === "MISMATCH") return { value: "MISMATCH", tone: "differ" };
   if (trace.classification) return { value: "not_comparable", tone: "neutral" };
   return { value: trace.stage, tone: "neutral" };
-}
-
-/** Exactly what a conversation about this email would be able to see. Every chip is a real count. */
-export function chatScope(trace: EmailTrace): ChatScope[] {
-  return [
-    { label: trace.emailId },
-    { label: `${trace.documents.length} document${trace.documents.length === 1 ? "" : "s"}` },
-    { label: `${trace.calls.length} call${trace.calls.length === 1 ? "" : "s"}` },
-  ];
 }
 
 /**

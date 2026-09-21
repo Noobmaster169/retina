@@ -5,8 +5,8 @@ import { useCallback } from "react";
 import useSWR from "swr";
 
 import { EmailPane } from "@/components/email/email-pane";
-import { chatScope, openingLine } from "@/components/email/email-reading";
-import { ChatRail } from "@/components/email/chat-rail";
+import { openingLine } from "@/components/email/email-reading";
+import { PageContext } from "@/components/dock/page-context-announcer";
 import { CaseList } from "@/components/review/case-list";
 import { Icon } from "@/components/ui/icons";
 import { NavCounts } from "@/components/shell/nav-counts";
@@ -78,16 +78,14 @@ export function ReviewPage({ runId }: { runId: string }) {
         <Empty runId={runId} waiting={cases.length} chosen={emailId !== null} loading={caseLoading || emailLoading} />
       )}
 
-      {emailId && trace && email ? (
-        <ChatRail
-          key={emailId}
-          runId={runId}
-          emailId={emailId}
-          scope={chatScope(trace)}
-          opening={openingLine(trace)}
-          suggestions={["Why did this need a person?", "What did the parser see?"]}
-        />
-      ) : null}
+      <PageContext
+        refs={[
+          ...(emailId && trace ? [{ kind: "email" as const, id: emailId, title: emailId }] : []),
+          { kind: "run", id: runId, title: `run ${runId.slice(0, 8)}` },
+        ]}
+        note={emailId && trace ? openingLine(trace) : null}
+        suggestions={emailId ? ["Why did this need a person?", "What did the parser see?"] : []}
+      />
     </>
   );
 }
