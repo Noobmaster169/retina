@@ -44,6 +44,10 @@ export const DESTINATIONS: Destination[] = [
   { key: "ontology", label: "Ontology", icon: "graph", path: "/ontology" },
   { key: "chat", label: "Ask Retina", icon: "chat", path: "/chat" },
   { key: "clients", label: "Clients", icon: "client", path: "/clients", global: true },
+  // The second global destination. Clients is which sender is served first;
+  // this is which sender is served at all, and putting a blocklist on the
+  // clients page would muddy copy that promises a tier decides nothing else.
+  { key: "gate", label: "Traffic", icon: "scale", path: "/gate", global: true },
 ];
 
 /**

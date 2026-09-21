@@ -164,6 +164,30 @@ export {
 } from "./api/review-client";
 export { fetchFile } from "./api/files-client";
 export {
+  type GateBucket,
+  type GateBudget,
+  type GateCostBreakdown,
+  type GateDecision,
+  getGate,
+  type GateHeldList,
+  type GateHeldRow,
+  type GateMode,
+  type GateOverview,
+  type GatePolicy,
+  type GatePolicyUpdate,
+  type GateReason,
+  type GateReleaseResult,
+  type GateScope,
+  type GateSenderList,
+  type GateSenderRow,
+  type GateStanding,
+  type GateWriteOutcome,
+  listGateSenders,
+  listHeld,
+  releaseHeld,
+  setGatePolicy,
+} from "./api/gate-client";
+export {
   type EmailVerdict,
   type EvalReport,
   getEvalReport,
