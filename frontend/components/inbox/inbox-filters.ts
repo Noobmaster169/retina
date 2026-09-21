@@ -53,7 +53,7 @@ interface FilterDef {
 }
 
 export const FILTERS: FilterDef[] = [
-  { key: "all", label: "All", tone: "neutral", steady: true, matches: () => true },
+  { key: "all", label: "All", tone: "accent", steady: true, matches: () => true },
   { key: "needs-you", label: "Needs you", tone: "review", steady: true, matches: needsYou },
   { key: "differences", label: "Differences", tone: "differ", steady: true, matches: (row) => row.defects > 0 },
   { key: "agreed", label: "Agreed", tone: "match", steady: true, matches: (row) => row.outcome === "OK" },
@@ -63,7 +63,7 @@ export const FILTERS: FilterDef[] = [
   {
     key: "awaiting-draft",
     label: "Awaiting a draft",
-    tone: "neutral",
+    tone: "signal",
     steady: true,
     matches: (row) => row.outcome === "awaiting_draft",
   },

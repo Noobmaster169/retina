@@ -31,7 +31,7 @@ export interface InboxRow {
   from: string;
   subject: string;
   stage: string;
-  category: string | null;
+  category: RunEmailItem["category"];
   /** How the run ended it: `OK`, `MISMATCH`, `not_comparable`, or a review reason. Null while it is still moving. */
   outcome: string | null;
   /** How many of the seven fields the judge found different. */

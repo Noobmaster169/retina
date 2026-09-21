@@ -1,21 +1,26 @@
 import type { Tone } from "@/components/ui/chip";
 import type { EmailTrace } from "@/lib/api/trace-schemas";
 
+import { classificationLabel } from "./classification-chip";
+import { displayLabel } from "./display-label";
+
 /**
  * How one email reads at the top of its page. The status is the organisers'
  * own enum, taken from the comparison the backend already decided; nothing
  * here works one out.
  */
 
-/** The chip beside the subject. `not_comparable` is the run's word for an email that never reached a check. */
+/** The plain-language chip beside the subject. Stored enums never leak into the working view. */
 export function statusOf(trace: EmailTrace): { value: string; tone: Tone } {
-  if (trace.stage === "failed") return { value: "failed", tone: "fault" };
-  if (trace.review) return { value: "NEEDS_REVIEW", tone: "review" };
+  if (trace.stage === "failed") return { value: "Failed", tone: "fault" };
+  if (trace.review) return { value: "Needs review", tone: "review" };
   const status = trace.comparison?.status;
-  if (status === "OK") return { value: "OK", tone: "match" };
-  if (status === "MISMATCH") return { value: "MISMATCH", tone: "differ" };
-  if (trace.classification) return { value: "not_comparable", tone: "neutral" };
-  return { value: trace.stage, tone: "neutral" };
+  if (status === "OK") return { value: "Agreed", tone: "match" };
+  if (status === "MISMATCH") return { value: "Differences", tone: "differ" };
+  if (trace.classification) {
+    return { value: classificationLabel(trace.classification.humanCategory ?? trace.classification.finalCategory), tone: "accent" };
+  }
+  return { value: displayLabel(trace.stage), tone: "neutral" };
 }
 
 /**
@@ -29,7 +34,7 @@ export function openingLine(trace: EmailTrace): string {
   const comparison = trace.comparison;
   if (!comparison) {
     return trace.classification
-      ? `Sorted as ${trace.classification.humanCategory ?? trace.classification.finalCategory}, so no document check was asked for. Nothing was opened and nothing was compared.`
+      ? `Sorted as ${classificationLabel(trace.classification.humanCategory ?? trace.classification.finalCategory)}, so no document check was needed.`
       : "Nothing has been decided about this email yet.";
   }
 
@@ -51,9 +56,9 @@ export function openingLine(trace: EmailTrace): string {
 
 function reviewOpening(trace: EmailTrace, review: NonNullable<EmailTrace["review"]>): string {
   if (review.kind === "failure") {
-    return `This email stopped in the ${review.stage} stage before anything was decided about it. Nothing was guessed, and nothing about the email itself is wrong.`;
+    return `This email stopped while ${displayLabel(review.stage).toLowerCase()} before anything was decided about it. Nothing was guessed, and nothing about the email itself is wrong.`;
   }
-  const reason = review.reason ?? "a reason it did not record";
+  const reason = review.reason ? displayLabel(review.reason).toLowerCase() : "a reason it did not record";
   const unread = trace.documents.find((document) => document.unreadable);
   const scanned = trace.documents.find((document) => document.scanned);
   const at = (document: { pageConfidence: number[] }) =>

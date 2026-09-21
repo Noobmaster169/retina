@@ -17,6 +17,7 @@
   color-scheme: light;
 
   /* 4.1 surfaces */
+  --shell: #f6f9fd;
   --canvas: #ffffff;
   --surface: #fcfcfd;
   --surface-sunken: #f6f8fa;
@@ -88,6 +89,7 @@
 }
 
 @theme inline {
+  --color-shell: var(--shell);
   --color-canvas: var(--canvas);
   --color-surface: var(--surface);
   --color-sunken: var(--surface-sunken);

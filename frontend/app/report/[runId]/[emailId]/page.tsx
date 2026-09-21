@@ -13,9 +13,9 @@ const RUN_ID = /^[0-9a-f-]{36}$/;
 const EMAIL_ID = /^email_\d{1,6}$/;
 
 export async function generateMetadata({ params }: PageProps<"/report/[runId]/[emailId]">): Promise<Metadata> {
-  const { emailId } = await params;
-  // The browser names the saved PDF after the page title, so the title is the filename.
-  return { title: `Retina check ${emailId}` };
+  await params;
+  // The browser uses this as the suggested PDF filename and print header.
+  return { title: "Retina document comparison" };
 }
 
 /**

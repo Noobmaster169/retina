@@ -7,6 +7,7 @@ import { CaseFields, type Correcting } from "./case-fields";
 import { FailureBody } from "./case-failure";
 import { CaseHistory } from "./case-history";
 import { CaseReason } from "./case-reason";
+import { displayLabel } from "./display-label";
 import { MessageCard, type Message } from "./message-card";
 import { Reading, Seam } from "./seam";
 
@@ -44,8 +45,8 @@ export function CaseTab({ trace, message, review, correcting }: CaseTabProps) {
             note long enough to wrap used to push the chip out of the panel. */}
         <span className="min-w-0 truncate text-small text-ink-tertiary">{standing(review)}</span>
         <span className="grow" />
-        <Chip tone={failure ? "fault" : "review"} mono>
-          {review.reason ?? "failed"}
+        <Chip tone={failure ? "fault" : "review"}>
+          {displayLabel(review.reason ?? "failed")}
         </Chip>
       </div>
 
@@ -64,7 +65,7 @@ function standing(review: ReviewCaseView): string {
 
 function readingOf(trace: EmailTrace, review: ReviewCaseView): string {
   if (review.kind === "failure") {
-    return `This email stopped in the ${review.stage} stage. Nothing was decided about it and nothing was guessed.`;
+    return `This email stopped while ${displayLabel(review.stage).toLowerCase()}. Nothing was decided about it and nothing was guessed.`;
   }
   const readable = trace.documents.filter((document) => !document.unreadable).length;
   const opened = trace.documents.length;
@@ -75,13 +76,13 @@ function readingOf(trace: EmailTrace, review: ReviewCaseView): string {
 function factsOf(trace: EmailTrace, review: ReviewCaseView) {
   if (review.kind === "failure") {
     return [
-      { label: "stopped in", value: review.stage, tone: "fault" as const },
+      { label: "stopped while", value: displayLabel(review.stage).toLowerCase(), tone: "fault" as const },
       { label: "decided", value: "nothing", tone: "neutral" as const },
     ];
   }
   const unread = trace.documents.find((document) => document.unreadable);
   return [
-    { label: "parked as", value: review.reason ?? "failed", tone: "review" as const },
+    { label: "needs help with", value: displayLabel(review.reason ?? "failed").toLowerCase(), tone: "review" as const },
     // Whether anything could be looked at at all is the distinction a reviewer acts
     // on: a file that would not open needs a new copy, one that was looked at and
     // could not be made out needs a better scan.
