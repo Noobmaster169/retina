@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 
-import type { ChatAnswer, ChatConversation, ChatProgress, NewMessage } from "../contracts";
+import type { ChatAnswer, ChatConversation, ChatProgress, ChatToolCall, NewMessage } from "../contracts";
+import { forWire } from "../agents/chat/loop.steps";
 import { resolveContext } from "../agents/chat/context";
 import { runTurn } from "../agents/chat/loop";
 import { renderMemory } from "../agents/chat/memory";
@@ -38,6 +39,14 @@ export interface TurnDeps {
   stopped(): boolean;
   /** Where the turn has got to, for a caller that is streaming it back. Absent, the turn does not stream. */
   onProgress?(progress: ChatProgress): void;
+  /**
+   * A step's calls, the moment they finish, for a caller streaming the turn.
+   *
+   * The same rows that go to `core.chat_turns`, so the page shows what the
+   * record will show and not a second account of it. They arrive again inside
+   * the answer, which is what the page keeps; these are only for the wait.
+   */
+  onCalls?(calls: ChatToolCall[]): void;
 }
 
 export async function answerTurn(
@@ -79,6 +88,9 @@ export async function answerTurn(
       tools: { pool: deps.pool, roPool: deps.roPool, llm: deps.llm, runId: scope.runId, emailId: scope.emailId },
       onStep: async (calls) => {
         for (const call of calls) await chatLive.addToolTurn(deps.pool, id, asked.id, call);
+        // After the write, not before: what the page is shown has landed in the
+        // thread, so a reload during the turn shows the same calls.
+        deps.onCalls?.(calls.map(forWire));
       },
       stopped: deps.stopped,
       onProgress: deps.onProgress,

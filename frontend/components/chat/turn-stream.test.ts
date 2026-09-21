@@ -64,6 +64,27 @@ describe("turnEvents", () => {
     expect(seen).toEqual([{ kind: "failure", message: "The answer did not arrive." }]);
   });
 
+  it("passes a step's finished calls through", async () => {
+    const call = {
+      tool: "run_recipe",
+      args: { name: "run_overview" },
+      thought: "The run's own counts.",
+      ok: true,
+      preview: "1 row",
+      sql: "select count(*) from core.emails",
+      result: null,
+      durationMs: 19,
+      recipe: { name: "run_overview", version: 1, skill: "pick-the-run", params: {} },
+    };
+    const seen = await collect(streamOf(frame("step", { calls: [call] })));
+    expect(seen).toEqual([{ kind: "calls", calls: [call] }]);
+  });
+
+  it("drops a step frame that does not parse, since the answer carries the calls again", async () => {
+    const seen = await collect(streamOf(frame("step", { calls: [{ tool: "run_sql" }] }), frame("progress", progress)));
+    expect(seen).toEqual([{ kind: "progress", progress }]);
+  });
+
   it("ignores an event name it does not know", async () => {
     const seen = await collect(streamOf(frame("heartbeat", {}), frame("progress", progress)));
     expect(seen).toEqual([{ kind: "progress", progress }]);

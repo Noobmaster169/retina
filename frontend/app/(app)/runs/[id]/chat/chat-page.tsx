@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 
 import { Composer } from "@/components/chat/composer";
+import { LiveCalls } from "@/components/chat/live-calls";
 import { Markdown } from "@/components/chat/markdown";
 import { StatusLine } from "@/components/chat/status-line";
 import { Turn } from "@/components/chat/turn";
@@ -13,6 +14,7 @@ import { DockSync } from "@/components/dock/dock-sync";
 
 import { ConversationRail } from "./conversation-rail";
 import { TopBar } from "@/components/shell/top-bar";
+import type { ChatToolCall } from "@/lib/api/chat-agent-schemas";
 import type { ChatConversation, ChatProgress, ChatThread } from "@/lib/api/chat-thread-schemas";
 
 /**
@@ -94,7 +96,7 @@ export function ChatPage({ runId, conversations, thread }: ChatPageProps) {
                   answered={index < chat.turns.length - 1 || chat.pending}
                 />
               ))}
-              {chat.pending ? <Pending progress={chat.progress} since={chat.since} /> : null}
+              {chat.pending ? <Pending progress={chat.progress} calls={chat.calls} since={chat.since} /> : null}
               {chat.error ? (
                 <p className="rounded-md border border-fault-tint bg-fault-tint px-3 py-2 text-small text-fault">
                   {chat.error}
@@ -120,18 +122,20 @@ export function ChatPage({ runId, conversations, thread }: ChatPageProps) {
 }
 
 /**
- * A turn in flight: one line for what it is doing, and the answer as it is
- * written.
+ * A turn in flight, in the order it happens: what it is doing, what it has
+ * looked at, and the answer as it is written.
  *
- * The skeleton is only there until the first words are. Once the model is
- * writing, the prose itself is the thing standing for the wait, which is the
- * whole point: the answer is what the person came for, and they can start
- * reading it several seconds before it is finished.
+ * The calls are open here and folded away once the turn is done, because they
+ * are the only thing to read during the wait and the wrong thing to read after
+ * it. The skeleton lasts only until the first words do: once the model is
+ * writing, the prose is what stands for the wait, and the person can start
+ * reading it seconds before it is finished.
  */
-function Pending({ progress, since }: { progress: ChatProgress | null; since: number }) {
+function Pending({ progress, calls, since }: { progress: ChatProgress | null; calls: ChatToolCall[]; since: number }) {
   return (
     <div className="space-y-3">
       <StatusLine progress={progress} since={since} />
+      <LiveCalls calls={calls} />
       {progress?.answer ? (
         <Markdown text={progress.answer} />
       ) : (

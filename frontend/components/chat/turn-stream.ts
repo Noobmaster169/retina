@@ -1,6 +1,11 @@
+import { z } from "zod";
+
+import { ChatToolCall } from "@/lib/api/chat-agent-schemas";
 import { ChatAnswer, ChatProgress } from "@/lib/api/chat-thread-schemas";
 
 import { eventFrames } from "./sse";
+
+const Step = z.object({ calls: z.array(ChatToolCall) });
 
 /**
  * One streamed turn, as the three things that can actually happen to it.
@@ -10,13 +15,15 @@ import { eventFrames } from "./sse";
  * schema for the reason every response is, so a backend that renames a field
  * fails here, naming it, instead of reaching a component as undefined.
  *
- * A `progress` frame that does not parse is dropped and the next one is taken.
- * It is a repaint of something about to be replaced, and losing one costs a
- * frame. An `answer` that does not parse is the turn, so it becomes a failure.
+ * A `progress` or `step` frame that does not parse is dropped and the next one
+ * is taken. Both are repaints of something about to be replaced by the answer,
+ * and losing one costs a frame. An `answer` that does not parse is the turn, so
+ * it becomes a failure.
  */
 
 export type TurnEvent =
   | { kind: "progress"; progress: ChatProgress }
+  | { kind: "calls"; calls: ChatToolCall[] }
   | { kind: "answer"; answer: ChatAnswer }
   | { kind: "failure"; message: string };
 
@@ -33,6 +40,12 @@ export async function* turnEvents(stream: ReadableStream<Uint8Array>): AsyncGene
     if (frame.event === "progress") {
       const parsed = ChatProgress.safeParse(body(frame.data));
       if (parsed.success) yield { kind: "progress", progress: parsed.data };
+      continue;
+    }
+
+    if (frame.event === "step") {
+      const parsed = Step.safeParse(body(frame.data));
+      if (parsed.success) yield { kind: "calls", calls: parsed.data.calls };
       continue;
     }
 

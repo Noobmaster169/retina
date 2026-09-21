@@ -2,11 +2,14 @@
 
 import { useRef, useState } from "react";
 
-import { type ChatTurn, type ContextRef } from "@/lib/api/chat-agent-schemas";
-import { ChatConversation, type ChatProgress } from "@/lib/api/chat-thread-schemas";
+import { type ChatToolCall, type ChatTurn, type ContextRef } from "@/lib/api/chat-agent-schemas";
+import { type ChatProgress } from "@/lib/api/chat-thread-schemas";
 
+import { type NewConversationBody, openConversation, refusal } from "./conversation";
 import { optimistic, whatLanded } from "./pending-turn";
 import { turnEvents } from "./turn-stream";
+
+export { openConversation, type NewConversationBody } from "./conversation";
 
 /**
  * Asking a question, watching it being answered, and holding what came back.
@@ -27,13 +30,6 @@ import { turnEvents } from "./turn-stream";
  * and saying nothing does not leave an empty conversation behind.
  */
 
-export interface NewConversationBody {
-  actor: string;
-  runId?: string;
-  emailId?: string;
-  title?: string;
-}
-
 export interface ChatState {
   turns: ChatTurn[];
   ask(question: string, skills?: string[], context?: ContextRef[]): void;
@@ -41,30 +37,13 @@ export interface ChatState {
   pending: boolean;
   /** Where the turn in flight has got to. Null when nothing is pending, and before its first frame. */
   progress: ChatProgress | null;
+  /** The calls the turn in flight has finished, oldest first. Emptied when the answer lands, which carries them itself. */
+  calls: ChatToolCall[];
   /** When the turn in flight was asked, for the clock beside the status. */
   since: number;
   error: string | null;
   /** True when the last answer ran out of its step budget, which the turn also says on itself. */
   exhausted: boolean;
-}
-
-async function refusal(response: Response): Promise<string> {
-  const body: unknown = await response.json().catch(() => null);
-  const message = typeof body === "object" && body !== null ? (body as { error?: unknown }).error : undefined;
-  return typeof message === "string" ? message : `The answer failed with ${response.status}.`;
-}
-
-/** Opens a conversation and returns it, or the reason it could not be opened. */
-export async function openConversation(
-  body: NewConversationBody,
-): Promise<{ ok: true; conversation: ChatConversation } | { ok: false; message: string }> {
-  const response = await fetch("/api/chat/conversations", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) return { ok: false, message: await refusal(response) };
-  return { ok: true, conversation: ChatConversation.parse(await response.json()) };
 }
 
 export function useChat(options: {
@@ -84,6 +63,7 @@ export function useChat(options: {
   const [error, setError] = useState<string | null>(null);
   const [exhausted, setExhausted] = useState(false);
   const [progress, setProgress] = useState<ChatProgress | null>(null);
+  const [calls, setCalls] = useState<ChatToolCall[]>([]);
   // Held in refs and not state: the id this hook opened and the request to
   // abort are what the next action needs, not what the page renders.
   const opened = useRef<string | null>(null);
@@ -99,6 +79,7 @@ export function useChat(options: {
     setPending(true);
     setExhausted(false);
     setProgress(null);
+    setCalls([]);
     setSince(Date.now());
     // The question goes up immediately. The backend stores it before it asks
     // the model for exactly the same reason: a person's own words must not
@@ -153,10 +134,21 @@ export function useChat(options: {
             setProgress(event.progress);
             continue;
           }
+          if (event.kind === "calls") {
+            setCalls((was) => [...was, ...event.calls]);
+            continue;
+          }
           ended = true;
           if (event.kind === "answer") {
+            // The turn and the end of the wait are set together, in one render.
+            // Left to the `finally`, the finished answer is drawn under the
+            // half-written one for a frame and the page reads as if it answered
+            // twice.
             setTurns((was) => [...was, event.answer.turn]);
             setExhausted(event.answer.exhausted);
+            setProgress(null);
+            setCalls([]);
+            setPending(false);
             continue;
           }
           setError(event.message);
@@ -176,12 +168,15 @@ export function useChat(options: {
         }
         setError(cause instanceof Error ? cause.message : "The answer did not arrive.");
       } finally {
+        // Already done on the answer path. This is for every other way out:
+        // a refusal, an abort, a stream that stopped saying anything.
         inFlight.current = null;
         setProgress(null);
+        setCalls([]);
         setPending(false);
       }
     })();
   }
 
-  return { turns, ask, stop, pending, progress, since, error, exhausted };
+  return { turns, ask, stop, pending, progress, calls, since, error, exhausted };
 }

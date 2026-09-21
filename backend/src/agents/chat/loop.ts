@@ -107,18 +107,32 @@ export async function runTurn(deps: LoopDeps, input: TurnInput): Promise<TurnRes
    */
   const watch = (step: number) => {
     let last = "";
+    // The furthest this step has got, which is not always the latest thing it
+    // wrote. `claude -p` sends the whole object a second time in a second
+    // content block, so the preview it hands back drops to empty partway
+    // through and writes nearly the same answer again. A reader is mid
+    // sentence when that happens, and blanking the page and retyping it is the
+    // worst way to spend that moment. So the preview only ever moves forward:
+    // the text already shown is held until the second pass has caught up, and
+    // the answer that finally lands is the validated one either way.
+    let shownAnswer = "";
+    let shownReading = "";
+
     return (soFar: string) => {
       const answer = valueSoFar(soFar, "answer");
-      const said = valueSoFar(soFar, "reading") || reading;
+      const said = valueSoFar(soFar, "reading");
+      if (answer.length >= shownAnswer.length) shownAnswer = answer;
+      if (said.length >= shownReading.length) shownReading = said;
+
       // `action` says "final" long before the answer starts, because the model
       // writes the object in order and `reading` sits between them. Phase
       // follows the prose and not the intent, or the page claims to be writing
       // an answer through the whole of the pause before one exists.
-      const phase: ChatPhase = answer !== "" ? "writing" : "reading";
-      const signature = [phase, said, answer].join("\u0000");
+      const phase: ChatPhase = shownAnswer !== "" ? "writing" : "reading";
+      const signature = [phase, shownReading, shownAnswer].join("\u0000");
       if (signature === last) return;
       last = signature;
-      deps.onProgress?.({ step, phase, reading: said, answer, tools: [] });
+      deps.onProgress?.({ step, phase, reading: shownReading || reading, answer: shownAnswer, tools: [] });
     };
   };
 

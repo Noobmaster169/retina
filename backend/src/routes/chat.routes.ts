@@ -17,9 +17,10 @@ import { eventStream, wantsStream } from "./sse";
  * The POST has two shapes and the caller picks with `Accept`. Without
  * `text/event-stream` it holds until the answer and returns one `ChatAnswer`,
  * which is what it has always done and what scripts and the eval rely on. With
- * it, the same work reports itself: `progress` events while the turn runs, then
- * one `answer` event carrying that same `ChatAnswer`. The body is identical, so
- * this is the contract extended and not replaced.
+ * it, the same work reports itself: `progress` events while the turn runs, a
+ * `step` event with each step's finished calls, then one `answer` event
+ * carrying that same `ChatAnswer`. The body is identical, so this is the
+ * contract extended and not replaced.
  *
  * `GET /:id/turns?after=` is still there and still the record of what a turn
  * did. Stopping is the client aborting the POST, either way.
@@ -157,7 +158,12 @@ export function chatRouter(deps: ChatRouteDeps): Router {
     const stream = eventStream(res);
     try {
       const answer = await answerTurn(
-        { ...deps, stopped: () => stopped, onProgress: (progress) => stream.send("progress", progress) },
+        {
+          ...deps,
+          stopped: () => stopped,
+          onProgress: (progress) => stream.send("progress", progress),
+          onCalls: (calls) => stream.send("step", { calls }),
+        },
         conversation,
         body.data,
       );

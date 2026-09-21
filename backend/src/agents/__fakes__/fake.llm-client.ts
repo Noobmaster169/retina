@@ -1,7 +1,16 @@
 import type { LlmClient, LlmRequest, LlmResponse } from "../llm-client";
 
-/** `{ text, stopReason }` is an answer that stopped for a reason other than being finished. */
-type Reply = string | Error | { text: string; stopReason: string } | ((request: LlmRequest) => string);
+/**
+ * `{ text, stopReason }` is an answer that stopped for a reason other than
+ * being finished. `{ text, preview }` scripts what a streaming caller hears on
+ * the way: the real provider writes its object across more than one block, so
+ * the preview can go backwards, and a caller that draws it has to cope.
+ */
+type Reply =
+  | string
+  | Error
+  | { text: string; stopReason?: string; preview?: string[] }
+  | ((request: LlmRequest) => string);
 
 /**
  * Answers from a queue of replies, or from one function for every call. A
@@ -22,15 +31,16 @@ export class FakeLlmClient implements LlmClient {
     if (reply === undefined) throw new Error("FakeLlmClient has no reply");
     if (reply instanceof Error) throw reply;
     const text = typeof reply === "function" ? reply(request) : typeof reply === "string" ? reply : reply.text;
-    // A streamed request hears the answer in two pieces, as it would from the proxy.
+    // A streamed request hears the answer on the way: whatever the reply
+    // scripted, or the two pieces the proxy would send.
+    const preview = typeof reply === "object" && !(reply instanceof Error) ? reply.preview : undefined;
     if (request.onText) {
-      await request.onText(text.slice(0, Math.ceil(text.length / 2)));
-      await request.onText(text);
+      for (const piece of preview ?? [text.slice(0, Math.ceil(text.length / 2)), text]) await request.onText(piece);
     }
     return {
       text,
       model: `fake/${request.model}`,
-      stopReason: typeof reply === "object" ? reply.stopReason : "end_turn",
+      stopReason: (typeof reply === "object" && !(reply instanceof Error) ? reply.stopReason : undefined) ?? "end_turn",
       usage: { inputTokens: 100, outputTokens: 20 },
       costUsd: 0.001,
       latencyMs: 5,
