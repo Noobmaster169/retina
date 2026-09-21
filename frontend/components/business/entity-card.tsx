@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useState } from "react";
 
 import { Flag } from "@/components/ui/flag";
 import { flagSrc } from "@/lib/flag";
@@ -22,15 +25,29 @@ interface EntityCardProps {
   lastSeen: string | null;
   /** ISO code; the flag becomes the card's symbol where it is known. */
   countryCode?: string | null;
+  /**
+   * Fetch this one's page whole before it is asked for, rather than only as
+   * far as its loading shell. For the first few cards of a list, which are the
+   * ones a person opens without scrolling.
+   */
+  eager?: boolean;
 }
 
-export function EntityCard({ type, href, name, summary, chips, counts, lastSeen, countryCode = null }: EntityCardProps) {
+export function EntityCard({ type, href, name, summary, chips, counts, lastSeen, countryCode = null, eager = false }: EntityCardProps) {
   const kind = kindOf(type);
   const hue = HUE_CLASSES[kind.hue];
   const flag = flagSrc(countryCode);
+  // Pointing at a card is the clearest statement of intent a list ever gets,
+  // and it arrives a few hundred milliseconds before the click. Raising
+  // `prefetch` to true then is what turns those milliseconds into the whole
+  // page, and it costs nothing for the cards nobody points at.
+  const [warm, setWarm] = useState(false);
   return (
     <Link
       href={href}
+      prefetch={warm || eager ? true : undefined}
+      onMouseEnter={() => setWarm(true)}
+      onFocus={() => setWarm(true)}
       className="flex min-h-[148px] flex-col rounded-lg border border-hairline bg-canvas p-4 transition-colors duration-150 hover:border-hairline-strong hover:bg-surface"
     >
       <div className="flex items-start gap-2.5">

@@ -6,7 +6,11 @@ import { DataTable } from "@/components/business/data-table";
 import { EntityCard } from "@/components/business/entity-card";
 import { FilterBar } from "@/components/business/filter-bar";
 import { hrefFor } from "@/components/business/kind";
+import { LIST_COPY } from "@/components/business/list-copy";
 import { ListPage } from "@/components/business/list-page";
+import { MoreBelow } from "@/components/business/more-below";
+import { CARD_STEP, EAGER_CARDS, TABLE_STEP } from "@/components/business/soft-page";
+import { useSoftPage } from "@/components/business/use-soft-page";
 import { located } from "@/components/business/map-scale";
 import { CountryGroups } from "@/components/business/country-groups";
 import { sortKeyOf, sortRows } from "@/components/business/sort";
@@ -61,13 +65,16 @@ export function PortList({ rows, lanes }: { rows: EntityRow[]; lanes: Lane[] }) 
   const pins = located(rows).map((item) => pinOf(item.row, item.lat, item.lon));
   const visible = new Set(shown.map((row) => row.id));
   const unplaced = shown.filter((row) => !pins.some((pin) => pin.id === row.id));
+  // The map keeps every pin; only the cards and the table grow with the scroll.
+  const page = useSoftPage(shown, view === "cards" ? CARD_STEP : TABLE_STEP, `${view}|${sort}|${q}|${region}|${role}`);
   const regions = [...new Set(rows.map((row) => row.attributes.region).filter((value): value is string => !!value))]
     .sort()
     .map((value) => ({ value, label: value }));
 
-  const card = (row: EntityRow) => (
+  const card = (row: EntityRow, at: number) => (
       <EntityCard
         key={row.id}
+        eager={at < EAGER_CARDS}
         type="port"
         href={hrefFor("port", row.id) ?? "#"}
         name={row.name}
@@ -84,9 +91,7 @@ export function PortList({ rows, lanes }: { rows: EntityRow[]; lanes: Lane[] }) 
 
   return (
     <ListPage
-      crumb="Ports"
-      title="Ports"
-      lede="Every port the mail named as a place of loading or discharge, one per UN/LOCODE, and every lane the shipments state between two of them."
+      {...LIST_COPY.port}
       toolbar={
         <>
           <FilterBar
@@ -132,13 +137,14 @@ export function PortList({ rows, lanes }: { rows: EntityRow[]; lanes: Lane[] }) 
         shown.length === 0 ? (
           <p className="py-10 text-center text-body text-ink-tertiary">No port matches.</p>
         ) : sort === "country" ? (
-          <CountryGroups rows={shown} card={card} />
+          <CountryGroups rows={page.shown} card={card} />
         ) : (
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">{shown.map(card)}</div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">{page.shown.map(card)}</div>
         )
       ) : (
-        <DataTable columns={PORT_COLUMNS} rows={shown} keyOf={(r) => r.id} hrefOf={(r) => hrefFor("port", r.id)} empty="No port matches." />
+        <DataTable columns={PORT_COLUMNS} rows={page.shown} keyOf={(r) => r.id} hrefOf={(r) => hrefFor("port", r.id)} empty="No port matches." />
       )}
+      {view === "map" ? null : <MoreBelow rest={page.rest} sentinel={page.sentinel} />}
     </ListPage>
   );
 }

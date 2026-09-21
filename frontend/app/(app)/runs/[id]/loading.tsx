@@ -1,17 +1,18 @@
-import { Bar, PageSkeleton } from "@/components/shell/page-skeleton";
+import { Bar, PageFrame } from "@/components/shell/page-skeleton";
 
+/** The overview: the run's title, its tiles, then the panels under them. */
 export default function Loading() {
   return (
-    <PageSkeleton crumbs={["Runs", "Overview"]}>
-      <div className="space-y-3 py-5">
-        <Bar className="h-7 w-72" />
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
-          {Array.from({ length: 6 }, (_, at) => (
-            <Bar key={at} className="h-24 rounded-xl" />
-          ))}
-        </div>
-        <Bar className="h-64 w-full rounded-xl" />
+    <PageFrame crumbs={["Runs", "Overview"]}>
+      <div className="py-5">
+        <Bar className="h-8 w-80" />
       </div>
-    </PageSkeleton>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
+        {Array.from({ length: 6 }, (_, at) => (
+          <Bar key={at} className="h-24 rounded-xl" />
+        ))}
+      </div>
+      <Bar className="mt-3 h-64 w-full rounded-xl" />
+    </PageFrame>
   );
 }

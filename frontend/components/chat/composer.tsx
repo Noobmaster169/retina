@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Icon } from "@/components/ui/icons";
 
@@ -46,6 +46,19 @@ export function Composer({ onAsk, onStop, pending, placeholder, dense = false, s
   // Each settled phrase is appended to whatever is already typed, so speaking
   // and typing are the same question and not two. The engine is the browser's
   // own: use-dictation.ts says why there is no service behind it.
+  // A question of two lines was being typed into a box one line tall, which
+  // scrolled the first line out of sight while it was still being written.
+  // Measured from the content rather than counted from the newlines, because a
+  // long line wraps into two without carrying one. Runs on every change to
+  // `text`, so a phrase that arrived by voice and an emptied box after a
+  // question is sent both resize it too.
+  useEffect(() => {
+    const box = field.current;
+    if (!box) return;
+    box.style.height = "auto";
+    box.style.height = `${box.scrollHeight}px`;
+  }, [text]);
+
   const dictation = useDictation((heard) => {
     setText((was) => (was.trim() ? `${was.replace(/\s+$/, "")} ${heard}` : heard));
     field.current?.focus();
@@ -119,7 +132,7 @@ export function Composer({ onAsk, onStop, pending, placeholder, dense = false, s
             }
           }}
           placeholder={pending ? "Reading" : placeholder}
-          className="max-h-32 min-h-[22px] grow resize-none bg-transparent text-strong leading-[22px] text-ink outline-none placeholder:text-ink-faint disabled:cursor-wait"
+          className="max-h-32 min-h-[22px] grow resize-none overflow-y-auto bg-transparent text-strong leading-[22px] text-ink outline-none placeholder:text-ink-faint disabled:cursor-wait"
         />
 
         {dictation.supported && !pending ? (

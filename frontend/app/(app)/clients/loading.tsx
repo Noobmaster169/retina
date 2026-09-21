@@ -1,9 +1,13 @@
-import { PageSkeleton, TableSkeleton } from "@/components/shell/page-skeleton";
+import { PageFrame, PageHeading, TableTemplate } from "@/components/shell/page-skeleton";
+
+/** The five columns `clients-table.tsx` really draws. */
+const HEADS = [{ label: "Sender" }, { label: "Served" }, { label: "Kind" }, { label: "Emails" }, { label: "Mismatches" }];
 
 export default function Loading() {
   return (
-    <PageSkeleton crumbs={["Senders"]}>
-      <TableSkeleton />
-    </PageSkeleton>
+    <PageFrame crumbs={["Senders"]}>
+      <PageHeading title="Clients" />
+      <TableTemplate columns={HEADS} />
+    </PageFrame>
   );
 }

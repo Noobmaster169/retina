@@ -62,6 +62,20 @@ export function ChatPage({ runId, conversations, thread }: ChatPageProps) {
   const opening = chat.turns.length === 0 && !chat.pending;
   const scopeWords = thread?.conversation.scope.chips.map((chip) => chip.label).join(" and ") ?? "every run";
 
+  // A conversation is named from its first question, by the server, and the
+  // rail is drawn from a server render: until this, the one conversation a
+  // person was actually in was the one row the rail was wrong about, and it
+  // stayed wrong until the page was loaded again. The row shows dots from the
+  // keystroke that sends, and this fetches the name that replaces them.
+  //
+  // Twice, deliberately. The name is written before the model is called, so
+  // the first of these usually has it; the second is for when that race goes
+  // the other way, and both stop the moment a name exists.
+  const naming = thread !== null && thread.conversation.title === null && chat.turns.length > 0;
+  useEffect(() => {
+    if (naming) router.refresh();
+  }, [naming, chat.pending, router]);
+
   // A new answer is long, and the thing a person wants to read is its top, not
   // its bottom. Scrolling to the end of the list puts the question they just
   // asked at the top of the view, with the answer under it.
@@ -77,7 +91,13 @@ export function ChatPage({ runId, conversations, thread }: ChatPageProps) {
   return (
     <>
       <DockSync conversationId={thread?.conversation.id ?? null} />
-      <ConversationRail conversations={conversations} runId={runId} openId={thread?.conversation.id ?? null} onNew={start} />
+      <ConversationRail
+        conversations={conversations}
+        runId={runId}
+        openId={thread?.conversation.id ?? null}
+        namingId={naming ? (thread?.conversation.id ?? null) : null}
+        onNew={start}
+      />
 
       <div className="flex min-w-0 grow flex-col">
         <TopBar crumbs={[{ label: "Ask Retina" }, { label: thread?.conversation.title ?? "A new question" }]}>

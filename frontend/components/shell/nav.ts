@@ -54,13 +54,11 @@ export interface Destination {
    * Fetch this one whole before it is clicked, rather than only as far as its
    * loading shell.
    *
-   * For the destinations a person actually moves between, which is the four
-   * global ones and the chat. It costs a read of each on every page load, and
-   * that read is nearly free: the business data behind them is reused for a
-   * minute (`lib/api/cached.ts`), so the first person to open a page pays for
-   * it and the prefetch after that is a cache hit. It is deliberately not set
-   * on the run-scoped screens, whose reads are live and would be paid again
-   * every time anyone looked at anything.
+   * Every destination, because between the reuse in `lib/api/cached.ts` and
+   * the lists no longer drawing themselves whole, a warmed page is no longer
+   * an expensive thing to hold: the business reads behind one are a cache hit
+   * for a minute after anybody opens it, and a list that renders its first
+   * twenty-four rows is a fraction of the render it used to be.
    *
    * Next only prefetches in production, so this changes nothing in `pnpm dev`.
    */
@@ -68,15 +66,15 @@ export interface Destination {
 }
 
 export const DESTINATIONS: Destination[] = [
-  { key: "overview", label: "Overview", icon: "home", path: "", cluster: "operations" },
-  { key: "inbox", label: "Inbox", icon: "mail", path: "/inbox", cluster: "operations" },
+  { key: "overview", label: "Overview", icon: "home", path: "", cluster: "operations", preload: true },
+  { key: "inbox", label: "Inbox", icon: "mail", path: "/inbox", cluster: "operations", preload: true },
   // Beside the inbox, because that is where it acts: what the gate holds never
   // reaches the mail below it. It still answers the second question a person
   // asks about a sender, the first being its tier on `Senders`, which is why
   // the two read as a pair from either side.
-  { key: "gate", label: "Traffic", icon: "scale", path: "/gate", cluster: "operations", global: true },
-  { key: "database", label: "Database", icon: "table", path: "/database", cluster: "operations" },
-  { key: "ontology", label: "Ontology", icon: "graph", path: "/ontology", cluster: "operations" },
+  { key: "gate", label: "Traffic", icon: "scale", path: "/gate", cluster: "operations", global: true, preload: true },
+  { key: "database", label: "Database", icon: "table", path: "/database", cluster: "operations", preload: true },
+  { key: "ontology", label: "Ontology", icon: "graph", path: "/ontology", cluster: "operations", preload: true },
   { key: "chat", label: "Ask Retina", icon: "chat", path: "/chat", cluster: "operations", preload: true },
   { key: "company", label: "Companies", icon: "party", path: "/company", cluster: "business", global: true, preload: true },
   { key: "port", label: "Ports", icon: "port", path: "/port", cluster: "business", global: true, preload: true },
