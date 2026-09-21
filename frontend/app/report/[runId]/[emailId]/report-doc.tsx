@@ -7,6 +7,8 @@ import { tallyFields } from "@/components/report/report-figures";
 import type { Email } from "@/lib/api/mail-client";
 import type { EmailTrace } from "@/lib/api/trace-schemas";
 
+import { ROLE_ORDER, roleLabel, statusStyle, summaryText, summaryTitle, verdict, verdictStyle } from "./report-display";
+
 /** A concise, client-ready account of one document check. */
 export function ReportDoc({ trace, email }: { trace: EmailTrace; email: Email | null }) {
   const status = statusOf(trace);
@@ -158,8 +160,6 @@ export function ReportDoc({ trace, email }: { trace: EmailTrace; email: Email | 
   );
 }
 
-const ROLE_ORDER = ["SI", "BL", "UNKNOWN"];
-
 function Section({ title, intro, children }: { title: string; intro?: string; children: React.ReactNode }) {
   return (
     <section className="mt-7">
@@ -179,46 +179,4 @@ function DocumentValue({ label, value }: { label: string; value: string | null }
       <p className="mt-1 break-words text-small font-medium leading-5">{value ?? "Not provided"}</p>
     </div>
   );
-}
-
-function summaryTitle(tally: ReturnType<typeof tallyFields>, fallback: string): string {
-  if (tally.differ > 0) return `${tally.differ} ${tally.differ === 1 ? "difference" : "differences"} need attention`;
-  if (tally.missing > 0) {
-    return `${tally.missing} ${tally.missing === 1 ? "field could" : "fields could"} not be compared`;
-  }
-  if (tally.total > 0) return "The documents are consistent";
-  return fallback;
-}
-
-function summaryText(tally: ReturnType<typeof tallyFields>, fieldCount: number): string {
-  if (fieldCount === 0) return "No document comparison was required for this email.";
-  const checked = tally.total - tally.missing;
-  const base = `Retina checked ${checked} ${checked === 1 ? "field" : "fields"} across the Shipping Instruction and Bill of Lading.`;
-  if (tally.missing === 0) return base;
-  return `${base} ${tally.missing} ${tally.missing === 1 ? "field was" : "fields were"} not available in both documents.`;
-}
-
-function statusStyle(tone: ReturnType<typeof statusOf>["tone"]): string {
-  if (tone === "match") return "border-match-line bg-match-tint text-match";
-  if (tone === "differ") return "border-differ-line bg-differ-tint text-differ";
-  if (tone === "review") return "border-review-line bg-review-tint text-review";
-  if (tone === "fault") return "border-fault-line bg-fault-tint text-fault";
-  if (tone === "accent") return "border-accent-line bg-accent-tint text-accent";
-  return "border-hairline-strong bg-sunken text-ink-secondary";
-}
-
-function verdict(same: boolean, missing: boolean): string {
-  if (missing) return "Not compared";
-  return same ? "Matches" : "Different";
-}
-
-function verdictStyle(same: boolean, missing: boolean): string {
-  if (missing) return "text-review";
-  return same ? "text-match" : "text-differ";
-}
-
-function roleLabel(role: string): string {
-  if (role === "SI") return "Shipping instruction";
-  if (role === "BL") return "Bill of lading";
-  return "Supporting document";
 }
