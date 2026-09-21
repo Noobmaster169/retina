@@ -29,6 +29,7 @@ import { reviewRouter } from "./routes/review.routes";
 import type { LiveCalls } from "./live";
 import { runQueuesRouter } from "./routes/run-queues.routes";
 import { runTraceRouter } from "./routes/run-trace.routes";
+import { runStreamRouter } from "./routes/run-stream.routes";
 import { runsRouter } from "./routes/runs.routes";
 import { submissionsRouter } from "./routes/submissions.routes";
 
@@ -94,7 +95,11 @@ export function createApp(deps: AppDeps): express.Express {
   app.use("/shipments", shipmentsRouter({ pool: deps.pool }));
   app.use("/database", databaseRouter({ pool: deps.pool }));
   app.use("/runs", runsRouter(deps));
-  app.use("/runs", runQueuesRouter(deps));
+  // The stream answers with the same two bodies these do, from the same
+  // builders, so a page may hold one connection instead of polling both.
+  const queues = runQueuesRouter(deps);
+  app.use("/runs", queues.router);
+  app.use("/runs", runStreamRouter({ ...deps, queuesFor: queues.viewFor }));
   app.use("/runs", runTraceRouter(deps));
   app.use("/runs", submissionsRouter(deps));
   app.use("/review", reviewRouter({ db: deps.pool, tx: transactor(deps.pool), store: deps.store, queues: deps.runQueues }));

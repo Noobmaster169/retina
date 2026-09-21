@@ -8,6 +8,7 @@ import { LaneMapPanel } from "@/components/run/lane-map";
 import { MachineryPanel } from "@/components/run/machinery-panel";
 import { OutcomesPanel } from "@/components/run/outcomes-panel";
 import { laneMap } from "@/components/run/progress";
+import { useRunLive } from "@/components/run/use-run-live";
 import { stagePeeks } from "@/components/run/stage-peeks";
 import { SendersPanel } from "@/components/run/senders-panel";
 import { RunHeader, statusWord } from "@/components/run/run-header";
@@ -28,36 +29,49 @@ import { useRunActions } from "./use-run-actions";
  */
 
 /**
- * A live run is polled; a finished one is not polled at all.
+ * A live run is watched over one connection, not polled.
  *
- * Two polls, at two rates, because they are not worth the same. `SUMMARY_MS`
- * carries the numbers a person is actually reading: how many are sorted,
- * checked, differing, waiting for somebody. `SLOTS_MS` carries which email is
- * in which slot, which is the part that moves fastest and the part nobody is
- * reading a value off. Both were two seconds, which is sixty requests a minute
- * from one open tab across the tunnel, for a board whose counts move a few
- * times a second at most.
+ * It used to poll `/api/runs/:id` and `/api/runs/:id/queues` every two seconds
+ * each, which is a request a second, every second, for as long as a tab was
+ * open, and every one of them crossed the tunnel to the box. The stream does
+ * the same reads on the same tick, on the server's side of that tunnel, and
+ * sends only what changed. See `use-run-live.ts`.
  *
- * Health is a dependency banner. It was ten seconds; nothing it reports
- * changes on that scale, and a tunnel or a proxy that has gone away is still
- * named within half a minute.
+ * The polls below are the fallback and nothing else. They run when the stream
+ * could not be held at all, and deliberately slower than the old ones: a
+ * screen that has lost its connection is worth keeping alive, not worth a
+ * request a second.
+ *
+ * Health is a dependency banner. Nothing it reports changes faster than this,
+ * and a tunnel or a proxy that has gone away is still named within half a
+ * minute.
  */
-const SUMMARY_MS = 3000;
-const SLOTS_MS = 4000;
+const FALLBACK_SUMMARY_MS = 8000;
+const FALLBACK_SLOTS_MS = 12_000;
 const HEALTH_MS = 30_000;
 
 export function RunPage({ initialRun }: { initialRun: RunSummary }) {
   const id = initialRun.id;
-  const { data: run = initialRun, mutate } = useSWR(`/api/runs/${id}`, parsedFetcher(RunSummary), {
+  // The server's render is the first frame, and it is what decides whether
+  // there is anything left to watch. The stream stops itself when the run
+  // finishes, so nothing here has to notice that and turn it off.
+  const watching = !initialRun.processingDone;
+  const streamed = useRunLive(id, watching);
+
+  const { data: polled = initialRun, mutate } = useSWR(`/api/runs/${id}`, parsedFetcher(RunSummary), {
     fallbackData: initialRun,
-    refreshInterval: initialRun.processingDone ? 0 : SUMMARY_MS,
+    refreshInterval: watching && streamed.stale ? FALLBACK_SUMMARY_MS : 0,
     keepPreviousData: true,
   });
+  const run = streamed.summary ?? polled;
   const live = !run.processingDone;
-  const { data: queues } = useSWR(`/api/runs/${id}/queues`, parsedFetcher(RunQueuesView), {
-    refreshInterval: live ? SLOTS_MS : 0,
+  const { data: polledQueues } = useSWR(`/api/runs/${id}/queues`, parsedFetcher(RunQueuesView), {
+    // Asked for once whatever happens, because the first frame of a finished
+    // run has no stream behind it, then only while the stream is down.
+    refreshInterval: live && streamed.stale ? FALLBACK_SLOTS_MS : 0,
     keepPreviousData: true,
   });
+  const queues = streamed.queues ?? polledQueues;
   const { data: health = null } = useSWR("/api/health", parsedFetcher(HealthReport), {
     refreshInterval: HEALTH_MS,
     keepPreviousData: true,
