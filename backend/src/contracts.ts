@@ -145,6 +145,7 @@ export * from "./contracts.chat-agent";
 export * from "./contracts.chat";
 export * from "./contracts.database";
 export * from "./contracts.health";
+export * from "./contracts.insight";
 export * from "./contracts.clients";
 export * from "./contracts.emails";
 export * from "./contracts.enums";

@@ -24,9 +24,9 @@ export interface DossierInput {
   /** How often it played each role, and in how many emails. */
   roles: { role: string; appearances: number; emails: number }[];
   /** The things it most often appears beside, with how many emails they share. */
-  counterparties: { name: string; kind: string; emails: number }[];
+  counterparties: { id: string; name: string; kind: string; emails: number }[];
   /** Loading to discharge, for a thing that is a port or a party on a shipment. */
-  lanes: { from: string; to: string; emails: number }[];
+  lanes: { fromId: string; from: string; toId: string; to: string; emails: number }[];
   goods: { description: string; emails: number }[];
   addresses: string[];
   /** The lines it was actually read from, newest first. */

@@ -24,6 +24,7 @@ export * as entitySearch from "./entities.search";
 export * as entityDetail from "./entities.detail";
 export * as entityValues from "./entities.values";
 export * as entityDossier from "./entities.dossier";
+export * as entityInsight from "./entities.insight";
 export * as entityProfile from "./entities.profile";
 export * as emails from "./emails.repo";
 export * as emailShipments from "./email-shipments.repo";

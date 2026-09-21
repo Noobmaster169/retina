@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { EntityInsight } from "./contracts.insight";
 import { StoredProfile } from "./contracts.semantic";
 
 /**
@@ -214,6 +215,8 @@ export const EntityDetail = z.object({
   row: EntityRow,
   /** What this thing is, as the profile step wrote it. Null until it has been profiled once. */
   profile: StoredProfile.nullable().default(null),
+  /** What it means: the same dossier the profile was written from, as facets a page can draw. */
+  insight: EntityInsight,
   values: z.array(StoredValue),
   links: z.array(ObjectLink),
   names: z.array(EntityName),
