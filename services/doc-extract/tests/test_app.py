@@ -34,7 +34,10 @@ def test_a_text_attachment_is_readable(stack):
     assert body["unreadable"] is False and body["scanned"] is False
     assert body["text"].startswith("SHIPPING INSTRUCTION")
     assert body["pages"][0]["source"] == "text_layer"
-    assert body["bytes"] == 663
+    # The size of what it was handed, not a number copied from one machine's
+    # checkout: this fixture was 663 bytes on a Windows working tree and 644 in
+    # CI, which is the same file with different line endings.
+    assert body["bytes"] == len(fixture_bytes("email_004_SI.txt"))
 
 
 def test_an_empty_file_is_unreadable_with_http_200(stack):

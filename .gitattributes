@@ -7,3 +7,9 @@ Dockerfile text eol=lf
 *.yaml text eol=lf
 *.yml text eol=lf
 .env.example text eol=lf
+
+# Test fixtures are bytes under test. A CRLF checkout on Windows makes a text
+# fixture 19 bytes longer than the blob, and a test that asserts its size then
+# passes locally and fails in CI. Never convert them, on any platform.
+services/doc-extract/tests/fixtures/** -text
+backend/test/fixtures/** -text

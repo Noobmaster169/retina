@@ -109,6 +109,22 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      # The queue and health tests run against a real Redis on purpose: what
+      # they prove is that a restart upserts the same schedulers rather than
+      # adding a fourth, and that a missing heartbeat reads as a down worker
+      # without taking the api with it. Neither is provable against a fake.
+      # 6379 is the default in config.ts, which vitest.config.ts does not
+      # override. A service container takes no command, so this is stock
+      # redis rather than compose.local.yaml's appendonly and noeviction.
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
