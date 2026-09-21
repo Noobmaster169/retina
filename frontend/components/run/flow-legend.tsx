@@ -38,11 +38,21 @@ export function FlowLegend({ endings, reasons, runId, lit, onLight }: FlowLegend
       </div>
 
       {reasons.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          {/* One mark for the group: all four are the same outcome read four ways. */}
-          <span className="flex items-center gap-1.5 text-caption text-ink-tertiary">
-            <Swatch tone="review" />
-            of which
+        /*
+         * The four reasons are not a fifth thing beside the endings above:
+         * they are the violet one, read four ways. Saying that with a swatch
+         * and the words "of which" did the opposite, because a swatch is what
+         * every other row uses to mean "a colour of its own", and four labels
+         * with no swatch beside it read as a second series whose colour had
+         * gone missing.
+         *
+         * So: no swatch, the parent's own label rather than a pronoun for it,
+         * and the whole group set inside a violet block. Nesting is the one
+         * thing a legend can say that a list of chips cannot.
+         */
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-review-tint px-2 py-1.5">
+          <span className="flex items-center gap-1.5 text-caption font-medium text-review">
+            {reasonsHead(endings)}
           </span>
           {reasons.map((node) => (
             <Item key={node.id} node={node} runId={runId} lit={lit} onLight={onLight} />
@@ -51,6 +61,18 @@ export function FlowLegend({ endings, reasons, runId, lit, onLight }: FlowLegend
       ) : null}
     </div>
   );
+}
+
+/**
+ * What to call the nested group, in the words of the ending it belongs to.
+ *
+ * Read off that ending rather than written here, so the two can never come to
+ * say different things about one band. Where the diagram has no such ending to
+ * point at, which is a run whose emails all failed, it says the plain thing.
+ */
+function reasonsHead(endings: FlowNode[]): string {
+  const parent = endings.find((node) => node.id === "needs-person");
+  return parent ? `${parent.label}, by reason` : "By reason";
 }
 
 function Item({
@@ -73,7 +95,9 @@ function Item({
   const body = (
     <>
       {strong ? <Swatch tone={node.tone} /> : null}
-      <span className={strong ? "text-ink-secondary" : "text-ink-tertiary"}>{node.label}</span>
+      {/* A reason reads on the violet block it sits on, which is paler than
+          the panel, so it takes the darker of the two secondary inks. */}
+      <span className="text-ink-secondary">{node.label}</span>
       <span className="font-mono text-mono-sm tabular-nums text-ink">{node.count}</span>
     </>
   );
@@ -90,7 +114,9 @@ function Item({
       onMouseLeave={() => onLight(null)}
       onFocus={() => onLight(lights)}
       onBlur={() => onLight(null)}
-      className={`${shell} hover:bg-active`}
+      // A reason sits on the violet block, where `active` is all but invisible;
+      // it lifts off it instead.
+      className={`${shell} ${strong ? "hover:bg-active" : "hover:bg-surface"}`}
     >
       {body}
     </Link>
