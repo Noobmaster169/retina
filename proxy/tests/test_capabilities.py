@@ -53,16 +53,20 @@ def test_claudecli_rejects_tools_with_an_actionable_message(caps):
     assert "cannot serve tool_use" in str(exc.value)
 
 
-def test_claudecli_rejects_images(caps):
+def test_claudecli_takes_images(caps):
+    """The CLI has no image block, but its Read tool opens a file, so the provider
+    writes each image to disk rather than the capability refusing it. What Read
+    cannot open is refused in claude_cli.py, where the media type is known."""
     r = req(
         messages=[
             CanonMessage(
-                role="user", content=[ImageBlock(source_kind="url", data="http://x/a.png")]
+                role="user",
+                content=[ImageBlock(source_kind="base64", media_type="image/png", data="AAAA")],
             )
         ],
     )
-    with pytest.raises(UnsupportedFeature):
-        caps.normalize(r)
+    caps.normalize(r)
+    assert r.warnings == []
 
 
 def test_untouched_request_produces_no_warnings(caps):
