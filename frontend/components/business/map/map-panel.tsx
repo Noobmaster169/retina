@@ -12,14 +12,13 @@ import type { PlacedLane, PlacedPin } from "./types";
  * flag, code and country, what loads and discharges, and each lane it sits
  * on. A lane's other end is a button, so a person can walk the network
  * without leaving the map, and so is every other port in the same country.
- * Open goes to the page. `side` sets it in a column beside the map; without
- * it the panel floats over the map's corner.
+ * Open goes to the page. It floats in the map's bottom-left corner, over
+ * open ocean at the world view, and its lists scroll so it stays short.
  */
 export function MapPanel({
   pin,
   lanes,
   country = [],
-  side = false,
   onPick,
   onFrame,
   onClose,
@@ -28,7 +27,6 @@ export function MapPanel({
   lanes: PlacedLane[];
   /** The other located ports in this port's country. */
   country?: PlacedPin[];
-  side?: boolean;
   onPick(pin: PlacedPin): void;
   onFrame(): void;
   onClose(): void;
@@ -36,11 +34,7 @@ export function MapPanel({
   const chips = [pin.locode, pin.country].filter((value): value is string => !!value);
   return (
     <aside
-      className={
-        side
-          ? "w-full rounded-lg border border-hairline bg-canvas"
-          : "absolute right-3 top-3 z-10 w-[280px] max-w-[calc(100%-1.5rem)] rounded-lg border border-hairline bg-canvas shadow-overlay"
-      }
+      className="absolute bottom-3 left-3 z-10 w-[280px] max-w-[calc(100%-4.5rem)] rounded-lg border border-hairline bg-canvas shadow-overlay"
       aria-label={`${pin.name} on the map`}
     >
       <div className="flex items-start gap-2 border-b border-hairline px-3 py-2.5">
@@ -70,7 +64,7 @@ export function MapPanel({
         {lanes.length === 0 ? (
           <p className="text-small text-ink-tertiary">No shipment names both ends yet.</p>
         ) : (
-          <ul className="max-h-40 space-y-0.5 overflow-y-auto">
+          <ul className="max-h-28 space-y-0.5 overflow-y-auto">
             {lanes.map((lane) => {
               const outbound = lane.polId === pin.id;
               const other = outbound ? lane.pod : lane.pol;
@@ -97,7 +91,7 @@ export function MapPanel({
           <p className="mb-1 text-caption text-ink-tertiary">
             Also in {pin.country ?? "this country"} <span className="font-mono">{country.length}</span>
           </p>
-          <ul className="max-h-32 space-y-0.5 overflow-y-auto">
+          <ul className="max-h-20 space-y-0.5 overflow-y-auto">
             {country.map((other) => (
               <li key={other.id}>
                 <button type="button" onClick={() => onPick(other)} className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left text-small hover:bg-sunken">
@@ -119,15 +113,6 @@ export function MapPanel({
           </Link>
         ) : null}
       </div>
-    </aside>
-  );
-}
-
-/** The side column before a port is picked: says what picking one shows. */
-export function MapPanelEmpty() {
-  return (
-    <aside className="rounded-lg border border-dashed border-hairline-strong px-3 py-6 text-center text-small text-ink-tertiary">
-      Pick a port on the map to see what loads and discharges there, the lanes it sits on and the other ports in its country.
     </aside>
   );
 }

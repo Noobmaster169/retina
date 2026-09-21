@@ -20,10 +20,10 @@ export function MapControls({ onIn, onOut, onReset }: { onIn(): void; onOut(): v
   );
 }
 
-/** What size and ring mean, in the corner, in words. */
+/** What size and ring mean, in the top-left corner, in words. The bottom-left is the picked port's panel. */
 export function MapLegend({ ports, lanes }: { ports: number; lanes: number }) {
   return (
-    <div className="pointer-events-none absolute bottom-3 left-3 z-10 hidden items-center gap-4 rounded-md border border-hairline bg-canvas/90 px-2.5 py-1.5 text-caption text-ink-tertiary @lg:flex">
+    <div className="pointer-events-none absolute left-3 top-3 z-10 hidden items-center gap-4 rounded-md border border-hairline bg-canvas/90 px-2.5 py-1.5 text-caption text-ink-tertiary @lg:flex">
       <span className="font-mono text-ink-secondary">
         {ports} {ports === 1 ? "port" : "ports"}, {lanes} {lanes === 1 ? "lane" : "lanes"}
       </span>

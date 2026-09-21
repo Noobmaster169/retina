@@ -9,7 +9,7 @@ import world from "world-atlas/countries-110m.json";
 import { HEIGHT, lane as laneGeometry, projectionFor, WIDTH } from "./geometry";
 import { Land, Lanes, Pins } from "./map-layers";
 import { MapControls, MapLegend } from "./map-controls";
-import { MapPanel, MapPanelEmpty, MapTooltip } from "./map-panel";
+import { MapPanel, MapTooltip } from "./map-panel";
 import type { MapLane, MapPin, PlacedLane, PlacedPin } from "./types";
 import { useMapView } from "./use-map-view";
 
@@ -22,22 +22,19 @@ export type { MapLane, MapPin } from "./types";
  * every browser.
  *
  * Wheel zooms about the pointer, drag pans, a pin picks a port into a panel
- * beside the drawing. At rest only the pins are drawn; hovering or picking a
+ * in the drawing's bottom-left corner, the legend above it in the top-left. At rest only the pins are drawn; hovering or picking a
  * port draws its lanes, flowing from loading to discharge, and dims the rest.
  * `visible` is the page's filter: a port outside it is not drawn until it is
  * the far end of a lit port's lane, and then only as a ghost, so a filter on
  * one region still shows where that region's ports ship. `focus` opens with
  * that port lit, its lanes framed and no panel, because the page it sits on
- * is that port's panel already. `initial` opens with that port picked, and
- * `side` puts the picked port's panel in a column beside the drawing instead
- * of over it, so it never covers the ports it describes.
+ * is that port's panel already. `initial` opens with that port picked.
  */
 export function WorldMap({
   pins,
   lanes = [],
   focus,
   initial,
-  side = false,
   visible,
   className = "",
 }: {
@@ -46,8 +43,6 @@ export function WorldMap({
   focus?: string;
   /** The pin picked when the map opens. */
   initial?: string;
-  /** The picked port's panel in a column beside the map rather than over it. */
-  side?: boolean;
   /** Ids of the pins the page's filter kept. Undefined keeps every pin. */
   visible?: string[];
   className?: string;
@@ -129,12 +124,8 @@ export function WorldMap({
   const pick = (pin: PlacedPin) => setSelected((held) => (held === pin.id ? null : pin.id));
 
   const sameCountry = picked ? placed.pins.filter((pin) => pin.id !== picked.id && !!pin.countryCode && pin.countryCode === picked.countryCode) : [];
-  const panel = picked ? (
-    <MapPanel pin={picked} lanes={pickedLanes} country={sameCountry} side={side} onPick={(pin) => setSelected(pin.id)} onFrame={() => frameAround(picked)} onClose={() => setSelected(null)} />
-  ) : side ? <MapPanelEmpty /> : null;
-
-  const map = (
-    <div ref={box} className={`relative w-full overflow-hidden rounded-lg border border-hairline bg-canvas @container ${side ? "" : className}`}>
+  return (
+    <div ref={box} className={`relative w-full overflow-hidden rounded-lg border border-hairline bg-canvas @container ${className}`}>
       <svg
         ref={svg}
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
@@ -179,16 +170,11 @@ export function WorldMap({
       {!view.dragging ? (
         <MapTooltip at={pointer} flip={pointer.flip} pin={hoverPin} lane={hoverPin ? null : hoverLane} />
       ) : null}
-      {side ? null : panel}
+      {picked ? (
+        <MapPanel pin={picked} lanes={pickedLanes} country={sameCountry} onPick={(pin) => setSelected(pin.id)} onFrame={() => frameAround(picked)} onClose={() => setSelected(null)} />
+      ) : null}
       <MapControls onIn={view.zoomIn} onOut={view.zoomOut} onReset={view.reset} />
       <MapLegend ports={drawnPins.filter((pin) => pin.visible).length} lanes={placed.lanes.length} />
-    </div>
-  );
-  if (!side) return map;
-  return (
-    <div className={`grid grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(0,1fr)_280px] ${className}`}>
-      {map}
-      {panel}
     </div>
   );
 }

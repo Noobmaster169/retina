@@ -38,7 +38,7 @@ function pinOf(row: EntityRow, lat: number, lon: number): MapPin {
   };
 }
 
-/** The map opens on the home market: its busiest port picked, so the side column starts with something in it. */
+/** The map opens on the home market: its busiest port picked, its lanes lit and its panel open. */
 const HOME = "MY";
 
 const laneOf = (lane: Lane): MapLane => ({ polId: lane.pol.id, podId: lane.pod.id, count: lane.count, disputed: lane.disputed });
@@ -124,7 +124,7 @@ export function PortList({ rows, lanes }: { rows: EntityRow[]; lanes: Lane[] }) 
     >
       {view === "map" ? (
         <div className="space-y-4">
-          <WorldMap pins={pins} lanes={lanes.map(laneOf)} visible={[...visible]} initial={home?.id} side />
+          <WorldMap pins={pins} lanes={lanes.map(laneOf)} visible={[...visible]} initial={home?.id} />
           {unplaced.length ? (
             <p className="text-small text-ink-tertiary">
               Not located yet: {unplaced.map((row) => row.name).join(", ")}. The world&apos;s port list places a port by the words
