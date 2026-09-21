@@ -111,6 +111,7 @@ All routes except `/health` need `Authorization: Bearer <key>`. The key is
 | Route | Body → Result |
 | --- | --- |
 | `GET /health` | `{ status: "ok" \| "degraded" \| "down", checks, version, queues }`. A check is `{ status, latencyMs }` plus what that dependency says about itself: `inbox` its email count, `docExtract` its tesseract build, `llmProxy` its alias count, `worker` its last heartbeat. 503 only when postgres or redis is down, which is what auto-deploy rolls back on; everything else is `degraded` and still 200 |
+| `GET /shipments`, `GET /shipments/:emailId`; `GET /ontology/:kind` for six kinds; `GET /ontology/party/:id/people|ports`, `/ontology/port/:id/parties` | the business pages' readers (phase 13): shipments as the mail states them, a kind's list with attributes, summary and roles, and what sits beside a thing |
 | `GET /clients`, `PUT /clients/:domain` | every sender domain seen, with its tier, kind and counts, and `known: false` for one nobody has ranked. The `PUT` takes `{ name?, tier?, kind? }`. A tier orders the queue and decides no category |
 | `GET /review`, `GET /review/stats`, `GET /review/:id` | the cases waiting for a person, the queue's own numbers, and one case with its evidence and its history |
 | `POST /review/:id/actions`, `POST /review/:id/upload` | what a person does to a case: confirm, correct a field, reclassify, note, retry, reopen, or supply a document. 409 when the case is not in a state where the action means anything |
@@ -162,7 +163,7 @@ curl -s 127.0.0.1:8091/ai/chat -H "authorization: Bearer $TEAM_API_KEY" \
 | Run the backend tests | `pnpm test` in `backend/`, with `compose.local.yaml` up. They use the database `retina_test` |
 | Measure a burst | `pnpm load-test [--limit N]` in `backend/`: starts a run at rate 0, then prints its elapsed time, peak queue depth, the peak model calls in flight and any 429s. Needs one worker running, and only one |
 | Change who is served first | `/clients` in the app, or `PUT /clients/:domain`. A tier orders the queue; it never decides a category |
-| Add a page | `frontend/app/`. Everything run-scoped lives under `app/runs/[id]/`: the overview, `inbox`, `review`, `ontology` and `chat`. `/clients` is the one destination that is not about a run, and `database` is built but kept off the rail by `Destination.hidden` |
+| Add a page | `frontend/app/(app)/`, under the layout that mounts the rail and the chat dock once. Everything run-scoped lives under `runs/[id]/`: the overview, `inbox`, `review`, `database`, `ontology` and `chat`. The Business data cluster is global: `company`, `port`, `shipment` and `clients` (drawn as Senders). A page announces what it is about to the dock with `<PageContext>` and its rail counts with `<NavCounts>` |
 | Regenerate the emails | `emails/data_v2/README.md` |
 | Check types | `pnpm type-check` in `frontend/` or `backend/`. `pytest` in `proxy/`; `uv run pytest && uv run ruff check .` in `services/doc-extract/` |
 | Change how a document is parsed | an extractor in `services/doc-extract/extractors/`, then `docker compose -f compose.local.yaml up -d --build doc-extract` in `backend/` |

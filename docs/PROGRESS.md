@@ -29,6 +29,57 @@ decide its exit checklist's score lines (`pnpm eval:score --run <id> --holdout`)
 open items (the box check of doc-extract, the classify `v5` holdout). Phase 4's open items (the
 few-shot `v4` holdout, the model comparison) are still the user's.
 
+## Phase 13
+
+The things the ontology resolves have pages a business owner opens, and the chat is a dock that
+outlives the page.
+
+**Built.**
+
+- `port-locate`, the one step on the `sonnet-web` alias (the proxy's `claudecli_web` rail with
+  `WebSearch`, now enabled in `proxy.yaml`). Its input is a port's own name, country and locode,
+  never email text. `PortAttributes` gained `lat` and `lon`, `AttributeSource` gained `search`, and
+  the profile write keeps the located keys so a rewrite never nulls a coordinate. It runs from the
+  profile pass for a port whose coordinates are null.
+- `GET /shipments` and `/shipments/:emailId` over `core.email_shipments`, every party and port a
+  reference to the resolved thing. `GET /ontology/:kind` lists all six kinds and every row carries
+  its attributes, the profile's first sentence and distinct emails per role. Three counterpart
+  readers: a company's ports and people, a port's companies, over `entity_appearances` with
+  disputed appearances left out.
+- Migration `023`: `chat_turns.context`. `NewMessage.context` carries up to five refs to what
+  the person was looking at; `agents/chat/context.ts` resolves each to one line in the scope
+  section, "answer about them unless the question says otherwise". A default, never a filter.
+- The frontend shell moved into `app/(app)/layout.tsx`, so the rail and the dock mount once. The
+  rail has two clusters, Operations and Business data, and reads the active destination and the
+  run off the pathname. Pages report counts through `<NavCounts>` and what they are about
+  through `<PageContext>`.
+- The chat dock: 380px on the right of every page, a sheet below 1280px. The page's refs are
+  chips a person can switch off or pin; the pinned ones survive navigation. The email page's
+  rail is gone; its opening line and suggestions come through the dock.
+- `/company`, `/port`, `/shipment`, each as cards or a table, ports also as an SVG world map
+  (`d3-geo`, `topojson-client`, `world-atlas`, no tile server), with a page per thing.
+- The accent (signal blue) on interactive and active states, and seven kind hues.
+  `docs/05-design.md` sections 4.3 and 4.10.
+
+**Numbers.** 980 backend tests, 97 frontend, 143 proxy.
+
+**What the live check showed.** Singapore located by a web search in 13 s at 0.9 and drawn on
+the map. A question asked in the dock on `/company/1` with the company chip on, then a click to
+`/port` while it ran: the dock stayed pending and the answer landed on the ports page, about
+that company; the user turn stores `[{"kind":"party","id":"1"}]`. The same question with the
+chip switched off sends `context: []`. Two bugs the live check found and the tests had not: the
+frontend's `AttributeSource.confidence` refused the null a `mail` basis stores, and keying the
+dock's thread on the conversation id remounted it the moment the first question opened one.
+
+**Deferred.**
+
+- The ontology's Shipments type stays unbuilt there: its things tab lists resolved kinds only,
+  and a shipment is one row per email with nothing yet grouping them into a booking. The rail's
+  blurb points at `/shipment`.
+- The dock's top-bar toggle shows no unread mark when an answer lands while the dock is closed.
+- The port list filters in the browser and reads at most 200 things; a list past that wants the
+  backend's paging.
+
 ## Phase 10f
 
 A term written nowhere in the database becomes a set of entity ids that SQL can join on, and the

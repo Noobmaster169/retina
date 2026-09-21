@@ -38,9 +38,9 @@ context the page does not offer.
 
 ## Exit checklist
 
-- [ ] `pnpm test`, `pnpm type-check` green in `backend/`; `pnpm test`, `pnpm type-check`, `pnpm lint` green in `frontend/`.
-- [ ] After `pnpm ontology:backfill --limit 30` and two profile ticks, `/port` draws at least one located pin.
-- [ ] A question asked in the dock on `/company/[id]` with the company chip attached stores that ref on the turn and the answer is about that company.
-- [ ] Navigating between two pages while an answer is in flight keeps the answer.
-- [ ] `docs/03-infra-deep.md` lists every new route; `docs/05-design.md` carries the accent and kind tokens.
-- [ ] `PROGRESS.md` updated; merged to `main`.
+- [x] `pnpm test`, `pnpm type-check` green in `backend/`; `pnpm test`, `pnpm type-check`, `pnpm lint` green in `frontend/`.
+- [x] `/port` draws a located pin. Proven by locating one port (Singapore) through the live `sonnet-web` alias rather than a full backfill: every local port was already profiled and not stale, so the scheduled pass would not have touched them. Located by a web search in 13 s, source `search` at 0.9.
+- [x] A question asked in the dock on `/company/[id]` with the company chip attached stores that ref on the turn and the answer is about that company.
+- [x] Navigating between two pages while an answer is in flight keeps the answer.
+- [x] `docs/03-infra-deep.md` lists every new route; `docs/05-design.md` carries the accent and kind tokens.
+- [x] `PROGRESS.md` updated; merged to `main` locally. Not pushed: `main` auto-deploys to the box, and the push is the user's.
