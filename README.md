@@ -51,11 +51,13 @@ will fail the same way (fast, not retried).
 
 **2. Worker**, a second terminal in `backend/`. It consumes the queues; without it a
 run is created and never moves. It classifies every email with an LLM call through the
-proxy, so the llm-proxy container must be up with its token. The proxy serves 2 Claude calls
-at a time: set `CLASSIFY_CONCURRENCY=2`, and expect about 40 minutes for the full inbox.
-If the proxy goes down mid-run the worker does not fail the emails: it logs `model unavailable,
-pausing the classify queue`, stops taking classify jobs for 30 s and puts the job back with its
-attempts untouched, so the run carries on once the proxy is back.
+proxy, so the llm-proxy container must be up with its token. Ten emails are classified at once
+and ten compared at once, against a proxy that serves twenty Claude calls at a time; the
+defaults already say so and need no setting. The provider is the limit and not the worker, so
+use a run's `limit` for a quick look and expect the full inbox to take hours.
+If the proxy goes down mid-run the worker does not fail the emails: it logs `dependency
+unavailable, pausing the queue`, stops taking jobs from that queue for 30 s and puts the job back
+with its attempts untouched, so the run carries on once the proxy is back.
 
 ```bash
 cd backend
