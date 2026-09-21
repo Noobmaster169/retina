@@ -1,3 +1,4 @@
+import type { FilterKey } from "@/components/inbox/inbox-filters";
 import type { RunSummary } from "@/lib/api/runs-schemas";
 
 import { outcomeBreakdown, type SliceTone } from "./outcomes";
@@ -45,6 +46,16 @@ export interface FlowNode {
   order: number;
   /** What it means, for the tooltip. Empty where the label already says it. */
   says: string;
+  /**
+   * The inbox filter that lists exactly what this node counted, or null for a
+   * node that is not an ending.
+   *
+   * Here so that clicking a band's end opens the emails in it. The strip above
+   * used to carry a row of chips that did this and named the same five
+   * outcomes a second time; the picture already names them, so the chips went
+   * and the link came here instead.
+   */
+  filter: FilterKey | null;
 }
 
 export interface FlowLink {
@@ -65,6 +76,14 @@ export interface RunFlow {
 /** The outcomes that only a compared pair can reach, in the order the eye should meet them. */
 const AFTER_CHECK = ["awaiting_draft", "OK", "MISMATCH"];
 
+/** Which list of emails each ending opens. The keys are the organisers'; the filters are the inbox's. */
+const FILTERS: Record<string, FilterKey> = {
+  not_comparable: "no-check",
+  awaiting_draft: "awaiting-draft",
+  OK: "agreed",
+  MISMATCH: "differences",
+};
+
 /**
  * `notComparable` and `awaitingDraft` are facts about the queues rather than
  * about a comparison, which is why they arrive beside the run instead of on
@@ -83,7 +102,7 @@ export function runFlow(run: Pick<RunSummary, "outcomes" | "review">, notCompara
   const needCheck = crossed.reduce((sum, slice) => sum + slice.count, 0);
 
   const nodes: FlowNode[] = [
-    { id: "arriving", label: "Arriving", count: total, tone: "muted", depth: 0, order: 0, says: "Every email this run was given." },
+    { id: "arriving", label: "Arriving", count: total, tone: "muted", depth: 0, order: 0, filter: "all", says: "Every email this run was given." },
   ];
   const links: FlowLink[] = [];
 
@@ -95,6 +114,7 @@ export function runFlow(run: Pick<RunSummary, "outcomes" | "review">, notCompara
       tone: "muted",
       depth: 1,
       order: 0,
+      filter: null,
       says: "Sorted into a category that asks for the two documents to be compared.",
     });
     links.push({ from: "arriving", to: "needs-check", count: needCheck, tone: "muted" });
@@ -109,7 +129,7 @@ export function runFlow(run: Pick<RunSummary, "outcomes" | "review">, notCompara
   AFTER_CHECK.forEach((key, at) => {
     const slice = ends.find((one) => one.key === key);
     if (!slice) return;
-    nodes.push({ id: slice.key, label: slice.label, count: slice.count, tone: slice.tone, depth: 2, order: at, says: slice.says });
+    nodes.push({ id: slice.key, label: slice.label, count: slice.count, tone: slice.tone, depth: 2, order: at, filter: FILTERS[slice.key] ?? null, says: slice.says });
     links.push({ from: "needs-check", to: slice.key, count: slice.count, tone: slice.tone });
   });
 
@@ -123,6 +143,7 @@ export function runFlow(run: Pick<RunSummary, "outcomes" | "review">, notCompara
       // Directly under the three it shares a queue with, and above the band
       // that never entered one.
       order: AFTER_CHECK.length,
+      filter: "needs-you",
       says: "Crossed into the second queue and could not be compared confidently, so it is waiting for a person.",
     });
     links.push({ from: "needs-check", to: "needs-person", count: parkedCount, tone: "review" });
@@ -132,7 +153,7 @@ export function runFlow(run: Pick<RunSummary, "outcomes" | "review">, notCompara
   if (noCheck) {
     // Straight from the first node to the last column: it never entered the
     // second queue, and a middle node for it would draw a step it never took.
-    nodes.push({ id: noCheck.key, label: noCheck.label, count: noCheck.count, tone: noCheck.tone, depth: 2, order: 99, says: noCheck.says });
+    nodes.push({ id: noCheck.key, label: noCheck.label, count: noCheck.count, tone: noCheck.tone, depth: 2, order: 99, filter: FILTERS[noCheck.key] ?? null, says: noCheck.says });
     links.push({ from: "arriving", to: noCheck.key, count: noCheck.count, tone: "muted" });
   }
 
@@ -147,5 +168,14 @@ export function parkedReasons(
 ): FlowNode[] {
   return outcomeBreakdown(run, notComparable, awaitingDraft)
     .slices.filter((slice) => slice.group === "parked" && slice.count > 0)
-    .map((slice, at) => ({ id: slice.key, label: slice.label, count: slice.count, tone: slice.tone, depth: 2, order: at, says: slice.says }));
+    .map((slice, at) => ({
+      id: slice.key,
+      label: slice.label,
+      count: slice.count,
+      tone: slice.tone,
+      depth: 2 as const,
+      order: at,
+      filter: "needs-you" as FilterKey,
+      says: slice.says,
+    }));
 }

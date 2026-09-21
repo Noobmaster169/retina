@@ -1,6 +1,7 @@
 "use client";
 
 import { sankey, sankeyJustify, sankeyLinkHorizontal } from "d3-sankey";
+import { useRouter } from "next/navigation";
 import { useMemo } from "react";
 
 import type { FlowLink, FlowNode, RunFlow } from "./flow";
@@ -71,11 +72,14 @@ export function useFlowLayout(flow: RunFlow): FlowLayout {
 
 export function FlowDiagram({
   flow,
+  runId,
   lit,
   onLight,
   children,
 }: {
   flow: RunFlow;
+  /** Whose inbox a node opens. */
+  runId: string;
   /** The node the reader is pointing at, or null. Everything else fades rather than moves. */
   lit: string | null;
   onLight(id: string | null): void;
@@ -83,6 +87,7 @@ export function FlowDiagram({
   children?: React.ReactNode;
 }) {
   const { nodes, links } = useFlowLayout(flow);
+  const router = useRouter();
   if (links.length === 0) {
     return <p className="py-10 text-center text-body text-ink-tertiary">Nothing has landed yet.</p>;
   }
@@ -109,19 +114,35 @@ export function FlowDiagram({
       {children}
 
       <g>
-        {nodes.map((node) => (
+        {nodes.map((node) => {
+          // Opens the emails this band ended in. The same pattern the business
+          // tables use for a clickable row: a click, and Enter when it has
+          // focus, rather than an anchor the SVG cannot hold.
+          const open = node.filter === null ? undefined : () => router.push(`/runs/${runId}/inbox?filter=${node.filter}`);
+          return (
           <g
             key={node.id}
             onMouseEnter={() => onLight(node.id)}
             onMouseLeave={() => onLight(null)}
+            onClick={open}
+            onKeyDown={(event) => {
+              if (open && (event.key === "Enter" || event.key === " ")) {
+                event.preventDefault();
+                open();
+              }
+            }}
+            role={open ? "link" : undefined}
+            tabIndex={open ? 0 : undefined}
+            aria-label={open ? `${node.label}: ${node.count}. Open these emails.` : undefined}
             opacity={lit === null || lit === node.id ? 1 : 0.35}
-            className="cursor-default transition-opacity duration-150"
+            className={`transition-opacity duration-150 focus:outline-none focus-visible:opacity-100 ${open ? "cursor-pointer" : "cursor-default"}`}
           >
             <rect x={node.x0} y={node.y0} width={node.x1 - node.x0} height={Math.max(1, node.y1 - node.y0)} fill={SLICE_TONE[node.tone].bar} rx={2} />
             <Label node={node} />
             <title>{node.says ? `${node.label}: ${node.count}. ${node.says}` : `${node.label}: ${node.count}`}</title>
           </g>
-        ))}
+          );
+        })}
       </g>
     </svg>
   );

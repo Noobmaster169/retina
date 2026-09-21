@@ -78,7 +78,7 @@ export function OutcomesPanel({ run, notComparable, awaitingDraft, live = false,
       <div className="@container min-h-0 grow overflow-y-auto px-4 pt-1">
         {view === "flow" ? (
           <div className="flex flex-col justify-center gap-1 @[560px]:h-full">
-            <FlowDiagram flow={flow} lit={lit} onLight={setLit}>
+            <FlowDiagram flow={flow} runId={run.id} lit={lit} onLight={setLit}>
               <FlowDots layout={layout} running={live && !paused} />
             </FlowDiagram>
             {reasons.length > 0 ? <Reasons reasons={reasons} lit={lit} onLight={setLit} /> : null}

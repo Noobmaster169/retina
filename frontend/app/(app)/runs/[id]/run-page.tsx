@@ -78,9 +78,9 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
           {queues ? (
             <LaneMapPanel
               map={laneMap(run, queues)}
-              runId={id}
               note={laneNote(live, paused, queues.compare.heldUntil !== null)}
               slots={{ classify: queues.classify.concurrency, compare: queues.compare.concurrency }}
+              flowing={live && !paused}
             />
           ) : null}
 

@@ -1,7 +1,19 @@
 import { describe, expect, it } from "vitest";
 
+import { runFlow } from "./flow";
 import { laneMap } from "./progress";
 import { card, queues, run } from "./progress.fixtures";
+
+const NO_FIELDS = {
+  shipper: 0,
+  consignee: 0,
+  notify_party: 0,
+  port_of_loading: 0,
+  port_of_discharge: 0,
+  container_count: 0,
+  gross_weight_kg: 0,
+};
+const REVIEW = { open: 20, byReason: { wrong_doc_type: 5, missing_attachment: 5, unreadable: 5, missing_value: 5 } };
 
 /**
  * The organisers' own class: a comparison request whose draft has not been
@@ -23,23 +35,32 @@ describe("laneMap, a run holding comparison requests with no draft yet", () => {
 
   it("measures the checked pairs against the pairs that had a draft, not against everything that crossed", () => {
     // 61 agreed + 48 differed + 20 with a person, of the 129 that had a draft.
-    expect(card(map, "checked")).toMatchObject({ value: "129", unit: "all of them" });
-  });
-
-  it("gives them an end of their own, so the 91 are on the page and not missing from it", () => {
-    expect(map.ends.map((end) => [end.label, end.count])).toEqual([
-      ["Awaiting a draft", 91],
-      ["Documents agree", 61],
-      ["Documents differ", 48],
-      ["Needs a person", 20],
-    ]);
+    expect(card(map, "checked")).toMatchObject({ value: "129", unit: null });
   });
 
   it("still says how many crossed, because that is what the classify lane handed over", () => {
     expect(map.crossing).toBe(220);
   });
 
-  it("draws no end for them where a run has none", () => {
-    expect(laneMap(run(), queues()).ends.map((end) => end.label)).not.toContain("Awaiting a draft");
+  /**
+   * The strip used to end in a row of chips naming the five outcomes, and two
+   * tests here held them to it so the 91 could not go missing again. The chips
+   * went when the flow diagram below started naming the same five and opening
+   * each one's emails, so the guarantee is asserted against the flow instead
+   * of dropped: it is the same fact, drawn somewhere better.
+   */
+  it("leaves the 91 an ending of their own, wherever the page draws it", () => {
+    const flow = runFlow(
+      { outcomes: { ok: 61, mismatch: 48, byField: NO_FIELDS }, review: REVIEW },
+      300,
+      91,
+    );
+    expect(flow.nodes.find((node) => node.id === "awaiting_draft")).toMatchObject({ count: 91, label: "Awaiting a draft" });
+    expect(flow.nodes.find((node) => node.id === "awaiting_draft")?.filter).toBe("awaiting-draft");
+  });
+
+  it("draws nothing for them where a run has none", () => {
+    const flow = runFlow({ outcomes: { ok: 0, mismatch: 0, byField: NO_FIELDS }, review: REVIEW }, 40, 0);
+    expect(flow.nodes.map((node) => node.id)).not.toContain("awaiting_draft");
   });
 });

@@ -5,21 +5,23 @@ import { motion } from "motion/react";
 
 import { Panel, PanelHead } from "@/components/ui/panel";
 import { Icon } from "@/components/ui/icons";
-import { quick, stagger, swap } from "@/lib/motion";
+import { stagger, swap } from "@/lib/motion";
 
 import type { CardState, LaneMap, StageCard } from "./progress";
-import { Drop, Ends, NotComparable } from "./lane-ends";
+import { LanePipe } from "./lane-pipe";
 
 /**
- * How the work moves: two lanes left to right, because the code has two queues
- * and not one pipeline. A vertical workflow canvas was drawn and rejected in
- * review; the horizontal reading is the one that matches queues/names.ts, and
- * only a BL_COMPARISON crosses between the lanes.
+ * How the work moves: two queues, one row each, joined by the pipe the
+ * crossing runs through.
  *
- * Two cards have something below them, hung on a short drop rule: `Sorted`
- * carries what never needed a check, and `Checked` carries where the checked
- * pairs came out. Both sit in a second row whose columns line up with the
- * cards', so they stay under their own card at any width.
+ * It was one row of six cards, which drew two queues as though they were one
+ * pipeline and left the crossing as an arrow with a label that overhung the
+ * card beside it. A row per queue is what the code actually has
+ * (queues/names.ts), and it gives the crossing somewhere of its own to be.
+ *
+ * What this panel says is what the machine is doing. Where the work ended is
+ * the flow diagram below, which names the same five outcomes and opens each
+ * one's emails; saying them here too was one screen speaking twice.
  */
 
 const CARD: Record<CardState, { border: string; tint: string; icon: string; bar: string }> = {
@@ -30,74 +32,52 @@ const CARD: Record<CardState, { border: string; tint: string; icon: string; bar:
   done: { border: "border-hairline", tint: "bg-active", icon: "text-ink-tertiary", bar: "bg-ink-faint" },
 };
 
-/** The card the first lane ends on, and so the one the crossing count sits after. */
-const SORTED = 2;
-
-/**
- * Eleven columns: six cards that share the width evenly, and five arrows at a
- * fixed size. The crossing arrow is wider than the rest because it carries a
- * label, and at the drawn 34px that label overhung the cards on both sides.
- *
- * The row under the cards uses the same template, so what hangs from a card
- * stays under it at every width. `minmax(0, 1fr)` is what lets a hung group be
- * wider than its column without widening the column, which is the bug that put
- * the last card off the panel when this was a flex row.
- */
-const COLUMNS = "minmax(0,1fr) 34px minmax(0,1fr) 34px minmax(0,1fr) 86px minmax(0,1fr) 34px minmax(0,1fr) 34px minmax(0,1fr)";
+/** Three cards and two arrows. The arrows are fixed; the cards share what is left. */
+const COLUMNS = "minmax(0,1fr) 28px minmax(0,1fr) 28px minmax(0,1fr)";
 
 interface LaneMapProps {
   map: LaneMap;
-  /** Which run's inbox the counts hung under the cards open. */
-  runId: string;
-  /** The sentence under the title. It says what the two lanes are doing right now. */
+  /** The sentence under the title. It says what the two queues are doing right now. */
   note: string;
   /** How many slots each queue has, from the worker's own env rather than from a constant here. */
   slots: { classify: number; compare: number };
+  /** Work is moving, so the pipe carries something. A drained run's pipe is still. */
+  flowing: boolean;
 }
 
-export function LaneMapPanel({ map, runId, note, slots }: LaneMapProps) {
+export function LaneMapPanel({ map, note, slots, flowing }: LaneMapProps) {
+  const sorting = map.cards.slice(0, 3);
+  const checking = map.cards.slice(3);
   return (
     <Panel className="shrink-0">
       <PanelHead title="How the work moves" note={note} />
       <div className="px-4 pb-4">
-        {/* The lanes span three card columns each, so each pill ends where its queue does. */}
-        <div className="flex gap-[34px]">
-          <Lane title="Sort every email" queue="classify" concurrency={`${slots.classify} at once`} />
-          <Lane title="Check the two documents" queue="compare" concurrency={`${slots.compare} at once`} />
-        </div>
-
-        <div className="mt-3 grid items-stretch" style={{ gridTemplateColumns: COLUMNS }}>
-          {map.cards.map((card, index) => (
-            <Fragment key={card.key}>
-              <Card card={card} index={index} />
-              {index < map.cards.length - 1 ? <Arrow crossing={index === SORTED ? map.crossing : null} /> : null}
-            </Fragment>
-          ))}
-        </div>
-
-        {/* The same columns again: `Sorted` is the fifth, `Checked` the eleventh. */}
-        <div className="grid items-start pt-0" style={{ gridTemplateColumns: COLUMNS }}>
-          <div className="col-start-5 flex w-max flex-col items-center justify-self-center">
-            <Drop />
-            <NotComparable runId={runId} count={map.notComparable} />
-          </div>
-          <div className="col-start-11 flex w-max flex-col items-end justify-self-end">
-            <Drop />
-            <Ends runId={runId} ends={map.ends} />
-          </div>
-        </div>
+        <Lane name="classify" says="Sorts every email" at={slots.classify} cards={sorting} from={0} />
+        <LanePipe crossing={map.crossing} flowing={flowing && map.crossing > 0} />
+        <Lane name="compare" says="Checks the two documents" at={slots.compare} cards={checking} from={3} />
       </div>
     </Panel>
   );
 }
 
-function Lane({ title, queue, concurrency }: { title: string; queue: string; concurrency: string }) {
+/** One queue: what it is, how wide it runs, and its three cards. */
+function Lane({ name, says, at, cards, from }: { name: string; says: string; at: number; cards: StageCard[]; from: number }) {
   return (
-    <div className="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md bg-sunken px-3">
-      <span className="shrink-0 text-small font-medium text-ink-secondary">{title}</span>
-      <span className="shrink-0 font-mono text-mono-xs text-ink-tertiary">{queue}</span>
-      <span className="grow" />
-      <span className="shrink-0 text-small text-ink-tertiary">{concurrency}</span>
+    <div>
+      <div className="flex items-center gap-2 pb-2">
+        <span className="font-mono text-mono-xs text-ink-tertiary">{name}</span>
+        <span className="text-small text-ink-secondary">{says}</span>
+        <span className="grow" />
+        <span className="text-small text-ink-tertiary">{at} at once</span>
+      </div>
+      <div className="grid items-stretch" style={{ gridTemplateColumns: COLUMNS }}>
+        {cards.map((card, index) => (
+          <Fragment key={card.key}>
+            <Card card={card} index={from + index} />
+            {index < cards.length - 1 ? <Arrow /> : null}
+          </Fragment>
+        ))}
+      </div>
     </div>
   );
 }
@@ -110,26 +90,26 @@ function Card({ card, index }: { card: StageCard; index: number }) {
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={stagger(index)}
-      className={`flex h-[88px] min-w-0 flex-1 basis-0 flex-col rounded-lg border px-3 py-2.5 transition-colors duration-500 ${skin.border}`}
+      className={`flex h-[76px] min-w-0 flex-col rounded-lg border px-3 py-2.5 transition-colors duration-500 ${skin.border}`}
     >
       <div className="flex items-center gap-2">
         <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-sm transition-colors duration-500 ${skin.tint}`}>
           <Icon name={card.icon} size={11} className={`transition-colors duration-500 ${skin.icon}`} />
         </span>
         <span className="truncate text-small font-medium">{card.label}</span>
+        <span className="grow" />
+        {/* Only where it is news. A number that says it already gets no word after it. */}
+        {card.unit ? <span className="shrink-0 truncate text-caption text-ink-tertiary">{card.unit}</span> : null}
       </div>
-      <div className="mt-1.5 flex items-baseline gap-1.5">
-        <motion.span
-          key={card.value}
-          initial={{ opacity: 0.4 }}
-          animate={{ opacity: 1 }}
-          transition={swap}
-          className="whitespace-nowrap text-[20px] font-semibold tracking-[-0.02em] tabular-nums"
-        >
-          {card.value}
-        </motion.span>
-        <span className="min-w-0 truncate text-caption text-ink-tertiary">{card.unit}</span>
-      </div>
+      <motion.span
+        key={card.value}
+        initial={{ opacity: 0.4 }}
+        animate={{ opacity: 1 }}
+        transition={swap}
+        className="mt-1 whitespace-nowrap text-[20px] font-semibold tracking-[-0.02em] tabular-nums"
+      >
+        {card.value}
+      </motion.span>
       <span className="grow" />
       {/*
         Both bars stay mounted and cross-fade. Swapping one for the other
@@ -156,32 +136,15 @@ function Card({ card, index }: { card: StageCard; index: number }) {
   );
 }
 
-/**
- * The crossing between the two lanes. The one arrow that carries a count gets
- * a wider column than the rest: at the drawn 34px the label overhung the cards
- * on both sides of it and read as a collision rather than as a label.
- */
-function Arrow({ crossing }: { crossing: number | null }) {
-  const live = crossing !== null && crossing > 0;
+/** Between two cards of one queue. It carries nothing, so it is drawn as nothing but a direction. */
+function Arrow() {
   return (
-    <div
-      className={`flex shrink-0 flex-col items-center justify-center gap-1 ${crossing === null ? "w-[34px]" : "w-[86px]"}`}
-    >
-      {crossing === null ? null : (
-        <motion.span
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={quick}
-          className={`whitespace-nowrap font-mono text-[9.5px] ${live ? "text-signal" : "text-ink-faint"}`}
-        >
-          {crossing} need a check
-        </motion.span>
-      )}
-      <svg width="34" height="8" viewBox="0 0 34 8" aria-hidden="true" className="shrink-0">
+    <div className="flex w-[28px] shrink-0 items-center justify-center">
+      <svg width="24" height="8" viewBox="0 0 24 8" aria-hidden="true">
         <path
-          d="M3 4 H28 M24.5 1.5 L28 4 L24.5 6.5"
+          d="M2 4 H19 M15.5 1.5 L19 4 L15.5 6.5"
           fill="none"
-          stroke={live ? "var(--signal)" : "var(--hairline-strong)"}
+          stroke="var(--hairline-strong)"
           strokeWidth={1.3}
           strokeLinecap="round"
           strokeLinejoin="round"
