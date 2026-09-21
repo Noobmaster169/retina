@@ -1,6 +1,6 @@
 import type { Pool } from "pg";
 
-import type { ChatAnswer, ChatConversation, NewMessage } from "../contracts";
+import type { ChatAnswer, ChatConversation, ChatProgress, NewMessage } from "../contracts";
 import { resolveContext } from "../agents/chat/context";
 import { runTurn } from "../agents/chat/loop";
 import { renderMemory } from "../agents/chat/memory";
@@ -36,6 +36,8 @@ export interface TurnDeps {
   llm: LlmClient;
   /** Whether the person has stopped this turn. Read between steps. */
   stopped(): boolean;
+  /** Where the turn has got to, for a caller that is streaming it back. Absent, the turn does not stream. */
+  onProgress?(progress: ChatProgress): void;
 }
 
 export async function answerTurn(
@@ -79,6 +81,7 @@ export async function answerTurn(
         for (const call of calls) await chatLive.addToolTurn(deps.pool, id, asked.id, call);
       },
       stopped: deps.stopped,
+      onProgress: deps.onProgress,
     },
     {
       question: message.content,

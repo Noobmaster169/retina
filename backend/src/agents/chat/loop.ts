@@ -110,7 +110,11 @@ export async function runTurn(deps: LoopDeps, input: TurnInput): Promise<TurnRes
     return (soFar: string) => {
       const answer = valueSoFar(soFar, "answer");
       const said = valueSoFar(soFar, "reading") || reading;
-      const phase: ChatPhase = valueSoFar(soFar, "action") === "final" || answer !== "" ? "writing" : "reading";
+      // `action` says "final" long before the answer starts, because the model
+      // writes the object in order and `reading` sits between them. Phase
+      // follows the prose and not the intent, or the page claims to be writing
+      // an answer through the whole of the pause before one exists.
+      const phase: ChatPhase = answer !== "" ? "writing" : "reading";
       const signature = [phase, said, answer].join("\u0000");
       if (signature === last) return;
       last = signature;
