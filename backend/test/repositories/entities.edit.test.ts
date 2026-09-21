@@ -89,9 +89,33 @@ describe("locating at resolution", () => {
       expect((await entityLocate_unlocated(tx)).some((row) => row.id === String(id))).toBe(false);
     });
   });
+
+  it("offers a port it has already placed again under --all, so a fix to the lookup reaches it", async () => {
+    await inRollback(async (tx) => {
+      const id = await entityResolution.insertFromSighting(tx, "port", "KARACHI, PAKISTAN (PKKHI)", new Date());
+      expect((await entityLocate_unlocated(tx)).some((row) => row.id === String(id))).toBe(false);
+      expect((await entityLocate_unlocated(tx, true)).some((row) => row.id === String(id))).toBe(true);
+    });
+  });
+
+  it("leaves an attribute a person settled alone when it places the port again", async () => {
+    await inRollback(async (tx) => {
+      const { entityLocate } = await import("../../src/ontology/repositories");
+      const id = String(await entityResolution.insertFromSighting(tx, "port", "KARACHI, PAKISTAN (PKKHI)", new Date()));
+      await entityEdit.setAttributes(tx, "port", id, { country: "Lemuria" }, "a reviewer");
+
+      expect(await entityLocate.locateEntity(tx, id, "port", "KARACHI, PAKISTAN (PKKHI)")).toBe(true);
+      const stored = await entityProfile.read(tx, id);
+      expect(stored?.attributes.country).toBe("Lemuria");
+      expect(stored?.attributeSources.country).toMatchObject({ source: "human" });
+      // Everything the person did not touch is still the reference list's.
+      expect(stored?.attributes.countryCode).toBe("PK");
+      expect(stored?.attributeSources.countryCode).toMatchObject({ source: "reference" });
+    });
+  });
 });
 
-async function entityLocate_unlocated(tx: Parameters<Parameters<typeof inRollback>[0]>[0]) {
+async function entityLocate_unlocated(tx: Parameters<Parameters<typeof inRollback>[0]>[0], again = false) {
   const { entityLocate } = await import("../../src/ontology/repositories");
-  return entityLocate.unlocated(tx);
+  return entityLocate.unlocated(tx, again);
 }

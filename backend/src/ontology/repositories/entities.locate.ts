@@ -19,6 +19,23 @@ function sources(keys: string[]): Record<string, AttributeSource> {
   return Object.fromEntries(keys.map((key) => [key, REFERENCE]));
 }
 
+/**
+ * The keys a person has settled, which the reference list leaves alone.
+ *
+ * A placement used to be written whole, which was invisible while it only ever
+ * ran on a thing that had none of these. It stops being invisible the moment a
+ * port is placed a second time, so the rule the edit route documents is
+ * enforced here rather than assumed.
+ */
+async function settledByHand(tx: Queryable, id: string): Promise<Set<string>> {
+  const { rows } = await tx.query<{ key: string }>(
+    `select key from core.entities, jsonb_each(attributes_source) as each(key, value)
+      where id = $1::bigint and value->>'source' = 'human'`,
+    [id],
+  );
+  return new Set(rows.map((row) => row.key));
+}
+
 /** Places a port from its name. Returns false when the reference lists hold no such port. */
 export async function locateEntity(tx: Queryable, id: string, kind: string, canonical: string): Promise<boolean> {
   if (kind !== "port") return false;
@@ -33,6 +50,8 @@ export async function locateEntity(tx: Queryable, id: string, kind: string, cano
     subregion: located.country.subregion,
   };
   if (located.locode) attributes.locode = located.locode;
+  for (const key of await settledByHand(tx, id)) delete attributes[key];
+  if (Object.keys(attributes).length === 0) return true;
   await mergeAttributes(tx, id, attributes, sources(Object.keys(attributes)));
   return true;
 }
@@ -59,15 +78,33 @@ export function countryCodeFor(attributes: Record<string, string | null>): strin
   return countryByName(attributes.country)?.code ?? null;
 }
 
-/** Every live port without coordinates or a country code, and every live company with a country and no code. What `pnpm ontology:locate` walks. */
-export async function unlocated(db: Queryable): Promise<{ id: string; kind: string; canonical: string; attributes: Record<string, string | null> }[]> {
-  const { rows } = await db.query<{ id: string; kind: string; canonical: string; attributes: Record<string, string | null> }>(
+export interface Unplaced {
+  id: string;
+  kind: string;
+  canonical: string;
+  attributes: Record<string, string | null>;
+}
+
+/**
+ * Every live port without coordinates or a country code, and every live
+ * company with a country and no code. What `pnpm ontology:locate` walks.
+ *
+ * `again` widens it to the ports already placed as well, which is what `--all`
+ * is for: skipping them is what makes the default cheap, and it is also what
+ * pins a port to the answer the lookup gave on the day it was first seen, so
+ * an improvement to the lookup reaches nothing without it. Companies are
+ * unaffected either way, since their code comes from the country their profile
+ * names rather than from the lookup.
+ */
+export async function unlocated(db: Queryable, again = false): Promise<Unplaced[]> {
+  const { rows } = await db.query<Unplaced>(
     `select id::text as id, kind, canonical, attributes
        from core.entities
       where merged_into is null
-        and ((kind = 'port' and (attributes->>'lat' is null or attributes->>'countryCode' is null))
+        and ((kind = 'port' and ($1::boolean or attributes->>'lat' is null or attributes->>'countryCode' is null))
           or (kind = 'party' and attributes->>'country' is not null and attributes->>'countryCode' is null))
       order by kind, canonical`,
+    [again],
   );
   return rows;
 }
