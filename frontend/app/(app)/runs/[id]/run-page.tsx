@@ -67,7 +67,14 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
 
         <RunHeader run={run} summary={runSummaryLine(run, queues ?? null)} actions={actions} />
 
-        <div className="flex min-h-0 grow flex-col gap-4 px-6 pb-6">
+        {/*
+          The page scrolls, the panels do not. It used to be one flex column
+          filling exactly the height left over, which worked while everything
+          on it fit; the moment the senders were added under the run, there was
+          more than a screenful and nowhere for it to go, so the panels above
+          were squeezed instead and the flow lost most of its height.
+        */}
+        <div className="flex min-h-0 grow flex-col gap-4 overflow-y-auto px-6 pb-6">
           {queues ? (
             <LaneMapPanel
               map={laneMap(run, queues)}
@@ -77,48 +84,49 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
             />
           ) : null}
 
-          <div className="flex min-h-0 grow gap-4">
-            {live && queues ? (
-              <>
-                <QueuePanel
-                  title="Sorting now"
-                  queue={queues.classify}
-                  runId={id}
-                  paused={paused}
-                  drained="Every email has been read. Only a comparison request crossed into the second queue, and that queue is still working."
-                  className="w-[372px] shrink-0"
-                />
-                <QueuePanel
-                  title="Checking now"
-                  queue={queues.compare}
-                  runId={id}
-                  paused={paused}
-                  drained="Nothing is waiting for a check. Every pair that crossed has been judged; the rest of the inbox never needed one."
-                  className="w-[372px] shrink-0"
-                />
-                <OutcomesPanel
-                  run={run}
-                  notComparable={queues.handoff.notComparable}
-                  awaitingDraft={queues.handoff.awaitingDraft}
-                  live={live}
-                  paused={paused}
-                  className="min-w-0 grow"
-                />
-              </>
-            ) : (
-              <>
-                <OutcomesPanel
-                  run={run}
-                  notComparable={queues?.handoff.notComparable ?? 0}
-                  awaitingDraft={queues?.handoff.awaitingDraft ?? 0}
-                  live={live}
-                  paused={paused}
-                  className="min-w-0 grow"
-                />
-                <MachineryPanel run={run} className="w-[372px] shrink-0" />
-              </>
-            )}
+          {/*
+            Tall enough for the flow to be read at, and no taller. `grow` here
+            would go back to dividing a fixed height between the panels.
+          */}
+          {/*
+            The flow first in both states, and at full width while a run is
+            live. It used to come third in that row, behind two fixed panels,
+            which left the one picture of the whole run the narrowest thing on
+            the page exactly while it had something to show.
+          */}
+          <div className="flex min-h-[400px] shrink-0 gap-4">
+            <OutcomesPanel
+              run={run}
+              notComparable={queues?.handoff.notComparable ?? 0}
+              awaitingDraft={queues?.handoff.awaitingDraft ?? 0}
+              live={live}
+              paused={paused}
+              className="min-w-0 grow"
+            />
+            {live ? null : <MachineryPanel run={run} className="w-[372px] shrink-0" />}
           </div>
+
+          {live && queues ? (
+            <div className="flex min-h-[300px] shrink-0 gap-4">
+              <QueuePanel
+                title="Sorting now"
+                queue={queues.classify}
+                runId={id}
+                paused={paused}
+                drained="Every email has been read. Only a comparison request crossed into the second queue, and that queue is still working."
+                className="min-w-0 grow"
+              />
+              <QueuePanel
+                title="Checking now"
+                queue={queues.compare}
+                runId={id}
+                paused={paused}
+                drained="Nothing is waiting for a check. Every pair that crossed has been judged; the rest of the inbox never needed one."
+                className="min-w-0 grow"
+              />
+              <MachineryPanel run={run} className="w-[372px] shrink-0" />
+            </div>
+          ) : null}
 
           {/*
             Under everything, because it is the one control on this page and

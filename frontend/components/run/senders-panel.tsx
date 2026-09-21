@@ -35,7 +35,12 @@ export function SendersPanel({ className = "" }: { className?: string }) {
         Drag a sender towards <span className="text-ink-secondary">First</span> and their mail enters the queue ahead of everyone
         else&apos;s. Emails already queued keep the place they came in at.
       </p>
-      <div className="min-h-0 grow overflow-y-auto px-4 pb-3">
+      {/*
+        No scroller of its own. The page scrolls now, and a panel that scrolled
+        inside a page that scrolls is two scrollbars arguing over one wheel.
+        The table draws its first rows and adds more as the page reaches them.
+      */}
+      <div className="px-4 pb-3">
         <ClientsTable initialList={null} initialError={null} />
       </div>
     </Panel>
