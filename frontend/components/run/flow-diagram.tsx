@@ -1,74 +1,24 @@
 "use client";
 
-import { sankey, sankeyJustify, sankeyLinkHorizontal } from "d3-sankey";
 import { useRouter } from "next/navigation";
-import { useMemo } from "react";
 
-import type { FlowLink, FlowNode, RunFlow } from "./flow";
+import type { RunFlow } from "./flow";
+import { type FlowLayout, type Laid, HEIGHT, NODE_WIDTH, useFlowLayout, WIDTH } from "./flow-layout";
 import { SLICE_TONE } from "./outcome-tones";
 
 /**
  * The run's journey, drawn.
  *
- * `d3-sankey` does the arithmetic that is genuinely hard, which is where each
- * node sits and how the bands are ordered so they cross as little as possible.
- * The painting is ours, because a charting library brings its own idea of what
- * a chart looks like and this one has to look like the rest of the product:
- * hairlines, the verdict hues already in `outcome-tones.ts`, and no shadow.
- *
- * `sankeyJustify` is what puts `No check needed` in the last column beside the
- * outcomes it belongs with rather than in the middle one it never entered: it
- * pushes every node with nothing leaving it to the right-hand edge.
+ * The layout is `flow-layout.ts`; this is the painting, and it is ours because
+ * a charting library brings its own idea of what a chart looks like and this
+ * one has to look like the rest of the product: hairlines, the verdict hues
+ * already in `outcome-tones.ts`, and no shadow.
  */
 
-const WIDTH = 760;
-const HEIGHT = 250;
-const NODE_WIDTH = 10;
-const NODE_PADDING = 16;
-/** Room for the labels, which sit outside the plot on both sides. */
-// The bottom is deeper than the top because every label is two lines, and the
-// second one of the lowest node sits below the node's own box.
-const PAD = { top: 8, right: 168, bottom: 20, left: 92 };
+/** How far a label reaches, and so how wide the thing a mouse can find is. */
+const LABEL_REACH = 150;
 
-type Laid = FlowNode & { x0: number; x1: number; y0: number; y1: number };
-type LaidLink = { source: Laid; target: Laid; width: number; count: number; tone: FlowLink["tone"] };
-
-export interface FlowLayout {
-  nodes: Laid[];
-  links: (LaidLink & { id: string; d: string })[];
-}
-
-/** The layout alone, so the dots can follow the very same paths the bands are drawn from. */
-export function useFlowLayout(flow: RunFlow): FlowLayout {
-  return useMemo(() => {
-    if (flow.links.length === 0) return { nodes: [], links: [] };
-    const layout = sankey<FlowNode, { count: number; tone: FlowLink["tone"] }>()
-      .nodeId((node) => node.id)
-      .nodeWidth(NODE_WIDTH)
-      .nodePadding(NODE_PADDING)
-      .nodeAlign(sankeyJustify)
-      // Our order, not the library's: see the note on FlowNode.order.
-      .nodeSort((a, b) => a.order - b.order)
-      .extent([
-        [PAD.left, PAD.top],
-        [WIDTH - PAD.right, HEIGHT - PAD.bottom],
-      ]);
-
-    const graph = layout({
-      nodes: flow.nodes.map((node) => ({ ...node })),
-      links: flow.links.map((link) => ({ source: link.from, target: link.to, value: link.count, count: link.count, tone: link.tone })),
-    });
-
-    const path = sankeyLinkHorizontal();
-    return {
-      nodes: graph.nodes as Laid[],
-      links: graph.links.map((link, at) => {
-        const laid = link as unknown as LaidLink;
-        return { ...laid, id: `flow-${at}`, d: path(link as never) ?? "" };
-      }),
-    };
-  }, [flow]);
-}
+export type { FlowLayout };
 
 export function FlowDiagram({
   flow,
@@ -92,10 +42,26 @@ export function FlowDiagram({
     return <p className="py-10 text-center text-body text-ink-tertiary">Nothing has landed yet.</p>;
   }
 
-  const dim = (id: string, from: string) => (lit === null || lit === id || lit === from ? 1 : 0.18);
+  const on = (id: string) => lit === null || lit === id;
 
   return (
     <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="h-auto w-full" role="img" aria-label="Where the run's emails went">
+      <defs>
+        {/*
+          Each band runs from the colour of where it starts to the colour of
+          where it ends, which is what makes it read as a journey rather than
+          as a shape. One flat colour left the two neutrals, the three hundred
+          needing no check and the ninety-one with no draft, as two grey shapes
+          a reader had to trace back to the fork to tell apart.
+        */}
+        {links.map((link) => (
+          <linearGradient key={link.id} id={`${link.id}-paint`} gradientUnits="userSpaceOnUse" x1={link.source.x1} x2={link.target.x0}>
+            <stop offset="0%" stopColor={SLICE_TONE[link.source.tone].bar} />
+            <stop offset="100%" stopColor={SLICE_TONE[link.tone].bar} />
+          </linearGradient>
+        ))}
+      </defs>
+
       <g>
         {links.map((link) => (
           <path
@@ -103,10 +69,15 @@ export function FlowDiagram({
             id={link.id}
             d={link.d}
             fill="none"
-            stroke={SLICE_TONE[link.tone].bar}
+            stroke={`url(#${link.id}-paint)`}
             strokeWidth={Math.max(1, link.width)}
-            strokeOpacity={0.45 * dim(link.target.id, link.source.id)}
-            className="transition-[stroke-opacity] duration-150"
+            strokeOpacity={on(link.target.id) || on(link.source.id) ? 0.5 : 0.12}
+            // Pointing at a band is pointing at where it goes, which is the
+            // question a band raises. Without this only the ten-pixel node
+            // bars could be hit, and almost nothing on the diagram lit up.
+            onMouseEnter={() => onLight(link.target.id)}
+            onMouseLeave={() => onLight(null)}
+            className="cursor-pointer transition-[stroke-opacity] duration-150"
           />
         ))}
       </g>
@@ -134,9 +105,21 @@ export function FlowDiagram({
             role={open ? "link" : undefined}
             tabIndex={open ? 0 : undefined}
             aria-label={open ? `${node.label}: ${node.count}. Open these emails.` : undefined}
-            opacity={lit === null || lit === node.id ? 1 : 0.35}
+            opacity={on(node.id) ? 1 : 0.3}
             className={`transition-opacity duration-150 focus:outline-none focus-visible:opacity-100 ${open ? "cursor-pointer" : "cursor-default"}`}
           >
+            {/*
+              The thing a mouse actually finds. The bar is ten pixels wide and
+              the words beside it were unreachable, so a node, its name and its
+              number are one target.
+            */}
+            <rect
+              x={node.last ? node.x0 - 4 : node.x0 - LABEL_REACH}
+              y={node.y0 - 10}
+              width={LABEL_REACH + NODE_WIDTH + 4}
+              height={Math.max(1, node.y1 - node.y0) + 20}
+              fill="transparent"
+            />
             <rect x={node.x0} y={node.y0} width={node.x1 - node.x0} height={Math.max(1, node.y1 - node.y0)} fill={SLICE_TONE[node.tone].bar} rx={2} />
             <Label node={node} />
             <title>{node.says ? `${node.label}: ${node.count}. ${node.says}` : `${node.label}: ${node.count}`}</title>
@@ -149,20 +132,41 @@ export function FlowDiagram({
 }
 
 /**
- * The name outside the band and the number under it. Left of the first column
- * and right of the last, never on top of a band: a label inside a band that is
- * two pixels tall is a label nobody can read.
+ * A node's name and its count, on one line, never on top of a band.
+ *
+ * Three placements, because a Sankey has three kinds of column. The first has
+ * open space to its left and the last to its right. The middle one has a band
+ * on both sides by definition, so its label goes above it; put to the left it
+ * sat on the very band feeding it, which is what `Needs a check 12` was doing
+ * across the band carrying the twelve.
+ *
+ * One line and not two. Stacking the count under the name doubled a label's
+ * height, and on a run where three outcomes hold one email each the nodes are
+ * a pixel tall and stack closer than that: `Documents agree` and `Documents
+ * differ` ran into each other.
+ *
+ * The canvas-coloured stroke under the glyphs is drawn first, so a label that
+ * still ends up near a band is read against the page rather than through it.
  */
 function Label({ node }: { node: Laid }) {
-  const last = node.depth === 2;
-  const x = last ? node.x1 + 8 : node.x0 - 8;
-  const y = (node.y0 + node.y1) / 2;
+  const above = node.column === 1;
+  const x = above ? (node.x0 + node.x1) / 2 : node.last ? node.x1 + 8 : node.x0 - 8;
+  const y = above ? node.y0 - 8 : (node.y0 + node.y1) / 2;
   return (
-    <text x={x} y={y} textAnchor={last ? "start" : "end"} dominantBaseline="middle" className="pointer-events-none">
+    <text
+      x={x}
+      y={y}
+      textAnchor={above ? "middle" : node.last ? "start" : "end"}
+      dominantBaseline="middle"
+      stroke="var(--canvas)"
+      strokeWidth={3}
+      paintOrder="stroke"
+      className="pointer-events-none"
+    >
       <tspan className={`text-[11px] ${SLICE_TONE[node.tone].key}`} fill="currentColor">
         {node.label}
       </tspan>
-      <tspan x={x} dy="13" className="fill-ink font-mono text-[11px] tabular-nums">
+      <tspan dx="5" className="fill-ink font-mono text-[11px] tabular-nums">
         {node.count}
       </tspan>
     </text>

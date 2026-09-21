@@ -67,7 +67,7 @@ describe("runFlow", () => {
   it("no check needed goes straight to the last column, never through the second queue", () => {
     const link = flow.links.find((one) => one.to === "not_comparable");
     expect(link?.from).toBe("arriving");
-    expect(node("not_comparable")?.depth).toBe(2);
+    expect(node("not_comparable")?.column).toBe(2);
   });
 
   it("a band takes the tone of where it ends, since that is what a reader is following", () => {

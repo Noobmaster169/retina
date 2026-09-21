@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import useSWR from "swr";
 
 import { TopBar } from "@/components/shell/top-bar";
@@ -47,6 +48,34 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
     keepPreviousData: true,
   });
 
+  // Same reason as the flow panel: the poll hands down new objects twice a
+  // second, and rebuilding the map from them re-ran every card's arrival
+  // animation for numbers that had not moved. One string of every number the
+  // map reads, so the work happens when something changed and not before.
+  const counted = [
+    run.status,
+    run.totalEmails,
+    run.outcomes.ok,
+    run.outcomes.mismatch,
+    run.review.open,
+    Object.values(run.stageCounts).join(","),
+    queues?.handoff.needCheck,
+    queues?.handoff.notComparable,
+    queues?.handoff.awaitingDraft,
+    queues?.classify.active,
+    queues?.classify.concurrency,
+    queues?.classify.heldUntil,
+    queues?.compare.active,
+    queues?.compare.concurrency,
+    queues?.compare.waiting,
+    queues?.compare.heldUntil,
+  ].join("|");
+  const map = useMemo(
+    () => (queues ? laneMap(run, queues) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `counted` is every number the map reads.
+    [counted],
+  );
+
   const actions = useRunActions(id, () => void mutate());
   const status = statusWord(run, degraded(health, queues ?? null));
   // A paused run is still polled, because someone else may resume it, but
@@ -77,7 +106,7 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
         <div className="flex min-h-0 grow flex-col gap-4 overflow-y-auto px-6 pb-6">
           {queues ? (
             <LaneMapPanel
-              map={laneMap(run, queues)}
+              map={map ?? laneMap(run, queues)}
               note={laneNote(live, paused, queues.compare.heldUntil !== null)}
               slots={{ classify: queues.classify.concurrency, compare: queues.compare.concurrency }}
               flowing={live && !paused}

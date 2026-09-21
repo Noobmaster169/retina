@@ -5,7 +5,7 @@ import { motion } from "motion/react";
 
 import { Panel, PanelHead } from "@/components/ui/panel";
 import { Icon } from "@/components/ui/icons";
-import { stagger, swap } from "@/lib/motion";
+import { stagger } from "@/lib/motion";
 
 import type { CardState, LaneMap, StageCard } from "./progress";
 import { LanePipe } from "./lane-pipe";
@@ -101,15 +101,18 @@ function Card({ card, index }: { card: StageCard; index: number }) {
         {/* Only where it is news. A number that says it already gets no word after it. */}
         {card.unit ? <span className="shrink-0 truncate text-caption text-ink-tertiary">{card.unit}</span> : null}
       </div>
-      <motion.span
-        key={card.value}
-        initial={{ opacity: 0.4 }}
-        animate={{ opacity: 1 }}
-        transition={swap}
-        className="mt-1 whitespace-nowrap text-[20px] font-semibold tracking-[-0.02em] tabular-nums"
-      >
-        {card.value}
-      </motion.span>
+      {/*
+        The number changes in place. It used to be keyed on its own value,
+        which is a remount every time it changed: React dropped the element and
+        inserted a new one at four-tenths opacity, so on a live run all six
+        numbers dipped and recovered together every two seconds. That read as
+        the panel flickering rather than as anything having happened.
+
+        Nothing is lost by holding still. The digits are tabular, so they swap
+        without moving, and the bar under them already says the stage is
+        working.
+      */}
+      <span className="mt-1 whitespace-nowrap text-[20px] font-semibold tracking-[-0.02em] tabular-nums">{card.value}</span>
       <span className="grow" />
       {/*
         Both bars stay mounted and cross-fade. Swapping one for the other
