@@ -51,11 +51,13 @@ will fail the same way (fast, not retried).
 
 **2. Worker**, a second terminal in `backend/`. It consumes the queues; without it a
 run is created and never moves. It classifies every email with an LLM call through the
-proxy, so the llm-proxy container must be up with its token. The proxy serves 2 Claude calls
-at a time: set `CLASSIFY_CONCURRENCY=2`, and expect about 40 minutes for the full inbox.
-If the proxy goes down mid-run the worker does not fail the emails: it logs `model unavailable,
-pausing the classify queue`, stops taking classify jobs for 30 s and puts the job back with its
-attempts untouched, so the run carries on once the proxy is back.
+proxy, so the llm-proxy container must be up with its token. Ten emails are classified at once
+and ten compared at once, against a proxy that serves twenty Claude calls at a time; the
+defaults already say so and need no setting. The provider is the limit and not the worker, so
+use a run's `limit` for a quick look and expect the full inbox to take hours.
+If the proxy goes down mid-run the worker does not fail the emails: it logs `dependency
+unavailable, pausing the queue`, stops taking jobs from that queue for 30 s and puts the job back
+with its attempts untouched, so the run carries on once the proxy is back.
 
 ```bash
 cd backend
@@ -114,6 +116,9 @@ All routes except `/health` need `Authorization: Bearer <key>`. The key is
 | `GET /shipments`, `GET /shipments/:emailId`; `GET /ontology/:kind` for six kinds; `GET /ontology/party/:id/people|ports`, `/ontology/port/:id/parties` | the business pages' readers (phase 13): shipments as the mail states them, a kind's list with attributes, summary and roles, and what sits beside a thing |
 | `PATCH /ontology/:kind/:id/attributes`, `POST /ontology/:kind/:id/rename`, `POST /ontology/:kind/:id/merge` | a person correcting a thing from its page, each with `actor` |
 | `GET /clients`, `PUT /clients/:domain` | every sender domain seen, with its tier, kind and counts, and `known: false` for one nobody has ranked. The `PUT` takes `{ name?, tier?, kind? }`. A tier orders the queue and decides no category |
+| `GET /gate` | what the admission gate is doing: the mode, today's model spend against `GATE_DAILY_BUDGET_USD`, the global bucket, and how many decisions it reached and holds it is sitting on |
+| `GET /gate/senders`, `PUT /gate/senders/:principal` | every sender the gate has an opinion about, with the standing it earned and today's units against its cap. The `PUT` takes `{ scope: "address" \| "domain", policy: "auto" \| "allow" \| "block", note? }`. `auto` is the absence of a decision. It decides no category |
+| `GET /gate/held`, `POST /gate/held/:id/release` | the emails nobody has paid to read yet, and letting one through. A second release of the same row is a 409 |
 | `GET /review`, `GET /review/stats`, `GET /review/:id` | the cases waiting for a person, the queue's own numbers, and one case with its evidence and its history |
 | `POST /review/:id/actions`, `POST /review/:id/upload` | what a person does to a case: confirm, correct a field, reclassify, note, retry, reopen, or supply a document. 409 when the case is not in a state where the action means anything |
 | `GET /files/*key` | streams one object from MinIO: an attachment, a reviewer's upload, or a rendered page |
@@ -155,6 +160,8 @@ curl -s 127.0.0.1:8091/ai/chat -H "authorization: Bearer $TEAM_API_KEY" \
 | Task | Where |
 | --- | --- |
 | Add a model alias | `proxy/proxy.yaml`, then rebuild the llm-proxy container |
+| See what the gate would hold, spending nothing | `cd backend && pnpm gate:drill --emails 20` |
+| Turn the gate on | `GATE_MODE=enforce` in `backend/.env`, then restart the worker. It defaults to `observe`, which records every verdict and holds nothing but a blacklist |
 | Add a table | new file in `backend/db/migrations/`, then `pnpm db:migrate` |
 | Add a backend route | a router in `backend/src/routes/`, mounted in `backend/src/app.ts`; its shapes in `backend/src/contracts.ts`; then call it from `frontend/lib/api-client.ts` |
 | Add an env var | `backend/src/config.ts` (the only reader) and `backend/.env.example` |

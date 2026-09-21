@@ -16,10 +16,11 @@ describe("GET /prompts", () => {
 
     expect(response.status).toBe(200);
     const classify = response.body.steps.find((s: { step: string }) => s.step === "classify");
-    expect(classify.versions.map((v: { version: string }) => v.version)).toEqual(["v5", "v4", "v3"]);
-    expect(classify.versions.filter((v: { active: boolean }) => v.active).map((v: { version: string }) => v.version)).toEqual(["v3"]);
-    expect(classify.versions[2]).toMatchObject({ model: "sonnet", notes: expect.stringContaining("Phase 2 final") });
-    expect(classify.versions[0]).toMatchObject({ active: false, notes: expect.stringContaining("attachments") });
+    expect(classify.versions.map((v: { version: string }) => v.version)).toEqual(["v6", "v5", "v4", "v3"]);
+    expect(classify.versions.filter((v: { active: boolean }) => v.active).map((v: { version: string }) => v.version)).toEqual(["v6"]);
+    expect(classify.versions[3]).toMatchObject({ model: "sonnet", notes: expect.stringContaining("Phase 2 final") });
+    expect(classify.versions[0]).toMatchObject({ active: true, notes: expect.stringContaining("stage invariant") });
+    expect(classify.versions[1]).toMatchObject({ active: false, notes: expect.stringContaining("attachments") });
     expect(response.body.steps.map((s: { step: string }) => s.step)).toEqual([
       "classify",
       "classify-verify",
@@ -28,6 +29,7 @@ describe("GET /prompts", () => {
       "extract",
       "extract-verify",
       "field-judge",
+      "vision-read",
     ]);
   });
 

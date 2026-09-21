@@ -7,6 +7,12 @@ export class MemorySource implements Source {
     private readonly attachments: Map<string, Buffer> = new Map(),
   ) {}
 
+  /** Adds one email after construction, for a test that makes its mail up as it goes. */
+  put(record: EmailRecord, attachments: Map<string, Buffer> = new Map()): void {
+    this.records.push(record);
+    for (const [path, bytes] of attachments) this.attachments.set(path, bytes);
+  }
+
   async listEmailIds(): Promise<string[]> {
     return this.records.map((record) => record.email_id).sort();
   }

@@ -192,13 +192,13 @@ finish() {
 # Safe to re-run: it keeps every secret already in ~/retina/.env, installs a
 # stack file only when it differs, and adds a cron line only when it is absent.
 #
-# deploy/sim/sim.sh runs it with --non-interactive inside a Docker-in-Docker
-# replica of this layout, so the whole path is exercised before the box sees it.
+# --non-interactive runs the whole path with no human and no terminal, which is
+# how it was exercised before the box saw it and is still how it is scripted.
 # ──────────────────────────────────────────────────────────────────────────
 
 TOTAL_STAGES=6
 
-# The simulator has no human and no terminal. Overriding the two gates here,
+# A scripted run has no human and no terminal. Overriding the two gates here,
 # rather than editing the library above, keeps that library identical across
 # every wizard, which is the whole point of it.
 NON_INTERACTIVE=0

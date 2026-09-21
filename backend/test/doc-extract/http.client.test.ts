@@ -6,9 +6,10 @@ import { DocExtractUnavailableError, RetryableError, TerminalError } from "../..
 const answer = {
   format: "txt",
   text: "SHIPPING INSTRUCTION",
-  pages: [{ index: 1, text: "SHIPPING INSTRUCTION", source: "text_layer", ocr_confidence: null }],
+  pages: [{ index: 1, text: "SHIPPING INSTRUCTION", source: "text_layer" }],
   unreadable: false,
-  scanned: false,
+  has_images: false,
+  images: [],
   warnings: [],
   bytes: 20,
 };
@@ -29,11 +30,24 @@ describe("httpDocExtractClient", () => {
     const { impl, calls } = fetching({ status: 200, body: answer });
     const client = httpDocExtractClient("http://doc-extract:8000/", impl);
 
-    const result = await client.extract({ key: "runs/r/e/attachments/e_SI.txt", filename: "e_SI.txt", contentType: "text/plain" });
+    const result = await client.extract({
+      key: "runs/r/e/attachments/e_SI.txt",
+      filename: "e_SI.txt",
+      contentType: "text/plain",
+      outPrefix: "runs/r/e/images/e_SI.txt",
+    });
 
     expect(result).toEqual(answer);
     expect(calls).toEqual([
-      { url: "http://doc-extract:8000/extract", body: { key: "runs/r/e/attachments/e_SI.txt", filename: "e_SI.txt", content_type: "text/plain" } },
+      {
+        url: "http://doc-extract:8000/extract",
+        body: {
+          key: "runs/r/e/attachments/e_SI.txt",
+          filename: "e_SI.txt",
+          content_type: "text/plain",
+          out_prefix: "runs/r/e/images/e_SI.txt",
+        },
+      },
     ]);
   });
 

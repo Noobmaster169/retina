@@ -6,7 +6,7 @@ import type { EmailTrace, ReviewCaseView } from "@/lib/api/trace-schemas";
 import { CaseFields, type Correcting } from "./case-fields";
 import { FailureBody } from "./case-failure";
 import { CaseHistory } from "./case-history";
-import { CaseReason, OCR_FLOOR } from "./case-reason";
+import { CaseReason } from "./case-reason";
 import { type FileSizes, MessageCard, type Message } from "./message-card";
 import { Reading, Seam } from "./seam";
 
@@ -81,13 +81,12 @@ function factsOf(trace: EmailTrace, review: ReviewCaseView) {
     ];
   }
   const unread = trace.documents.find((document) => document.unreadable);
-  const mean = unread?.pageConfidence.length
-    ? unread.pageConfidence.reduce((sum, value) => sum + value, 0) / unread.pageConfidence.length
-    : null;
   return [
     { label: "parked as", value: review.reason ?? "failed", tone: "review" as const },
-    ...(unread ? [{ label: "pages read by OCR", value: `${unread.pageConfidence.length} of ${unread.pages}` }] : []),
-    ...(mean === null ? [] : [{ label: "mean confidence", value: `${Math.round(mean)}%`, tone: mean < OCR_FLOOR ? ("fault" as const) : ("neutral" as const) }]),
+    // Whether anything could be looked at at all is the distinction a reviewer acts
+    // on: a file that would not open needs a new copy, one that was looked at and
+    // could not be made out needs a better scan.
+    ...(unread ? [{ label: "what there was", value: unread.scanned ? `${unread.pages} page(s), none legible` : "nothing that would open" }] : []),
   ];
 }
 

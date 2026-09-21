@@ -27,8 +27,9 @@ providers:
   claudecli:
     type: claudecli
     binary: claude
-    max_concurrency: 12     # `claude -p` spawns a full agent session per call; matches CLASSIFY_CONCURRENCY + COMPARE_CONCURRENCY,
-                            # which is how many worker jobs run at once. Well under the ~64 sockets ngrok survives.
+    max_concurrency: 30     # `claude -p` spawns a full agent session per call. The worker's three lanes added up: classify 10,
+                            # compare 10 and the ontology's own 10. Below that the extra calls queue here, first come first
+                            # served, with their timeout running. Well under the ~64 sockets ngrok survives.
     timeout_s: 1200
     stream_mode: native
     neutralise_anthropic_key: true
@@ -77,14 +78,19 @@ model_list:
 # rather than a release. `sampling: deny` matters more than it looks: current Claude
 # models reject `temperature` with a 400, and many clients send it by default.
 capabilities:
-  # `claude -p` spawns a whole agent session: no tool-use API, no image input, and
-  # no separate system field; the provider folds `system` into the prompt body.
-  # `tools: deny` here is the Messages API's client-defined tools, which the CLI
-  # cannot take. The CLI's own built-ins are the provider's `tools` list above.
+  # `claude -p` spawns a whole agent session: no tool-use API and no separate system
+  # field; the provider folds `system` into the prompt body. `tools: deny` here is the
+  # Messages API's client-defined tools, which the CLI cannot take. The CLI's own
+  # built-ins are the provider's `tools` list above.
+  #
+  # `images: allow` although the CLI takes no image block: the provider writes each
+  # image to a temporary file and enables the session's own Read tool for that call
+  # alone, so an ordinary Anthropic image block works and nothing else gets a
+  # filesystem. See claude_cli.py.
   "claudecli/*":
     sampling: deny
     tools: deny
-    images: deny
+    images: allow
     system: merge_into_first_user
   # With the claudecli_web template: capabilities match by provider name.
   # "claudecli_web/*": { sampling: deny, tools: deny, images: deny, system: merge_into_first_user }

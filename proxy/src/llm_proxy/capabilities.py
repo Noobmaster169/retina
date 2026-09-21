@@ -21,10 +21,15 @@ from .canon.request import CanonRequest
 
 # Ordered most-specific-first; the first glob that matches wins.
 _BASELINE: tuple[tuple[str, Capability], ...] = (
-    # `claude -p` spawns a whole agent session: no tool-use API, no separate system
-    # prompt, no image input. Rejecting is kinder than silently degrading.
+    # `claude -p` spawns a whole agent session: no tool-use API and no separate system
+    # prompt. Rejecting is kinder than silently degrading.
+    #
+    # Images are allowed, though the CLI takes no image block: the provider writes each
+    # one to a temporary file and lets the session's own Read tool open it. That is a
+    # translation, not a degrade, so the capability says allow and claude_cli.py does
+    # the work. A media type Read cannot open is still refused, there.
     ("claudecli/*", Capability(
-        sampling="deny", thinking="none", tools="deny", images="deny",
+        sampling="deny", thinking="none", tools="deny", images="allow",
         system="merge_into_first_user")),
     ("*", Capability()),
 )

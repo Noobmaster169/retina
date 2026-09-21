@@ -1,5 +1,6 @@
 import type { AttachmentRole } from "../../contracts";
 import type { Queryable } from "../../db";
+import { TerminalError } from "../../lib/errors";
 
 export interface NewAttachment {
   runId: string;
@@ -48,12 +49,24 @@ function toAttachment(row: AttachmentRow): StoredAttachment {
   };
 }
 
+/**
+ * One attachment's row. Inserting the same one again is the no-op a re-ingest
+ * wants; a *different* file under a name this email already holds is refused.
+ *
+ * The refusal is the point. `(run_id, email_id, filename)` is unique, and this
+ * used to be `do nothing`, so two paths ending in one name left a single row
+ * whose name said one document and whose bytes were the other's, with nothing
+ * anywhere saying so. `ingest/attachment-names.ts` now makes the name unique
+ * before any of this, which is what stops it happening; this is what stops it
+ * happening quietly if that is ever bypassed.
+ */
 export async function insert(db: Queryable, attachment: NewAttachment): Promise<void> {
-  await db.query(
+  const { rows } = await db.query<{ id: string }>(
     `insert into core.attachments
        (run_id, email_id, filename, source_path, role, object_key, content_type, bytes, sha256)
      values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-     on conflict (run_id, email_id, filename) do nothing`,
+     on conflict (run_id, email_id, filename) do nothing
+     returning id`,
     [
       attachment.runId,
       attachment.emailId,
@@ -65,6 +78,17 @@ export async function insert(db: Queryable, attachment: NewAttachment): Promise<
       attachment.bytes,
       attachment.sha256,
     ],
+  );
+  if (rows.length > 0) return;
+
+  const held = await db.query<{ source_path: string }>(
+    "select source_path from core.attachments where run_id = $1 and email_id = $2 and filename = $3",
+    [attachment.runId, attachment.emailId, attachment.filename],
+  );
+  if (held.rows[0]?.source_path === attachment.sourcePath) return;
+  throw new TerminalError(
+    `${attachment.emailId} already holds an attachment named ${attachment.filename}, from ${held.rows[0]?.source_path}, ` +
+      `so ${attachment.sourcePath} would have replaced it`,
   );
 }
 

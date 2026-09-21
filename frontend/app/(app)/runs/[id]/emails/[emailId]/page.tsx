@@ -1,9 +1,4 @@
-import type { Metadata } from "next";
-import { notFound } from "next/navigation";
-
-import { getEmail, getEmailTrace, listRunEmails } from "@/lib/api-client";
-
-import { EmailPage } from "./email-page";
+import { notFound, redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -11,34 +6,18 @@ const RUN_ID = /^[0-9a-f-]{36}$/;
 // Mirrors EMAIL_ID_REGEX in backend/src/emails.ts; change both or neither.
 const EMAIL_ID = /^email_\d{1,6}$/;
 
-export async function generateMetadata({ params }: PageProps<"/runs/[id]/emails/[emailId]">): Promise<Metadata> {
-  const { emailId } = await params;
-  return { title: `${emailId} · Retina SDOC` };
-}
-
 /**
- * The message comes from the inbox and the reading from the run. Two reads,
- * because they are two things: the seam on this page exists to say which is
- * which, and merging them into one payload would blur exactly what it draws.
+ * One email used to be a page beside the inbox, which meant two screens over
+ * the same list, two selections and two ideas of which tab was open: arriving
+ * from the inbox reset the list to a view nobody had chosen. The inbox opens
+ * the email itself now.
+ *
+ * The route stays because the ontology, the chat, the queue panel and the
+ * results table all link an email by it, and every one of those links should
+ * still land on the email with its list around it.
  */
 export default async function Page({ params }: PageProps<"/runs/[id]/emails/[emailId]">) {
   const { id, emailId } = await params;
   if (!RUN_ID.test(id) || !EMAIL_ID.test(emailId)) notFound();
-
-  const [trace, email, list] = await Promise.all([
-    getEmailTrace(id, emailId).catch(() => null),
-    getEmail(emailId),
-    listRunEmails(id, { pageSize: 50 }),
-  ]);
-  if (!trace || !email) notFound();
-
-  return (
-    <EmailPage
-      runId={id}
-      initialTrace={trace}
-      subject={email.subject}
-      message={{ from: email.from, subject: email.subject, body: email.body, attachments: email.attachments }}
-      initialList={list}
-    />
-  );
+  redirect(`/runs/${id}/inbox?email=${emailId}`);
 }

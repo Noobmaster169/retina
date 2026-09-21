@@ -2,21 +2,36 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-Format = Literal["txt", "pdf", "docx", "xlsx", "unknown"]
-Source = Literal["text_layer", "ocr", "none"]
+Format = Literal["txt", "pdf", "docx", "xlsx", "image", "unknown"]
+# What a page yielded: the file's own text layer, or pixels handed on to be looked at.
+Source = Literal["text_layer", "image", "none"]
 
 
 class ExtractRequest(BaseModel):
     key: str = Field(min_length=1)
     filename: str = Field(min_length=1)
     content_type: str | None = None
+    # Where to put the pixels this file could not turn into text. Without it a document
+    # that needs looking at is still reported, with `images: []` and a warning saying so.
+    out_prefix: str | None = None
 
 
 class Page(BaseModel):
     index: int
     text: str
     source: Source
-    ocr_confidence: float | None = None
+
+
+class UnreadImage(BaseModel):
+    """Pixels the caller should show a model that can see.
+
+    `origin` is `page` for a PDF page or a photographed document, `embedded` for a
+    picture inside a word or excel file.
+    """
+
+    index: int
+    key: str
+    origin: Literal["page", "embedded"]
 
 
 class ExtractResponse(BaseModel):
@@ -24,9 +39,11 @@ class ExtractResponse(BaseModel):
     # Pages joined with a form feed.
     text: str
     pages: list[Page]
+    # Nothing could be read and nothing can be looked at: empty, encrypted, or corrupt.
     unreadable: bool
-    # Any page came from OCR.
-    scanned: bool
+    # Some of this document is pixels. Its text alone is not the whole document.
+    has_images: bool
+    images: list[UnreadImage]
     warnings: list[str]
     bytes: int
 
@@ -51,8 +68,6 @@ class RenderResponse(BaseModel):
 
 class Health(BaseModel):
     ok: bool
-    tesseract: str | None
-    langs: list[str]
 
 
 class ErrorBody(BaseModel):

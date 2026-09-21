@@ -126,3 +126,61 @@ describe("ingestEmail", () => {
     expect(classify.added).toEqual([]);
   });
 });
+
+describe("two attachments whose paths end in the same name", () => {
+  /**
+   * The shape this guards against: one row saying `BL.pdf` over the bytes of the
+   * other `BL.pdf`. A forwarded chain attaching the same-named draft twice is the
+   * ordinary way it happens, and before this the second upload overwrote the
+   * first's object and then lost its own row to `on conflict do nothing`.
+   */
+  async function ingestTwoNamed(sameName: string) {
+    const emailId = uniqueEmailId();
+    const first = `2024/${sameName}`;
+    const second = `2025/${sameName}`;
+    const files = new Map([
+      [first, Buffer.from("SHIPPING INSTRUCTION: the first one")],
+      [second, Buffer.from("BILL OF LADING: the second one")],
+    ]);
+    const store = new MemoryStore();
+    const deps: IngestDeps = {
+      pool: getPool(),
+      source: new MemorySource(
+        [{ email_id: emailId, from: "a@b.c", subject: "s", body: "b", attachments: [first, second] }],
+        files,
+      ),
+      store,
+      classify: new RecordingAdder<ClassifyJob>(),
+      priority: new MemoryPriorityCache({}),
+    };
+    const runId = await newRun();
+    await ingestEmail(deps, runId, emailId);
+    return { runId, emailId, store, rows: await attachments.listForEmail(getPool(), runId, emailId) };
+  }
+
+  it("keeps both, under names of their own", async () => {
+    const { rows } = await ingestTwoNamed("BL.pdf");
+
+    expect(rows).toHaveLength(2);
+    expect(new Set(rows.map((row) => row.filename)).size).toBe(2);
+    expect(rows.map((row) => row.sourcePath).sort()).toEqual(["2024/BL.pdf", "2025/BL.pdf"]);
+  });
+
+  it("gives each its own object, holding its own bytes", async () => {
+    const { store, rows } = await ingestTwoNamed("BL.pdf");
+
+    expect(new Set(rows.map((row) => row.objectKey)).size).toBe(2);
+    const held = await Promise.all(rows.map(async (row) => (await store.get(row.objectKey)).toString("utf8")));
+    // Neither overwrote the other: the row that came from the 2024 path holds the
+    // 2024 bytes, and nothing is a copy of its neighbour.
+    const byPath = new Map(rows.map((row, index) => [row.sourcePath, held[index]]));
+    expect(byPath.get("2024/BL.pdf")).toBe("SHIPPING INSTRUCTION: the first one");
+    expect(byPath.get("2025/BL.pdf")).toBe("BILL OF LADING: the second one");
+  });
+
+  it("ingested again, changes nothing and adds nothing", async () => {
+    const { runId, emailId, rows } = await ingestTwoNamed("BL.pdf");
+    const again = await attachments.listForEmail(getPool(), runId, emailId);
+    expect(again.map((row) => row.objectKey)).toEqual(rows.map((row) => row.objectKey));
+  });
+});

@@ -17,7 +17,7 @@ export const AttachmentRole = z.enum(["SI", "BL", "UNKNOWN"]);
 export type AttachmentRole = z.infer<typeof AttachmentRole>;
 
 /** Ours, not an organiser enum: the LLM steps whose prompt a run pins. */
-export const PromptStep = z.enum(["classify", "classify-verify", "triage", "doc-type", "extract", "extract-verify", "field-judge"]);
+export const PromptStep = z.enum(["classify", "classify-verify", "triage", "doc-type", "extract", "extract-verify", "field-judge", "vision-read"]);
 export type PromptStep = z.infer<typeof PromptStep>;
 
 /** What one step of a run runs: a prompt file and a proxy alias. Fixed when the run is created. */
@@ -38,6 +38,7 @@ export const PromptSet = z.object({
   extract: PinnedPrompt.optional(),
   "extract-verify": PinnedPrompt.optional(),
   "field-judge": PinnedPrompt.optional(),
+  "vision-read": PinnedPrompt.optional(),
 });
 export type PromptSet = z.infer<typeof PromptSet>;
 
@@ -89,6 +90,12 @@ export const RunSummary = z.object({
   totalEmails: z.number().nullable(),
   /** Emails that will not move again on their own: done, failed, or waiting for a person. */
   finishedEmails: z.number(),
+  /**
+   * Emails the ingest gate held, which have no email_runs row and so appear in
+   * no stage count. Without it `finishedEmails` could never reach
+   * `totalEmails` on a run that held anything and the page would spin forever.
+   */
+  heldByGate: z.number(),
   /** Nothing more will happen in this run: every email finished, or it was cancelled or failed. */
   processingDone: z.boolean(),
   /** From the start to the last email finishing, or to now while it runs. Null before it starts. */
@@ -150,6 +157,7 @@ export * from "./contracts.clients";
 export * from "./contracts.emails";
 export * from "./contracts.enums";
 export * from "./contracts.extraction";
+export * from "./contracts.gate";
 export * from "./contracts.ontology";
 export * from "./contracts.semantic";
 export * from "./contracts.shipments";

@@ -10,20 +10,34 @@ import { DocumentFormat } from "../contracts";
 export const ExtractedPage = z.object({
   index: z.number().int(),
   text: z.string(),
-  source: z.enum(["text_layer", "ocr", "none"]),
-  ocr_confidence: z.number().nullable(),
+  /** `image` is a page that carries no text layer, so its pixels are in `images`. */
+  source: z.enum(["text_layer", "image", "none"]),
 });
 export type ExtractedPage = z.infer<typeof ExtractedPage>;
+
+export const UnreadImage = z.object({
+  index: z.number().int(),
+  /** Where the PNG was written, under the request's `out_prefix`. */
+  key: z.string(),
+  /** A page of a PDF or a photographed document, or a picture inside a word or excel file. */
+  origin: z.enum(["page", "embedded"]),
+});
+export type UnreadImage = z.infer<typeof UnreadImage>;
 
 export const ExtractResponse = z.object({
   format: DocumentFormat,
   /** Pages joined with a form feed. */
   text: z.string(),
   pages: z.array(ExtractedPage),
-  /** Empty, would not open, no text even after OCR: a fact from the parser, not a judgement. */
+  /**
+   * Nobody could read this, a person included: empty, would not open, or nothing in
+   * it to read or to look at. A legible scan is not unreadable; it is a document
+   * nothing has read yet, and it arrives here with `images` instead of text.
+   */
   unreadable: z.boolean(),
-  /** Any page was read by OCR. */
-  scanned: z.boolean(),
+  /** Some of this document is pixels, so its text alone is not the whole of it. */
+  has_images: z.boolean(),
+  images: z.array(UnreadImage),
   warnings: z.array(z.string()),
   bytes: z.number().int(),
 });
@@ -39,6 +53,8 @@ export interface ExtractRequest {
   key: string;
   filename: string;
   contentType?: string;
+  /** Where pixels it could not read are written. Without it they are reported and not kept. */
+  outPrefix?: string;
 }
 
 export interface RenderRequest {

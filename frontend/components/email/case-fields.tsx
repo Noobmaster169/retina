@@ -4,8 +4,10 @@ import { useState } from "react";
 
 import type { EmailTrace } from "@/lib/api/trace-schemas";
 
+import { anythingInDoubt, groupRows } from "./check-groups";
 import { rowsOf } from "./check-tab";
-import { FieldRow } from "./field-row";
+import { Folded, Group } from "./field-groups";
+import { FieldRow, type FieldRowData } from "./field-row";
 
 /**
  * The seven fields on a case, so the value that is missing or disputed can be
@@ -30,7 +32,9 @@ export interface Correcting {
 
 export function CaseFields({ trace, correcting }: { trace: EmailTrace; correcting?: Correcting }) {
   const rows = rowsOf(trace);
-  const [chosen, setChosen] = useState<string | null>(rows.find((row) => row.judgement.missing || !row.judgement.same)?.judgement.field ?? null);
+  const groups = groupRows(rows);
+  const [chosen, setChosen] = useState<string | null>(groups.blank[0]?.judgement.field ?? groups.differing[0]?.judgement.field ?? null);
+  const [showAgreed, setShowAgreed] = useState(false);
 
   // A row being corrected is the row on screen. The action bar can start a
   // correction from outside this list, and a person typing into something they
@@ -43,38 +47,66 @@ export function CaseFields({ trace, correcting }: { trace: EmailTrace; correctin
     setChosen(expanded === field ? null : field);
   }
 
+  // A correction opened from the action bar can land on a field that is folded
+  // away, so the fold opens with it rather than swallowing the row a person
+  // was just sent to.
+  const correctingAgreed = groups.agreed.some((row) => row.judgement.field === correctingField);
+
   if (rows.length === 0) return null;
+
+  const draw = (row: FieldRowData) => {
+    const field = row.judgement.field;
+    return (
+      <FieldRow
+        key={field}
+        row={row}
+        open={expanded === field}
+        onToggle={() => toggle(field)}
+        correcting={
+          correcting
+            ? {
+                active: correctingField === field,
+                pending: correcting.pending,
+                onOpen: () => correcting.open(field),
+                onClose: correcting.close,
+                onRecord: (side, value) => correcting.record(field, side, value),
+              }
+            : undefined
+        }
+      />
+    );
+  };
 
   return (
     <section className="pl-3 pt-3.5">
       <div className="flex h-8 items-center">
-        <h3 className="text-[14px] font-semibold tracking-[-0.01em]">The seven fields</h3>
-        <span className="ml-2 text-small text-ink-tertiary">
+        <h3 className="text-[14px] font-semibold tracking-[-0.01em]">The fields</h3>
+        <span className="ml-2 min-w-0 truncate text-small text-ink-tertiary">
           {correcting ? "Say what a document reads and Retina judges the pair again" : "As they stood when the case was settled"}
         </span>
       </div>
-      {rows.map((row) => {
-        const field = row.judgement.field;
-        return (
-          <FieldRow
-            key={field}
-            row={row}
-            open={expanded === field}
-            onToggle={() => toggle(field)}
-            correcting={
-              correcting
-                ? {
-                    active: correctingField === field,
-                    pending: correcting.pending,
-                    onOpen: () => correcting.open(field),
-                    onClose: correcting.close,
-                    onRecord: (side, value) => correcting.record(field, side, value),
-                  }
-                : undefined
-            }
-          />
-        );
-      })}
+
+      {groups.blank.length > 0 ? (
+        <Group title="Nothing to compare" count={groups.blank.length} tone="review">
+          {groups.blank.map(draw)}
+        </Group>
+      ) : null}
+
+      {groups.differing.length > 0 ? (
+        <Group title="What differs" count={groups.differing.length} tone="differ">
+          {groups.differing.map(draw)}
+        </Group>
+      ) : null}
+
+      {groups.agreed.length > 0 ? (
+        <Folded
+          open={showAgreed || correctingAgreed}
+          onToggle={() => setShowAgreed((was) => !was)}
+          label={anythingInDoubt(groups) ? `The other ${groups.agreed.length} agree` : `Show the ${groups.agreed.length} fields`}
+        >
+          {groups.agreed.map(draw)}
+        </Folded>
+      ) : null}
     </section>
   );
 }

@@ -49,7 +49,7 @@ describe("toSummary: when a run is finished", () => {
     ["cancelled with emails left where they stopped", "cancelled", 3, counts(1, 0, 1), 1, true],
     ["failed before ingesting everything", "failed", null, counts(0, 0), 0, true],
   ] as const)("%s", (_name, status, total, stageCounts, finishedEmails, processingDone) => {
-    const summary = toSummary(run(status, total), { stageCounts, queues: null, llm: usage, review, outcomes, lastSubmission: undefined, lastFinishedAt: null, now: 0 });
+    const summary = toSummary(run(status, total), { stageCounts, queues: null, llm: usage, review, outcomes, lastSubmission: undefined, lastFinishedAt: null, heldByGate: 0, now: 0 });
     expect(summary).toMatchObject({ finishedEmails, processingDone });
   });
 });
@@ -63,6 +63,7 @@ describe("toSummary: how long the run took", () => {
     outcomes,
     lastSubmission: undefined,
     lastFinishedAt,
+    heldByGate: 0,
     now,
   });
   const start = "2026-09-20T10:00:00.000Z";
@@ -79,5 +80,24 @@ describe("toSummary: how long the run took", () => {
 
   it("is null before the run starts", () => {
     expect(toSummary(run("created", null), parts(null, 1)).elapsedMs).toBeNull();
+  });
+});
+
+describe("toSummary: when the gate held some of the run", () => {
+  const base = { queues: null, llm: usage, review, outcomes, lastSubmission: undefined, lastFinishedAt: null, now: 0 };
+
+  it("a held email is settled: the run is done without it ever reaching a stage", () => {
+    const summary = toSummary(run("completed", 3), { ...base, stageCounts: counts(2, 0), heldByGate: 1 });
+    expect(summary).toMatchObject({ finishedEmails: 2, heldByGate: 1, processingDone: true });
+  });
+
+  it("without counting it the run could never finish, which is the bug this exists for", () => {
+    const summary = toSummary(run("completed", 3), { ...base, stageCounts: counts(2, 0), heldByGate: 0 });
+    expect(summary.processingDone).toBe(false);
+  });
+
+  it("a hold is not a finished email: the two numbers stay apart", () => {
+    const summary = toSummary(run("running", 10), { ...base, stageCounts: counts(4, 1), heldByGate: 3 });
+    expect(summary).toMatchObject({ finishedEmails: 5, heldByGate: 3, processingDone: false });
   });
 });

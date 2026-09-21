@@ -11,7 +11,7 @@ import { buildClassifyInput } from "../../pipeline/classify";
 import { checkStructure, type TriageRequest } from "../../pipeline/compare";
 import { keys, type ObjectStore } from "../../storage";
 import type { CompareJob } from "../names";
-import { compareDocuments, escalateScanned, provisionalResult } from "./compare-pair";
+import { compareDocuments } from "./compare-pair";
 import { escalate } from "./escalate";
 import type { EmailRunIds } from "./ids";
 import { type ParsedDocument, parseDocuments } from "./parse-documents";
@@ -71,7 +71,7 @@ async function readRequest(deps: CompareDeps, set: PromptSet, ids: EmailRunIds):
  */
 async function renderPages(deps: CompareDeps, docs: ParsedDocument[], ids: EmailRunIds): Promise<string[]> {
   const pages: string[] = [];
-  for (const doc of docs.filter((d) => d.format === "pdf" && (d.unreadable || d.scanned))) {
+  for (const doc of docs.filter((d) => d.format === "pdf" && d.unreadable)) {
     const rendered = await deps.docExtract.render({
       key: doc.objectKey,
       filename: doc.filename,
@@ -83,39 +83,31 @@ async function renderPages(deps: CompareDeps, docs: ParsedDocument[], ids: Email
 }
 
 /**
- * A structural escalation, with what the reviewer needs beside the reason: the
- * page images for anything unreadable, and for a scan the comparison run on
- * the OCR text as a suggested result. A scan is never silently trusted, and
- * the suggestion never changes the verdict.
+ * A structural escalation, with what the reviewer needs beside the reason: for
+ * anything unreadable, the pages themselves, so a person can see what nothing
+ * could read and say whether they agree.
  */
 async function escalateStructure(
   deps: CompareDeps,
-  set: PromptSet,
   ids: EmailRunIds,
   docs: ParsedDocument[],
   outcome: { reason: Parameters<typeof escalate>[2]; detail: Record<string, unknown> },
-  fresh: boolean,
 ): Promise<void> {
   const pages = outcome.reason === "unreadable" ? await renderPages(deps, docs, ids) : [];
-  const detail = { ...outcome.detail, pages };
-  if (outcome.reason === "unreadable" && outcome.detail.scanned === true) {
-    await escalateScanned(deps, ids, detail, await provisionalResult(deps, set, ids, docs, fresh));
-    return;
-  }
-  await escalate(deps.pool, ids, outcome.reason, detail);
+  await escalate(deps.pool, ids, outcome.reason, { ...outcome.detail, pages });
 }
 
 /** Parse, type, check the structure, then compare or record why not. Returns early when the run was cancelled meanwhile. */
 async function compareOnce(deps: CompareDeps, run: Run, ids: EmailRunIds, fresh: boolean): Promise<void> {
   const set = await promptSetOf(deps.pool, run);
   const files = await attachments.listForEmail(deps.pool, run.id, ids.emailId);
-  const docs = files.length > 0 ? await typeDocuments(deps, set, await parseDocuments(deps, ids, files), ids) : [];
+  const docs = files.length > 0 ? await typeDocuments(deps, set, await parseDocuments(deps, set, ids, files), ids) : [];
   const request = files.length === 0 ? await readRequest(deps, set, ids) : null;
   if ((await runs.status(deps.pool, run.id)) === "cancelled") return;
 
   const outcome = checkStructure(docs, request);
   if (outcome.kind === "review") {
-    await escalateStructure(deps, set, ids, docs, outcome, fresh);
+    await escalateStructure(deps, ids, docs, outcome);
     return;
   }
   if (outcome.kind === "awaiting_draft") {

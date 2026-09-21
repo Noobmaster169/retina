@@ -10,7 +10,8 @@ describe("activeFor", () => {
     [`/runs/${RUN}`, "overview"],
     [`/runs/${RUN}/inbox`, "inbox"],
     [`/runs/${RUN}/emails/email_001`, "inbox"],
-    [`/runs/${RUN}/review`, "review"],
+    // Both redirect into the inbox, so the rail names the inbox while they do.
+    [`/runs/${RUN}/review`, "inbox"],
     [`/runs/${RUN}/ontology`, "ontology"],
     [`/runs/${RUN}/chat`, "chat"],
     [`/runs/${RUN}/database/port/3`, "database"],
@@ -22,6 +23,12 @@ describe("activeFor", () => {
     ["/nowhere", ""],
   ])("%s is %s", (pathname, key) => {
     expect(activeFor(pathname)).toBe(key);
+  });
+});
+
+describe("destinations", () => {
+  it("no longer offers `Needs a person`, which is a chip on the inbox", () => {
+    expect(DESTINATIONS.map((destination) => destination.key)).not.toContain("review");
   });
 });
 

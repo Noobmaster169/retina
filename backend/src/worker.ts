@@ -4,6 +4,7 @@ import { closePool, getPool } from "./db";
 import { httpDocExtractClient } from "./doc-extract";
 import { AverisSource } from "./ingest";
 import { childLogger } from "./lib/logger";
+import { redisGateMeter } from "./ingest";
 import { redisLiveCalls } from "./live";
 import { closeRedis, getRedis } from "./queues/connection";
 import { redisPriorityCache } from "./queues/priority-cache";
@@ -23,18 +24,25 @@ const redis = getRedis();
 const pool = getPool();
 const priority = redisPriorityCache(redis);
 const llm = proxyLlmClient({ maxConcurrency: config.LLM_MAX_CONCURRENCY });
+// A lane of its own, as wide as the queue it serves: see WorkerDeps.ontologyLlm.
+const ontologyLlm = proxyLlmClient({ maxConcurrency: config.ONTOLOGY_CONCURRENCY });
 const workers = startWorkers(
   {
     pool,
     source: new AverisSource(config.EMAIL_SERVER_URL),
     store,
     llm,
+    ontologyLlm,
     docExtract: httpDocExtractClient(config.DOC_EXTRACT_URL),
     live,
     classify: queues.classify,
     compare: queues.compare,
     ontology: queues.ontology,
     priority,
+    // The gate. Its mode comes from GATE_MODE and its default is `observe`,
+    // so a worker that has just been deployed records every verdict and holds
+    // nothing an automatic rule decided.
+    gate: { redis, meter: redisGateMeter(redis) },
   },
   redis,
 );
@@ -48,6 +56,7 @@ log.info(
     compare: config.COMPARE_CONCURRENCY,
     ontology: config.ONTOLOGY_CONCURRENCY,
     llm: config.LLM_MAX_CONCURRENCY,
+    ontologyLlm: config.ONTOLOGY_CONCURRENCY,
   },
   "worker started",
 );

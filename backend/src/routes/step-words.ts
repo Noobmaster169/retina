@@ -18,6 +18,7 @@ const WORDS: Record<PromptStep, string> = {
   extract: "reading both documents",
   "extract-verify": "checking what it read",
   "field-judge": "judging the seven fields",
+  "vision-read": "looking at the document",
 };
 
 /** A step with no entry falls back to its own name rather than to silence. */

@@ -1,10 +1,11 @@
 import { Queue } from "bullmq";
 
 import { getRedis } from "./connection";
-import { type ClassifyJob, type CompareJob, type IngestJob, type OntologyWork, QUEUES } from "./names";
+import { type ClassifyJob, type CompareJob, type IngestJob, type OntologyWork, QUEUES, type ReleaseJob } from "./names";
 
 export interface Queues {
-  ingest: Queue<IngestJob>;
+  /** Two payloads: a whole run to replay, and one email a person released. `job.name` tells them apart. */
+  ingest: Queue<IngestJob | ReleaseJob>;
   classify: Queue<ClassifyJob>;
   compare: Queue<CompareJob>;
   ontology: Queue<OntologyWork>;
@@ -16,7 +17,7 @@ export function getQueues(): Queues {
   if (queues) return queues;
   const connection = getRedis();
   queues = {
-    ingest: new Queue<IngestJob>(QUEUES.ingest, { connection }),
+    ingest: new Queue<IngestJob | ReleaseJob>(QUEUES.ingest, { connection }),
     classify: new Queue<ClassifyJob>(QUEUES.classify, { connection }),
     compare: new Queue<CompareJob>(QUEUES.compare, { connection }),
     ontology: new Queue<OntologyWork>(QUEUES.ontology, { connection }),

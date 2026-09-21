@@ -1,0 +1,130 @@
+/**
+ * The door to everything the product calls operations: runs and their queues,
+ * what each email did, the cases waiting for a person, the chat, and scoring.
+ *
+ * The other half of `api-client.ts`, split from it on the seam the rail
+ * already draws (`components/shell/nav.ts`). Import from `api-client.ts`, not
+ * from here.
+ */
+
+export {
+  type ColumnInfo,
+  type ColumnType,
+  type ForeignKeyCount,
+  getRowDetail,
+  getTablePage,
+  listTables,
+  type TablePage,
+  type TableRowDetail,
+  type TableSummary,
+} from "./api/database-client";
+export {
+  askQuestion,
+  type ChatAnswer,
+  type ChatConversation,
+  type ChatGraph,
+  type ChatGraphNode,
+  type ChatNextMove,
+  type ChatScope,
+  type ChatSkillCard,
+  type ChatThread,
+  type ChatToolCall,
+  type ChatToolName,
+  type ChatTurn,
+  type ChatTurnOutcome,
+  type ClarifyingQuestion,
+  type ContextRef,
+  createConversation,
+  deleteConversation,
+  getThread,
+  listConversations,
+  listSkills,
+  type ProposedAction,
+  type SqlResult,
+  turnsAfter,
+} from "./api/chat-agent-client";
+export { type ChatMessage, type ChatOutcome, type ChatRequest, type ChatResult, chat, listModels, type ModelInfo } from "./api/chat-client";
+export { Email, type EmailListQuery, type EmailPage, type EmailSummary, fetchAttachment, getEmail, listEmails } from "./api/mail-client";
+export {
+  type CheckStatus,
+  checkDetail,
+  DEPENDENCIES,
+  DEPENDENCY_LABELS,
+  getHealth,
+  getRunQueues,
+  type HealthReport,
+  type QueuedEmail,
+  type QueueName,
+  type QueueSlot,
+  type QueueView,
+  type RunQueuesView,
+} from "./api/queues-client";
+export {
+  cancelRun,
+  type Concurrency,
+  createRun,
+  type CreateRunInput,
+  deleteRun,
+  getRun,
+  type HeadlineScores,
+  type LastSubmission,
+  listPrompts,
+  listRuns,
+  type LlmUsage,
+  pauseRun,
+  Outcome,
+  type PromptSet,
+  type PromptStep,
+  type QueueCounts,
+  resumeRun,
+  type RunAction,
+  type RunList,
+  type RunOutcome,
+  type RunStatus,
+  type RunSubset,
+  type RunSummary,
+  Stage,
+} from "./api/runs-client";
+export {
+  Category,
+  DecidedBy,
+  getEmailTrace,
+  getRunLive,
+  listRunCalls,
+  listRunEmails,
+  type LlmCall,
+  type LlmCallSummary,
+  type RunEmailItem,
+  type RunEmailsPage,
+  type RunEmailsQuery,
+} from "./api/trace-client";
+export {
+  actOnCase,
+  type ExtractionSide,
+  getReviewCase,
+  getReviewStats,
+  listReviewCases,
+  type ReviewActionInput,
+  type ReviewActionKind,
+  type ReviewActionResult,
+  type ReviewActionView,
+  type ReviewCaseItem,
+  type ReviewCaseKind,
+  type ReviewOutcome,
+  type ReviewQuery,
+  type ReviewQueue,
+  type ReviewStats,
+  uploadToCase,
+} from "./api/review-client";
+export { fetchFile } from "./api/files-client";
+export {
+  type EmailVerdict,
+  type EvalReport,
+  getEvalReport,
+  listSubmissions,
+  type Scoreboard,
+  type ScoreboardHeadline,
+  type SubmissionList,
+  type SubmitOutcome,
+  submitRun,
+} from "./api/scoring-client";
