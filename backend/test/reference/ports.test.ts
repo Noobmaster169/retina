@@ -78,6 +78,22 @@ describe("locatePort", () => {
   it("is null for a name that names no country", () => {
     expect(locatePort("SOMEWHERE FAR")).toBeNull();
   });
+
+  /**
+   * The world's list gives Los Angeles the alias "Long Beach" and Long Beach
+   * the alias "Los Angeles". Until the port was scored by its own name first,
+   * a spelling with no usable code landed on whichever of the two the file
+   * held earlier, and prod carried two Long Beaches.
+   */
+  it.each([
+    ["LONG BEACH, US", "USLGB"],
+    ["LONG BEACH, US (TRMER)", "USLGB"],
+    ["LONG BEACH, US (USLGB)", "USLGB"],
+    ["LOS ANGELES, US", "USLAX"],
+    ["LOS ANGELES, US (USLGB)", "USLAX"],
+  ])("places %s at %s, its own name above another port's alias", (name, locode) => {
+    expect(locatePort(name)?.locode).toBe(locode);
+  });
 });
 
 describe("locatePort by name alone", () => {
