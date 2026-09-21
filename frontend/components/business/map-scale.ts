@@ -13,10 +13,10 @@ export interface Located<T> {
   lon: number;
 }
 
-/** Pin radius in px: square root of the count so a port with four times the shipments is twice the pin, never four times. */
+/** Pin radius in viewBox units: square root of the count so a port with four times the shipments is twice the pin, never four times. Small, so a busy coast still shows its coast. */
 export function radiusFor(count: number, max: number): number {
-  if (max <= 0) return 3;
-  return 3 + 11 * Math.sqrt(Math.max(0, count) / max);
+  if (max <= 0) return 2;
+  return 2 + 5 * Math.sqrt(Math.max(0, count) / max);
 }
 
 export function located<T extends Locatable>(rows: T[]): Located<T>[] {

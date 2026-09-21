@@ -2,7 +2,7 @@ import type { PoolClient } from "pg";
 import { describe, expect, it } from "vitest";
 
 import { entityInputs, entityOverview, entityResolution } from "../../src/ontology/repositories";
-import { reconcile, resolveEntities } from "../../src/pipeline/ontology";
+import { reconcile, referenceJoins, resolveEntities } from "../../src/pipeline/ontology";
 import { ACME_ME, ALPHA, seedInbox } from "../chat-seed";
 import { inRollback } from "../db";
 
@@ -20,7 +20,7 @@ async function refresh(tx: PoolClient): Promise<number> {
   const joins = await entityInputs.loadResolveJoins(tx);
   const sightings = await entityInputs.loadSightings(tx);
   const existing = await entityInputs.loadExisting(tx);
-  return entityResolution.applyResolution(tx, reconcile(resolveEntities(mentions, [...verdicts, ...joins], sightings), existing));
+  return entityResolution.applyResolution(tx, reconcile(resolveEntities(mentions, [...verdicts, ...joins, ...referenceJoins(mentions, sightings)], sightings), existing));
 }
 
 async function idOf(tx: PoolClient, canonical: string): Promise<string> {
@@ -104,6 +104,41 @@ describe("applying a resolution", () => {
 
       const listed = await tx.query<{ n: string }>("select count(*)::text as n from core.entities where kind = 'port' and canonical = 'ALPHA HARBOUR' and merged_into is null");
       expect(listed.rows[0].n).toBe("0");
+    });
+  });
+
+  it("folds two ports the world's list places at one code, and says the list joined them", async () => {
+    await inRollback(async (tx) => {
+      await seedInbox(tx);
+      // Two spellings of Mombasa, each sighted once in a subject line, each its
+      // own row, as the live inbox had them: no judge ever saw the pair.
+      const ids: string[] = [];
+      for (const spelling of ["MOMBASA, KENYA (KEMBA)", "MOMBASA_KENYA"]) {
+        const id = await entityResolution.insertFromSighting(tx, "port", spelling, new Date());
+        await tx.query(
+          `insert into core.entity_sightings (entity_id, email_id, role, source, surface, source_quote)
+           select $1::bigint, min(email_id), 'port_of_discharge', 'subject', $2::text, $2::text from core.emails`,
+          [id, spelling],
+        );
+        ids.push(String(id));
+      }
+
+      await refresh(tx);
+
+      const live = await tx.query<{ id: string; canonical: string }>(
+        "select id::text as id, canonical from core.entities where kind = 'port' and merged_into is null and attributes->>'locode' = 'KEMBA'",
+      );
+      expect(live.rows).toHaveLength(1);
+      expect(ids).toContain(live.rows[0].id);
+      const names = await tx.query<{ value: string; joined_by: string }>(
+        "select value, joined_by from core.entity_names where entity_id = $1::bigint order by value",
+        [live.rows[0].id],
+      );
+      expect(names.rows).toEqual([
+        { value: "MOMBASA, KENYA (KEMBA)", joined_by: names.rows[0].value === live.rows[0].canonical ? "kept" : "reference" },
+        { value: "MOMBASA_KENYA", joined_by: names.rows[1].value === live.rows[0].canonical ? "kept" : "reference" },
+      ]);
+      expect(names.rows.map((row) => row.joined_by).sort()).toEqual(["kept", "reference"]);
     });
   });
 

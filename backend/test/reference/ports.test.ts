@@ -79,3 +79,14 @@ describe("locatePort", () => {
     expect(locatePort("SOMEWHERE FAR")).toBeNull();
   });
 });
+
+describe("locatePort by name alone", () => {
+  it("places a spelling with no country word when one country in the world holds that exact name", () => {
+    expect(locatePort("LE HAVRE")).toMatchObject({ locode: "FRLEH", country: { code: "FR" } });
+  });
+
+  it("stays unplaced when the name is held by more than one country, or by none", () => {
+    expect(locatePort("NEWCASTLE")).toBeNull();
+    expect(locatePort("SOMEWHERE NOBODY KNOWS")).toBeNull();
+  });
+});

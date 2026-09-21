@@ -2,7 +2,7 @@ import { Router } from "express";
 import type { Pool } from "pg";
 import { z } from "zod";
 
-import { type CounterpartList, type EntityDetail, EntityKind, type EntityList, ObjectType } from "../contracts";
+import { type CounterpartList, type EntityDetail, EntityKind, type EntityList, type LaneList, ObjectType } from "../contracts";
 import { emailGraph, isBuilt, listTypes, objectRecord } from "../ontology/objects";
 import { buildInsight } from "../pipeline/ontology";
 import {
@@ -13,6 +13,7 @@ import {
   entityProfile,
   entityValues,
   entities,
+  lanes,
   shipmentsRead,
 } from "../ontology/repositories";
 
@@ -63,6 +64,12 @@ export function ontologyRouter(deps: OntologyRouteDeps): Router {
       return;
     }
     res.json(detail);
+  });
+
+  /** Every lane the shipments state between two resolved ports, busiest first. What the port map draws. */
+  router.get("/lanes", async (_req, res) => {
+    const body: LaneList = { lanes: await lanes.list(pool) };
+    res.json(body);
   });
 
   /** The index of one type. Only the resolved kinds have a list of their own; the rest are tables. */

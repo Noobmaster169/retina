@@ -6,7 +6,7 @@ import { EditThing } from "@/components/business/edit-thing";
 import { SameAs } from "@/components/business/same-as";
 import { PageContext } from "@/components/dock/page-context-announcer";
 import { TopBar } from "@/components/shell/top-bar";
-import { getEntityDetail, listCounterparts, listShipments } from "@/lib/api-client";
+import { getEntityDetail, listCounterparts, listEntities, listLanes, listShipments } from "@/lib/api-client";
 
 import { PortSections } from "./port-sections";
 
@@ -20,7 +20,12 @@ export default async function Page({ params }: PageProps<"/port/[id]">) {
   if (!ID.test(id)) notFound();
   const detail = await getEntityDetail("port", id);
   if (!detail) notFound();
-  const [parties, shipments] = await Promise.all([listCounterparts("port", id, "parties"), listShipments({ portId: id, pageSize: 100 })]);
+  const [parties, shipments, ports, lanes] = await Promise.all([
+    listCounterparts("port", id, "parties"),
+    listShipments({ portId: id, pageSize: 100 }),
+    listEntities("port"),
+    listLanes(),
+  ]);
   const a = detail.row.attributes;
   const chips = [a.locode, a.country, a.subregion ?? a.region, a.coast].filter((value): value is string => !!value);
 
@@ -44,7 +49,7 @@ export default async function Page({ params }: PageProps<"/port/[id]">) {
             </div>
           }
         />
-        <PortSections detail={detail} parties={parties} shipments={shipments.shipments} />
+        <PortSections detail={detail} parties={parties} shipments={shipments.shipments} ports={ports.entities} lanes={lanes} />
       </main>
     </div>
   );

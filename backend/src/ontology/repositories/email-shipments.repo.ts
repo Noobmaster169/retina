@@ -84,6 +84,32 @@ export async function forEmail(db: Queryable, emailId: string): Promise<StoredSh
   };
 }
 
+/** Every shipment row with no thing in one of the party columns although its instruction settled a value there. What `pnpm ontology:relink` walks. */
+export async function unlinkedParties(db: Queryable): Promise<{ emailId: string; emailRunId: number }[]> {
+  const { rows } = await db.query<{ email_id: string; email_run_id: string }>(
+    `select s.email_id, s.email_run_id::text as email_run_id
+       from core.email_shipments s
+      where s.email_run_id is not null
+        and (s.shipper_id is null or s.consignee_id is null or s.notify_party_id is null)
+        and exists (select 1 from core.extractions ex join core.extraction_fields ef on ef.extraction_id = ex.id
+                     where ex.email_run_id = s.email_run_id and ex.role = 'SI'
+                       and ef.field in ('shipper', 'consignee', 'notify_party') and coalesce(ef.human_value, ef.value) is not null)
+      order by s.email_id`,
+  );
+  return rows.map((row) => ({ emailId: row.email_id, emailRunId: Number(row.email_run_id) }));
+}
+
+/** Fills the entity columns given and leaves every other column as it is. */
+export async function fillLinks(tx: Queryable, emailId: string, links: Partial<Record<ShipmentColumn, number>>): Promise<void> {
+  const columns = ENTITY_COLUMNS.filter((column) => links[column] !== undefined);
+  if (columns.length === 0) return;
+  await tx.query(
+    `update core.email_shipments set ${columns.map((column, at) => `${column} = $${at + 2}::bigint`).join(", ")}, updated_at = now()
+      where email_id = $1::text`,
+    [emailId, ...columns.map((column) => links[column])],
+  );
+}
+
 /** Every finished email with no shipment row yet. What `pnpm ontology:backfill` enqueues. */
 export async function withoutShipment(db: Queryable, limit: number): Promise<{ emailId: string; emailRunId: number }[]> {
   const { rows } = await db.query<{ email_id: string; id: string }>(

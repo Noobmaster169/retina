@@ -166,7 +166,7 @@ export type ObjectGraph = z.infer<typeof ObjectGraph>;
 export const EntityName = z.object({
   value: z.string(),
   seenCount: z.number().int(),
-  joinedBy: z.enum(["kept", "judge", "human"]),
+  joinedBy: z.enum(["kept", "judge", "human", "reference"]),
   confidence: z.number().nullable(),
 });
 export type EntityName = z.infer<typeof EntityName>;
@@ -228,6 +228,20 @@ export type Counterpart = z.infer<typeof Counterpart>;
 
 export const CounterpartList = z.object({ counterparts: z.array(Counterpart) });
 export type CounterpartList = z.infer<typeof CounterpartList>;
+
+/** One lane the mail states: a port of loading and a port of discharge, both resolved things, counted in shipments. */
+export const Lane = z.object({
+  pol: z.object({ id: z.string(), name: z.string() }),
+  pod: z.object({ id: z.string(), name: z.string() }),
+  /** Shipments (one per email) stating this lane. */
+  count: z.number().int(),
+  /** Of those, how many the judge called different at one of the two ports; the instruction's side is what the lane shows. */
+  disputed: z.number().int(),
+});
+export type Lane = z.infer<typeof Lane>;
+
+export const LaneList = z.object({ lanes: z.array(Lane) });
+export type LaneList = z.infer<typeof LaneList>;
 
 export const EntityList = z.object({ type: ObjectType, built: z.boolean(), entities: z.array(EntityRow) });
 export type EntityList = z.infer<typeof EntityList>;

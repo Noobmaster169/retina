@@ -128,6 +128,63 @@ browser: a city set through the form shows in the header after a reload; GDANSK_
 into GDANSK, POLAND (PLGDN) and the list lost the row. Repository tests prove a rename and a
 merge survive a full resolution pass. 1,028 backend tests, 102 frontend.
 
+**Business-data fix session, on `feat/business-ui` (2026-09-21).** Three things the user raised
+about the business pages, each investigated against the live database before anything was changed.
+
+*Ports were not unique by code.* 67 live ports held 33 UN/LOCODEs: `FREMANTLE, AUSTRALIA`,
+`FREMANTLE, AUSTRALIA (CLVAP)` and `FREMANTLE, AUSTRALIA (AUFRE)` were three rows, all placed at
+AUFRE. The cause was identity: a thing is `(kind, canonical spelling)`, and the only join was a
+verdict on two values one judge saw side by side. The field judge compares one email's SI against
+its BL, so two spellings on two different emails never met a judge. The reference list placed each
+spelling at its code as an attribute and never said the two were one. Now `referenceJoins`
+(`pipeline/ontology/reference-joins.ts`, table-tested on the live duplicates) turns "the world's
+list places both at one code" into a verdict the resolver reads like any other, labelled
+`reference` on the spelling (migration `025`, the enum in both contracts, the label on the page).
+The code written in the text is never trusted, since the dataset writes stale codes on documents
+that name another port; the placement by name is. A new spelling of a known port joins it in
+`ontology-resolve` by its located code, with no model call and no second row. `pnpm
+ontology:locate` now ends with a resolution pass; run on the local inbox it merged 34 rows, 67
+live ports to 33 (32 codes and `LE HAVRE`, which the list does not know). The merge also surfaced
+a latent bug: repointing the loser's sightings collided with the survivor's when one email sighted
+both spellings in one role and source. The merge drops that duplicate first.
+
+*Missing data: one bug, the rest genuinely absent.* Of 187 shipments, 182 had no shipper, 187 no
+notify party and 115 no consignee, while the extractor had a value for nearly every one of them
+(1 to 2 nulls in 240 fields). The assembler only linked a party the shipment reader had repeated,
+and the reader's prompt tells it not to repeat the four parties. `assembleShipment` now links the
+three party columns from the settled value first, with the reading as the fallback (test added);
+`pnpm ontology:relink` filled 334 links on the existing rows from stored judgements alone. Every
+other gap is the mail: 72 of the shipments are one-line requests ("please send the draft BL for
+X") with no attachment in the inbox, 11 are review cases without a readable pair, and the
+evidence check dropped 2 values in 191 readings. The reader read a carrier in 54 of 191 emails
+because the documents name a vessel and a BL prefix, never a line, and the prompt forbids
+inferring one. A loading port is almost never in a subject line (read 3 times), a discharge port
+often is (99).
+
+*The map.* Rebuilt under `components/business/map/`: wheel zoom about the pointer, drag to pan,
+great-circle lanes from `GET /ontology/lanes` (new, `03-infra-deep.md`) weighted by shipments,
+hover lighting a port's lanes and dimming the rest, a click opening a panel with the port's flag,
+code, counts and every lane as a button to walk to the other end, Frame and Open, a legend, zoom
+controls, Escape. The pure geometry (`geometry.ts`: fit, clamp, zoom about a point) is
+table-tested. A port's page opens on the world framed around that port with its lanes lit. Checked
+headlessly at 1440px: 32 ports, 79 lanes, hover, pick, frame, open; the tooltip flips at the
+right edge and the panel lists 11 lanes for Buatan. Nothing loops: the view glides on 320ms and
+every other change is 120ms, per `05-design.md` section 9.
+
+*Map, second pass (same day).* Pins are a third the size, so a coast reads as a coast. No lane is
+drawn at rest: hovering or picking a port draws its lanes as dashes flowing from the port of
+loading to the port of discharge (`lane-flow` in `globals.css`, still under reduced motion), which
+is direction and not decoration. A region filter keeps every located port on the map but shows
+only the filtered ones; picking a port draws its far ends as ghosts, so the Americas filter still
+says where New York's cargo comes from. The sea is the port hue's tint. `LE HAVRE` is placed:
+a spelling with no country word is looked up by its exact name across the world and taken only
+when one country holds it (`NEWCASTLE` stays unplaced, tested); every live port is on the map.
+
+**Numbers.** 1,092 backend tests, 144 frontend.
+
+**On the box.** After deploy: `pnpm db:migrate`, then `pnpm ontology:locate` (folds the
+duplicates) and `pnpm ontology:relink` (fills the party links) once each, both free.
+
 **Deferred.**
 
 - A merged thing cannot be unmerged from the interface. The tombstone keeps its row, so a route

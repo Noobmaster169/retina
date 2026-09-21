@@ -3,16 +3,17 @@ import type { EntityName } from "@/lib/api/ontology-schemas";
 /**
  * The component that makes the ontology's argument.
  *
- * A port or a party exists only because the field judge said several spellings
- * denote one thing. Each spelling says how often it was seen and how it was
- * judged: nothing here came from a lookup table, and if it had, this screen
- * could not exist.
+ * A port or a party exists only because a judge said several spellings denote
+ * one thing: a model on a pair it compared, a person, or the world's port list
+ * placing two spellings at one UN/LOCODE. Each spelling says how often it was
+ * seen and who joined it, so a reader can tell the three apart.
  */
 
 const VERDICT: Record<EntityName["joinedBy"], { words: string; tone: string }> = {
   kept: { words: "the spelling kept", tone: "bg-sunken text-ink-secondary" },
   judge: { words: "same thing", tone: "bg-match-tint text-match" },
   human: { words: "joined by a person", tone: "bg-review-tint text-review" },
+  reference: { words: "the same port in the world's list", tone: "bg-sunken text-ink-secondary" },
 };
 
 /** A judged spelling carries the confidence it was judged at: 0.85 is a different claim from 0.99. */

@@ -3,10 +3,10 @@ import { describe, expect, it } from "vitest";
 import { located, radiusFor } from "./map-scale";
 
 describe("radiusFor", () => {
-  it("grows with the square root of the count, between 3 and 14", () => {
-    expect(radiusFor(0, 100)).toBe(3);
-    expect(radiusFor(100, 100)).toBe(14);
-    expect(radiusFor(25, 100)).toBeCloseTo(3 + 11 * 0.5, 5);
+  it("grows with the square root of the count, between 2 and 7", () => {
+    expect(radiusFor(0, 100)).toBe(2);
+    expect(radiusFor(100, 100)).toBe(7);
+    expect(radiusFor(25, 100)).toBeCloseTo(2 + 5 * 0.5, 5);
   });
 });
 

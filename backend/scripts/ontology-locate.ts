@@ -1,10 +1,13 @@
 // pnpm ontology:locate
 //
 // Places every live port the reference list knows and gives every company
-// with a country its code. Idempotent: a thing already placed is skipped.
-// Free: no model call anywhere in it.
+// with a country its code, then runs one resolution pass so that two ports
+// placed at one code fold into one. Idempotent: a thing already placed is
+// skipped, and a pass over folded data changes nothing. Free: no model call
+// anywhere in it.
 
 import { closePool, getPool, withTx } from "../src/db";
+import { resolveAll } from "../src/ontology/derived";
 import { entityLocate, entityProfile } from "../src/ontology/repositories";
 
 const pool = getPool();
@@ -29,4 +32,8 @@ for (const row of rows) {
 }
 console.log(`${ports} ports placed, ${parties} companies given a country code, ${missed.length} not in the reference lists`);
 for (const name of missed) console.log(`  ${name}`);
+const live = await pool.query<{ n: string }>("select count(*)::text as n from core.entities where kind = 'port' and merged_into is null");
+const things = await resolveAll(pool);
+const after = await pool.query<{ n: string }>("select count(*)::text as n from core.entities where kind = 'port' and merged_into is null");
+console.log(`${things} things resolved; live ports ${live.rows[0].n} before the pass, ${after.rows[0].n} after`);
 await closePool();
