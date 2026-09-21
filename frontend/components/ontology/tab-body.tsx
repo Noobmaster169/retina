@@ -66,7 +66,7 @@ export async function tabBody({ runId, type, selected, tab, emails, base, hops }
   ]);
   if (!record) return <Nothing>No run has processed that email.</Nothing>;
   if (tab === "links") return <LinksTab runId={runId} graph={graph} record={record} />;
-  return <RecordTab record={record} />;
+  return <RecordTab record={record} base={base} />;
 }
 
 async function things({ type, selected, emails, base }: Omit<BodyProps, "tab" | "hops" | "runId">) {
