@@ -116,7 +116,9 @@ Backend (`deploy/.env`, mirrored in `backend/.env.example`):
 | `GATE_BURST_REFILL_SECONDS` | `600`. How long an empty burst bucket takes to refill. Its capacity divided by this is the sustained rate | worker |
 | `API_SHARED_SECRET`, `TEAM_API_KEY` | hex | api |
 | `SITE_PASSWORD` | string | frontend gate in `proxy.ts` (Vercel env) |
-| `EVAL_GROUND_TRUTH_PATH` | local path only, unset on the VPS containers | eval CLI |
+| `EVAL_GROUND_TRUTH_PATH` | local path only, unset on the VPS containers | eval CLI, `/eval/*` |
+| `EVAL_GROUND_TRUTH_URL` | VPS only, `http://inbox:8000/ground_truth` | `/eval/*` on the box |
+| `EVAL_JUDGE_TOKEN` | optional hex, guards that endpoint | api and `inbox` |
 
 Frontend (Vercel): `BACKEND_URL`, `API_SHARED_SECRET`, `SITE_PASSWORD`. There is no separate
 session secret: `lib/site-gate.ts` derives the cookie as an HMAC of `SITE_PASSWORD`, so changing
@@ -287,10 +289,30 @@ Replay controller (`ingest/replay.ts`), driven by `core.runs`:
   every email and stands down as `superseded` when the epoch has moved on, so an older job that
   was still waiting, or asleep between two emails, never ingests alongside the new one. If the
   resume job cannot be queued the run goes back to `paused`.
+- Pause commits `paused`, and that word reaches the two queues as well as the ingest loop.
+  `queues/pause-gate.ts` holds both halves. A job that arrives during a pause never starts. A job
+  the pause catches mid-call has that call aborted where it stands: the gate keeps an
+  `AbortController` per job in flight, polls `runs.pausedAmong` once a second for the runs it is
+  holding work for, and the signal reaches the HTTP request through `LlmClient.complete(request,
+  signal)`, so the connection closes, the proxy kills the `claude -p` session behind it and the
+  concurrency slot is handed back. The client reports that as `RunPausedError` and not as the
+  timeout the SDK sees, because the difference decides whether the queue retries the email or
+  parks the job.
+  Either way the job goes back to `delayed` for a minute with its attempts, its priority
+  and its place untouched, and still counts as waiting on the run page. A resume promotes the
+  run's delayed jobs, so both queues restart on the click rather than on each job's next
+  recheck; a failed promotion is logged and the jobs wake on their own.
+  The work a pause abandons is paid for and lost. That is the price of the button meaning what
+  it says, and it is bounded: `classify` reuses a generator answer already in the ledger, so what
+  is lost is the call in flight and nothing behind it.
 - Cancel commits `cancelled`, then removes the run's jobs that have not started. A failed
   removal is logged, not returned. The classify and compare processors return at once for a
   cancelled run, which covers a job that was already active or added a moment later. The run's
   emails stay at the stage they had reached.
+- Pause and cancel both also act from `completed`, because `completed` is the ingest's word and
+  not the pipeline's: a run reads it the moment its last email is enqueued, with both queues
+  still full. A run whose emails have all settled is refused either way, with
+  `a finished run cannot become <status>`.
 - Per email: copy attachments to MinIO under the run prefix, then in one short transaction
   insert `core.emails` (upsert on `email_id`; content is identical across runs),
   `core.attachments` and `core.email_runs`, then enqueue `classify`. Downloads and uploads
@@ -829,6 +851,7 @@ Two schemas. `core` is normalised and written by the pipeline. `analytics` is de
 
 ```sql
 runs               (id uuid pk, source text, rate_per_second numeric, status text,
+                    name text null,              -- what a person called it; null means named by when it started
                     ingest_epoch int default 0,   -- which ingest job owns the run; every resume raises it
                     prompt_set jsonb, started_at, finished_at, created_by text)
 clients            (domain text pk, name text, tier smallint default 3, kind text check (kind in ('customer','internal','forwarder','spam')), updated_at)
@@ -1125,7 +1148,8 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 | `GET /clients`, `PUT /clients/:domain` | every sender domain seen, full-outer-joined to `core.clients`, with its tier, kind, email count and mismatch count, and `known: false` for one nobody has ranked. The `PUT` upserts `{ name?, tier?, kind? }`, writes the `client:priority` hash after Postgres, and changes no category: `kind` is a label a person sets and nothing in the pipeline reads it |
 | `POST /runs` | start a run `{ source, ratePerSecond, limit?, emailIds?, subset?: dev \| holdout, promptSet?: { step: vN }, models?: { step: alias } }`. `subset` reads the id lists in `backend/eval/` (ids only). 400 for an unknown prompt version or a model that is not a proxy alias, before anything is queued |
 | `GET /runs`, `GET /runs/:id` | list, detail with stage counts, `finishedEmails` (done, failed and review), `processingDone`, `elapsedMs` (start to the last email finishing, or to now), queue depth, `promptSet`, `llm` usage with `verifierShare`, `review: { open, byReason }`, `outcomes: { ok, mismatch, byField }` over the compared pairs, score (`lastSubmission.scores` carries the scorer's own `weights`, so a page never assumes them). The list also carries `concurrency: { classify, llm }` from the env. `queues` is `null` when Redis cannot be reached; the rest comes from Postgres and is still served |
-| `POST /runs/:id/pause`, `/resume`, `/cancel` | control the replay |
+| `POST /runs/:id/pause`, `/resume`, `/cancel` | control the replay and both queues |
+| `POST /runs/:id/rename` | `{ name }`, up to 80 characters → the run summary. An empty name clears `core.runs.name` and the run is named by when it started again. Allowed in any status |
 | `POST /runs/:id/submit?force=false` | build submission, post to averis, store scoreboard. 409 when the run holds fewer rows than `totalEmails` (still ingesting) or holds unfinished emails, both overridden by `?force=true`; 409 while another submission for the same run is being scored. The `core.submissions` row is written before the scorer is called and updated with the scoreboard after, so a scorer failure leaves an unscored row (null `scoreboard`, null `final_score`) pointing at the stored payload rather than an orphan payload. Only scored rows count as a run's last submission |
 | `GET /runs/:id/submission.json` | download the payload |
 | `GET /runs/:id/emails?stage=&category=&decidedBy=&outcome=&q=` | paginated list with `category`, `decidedBy`, `confidence`, `verifierCategory`, `outcome` (`not_comparable`, `OK`, `MISMATCH` or a review reason), `defectFields`, `error` |
@@ -1151,6 +1175,7 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 | `GET /ontology/types` | the types the rail offers, with live counts and `built`: Emails, then the six resolved kinds, then Shipments, built since phase 10g over `core.shipments` (a group of emails sharing an identifier). A company and a port answer an `openHref` to their business pages since phase 13. The other seven `ObjectType`s are real and are reached through an object rather than browsed; `client` in particular folds into `party`, since a sender domain and a consignee are the same company read two ways |
 | `GET /ontology/:type`, `GET /ontology/:type/:id`, `/:id/detail`, `/:id/graph?hops=1\|2` | the index of a resolved kind; one object in the one shape every type shares; the four parts a resolved thing opens into; and one email's graph as nodes and named edges. The graph carries no coordinates: the layout is one pure function in the frontend with a table-driven test. All six kinds of `EntityKind` list and open; a type that is a table of its own answers 404 naming `/database/tables`. `detail` carries `insight`: the summary, the identity facts with a `verified` flag per attribute, the scale (emails, appearances, spellings, disputed, first and last mail date) and at most three facets of the kind's own trade, built by the pure `pipeline/ontology/insight.ts` from the same `DossierInput` the profile prompt is rendered from |
 | `PATCH /ontology/:kind/:id/attributes`, `POST /ontology/:kind/:id/rename`, `POST /ontology/:kind/:id/merge` | a person correcting a thing from its page (phase 13): attributes with source `human`, which no profile rewrite touches; a chosen name kept as `human_name`, which every resolution pass prefers; and a merge recorded as the person's join of every spelling, so the pass keeps the two together. Each takes `actor` and answers the row |
+| `GET /ontology/entity/:id/preview` | one resolved thing as an `EntityRow`, by id alone: the card that opens when a reader hovers a name the chat linked (phase 16, section 11.1d). Registered above `/:type/...` so `entity` is read as the literal it is. A merged id answers 404, as `/:type/:id/detail` does |
 | `GET /ontology/lanes` | every lane the shipments state between two resolved ports, busiest first: `pol` and `pod` as `{id, name}`, `count` in shipments, and `disputed`, how many of those the judge called different at one of the two ports. What the port map draws between pins; it carries no coordinates, which the port rows already hold (business-data fix session) |
 | `GET /shipments?partyId&portId&disputed&q&page&pageSize`, `GET /shipments/:emailId` | shipments as the mail states them, each party and port a reference to the resolved thing; one shipment with everything shipment-read wrote (phase 13). One row per email, which is a different grain from `/ontology/shipment` below; the code calls that one a `Consignment` so the two contracts do not collide |
 | `GET /ontology/:kind` for all six kinds; `GET /ontology/party/:id/people`, `/party/:id/ports`, `/port/:id/parties` | a kind's list carries attributes, the profile's first sentence and distinct emails per role; the three counterpart lists count distinct undisputed emails (phase 13) |
@@ -1275,6 +1300,29 @@ fact it can see without reading the question's own words, which would be a subje
 by another name; before that, the skill's card is in front of the agent and `load_skill` is the
 way in.
 
+### 11.1d A name in an answer that opens (phase 16)
+
+An answer links the things it names. The agent writes `[Evergreen Marine Corp](entity:412)` with
+an id a tool printed for it, and `agents/chat/mentions.ts` decides, at assembly, whether that link
+survives: it is kept only where a call on that turn reported the id under its new `mentions`
+field, which `find_entity`, `find_entities`, `get_entity` and `list_entities` fill from the rows
+they printed. This is the same test `grounding.ts` applies to a SQL literal, for the same reason:
+an id written from memory leads somewhere else or nowhere, and neither is visible in prose.
+
+A kept link is rewritten to `entity:<kind>/<id>`, because the id alone does not say whether the
+page to open is a company's or a port's and the frontend must not ask the database to find out. A
+link that fails the test loses its markup and stays as the words it wrapped, so the sentence still
+reads and the reader never learns that a link was nearly there.
+
+The stored `content` carries the rewritten form, so a reload draws the same links. What is
+streamed does not: the preview carries the agent's own `entity:412` until the turn lands, and
+`components/chat/mention.ts` treats anything that is not `entity:<kind>/<id>` as plain words. A
+link is drawn once it is known to lead somewhere, and never before.
+
+`GET /ontology/entity/:id/preview` answers the card that opens on hover. It is the `EntityRow` a
+list already draws, by id alone and without a kind, read once per thing the reader actually hovers
+rather than with the turn.
+
 ### 11.1b Live steps, stop, and what a conversation remembers (phase 10e)
 
 **Steps are rows as they happen.** The loop takes an `onStep` callback and the route writes one
@@ -1356,10 +1404,17 @@ repository root configures it.
   rolled-back transaction, and write the profiles out as Markdown for a person to read. Nothing
   reads that folder back.
 
-On the VPS, `ground_truth.json` reaches only the `inbox` container, which mounts it read-only
-from the clone. `api` and `worker` never see it, and `EVAL_GROUND_TRUTH_PATH` is unset there.
-`api` and `worker` cannot read it, so `/eval/*` routes are disabled there and scoring goes
-through `POST /submit`.
+On the VPS, `ground_truth.json` is a file inside the `inbox` container and nowhere else, which
+mounts it read-only from the clone. `EVAL_GROUND_TRUTH_PATH` is unset on every container, so
+nothing but `inbox` has a copy on disk.
+
+The api still scores a run locally there, by asking `inbox` for the key over the compose network:
+`REVEAL_GT=1` turns on the organisers' own `GET /ground_truth` and `EVAL_GROUND_TRUTH_URL` points
+the api at it, guarded by `EVAL_JUDGE_TOKEN` where `.env` names one. That service publishes no
+port, so the endpoint is reachable from this network and nowhere else. The `worker` is left out of
+it on purpose: `eval/` is reached from routes and CLIs, never from a queue. `ground-truth.ts`
+prefers the path where both are set, so a dev machine never calls out, and `loadGroundTruth` is
+the one door either way.
 
 ## 13. Frontend
 

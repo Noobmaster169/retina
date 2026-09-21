@@ -1,11 +1,55 @@
 # Progress
 
-Current phase: **13, on `phase-13-business-data`.** 10a to 10f are merged to `main`, and so are
+Current phase: **16, on `phase-16-linked-answers`.** 10a to 10f are merged to `main`, and so are
 10g and phase 11's first slice (the results page's failure view), which were built in parallel
 and merged into 13 afterwards.
 
-**Start at `docs/phases/phase-13-business-data.md`.** Phase 7's two `[~]` items are still under
-"Deferred" below.
+**Start at `docs/phases/phase-16-linked-answers.md`.** Phase 13's list is
+`docs/phases/phase-13-business-data.md` and phase 7's two `[~]` items are still under "Deferred"
+below.
+
+**2026-09-22: extract is on `v2` and extract-verify on `v2`** (migration `027_extract_party_lines.sql`).
+A party field was read one way on the SI and another on the BL when the party's block carried its
+identification over more than one line. `email_407` and `email_059` both hold the identical shipper
+block on both documents, on behalf line included, and both were read as `APRIL FINE PAPER TRADING ON
+BEHALF OF VITAL SOLUTIONS PTE LTD` on the SI and `APRIL FINE PAPER TRADING` on the BL, so the judge
+called `shipper` different and the comparison was a false MISMATCH.
+
+It was a gap in the prompt rather than a hard document. v1 said "return the name only" and quoted
+"the one line you took the value from"; between them those cover a one-line name and the address
+under it, and say nothing about a line that carries the identification on. The brief's section 7.3
+is why that bites: in a PDF every label sits on a line of its own with the value in the lines below,
+so where the value ends was a judgement v1 left to the model, made one way on one document and the
+other way on the next. v2 says where a party's value ends: it runs to the postal address, and the
+lines before it that say who the party is belong in it. The same paragraph is in extract-verify v2,
+which re-reads from its own copy of the rule.
+
+**Not measured.** This changes every party field on every email, so `pnpm eval:score --holdout` is
+what says whether it helped, and it is the user's to run. No number is in the commit message, which
+`CLAUDE.md` asks for and this commit does not have.
+
+**2026-09-22: local scoring works on the box.** "Score it here" and the second half of
+`/runs/<id>/results` used to answer "No answer key on this machine" in production, because
+`/eval/runs/:id` 404s unless the api can reach `ground_truth.json` and on the VPS that file is a
+mount inside the `inbox` container alone. It still is: nothing was copied and nothing new was
+mounted. Instead `inbox` now runs with the organisers' own `REVEAL_GT=1`, and the api reads the
+key from its `GET /ground_truth` over the compose network (`EVAL_GROUND_TRUTH_URL`, optionally
+guarded by `EVAL_JUDGE_TOKEN` in `~/retina/.env`). That service publishes no port, so the endpoint
+is reachable from that network and nowhere else, and the `worker` is deliberately not given the
+variables. `ground-truth.ts` prefers the path where both are set, so a dev machine is unchanged.
+**Not yet checked on the box**: after the next deploy tick, open a scored run's results page and
+confirm the email-by-email half renders. `EVAL_JUDGE_TOKEN` is optional, so no `.env` edit is
+needed first.
+
+**2026-09-22: phase 16, linked answers, is built on `phase-16-linked-answers`.** The chat named
+the things it resolved in flat prose and the reader had to go and find them again. An answer now
+links each one: the agent writes `[Evergreen Marine Corp](entity:412)` with an id a tool printed,
+`agents/chat/mentions.ts` keeps that link only where a call on the turn reported the id, and the
+page draws it in the kind's hue with a hover card and a click through to its page. The chat prompt
+is **v8**. `GET /ontology/entity/:id/preview` is the card's read. `docs/phases/phase-16-linked-answers.md`
+is the spec; everything on it is done but the live look, which is the user's because it spends
+tokens. Emails and shipments are not linkable yet and a hover card does not open on touch; both
+are under "Deferred" there.
 
 **2026-09-21: phase 15, the streaming chat, is built on `phase-15-streaming-chat`.** The chat
 used to answer nothing visibly until the whole turn was done. `POST /chat/:id/messages` now has
@@ -38,6 +82,52 @@ definitions rather than a hard email, and the verifier was making it worse rathe
 See "Design decisions (classify stage invariant)" below for what was wrong and what it was
 measured against. **The holdout and the full 520 have not been rerun under the new prompts** and
 are the two numbers that decide whether E2E moves off 0.97.
+
+**2026-09-22: the run page's controls, and pause reaching the queues.** Pausing a run used to
+stop only the ingest loop, so a run paused with four hundred emails already enqueued went on
+spending model calls until both queues drained. Every classify and compare job now reads the
+run's status first and a paused run's job goes back to `delayed` for a minute
+(`queues/pause-gate.ts`), spending no attempt; a resume promotes them so the queues restart on
+the click. Pause and cancel also act from `completed`, which is the ingest's word and not the
+pipeline's: the two buttons used to vanish the moment the last email was enqueued, with both
+queues still full, which is most of why they read as not working. A run whose emails have all
+settled is refused either way. A pause also aborts the model calls already in flight: the gate
+holds an AbortController per job, the signal reaches the HTTP request, and the proxy kills the
+`claude -p` session behind it, so the concurrency slot comes back rather than being held for the
+rest of a ten minute generation. That call's tokens are lost, which is the price of the button
+meaning what it says. Migration `028_run_name.sql` adds `core.runs.name` and
+`POST /runs/:id/rename`; the run page's title is edited in place and saved on blur. The shell's
+search field is gone: it had been inert since phase 7.
+
+`test/queues/pause-resume.integration.test.ts` is the first test in the repo to drive real
+BullMQ workers. `TEST_ENV.REDIS_URL` now points at **database 1** of the same Redis so it cannot
+take a development worker's jobs or lose its own; nothing else in the project uses a database
+other than 0. It covers the state the run page is in for most of a replay, which is also the one
+that was hardest to reason about: ingest finished, the run reading `completed`, a model call in
+flight. Pause abandons the call, parks the job with nothing failed, leaves the email at
+`classifying`, and the resume has the model asked again.
+
+**The run overview speaks English now**, and it is the only screen that does. `not_comparable`,
+`MISMATCH` and `wrong_doc_type` are precise and they are not words a business owner knows, and
+this is the screen they open first. Every outcome carries both names in
+`components/run/outcomes.ts`: the enum is still the key, still what the scorer speaks and still
+what the tooltip shows, and the label is what the pie, the bars and the lane-end chips say.
+`docs/05-design.md` principle 4 was amended in the same commit to name the exception and its
+edge. Nothing on a working screen translates and nothing stored or submitted changed.
+
+The finished run's board is now the outcomes chart and the machinery panel only. The score panel
+is gone and the one primary button is `Score run`, which submits and lands on
+`/runs/:id/results`, or `Go to review` once it has been submitted. `docs/05-design.md` section
+4.8 was corrected in the same commit: the outcomes chart is the one chart the product has.
+
+**Open, and worth a look before the demo: the queue holds.** Every pipeline call streams (the
+run page's live preview sets `onText`), and the proxy's `claude_cli` provider only runs its
+30/90/300/900s backoff ladder in `_complete`, the non-streaming path. A streamed call that hits
+a rate limit yields `retryable: true` straight through, the backend retries twice at about one
+and three seconds, and then the queue is held for thirty seconds. So the pipeline gets four
+seconds of patience where the proxy was built to give it twenty minutes. The held chip and the
+dependency chip that showed this were removed from the run page as noise; the hold itself is
+real and still in the logs and in the queue panel's own sentence.
 
 **2026-09-21: phase 14, the ingest gate, is built** (migration `025_ingest_gate.sql`, which
 shares its number with the classify one above; both are applied and neither may be renamed now).

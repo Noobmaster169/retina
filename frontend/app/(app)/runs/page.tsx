@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { Search, TopBar } from "@/components/shell/top-bar";
+import { TopBar } from "@/components/shell/top-bar";
 import { listRuns, type RunList } from "@/lib/api-client";
 
 import { RunsTable } from "./runs-table";
@@ -26,7 +26,6 @@ export default async function RunsPage() {
     <>
       <div className="flex min-w-0 grow flex-col">
         <TopBar crumbs={[{ label: "Runs" }]}>
-          <Search />
         </TopBar>
         <main className="min-h-0 grow overflow-y-auto px-7 pb-8">
           <div className="py-5">

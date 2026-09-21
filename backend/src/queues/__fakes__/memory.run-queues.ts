@@ -6,6 +6,7 @@ import type { RunQueues } from "../run-queues";
 export class MemoryRunQueues implements RunQueues {
   readonly started: { runId: string; jobId: string; epoch: number }[] = [];
   readonly removedFor: string[] = [];
+  readonly promotedFor: string[] = [];
   readonly reruns: { queue: string; data: ClassifyJob; options: JobsOptions }[] = [];
   readonly released: { runId: string; emailId: string }[] = [];
   /** Set to make every call fail the way an unreachable Redis does. */
@@ -35,6 +36,12 @@ export class MemoryRunQueues implements RunQueues {
   async removeWaiting(runId: string): Promise<number> {
     if (this.failWith) throw this.failWith;
     this.removedFor.push(runId);
+    return 0;
+  }
+
+  async promoteDelayed(runId: string): Promise<number> {
+    if (this.failWith) throw this.failWith;
+    this.promotedFor.push(runId);
     return 0;
   }
 }

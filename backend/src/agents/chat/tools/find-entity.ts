@@ -79,6 +79,7 @@ export const findEntity: ChatTool<Input> = {
       empty: exact === 0,
       // A name that means both a place and a company is the ambiguity worth asking about.
       ambiguous: new Set(candidates.map((candidate) => candidate.kind)).size > 1,
+      mentions: candidates.map((candidate) => ({ id: String(candidate.id), kind: candidate.kind, canonical: candidate.canonical })),
       things: candidates.map((candidate) => ({
         kind: candidate.kind,
         canonical: candidate.canonical,

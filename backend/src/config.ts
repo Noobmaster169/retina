@@ -54,9 +54,15 @@ const Env = z.object({
   API_SHARED_SECRET: optionalString,
   TEAM_API_KEY: optionalString,
 
-  // The answer key, for the eval harness only. Set on a dev machine, never on
-  // the VPS: there the key exists only inside the inbox container.
+  // The answer key, for the eval harness only, from whichever of these is set.
+  // A dev machine has the file on disk and sets the path. On the VPS the file
+  // is mounted into the inbox container and nowhere else, so the api asks that
+  // container for it over the private compose network instead: the URL is the
+  // organisers' own judge endpoint and the token is what guards it. The path
+  // wins where both are set, so a dev machine never calls out.
   EVAL_GROUND_TRUTH_PATH: optionalString,
+  EVAL_GROUND_TRUTH_URL: optionalString,
+  EVAL_JUDGE_TOKEN: optionalString,
 
   // Every LLM step runs the model its prompt file names, which is sonnet. This
   // replaces it for an experiment; it must be an alias from proxy/proxy.yaml.

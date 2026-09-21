@@ -1,6 +1,9 @@
 import type { ComponentProps } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
+
+import { EntityMention } from "./entity-mention";
+import { isMentionHref, mentionIn } from "./mention";
 
 /**
  * The answer's prose, as Markdown. The prompt asks for structure only where
@@ -20,11 +23,19 @@ const parts: ComponentProps<typeof ReactMarkdown>["components"] = {
   ol: ({ children }) => <ol className="list-decimal space-y-1 pl-5 text-body leading-[21px] text-ink marker:text-ink-tertiary">{children}</ol>,
   li: ({ children }) => <li className="pl-0.5">{children}</li>,
   code: ({ children }) => <code className="rounded-xs bg-sunken px-1 font-mono text-mono-sm text-ink-secondary">{children}</code>,
-  a: ({ children, href }) => (
-    <a href={href} className="text-accent underline-offset-2 hover:underline">
-      {children}
-    </a>
-  ),
+  a: ({ children, href }) => {
+    const mention = mentionIn(href);
+    if (mention) return <EntityMention mention={mention}>{children}</EntityMention>;
+    // An `entity:` href the backend did not verify, and the half-written one
+    // an answer still streaming carries. Both are the words and nothing more:
+    // a link is drawn once it is known to lead somewhere, and never before.
+    if (isMentionHref(href)) return <>{children}</>;
+    return (
+      <a href={href} className="text-accent underline-offset-2 hover:underline">
+        {children}
+      </a>
+    );
+  },
   table: ({ children }) => (
     <div className="overflow-x-auto">
       <table className="w-full border-collapse text-small">{children}</table>
@@ -35,10 +46,19 @@ const parts: ComponentProps<typeof ReactMarkdown>["components"] = {
   blockquote: ({ children }) => <blockquote className="border-l-2 border-hairline-strong pl-3 text-ink-secondary">{children}</blockquote>,
 };
 
+/**
+ * The one scheme the sanitiser would otherwise drop. It reaches no browser: a
+ * mention is drawn as a component, and every other href goes through the same
+ * default check as before.
+ */
+function keepMentions(url: string): string {
+  return isMentionHref(url) ? url : defaultUrlTransform(url);
+}
+
 export function Markdown({ text }: { text: string }) {
   return (
     <div className="max-w-[72ch] space-y-2.5">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={parts}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={keepMentions} components={parts}>
         {text}
       </ReactMarkdown>
     </div>

@@ -1,12 +1,17 @@
 import type { IconName } from "@/components/ui/icons";
 
 /**
- * The rail's destinations, in two clusters. Operations are scoped to a run,
- * because a run is the context the pipeline's screens read through: the same
- * inbox, the same cases and the same records look different depending on
- * which run produced them. Business data is global: a company, a port and a
- * shipment are things the mail resolved, and which replay read them changes
- * nothing about them. docs/05-design.md section 7 calls putting the entity
+ * The rail's destinations, in two clusters. Operations is the work: mostly
+ * scoped to a run, because a run is the context the pipeline's screens read
+ * through, since the same inbox, the same cases and the same records look
+ * different depending on which run produced them. Business data is what the
+ * work resolved: a company, a port and a shipment are things the mail states,
+ * and which replay read them changes nothing about them.
+ *
+ * The clusters say what a screen is about and not how it is addressed, so a
+ * global destination may sit in either. `Traffic` is the one that does: the
+ * gate admits mail before any run exists to scope it to, and it is still the
+ * pipeline's own screen rather than a thing the mail resolved. docs/05-design.md section 7 calls putting the entity
  * types in the navigation the cheapest way to say this product has a
  * knowledge model and not just a list of emails.
  *
@@ -48,6 +53,11 @@ export interface Destination {
 export const DESTINATIONS: Destination[] = [
   { key: "overview", label: "Overview", icon: "home", path: "", cluster: "operations" },
   { key: "inbox", label: "Inbox", icon: "mail", path: "/inbox", cluster: "operations" },
+  // Beside the inbox, because that is where it acts: what the gate holds never
+  // reaches the mail below it. It still answers the second question a person
+  // asks about a sender, the first being its tier on `Senders`, which is why
+  // the two read as a pair from either side.
+  { key: "gate", label: "Traffic", icon: "scale", path: "/gate", cluster: "operations", global: true },
   { key: "database", label: "Database", icon: "table", path: "/database", cluster: "operations" },
   { key: "ontology", label: "Ontology", icon: "graph", path: "/ontology", cluster: "operations" },
   { key: "chat", label: "Ask Retina", icon: "chat", path: "/chat", cluster: "operations" },
@@ -55,11 +65,6 @@ export const DESTINATIONS: Destination[] = [
   { key: "port", label: "Ports", icon: "port", path: "/port", cluster: "business", global: true },
   { key: "shipment", label: "Shipments", icon: "ship", path: "/shipment", cluster: "business", global: true },
   { key: "clients", label: "Senders", icon: "client", path: "/clients", cluster: "business", global: true },
-  // The second thing a person decides about a sender, beside its tier. Senders
-  // is which one is served first; this is whether we spend anything on it at
-  // all, and putting a blocklist on a page whose copy promises a tier decides
-  // nothing else would make both harder to trust.
-  { key: "gate", label: "Traffic", icon: "scale", path: "/gate", cluster: "business", global: true },
 ];
 
 /**

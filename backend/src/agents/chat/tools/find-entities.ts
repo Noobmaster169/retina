@@ -134,6 +134,7 @@ export const findEntities: ChatTool<Input> = {
       // are deliberately not here.
       grounds: [...answer.matches.map((match) => [match.id, match.name, match.confidence].join("\t")), answer.joinSql].join("\n"),
       empty: answer.matches.length === 0,
+      mentions: answer.matches.map((match) => ({ id: String(match.id), kind: input.kind, canonical: match.name })),
       semantic: [answer.reading],
     };
   },

@@ -47,13 +47,15 @@ const COLUMNS = "minmax(0,1fr) 34px minmax(0,1fr) 34px minmax(0,1fr) 86px minmax
 
 interface LaneMapProps {
   map: LaneMap;
+  /** Which run's inbox the counts hung under the cards open. */
+  runId: string;
   /** The sentence under the title. It says what the two lanes are doing right now. */
   note: string;
   /** How many slots each queue has, from the worker's own env rather than from a constant here. */
   slots: { classify: number; compare: number };
 }
 
-export function LaneMapPanel({ map, note, slots }: LaneMapProps) {
+export function LaneMapPanel({ map, runId, note, slots }: LaneMapProps) {
   return (
     <Panel className="shrink-0">
       <PanelHead title="How the work moves" note={note} />
@@ -77,11 +79,11 @@ export function LaneMapPanel({ map, note, slots }: LaneMapProps) {
         <div className="grid items-start pt-0" style={{ gridTemplateColumns: COLUMNS }}>
           <div className="col-start-5 flex w-max flex-col items-center justify-self-center">
             <Drop />
-            <NotComparable count={map.notComparable} />
+            <NotComparable runId={runId} count={map.notComparable} />
           </div>
           <div className="col-start-11 flex w-max flex-col items-end justify-self-end">
             <Drop />
-            <Ends ends={map.ends} />
+            <Ends runId={runId} ends={map.ends} />
           </div>
         </div>
       </div>

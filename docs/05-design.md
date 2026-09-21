@@ -76,10 +76,19 @@ Section 4.4 gives them separate hues and separate shapes and never lets them sha
    If a thing has no verdict, it is neutral. A table of 520 emails should be almost entirely grey.
 3. **Numbers are monospace and tabular, always.** Every count, confidence, weight, container
    count, LOCODE, BL number, cost, latency and id. Columns of numbers align on the digit.
-4. **The enum is the label.** `BL_COMPARISON`, `NEEDS_REVIEW`, `missing_value`, `gross_weight_kg`
-   appear verbatim, in mono, never prettified into sentence case. It is a correctness rule (the
-   organisers fix these values) and it is the brand's voice: the product speaks the domain's own
-   language and does not translate it down.
+4. **The enum is the label, on a working screen.** `BL_COMPARISON`, `NEEDS_REVIEW`,
+   `missing_value`, `gross_weight_kg` appear verbatim, in mono, never prettified into sentence
+   case. It is a correctness rule (the organisers fix these values) and it is the brand's voice:
+   the product speaks the domain's own language and does not translate it down. A clerk working
+   an inbox knows these words and a chip that renamed them would be lying about what was stored.
+
+   The run overview is the exception, and the only one. It is the first screen a business owner
+   opens and often the only one they read, and they have not read the brief: a ring sliced into
+   `not_comparable`, `MISMATCH` and `wrong_doc_type` told them nothing. There the outcome is
+   named in plain English and the enum is one hover away in the tooltip, which keeps the word the
+   scorer speaks findable without putting it on the face of the panel. Nothing else translates,
+   and nothing stored or submitted changes: `components/run/outcomes.ts` carries both names for
+   each outcome and the enum is the key.
 5. **Evidence is never one click away.** The source quote ships with the value, in the same row,
    in a well. A field without its quote is an unfinished component.
 6. **Density is the courtesy, in a list.** A documentation clerk checking forty drafts wants forty
@@ -312,9 +321,17 @@ axis.
 - **Elapsed in a slot**: a 2px rule along the bottom edge of the row, `#BBD2F5`, showing how long
   that email has held its slot against a typical call.
 
-If a future screen genuinely needs a distribution, use one hue and a hairline baseline, label
-directly, and no gridlines, no donut, no 3D, no area fill under 30 percent. The two ramps this
-file used to define are gone: nothing in the product now needs five shades of one hue.
+One distribution earns a chart, and only one: where a finished run's emails ended up. Seven
+outcomes over one total is the one question on any screen whose answer is a proportion of a
+whole rather than a number, and seven bars measured against seven denominators was the wrong
+drawing of it. The run page offers a ring and the same rows, and a person picks. It obeys every
+other rule here: the verdict hues and nothing else, a hairline gap between arcs, each slice
+labelled directly in the legend beside it, no gridlines, no 3D, no gradient. The total sits in
+the hole, because that is the number the slices are shares of.
+
+Nothing else in the product gets one. A count is a number, every other proportion is a bar, and
+a second chart has to argue for itself here first. The two ramps this file used to define are
+still gone: nothing needs five shades of one hue.
 
 ### 4.9 Category is not a colour
 

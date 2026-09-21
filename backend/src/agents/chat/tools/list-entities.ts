@@ -43,6 +43,7 @@ export const listEntities: ChatTool<ListInput> = {
       // only where one row carried both the thing and the number.
       grounds: rows.map((row) => [row.id, row.canonical, row.mentions, row.emails].join("\t")).join("\n"),
       empty: total === 0,
+      mentions: rows.map((row) => ({ id: String(row.id), kind: row.kind, canonical: row.canonical })),
       things: rows.map((row) => ({ kind: row.kind, canonical: row.canonical, spellings: [] })),
     };
   },

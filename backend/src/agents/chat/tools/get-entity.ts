@@ -77,6 +77,7 @@ export const getEntity: ChatTool<GetInput> = {
         ...thing.names.map((name) => name.value),
         ...Object.values(profile?.attributes ?? {}).filter((value): value is string => value !== null && value !== ""),
       ].join("\n"),
+      mentions: [{ id: thing.id, kind: thing.kind, canonical: thing.canonical }],
       things: [{ kind: thing.kind, canonical: thing.canonical, spellings: thing.names.map((name) => name.value) }],
     };
   },

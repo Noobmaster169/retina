@@ -140,6 +140,13 @@ services:
   # The email server: emails/server from the clone, serving emails/data_v2.
   # Private to this network; the API is the only thing that reads it. The
   # answer key is mounted here and into nothing else.
+  #
+  # REVEAL_GT turns on the organisers' own judge endpoint, GET /ground_truth,
+  # so the api can score a run here as well as send it to /submit. This service
+  # publishes no port, so that endpoint is reachable from this network and from
+  # nowhere else. JUDGE_TOKEN guards it anyway where .env names one; left empty
+  # the server skips the check, which keeps a deploy from failing over a secret
+  # that auto-deploy.sh cannot copy.
   inbox:
     build: ../projects/retina/emails/server
     restart: unless-stopped
@@ -149,6 +156,8 @@ services:
     environment:
       DATA_DIR: /data
       GROUND_TRUTH: /secrets/ground_truth.json
+      REVEAL_GT: "1"
+      JUDGE_TOKEN: ${EVAL_JUDGE_TOKEN:-}
 
   api:
     image: ghcr.io/noobmaster169/retina-api:main
@@ -158,6 +167,11 @@ services:
     environment:
       <<: *backend-env
       PORT: "8091"
+      # Deliberately not in x-backend-env: the eval harness is reached through
+      # the api's routes and its CLIs, never from a queue, so the worker has no
+      # use for the answer key and is not given a way to it.
+      EVAL_GROUND_TRUTH_URL: http://inbox:8000/ground_truth
+      EVAL_JUDGE_TOKEN: ${EVAL_JUDGE_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy

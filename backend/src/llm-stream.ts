@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import type { ChatRequest, ChatResult } from "./llm-contract";
-import { asLlmError, messageParams, proxyClient, REQUEST_TIMEOUT_MS } from "./llm-wire";
+import { asLlmError, deadline, messageParams, proxyClient } from "./llm-wire";
 import { childLogger } from "./lib/logger";
 
 const log = childLogger({ module: "llm-stream" });
@@ -38,18 +38,22 @@ const TextDelta = z.object({
  * One call streamed from the proxy. `onText` receives the text so far after
  * every piece and is awaited, so a slow consumer slows the read rather than
  * piling up writes. The result is the same shape a blocking `chat` returns.
+ *
+ * `signal` abandons the call where it stands: the connection closes, and the
+ * proxy kills the `claude -p` session it was reading from.
  */
 export async function chatStream(
   project: string,
   req: ChatRequest,
   onText: (soFar: string) => Promise<void> | void,
+  signal?: AbortSignal,
 ): Promise<ChatResult> {
   let text = "";
   let final: z.infer<typeof FinalDelta> | null = null;
   let model: string | null = null;
   try {
     const { data, response } = await proxyClient(project)
-      .messages.create({ ...messageParams(req), stream: true }, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
+      .messages.create({ ...messageParams(req), stream: true }, { signal: deadline(signal) })
       .withResponse();
     model = response.headers.get("x-llm-proxy-model");
     for await (const event of data) {

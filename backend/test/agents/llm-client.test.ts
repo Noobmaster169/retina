@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { proxyLlmClient } from "../../src/agents/llm-client";
 import { llmSlots } from "../../src/agents/llm-slot";
-import { LlmTimeoutError, LlmUnavailableError, TerminalError, UpstreamError } from "../../src/lib/errors";
+import { LlmTimeoutError, LlmUnavailableError, RunPausedError, TerminalError, UpstreamError } from "../../src/lib/errors";
 
 const chat = vi.hoisted(() => vi.fn());
 vi.mock("../../src/llm", () => ({ chat }));
@@ -122,6 +122,56 @@ describe("proxyLlmClient retries", () => {
 
     await expect(llm.complete(REQUEST)).rejects.toBeInstanceOf(TerminalError);
     expect(waits).toEqual([]);
+  });
+});
+
+/**
+ * A pause abandons the call. The SDK reports a cancelled request the same way
+ * it reports one that ran out of time, and the difference decides whether the
+ * queue retries the email or parks the job, so the client says which it was
+ * from the signal rather than from the error it caught.
+ */
+describe("proxyLlmClient under a pause", () => {
+  it("names an abandoned call a pause, not the timeout the SDK reports", async () => {
+    const stop = new AbortController();
+    chat.mockImplementation(async () => {
+      stop.abort();
+      throw new LlmTimeoutError("no answer within 600 s");
+    });
+    const { llm, waits } = client();
+
+    await expect(llm.complete(REQUEST, stop.signal)).rejects.toBeInstanceOf(RunPausedError);
+    expect(waits).toEqual([]);
+  });
+
+  it("buys no further call once the pause has landed, not even a retry already owed", async () => {
+    const stop = new AbortController();
+    chat.mockImplementationOnce(async () => {
+      throw new UpstreamError(503, "down", { retryable: true });
+    });
+    // The pause lands while the first failure is waiting out its backoff.
+    const waiting = proxyLlmClient({ sleep: async () => stop.abort() });
+
+    await expect(waiting.complete(REQUEST, stop.signal)).rejects.toBeInstanceOf(RunPausedError);
+    expect(chat).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses before the first call when the run was already paused", async () => {
+    const stop = new AbortController();
+    stop.abort();
+    const { llm } = client();
+
+    await expect(llm.complete(REQUEST, stop.signal)).rejects.toBeInstanceOf(RunPausedError);
+    expect(chat).not.toHaveBeenCalled();
+  });
+
+  it("hands the signal to the proxy, so the request is cancelled and not merely ignored", async () => {
+    chat.mockResolvedValue(ANSWER);
+    const stop = new AbortController();
+    const { llm } = client();
+
+    await llm.complete(REQUEST, stop.signal);
+    expect(chat).toHaveBeenCalledWith("retina-worker", expect.anything(), stop.signal);
   });
 });
 

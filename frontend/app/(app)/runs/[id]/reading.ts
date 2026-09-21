@@ -1,6 +1,5 @@
 import { HealthReport, RunQueuesView } from "@/lib/api/queues-schemas";
 import { RunSummary } from "@/lib/api/runs-schemas";
-import type { Trouble } from "@/components/run/run-header";
 
 /**
  * How the run reads in one sentence, and whether anything is wrong with it.
@@ -9,51 +8,21 @@ import type { Trouble } from "@/components/run/run-header";
  * backend untouched.
  */
 
-/** The names the health report uses, in the words the banner says them in. */
-const NAMES: Record<string, string> = {
-  postgres: "postgres",
-  redis: "redis",
-  minio: "minio",
-  inbox: "the inbox",
-  llmProxy: "the llm-proxy",
-  docExtract: "doc-extract",
-  worker: "the worker",
-};
-
 /**
- * A dependency that is refusing work. A held queue is the symptom the run page
- * cares about, because failure-policy.ts rate limits a queue exactly when one
- * of these answers a DependencyUnavailableError, and a dependency that is down
- * with no queue held has not cost the run anything yet.
+ * Whether a dependency is refusing this run work. One word in the status chip
+ * is all that is left of it: the banner and the chip that used to name the
+ * dependency both arrived and left on the thirty second cycle of a hold that
+ * had failed nothing, and the queue that stopped already says so in its own
+ * panel.
+ *
+ * A held queue is the symptom, because failure-policy.ts rate limits a queue
+ * exactly when a dependency answers a DependencyUnavailableError, and one that
+ * is down with no queue held has not cost the run anything yet.
  */
-export function troubleOf(health: HealthReport | null, queues: RunQueuesView | null): Trouble | null {
-  const down = health ? Object.entries(health.checks).find(([, check]) => check.status === "down") : undefined;
-  const heldQueues = queues
-    ? [
-        ...(queues.classify.heldUntil !== null ? (["sorting"] as const) : []),
-        ...(queues.compare.heldUntil !== null ? (["checking"] as const) : []),
-      ]
-    : [];
-  if (!down && heldQueues.length === 0) return null;
-
-  // A queue is rate limited exactly when an upstream refused, so naming the
-  // queue is the useful half even when every health check still reads up: the
-  // check ran a moment ago and the refusal happened since.
-  const holding = heldQueues.length === 2 ? "both queues have" : `${heldQueues[0]} has`;
-  if (down) {
-    const [key] = down;
-    return {
-      what: NAMES[key] ?? key,
-      detail:
-        heldQueues.length > 0
-          ? `${holding} paused for thirty seconds. Held jobs keep their attempts, so nothing has failed.`
-          : `It is not answering its health check. Nothing has paused yet.`,
-    };
-  }
-  return {
-    what: "A dependency",
-    detail: `${holding} paused for thirty seconds. Held jobs keep their attempts, so nothing has failed.`,
-  };
+export function degraded(health: HealthReport | null, queues: RunQueuesView | null): boolean {
+  const down = health ? Object.values(health.checks).some((check) => check.status === "down") : false;
+  const held = queues ? queues.classify.heldUntil !== null || queues.compare.heldUntil !== null : false;
+  return down || held;
 }
 
 /** What the two queues are doing, in one sentence under the title. */

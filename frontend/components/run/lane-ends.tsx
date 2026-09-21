@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import type { LaneMap } from "./progress";
 
 /**
@@ -7,7 +9,13 @@ import type { LaneMap } from "./progress";
  *
  * The chips are tinted and the count inside them stays ink, so the hue says
  * which verdict and the number stays as readable as every other number on the
- * page.
+ * page. They are named the way the outcomes panel below names the same
+ * things, because a person reading down the page should not meet one
+ * vocabulary at the top and another underneath it.
+ *
+ * Every one of them opens the inbox on exactly the rows it counted. A number
+ * on a board that a person cannot get behind is a number they have to take on
+ * trust, and the whole point of the page is that they do not have to.
  */
 
 const TINT = {
@@ -22,25 +30,31 @@ export function Drop() {
   return <span className="h-[26px] w-px shrink-0 bg-hairline-strong" aria-hidden="true" />;
 }
 
-export function NotComparable({ count }: { count: number }) {
+export function NotComparable({ runId, count }: { runId: string; count: number }) {
   return (
-    <div className="flex h-[34px] w-[286px] max-w-full shrink-0 items-center gap-2.5 rounded-md border border-hairline bg-surface px-3">
-      <span className="shrink-0 text-small text-ink-secondary">Nothing to check, finished</span>
+    <Link
+      href={`/runs/${runId}/inbox?filter=no-check`}
+      className="flex h-[34px] w-[286px] max-w-full shrink-0 items-center gap-2.5 rounded-md border border-hairline bg-surface px-3 transition-colors duration-150 hover:bg-sunken"
+    >
+      <span className="shrink-0 text-small text-ink-secondary">No check needed, finished</span>
       <span className="grow" />
-      <span className="shrink-0 font-mono text-mono-xs text-ink-tertiary">not_comparable</span>
       <span className="shrink-0 text-strong font-semibold tabular-nums">{count}</span>
-    </div>
+    </Link>
   );
 }
 
-export function Ends({ ends }: { ends: LaneMap["ends"] }) {
+export function Ends({ runId, ends }: { runId: string; ends: LaneMap["ends"] }) {
   return (
     <div className="flex shrink-0 items-center gap-2">
       {ends.map((end) => (
-        <span key={end.key} className={`flex h-[34px] shrink-0 items-center gap-2.5 rounded-md px-3 ${TINT[end.tone]}`}>
-          <span className="font-mono text-mono-xs">{end.key}</span>
+        <Link
+          key={end.filter}
+          href={`/runs/${runId}/inbox?filter=${end.filter}`}
+          className={`flex h-[34px] shrink-0 items-center gap-2.5 rounded-md px-3 transition-opacity duration-150 hover:opacity-80 ${TINT[end.tone]}`}
+        >
+          <span className="text-small font-medium">{end.label}</span>
           <span className="text-strong font-semibold tabular-nums text-ink">{end.count}</span>
-        </span>
+        </Link>
       ))}
     </div>
   );

@@ -15,6 +15,12 @@ import { useEffect, useState } from "react";
  *
  * The component owns the interval so the panel around it does not re-render
  * ten times a second and re-run every row's layout animation.
+ *
+ * `ticking` is how a pause reaches it. A paused run's emails are not getting
+ * older in any sense a person cares about: nothing is working on them and
+ * nothing is waiting for a slot, so a clock that kept climbing was measuring
+ * how long the person had left the run paused for and labelling it as how
+ * long the email had been held. It stops where the pause found it.
  */
 
 const TICK_MS = 100;
@@ -22,10 +28,12 @@ const TICK_MS = 100;
 interface ElapsedProps {
   /** When the worker took the job, as an instant. Null when BullMQ recorded none. */
   since: string | null;
+  /** False while the run is paused: the reading freezes rather than counting the pause. */
+  ticking?: boolean;
 }
 
-export function Elapsed({ since }: ElapsedProps) {
-  const ms = useElapsed(since === null ? null : Date.parse(since));
+export function Elapsed({ since, ticking = true }: ElapsedProps) {
+  const ms = useElapsed(since === null ? null : Date.parse(since), ticking);
   if (ms === null) return null;
   return (
     <>
@@ -44,19 +52,19 @@ export function Elapsed({ since }: ElapsedProps) {
 }
 
 /** The same clock for a row that only shows the number, with no rule under it. */
-export function ElapsedText({ since, prefix = "" }: { since: string | null; prefix?: string }) {
-  const ms = useElapsed(since === null ? null : Date.parse(since));
+export function ElapsedText({ since, prefix = "", ticking = true }: { since: string | null; prefix?: string; ticking?: boolean }) {
+  const ms = useElapsed(since === null ? null : Date.parse(since), ticking);
   if (ms === null) return null;
   return <span className="font-mono text-micro tabular-nums text-ink-faint">{`${prefix}${words(ms)}`}</span>;
 }
 
-function useElapsed(at: number | null): number | null {
+function useElapsed(at: number | null, ticking: boolean): number | null {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (at === null) return;
+    if (at === null || !ticking) return;
     const tick = setInterval(() => setNow(Date.now()), TICK_MS);
     return () => clearInterval(tick);
-  }, [at]);
+  }, [at, ticking]);
   if (at === null || Number.isNaN(at)) return null;
   return Math.max(0, now - at);
 }
