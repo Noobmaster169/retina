@@ -1,5 +1,8 @@
 # Phase 3: VPS deploy and Vercel
 
+> **`deploy/sim/` was removed on 2026-09-21.** What follows is the record of what this phase
+> built. The simulator is gone and the deploy scripts have no local gate; see `deploy/README.md`.
+
 ## Goal
 
 The phase 2 system runs on the Monash box and is reachable through the Vercel URL. Every
@@ -109,7 +112,8 @@ refuses to invent a `PG_PASSWORD` when the Postgres volume already exists, which
 the data away), the stack up and `/health` polled, the four cron lines including the nightly
 `pg_dump`, and the day-one checks phase 4 needs, printed ready for `PROGRESS.md`.
 
-### 6. `deploy/sim/`
+### 6. `deploy/sim/` (removed)
+
 
 A Docker-in-Docker replica of the box layout: `/srv/origin.git` stands in for GitHub,
 `~/projects/retina` is the clone, `~/retina` is the stack, so the relative paths in

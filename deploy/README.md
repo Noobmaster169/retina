@@ -180,17 +180,16 @@ A commit that adds a service is deployed by converging the whole stack
 (`docker compose up -d`) rather than the usual `--no-deps api worker`, because
 `--no-deps` would skip creating the new one.
 
-Change these scripts with `deploy/sim/sim.sh`, not on the box:
+**These scripts have no local gate.** `deploy/sim/`, a Docker-in-Docker replica
+of this layout that ran the real `auto-deploy.sh` and `bootstrap-wizard.sh`
+against it, was removed on 2026-09-21. So a change to `auto-deploy.sh`,
+`bootstrap-wizard.sh`, `lib/` or `compose.yaml` is first proven on the box, by
+the next cron tick, and there is no rehearsal of the rollback path.
 
-```bash
-cd deploy/sim && ./sim.sh up && ./sim.sh test
-```
-
-It runs the real `auto-deploy.sh` and `bootstrap-wizard.sh` against a replica
-of this layout in Docker-in-Docker, including a deploy whose `/health` reports
-Postgres down, so rollback is exercised somewhere a mistake is cheap. What it
-cannot exercise: a logged-in `claude` (it has no token, so model calls fail as not
-logged in), ngrok, cron and this box's real `.env`.
+What that costs, so it is a decision and not a surprise: a wrong script here is
+recovered by hand over SSH, and the recovery is `deploy/README.md` and nothing
+else. Read a change to these files twice, keep it small, and watch
+`~/retina/deploy.log` after it lands.
 
 ## Calling the API as a teammate
 

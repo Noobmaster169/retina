@@ -117,10 +117,10 @@ Read this with section 1; it was written before the review and section 1's shape
 
 - Git Bash eats quotes and backslashes in an inline heredoc that carries Python with triple
   quotes: write the script to a file and run it (memory `windows-shell-quoting`).
-- The doc-extract suite runs here with the OCR test skipped (no tesseract on Windows); the image
-  runs all of it: see the command in PROGRESS or `docker run --rm -v "$(cygpath -m "$PWD")":/src:ro retina-doc-extract sh -c "cp -r /src /tmp/w && cd /tmp/w && uv sync --frozen -q && uv run pytest -q"` from `services/doc-extract`.
-- `deploy/sim/sim.sh test <branch>` takes about five minutes and is the only gate on `deploy/`;
-  it passed 23 of 23 at the end of phase 5.
+- The doc-extract suite runs anywhere now: there is no tesseract to be missing. The image still
+  runs it the same way: see the command in PROGRESS or `docker run --rm -v "$(cygpath -m "$PWD")":/src:ro retina-doc-extract sh -c "cp -r /src /tmp/w && cd /tmp/w && uv sync --frozen -q && uv run pytest -q"` from `services/doc-extract`.
+- `deploy/sim/` was removed on 2026-09-21. It passed 23 of 23 at the end of phase 5 and was the
+  only gate on `deploy/`; there is none now, so a `deploy/` change is first proven on the box.
 - The doc-type model read the xlsx BL of `email_005` as an SI at 0.62; the filename's claim
   stood, so nothing was lost, but if you see it again on the full run it is a prompt sentence
   about flattened spreadsheets, never a title rule.

@@ -130,9 +130,7 @@ The proxy became a compose service this phase; doc-extract should look the same:
   (8000 is free on the host; 8080 is the inbox) and set `DOC_EXTRACT_URL` in `.env.example`.
 - `deploy/auto-deploy.sh`: rebuild it when `services/doc-extract/` changes, next to the inbox and
   llm-proxy blocks. A failed build keeps the old container.
-- `deploy/sim`: add checks like the two proxy ones (it answers inside the stack; the api or
-  worker reaches it by name). Run `./sim.sh up && ./sim.sh test <branch>`: it was 20 of 20 at the
-  end of phase 4 and is the only gate on `deploy/`.
+- `deploy/sim`: removed on 2026-09-21, so this no longer applies and `deploy/` has no local gate.
 - CI (`.github/workflows/deploy.yml`) builds the proxy image; add the doc-extract image likewise.
 
 ## 7. What the run page does now, and where phase 5 plugs in
