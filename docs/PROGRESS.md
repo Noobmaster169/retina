@@ -102,6 +102,17 @@ stores a numeric weight the answer now sums. The baseline already carried the sc
 so the zero faults on both sides say that rule is what fixed the prose; the v5 text and opus buy
 the shorter path. Both reports are under `eval/reports/`, untracked.
 
+**Markdown, and v6 (follow-up, same day).** The answer is rendered as Markdown now
+(`components/chat/markdown.tsx`, react-markdown with GFM, in the product's own type), and v6 asks
+for as much of it as the answer needs: bold on the one figure the reader came for, a list for
+three or more parallel parts, a short heading only when the answer has distinct parts, and the
+tone of a colleague across a desk. The prose check ignores heading lines and allows eight
+sentences, since a five-line list with three sentences around it is structure, not length. Six
+varied questions on v6: 5 of 6 passed, the miss being that cap before it was widened. Asked in
+the dock on a company page for an overview of who they trade with, which ports, and what went
+wrong, v6 answered in three titled parts with a list and eleven bold figures; v5 had answered the
+same question as one paragraph.
+
 **Deferred.**
 
 - `weight-total` in `eval/chat-questions.json` expects the answer to say a weight cannot be

@@ -17,14 +17,14 @@ const SCHEMA_NAME = /\b(?:core|analytics)\.[a-z_]+/i;
 const OFFER = /\b(?:let me know|feel free|would you like|happy to|i can (?:pull|run|dig|look|help|show you)|i'd be happy)\b/i;
 const GREETING = /^\s*(?:hello|hi|hey)\b/i;
 
-/** At most this many sentences, a bullet line counting as one whatever its punctuation. */
-export const MAX_SENTENCES = 4;
+/** At most this many sentences, a bullet line counting as one whatever its punctuation and a heading as none. */
+export const MAX_SENTENCES = 8;
 
 export function sentenceCount(answer: string): number {
   let count = 0;
   for (const raw of answer.split("\n")) {
     const line = raw.trim();
-    if (line === "") continue;
+    if (line === "" || /^#{1,3}\s/.test(line)) continue;
     if (/^(?:[-*]|\d+[.)])\s/.test(line)) {
       count += 1;
       continue;
