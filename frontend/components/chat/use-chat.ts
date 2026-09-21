@@ -3,10 +3,10 @@
 import { useRef, useState } from "react";
 
 import { type ChatTurn, type ContextRef } from "@/lib/api/chat-agent-schemas";
-import { ChatAnswer, ChatConversation, ChatProgress } from "@/lib/api/chat-thread-schemas";
+import { ChatConversation, type ChatProgress } from "@/lib/api/chat-thread-schemas";
 
 import { optimistic, whatLanded } from "./pending-turn";
-import { eventFrames } from "./sse";
+import { turnEvents } from "./turn-stream";
 
 /**
  * Asking a question, watching it being answered, and holding what came back.
@@ -52,15 +52,6 @@ async function refusal(response: Response): Promise<string> {
   const body: unknown = await response.json().catch(() => null);
   const message = typeof body === "object" && body !== null ? (body as { error?: unknown }).error : undefined;
   return typeof message === "string" ? message : `The answer failed with ${response.status}.`;
-}
-
-/** A frame's body. A frame that is not JSON is a broken stream, not a failed turn, and is skipped. */
-function payload(data: string): unknown {
-  try {
-    return JSON.parse(data) as unknown;
-  } catch {
-    return null;
-  }
 }
 
 /** Opens a conversation and returns it, or the reason it could not be opened. */
@@ -157,29 +148,18 @@ export function useChat(options: {
         }
 
         let ended = false;
-        for await (const frame of eventFrames(response.body)) {
-          if (frame.event === "progress") {
-            const parsed = ChatProgress.safeParse(payload(frame.data));
-            if (parsed.success) setProgress(parsed.data);
+        for await (const event of turnEvents(response.body)) {
+          if (event.kind === "progress") {
+            setProgress(event.progress);
             continue;
           }
-          if (frame.event === "answer") {
-            const parsed = ChatAnswer.safeParse(payload(frame.data));
-            if (!parsed.success) {
-              setError("The answer arrived outside the contract. Reopen the conversation to read what was stored.");
-              ended = true;
-              continue;
-            }
-            setTurns((was) => [...was, parsed.data.turn]);
-            setExhausted(parsed.data.exhausted);
-            ended = true;
+          ended = true;
+          if (event.kind === "answer") {
+            setTurns((was) => [...was, event.answer.turn]);
+            setExhausted(event.answer.exhausted);
             continue;
           }
-          if (frame.event === "failure") {
-            const said = payload(frame.data) as { error?: unknown } | null;
-            setError(typeof said?.error === "string" ? said.error : "The answer did not arrive.");
-            ended = true;
-          }
+          setError(event.message);
         }
         // The stream closed without saying how it ended, which is the connection
         // going away mid-turn rather than the turn failing. The backend stores
