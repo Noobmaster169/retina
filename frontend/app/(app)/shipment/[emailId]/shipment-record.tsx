@@ -7,12 +7,13 @@ import type { ShipmentDetail } from "@/lib/api/shipments-schemas";
 
 import { none, Row, Section, Thing } from "./record-parts";
 
-/** The whole record, in sections: who, where, what, on what terms, and the email it came from. `route` sits under the cargo, a picture of the lane after the facts. */
+/** The whole record, in sections: who, where, what, on what terms, and the email it came from. `route` heads the left column, a picture of the lane. */
 export function ShipmentRecord({ shipment: s, route }: { shipment: ShipmentDetail; route?: ReactNode }) {
   const extras = Object.entries(s.attributes);
   return (
     <div className="grid grid-cols-1 gap-8 px-7 py-6 xl:grid-cols-2">
       <div className="space-y-8">
+        {route}
         <Section title="Parties">
           <Row label="Shipper"><Thing type="party" item={s.shipper} /></Row>
           <Row label="Consignee"><Thing type="party" item={s.consignee} /></Row>
@@ -30,7 +31,6 @@ export function ShipmentRecord({ shipment: s, route }: { shipment: ShipmentDetai
           <Row label="Containers">{s.containerCount !== null ? `${s.containerCount} x ${s.containerType ?? "container"}` : none}</Row>
           <Row label="Gross weight">{s.grossWeightKg !== null ? `${s.grossWeightKg.toLocaleString()} kg` : none}</Row>
         </Section>
-        {route}
       </div>
       <div className="space-y-8">
         <Section title="References and terms">
