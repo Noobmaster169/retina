@@ -3,7 +3,8 @@ import type { Tone } from "@/components/ui/chip";
 
 export const ROLE_ORDER = ["SI", "BL", "UNKNOWN"];
 
-export function summaryTitle(tally: FieldTally, fallback: string): string {
+export function summaryTitle(tally: FieldTally, fallback: string, wrongDocument = false): string {
+  if (wrongDocument) return "A file was not the document it claims to be";
   if (tally.differ > 0) return `${tally.differ} ${tally.differ === 1 ? "difference" : "differences"} need attention`;
   if (tally.missing > 0) {
     return `${tally.missing} ${tally.missing === 1 ? "field could" : "fields could"} not be compared`;
@@ -12,7 +13,10 @@ export function summaryTitle(tally: FieldTally, fallback: string): string {
   return fallback;
 }
 
-export function summaryText(tally: FieldTally, fieldCount: number): string {
+export function summaryText(tally: FieldTally, fieldCount: number, wrongDocument = false): string {
+  if (wrongDocument) {
+    return "Retina read the attachments and found a file filling a place in the pair that is not a shipping instruction or bill of lading. No field comparison was run.";
+  }
   if (fieldCount === 0) return "No document comparison was required for this email.";
   const checked = tally.total - tally.missing;
   const base = `Retina checked ${checked} ${checked === 1 ? "field" : "fields"} across the Shipping Instruction and Bill of Lading.`;

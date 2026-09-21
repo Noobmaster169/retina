@@ -14,6 +14,7 @@ import { ClassificationChip, classificationLabel } from "./classification-chip";
 import { CallsTab } from "./calls-tab";
 import { CheckTab, rowsOf } from "./check-tab";
 import { DocumentsTab } from "./documents-tab";
+import { hasReport, wrongDocuments } from "./report-eligible";
 import { ReportTab } from "./report-tab";
 import { statusOf } from "./email-reading";
 import type { Message } from "./message-card";
@@ -23,7 +24,8 @@ import type { Message } from "./message-card";
  * page, never a page each, because they are readings of the same thing and the
  * message stays above all of them.
  *
- * Only `The check` is always there. `Report` needs a comparison to report,
+ * Only `The check` is always there. `Report` needs a comparison to report or a
+ * wrong-document finding to explain,
  * `Both documents` needs documents to show and `Model calls` needs a call to
  * have been made, and most of this inbox has no pair at all:
  * a spam mail and an invoice query have nothing to compare, and a tab that
@@ -58,12 +60,14 @@ export function EmailPane({ runId, trace, message, subject, tab, onTab, onChange
   const actions = useCaseActions(review?.id ?? null, reviewer.name, onChanged);
 
   const rows = rowsOf(trace);
+  const reportable = hasReport(trace);
   const status = statusOf(trace);
   const classification = trace.classification?.humanCategory ?? trace.classification?.finalCategory ?? null;
   const showStatus = classification === null || status.value !== classificationLabel(classification);
+  const reportCount = rows.length > 0 ? rows.length : wrongDocuments(trace).length;
   const tabs = [
     { value: "check", label: review ? "The case" : "The check", count: review ? 1 : rows.length },
-    ...(rows.length > 0 ? [{ value: "report", label: "Report", count: rows.length }] : []),
+    ...(reportable ? [{ value: "report", label: "Report", count: reportCount }] : []),
     ...(trace.documents.length > 0 ? [{ value: "documents", label: "Both documents", count: trace.documents.length }] : []),
     ...(trace.calls.length > 0 ? [{ value: "calls", label: "Model calls", count: trace.calls.length }] : []),
   ];
