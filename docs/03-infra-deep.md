@@ -1153,6 +1153,7 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 | `GET /ontology/types` | the types the rail offers, with live counts and `built`: Emails, then the six resolved kinds, then Shipments, built since phase 10g over `core.shipments` (a group of emails sharing an identifier). A company and a port answer an `openHref` to their business pages since phase 13. The other seven `ObjectType`s are real and are reached through an object rather than browsed; `client` in particular folds into `party`, since a sender domain and a consignee are the same company read two ways |
 | `GET /ontology/:type`, `GET /ontology/:type/:id`, `/:id/detail`, `/:id/graph?hops=1\|2` | the index of a resolved kind; one object in the one shape every type shares; the four parts a resolved thing opens into; and one email's graph as nodes and named edges. The graph carries no coordinates: the layout is one pure function in the frontend with a table-driven test. All six kinds of `EntityKind` list and open; a type that is a table of its own answers 404 naming `/database/tables`. `detail` carries `insight`: the summary, the identity facts with a `verified` flag per attribute, the scale (emails, appearances, spellings, disputed, first and last mail date) and at most three facets of the kind's own trade, built by the pure `pipeline/ontology/insight.ts` from the same `DossierInput` the profile prompt is rendered from |
 | `PATCH /ontology/:kind/:id/attributes`, `POST /ontology/:kind/:id/rename`, `POST /ontology/:kind/:id/merge` | a person correcting a thing from its page (phase 13): attributes with source `human`, which no profile rewrite touches; a chosen name kept as `human_name`, which every resolution pass prefers; and a merge recorded as the person's join of every spelling, so the pass keeps the two together. Each takes `actor` and answers the row |
+| `GET /ontology/entity/:id/preview` | one resolved thing as an `EntityRow`, by id alone: the card that opens when a reader hovers a name the chat linked (phase 16, section 11.1d). Registered above `/:type/...` so `entity` is read as the literal it is. A merged id answers 404, as `/:type/:id/detail` does |
 | `GET /ontology/lanes` | every lane the shipments state between two resolved ports, busiest first: `pol` and `pod` as `{id, name}`, `count` in shipments, and `disputed`, how many of those the judge called different at one of the two ports. What the port map draws between pins; it carries no coordinates, which the port rows already hold (business-data fix session) |
 | `GET /shipments?partyId&portId&disputed&q&page&pageSize`, `GET /shipments/:emailId` | shipments as the mail states them, each party and port a reference to the resolved thing; one shipment with everything shipment-read wrote (phase 13). One row per email, which is a different grain from `/ontology/shipment` below; the code calls that one a `Consignment` so the two contracts do not collide |
 | `GET /ontology/:kind` for all six kinds; `GET /ontology/party/:id/people`, `/party/:id/ports`, `/port/:id/parties` | a kind's list carries attributes, the profile's first sentence and distinct emails per role; the three counterpart lists count distinct undisputed emails (phase 13) |
@@ -1276,6 +1277,29 @@ The harness injects the `meaning-terms` skill once a call has reported a reading
 fact it can see without reading the question's own words, which would be a subject keyword table
 by another name; before that, the skill's card is in front of the agent and `load_skill` is the
 way in.
+
+### 11.1d A name in an answer that opens (phase 16)
+
+An answer links the things it names. The agent writes `[Evergreen Marine Corp](entity:412)` with
+an id a tool printed for it, and `agents/chat/mentions.ts` decides, at assembly, whether that link
+survives: it is kept only where a call on that turn reported the id under its new `mentions`
+field, which `find_entity`, `find_entities`, `get_entity` and `list_entities` fill from the rows
+they printed. This is the same test `grounding.ts` applies to a SQL literal, for the same reason:
+an id written from memory leads somewhere else or nowhere, and neither is visible in prose.
+
+A kept link is rewritten to `entity:<kind>/<id>`, because the id alone does not say whether the
+page to open is a company's or a port's and the frontend must not ask the database to find out. A
+link that fails the test loses its markup and stays as the words it wrapped, so the sentence still
+reads and the reader never learns that a link was nearly there.
+
+The stored `content` carries the rewritten form, so a reload draws the same links. What is
+streamed does not: the preview carries the agent's own `entity:412` until the turn lands, and
+`components/chat/mention.ts` treats anything that is not `entity:<kind>/<id>` as plain words. A
+link is drawn once it is known to lead somewhere, and never before.
+
+`GET /ontology/entity/:id/preview` answers the card that opens on hover. It is the `EntityRow` a
+list already draws, by id alone and without a kind, read once per thing the reader actually hovers
+rather than with the turn.
 
 ### 11.1b Live steps, stop, and what a conversation remembers (phase 10e)
 
