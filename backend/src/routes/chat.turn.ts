@@ -7,6 +7,7 @@ import { runTurn } from "../agents/chat/loop";
 import { renderMemory } from "../agents/chat/memory";
 import { orientationFor } from "../agents/chat/orientation";
 import { standing } from "../agents/chat/standing";
+import { conversationTitle } from "../agents/chat/title";
 import type { LlmClient } from "../agents/llm-client";
 import { childLogger } from "../lib/logger";
 import { chat, chatLive, chatMemory, chatState } from "../ontology/repositories";
@@ -61,7 +62,7 @@ export async function answerTurn(
   // Its id is what this turn's steps are written against, and what the page
   // polls from while the answer is still coming.
   const asked = await chat.addUserTurn(deps.pool, id, message.content, message.context);
-  await chat.titleIfUnnamed(deps.pool, id, message.content);
+  await chat.titleIfUnnamed(deps.pool, id, conversationTitle(message.content));
 
   const previous = await chat.recentTurns(deps.pool, id, HISTORY_TURNS);
   const history = previous

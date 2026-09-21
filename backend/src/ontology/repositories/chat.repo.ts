@@ -84,13 +84,14 @@ export async function find(db: Queryable, id: string): Promise<ChatConversation 
 
 
 /**
- * Names an untitled conversation after its first question.
+ * Names an untitled conversation, once.
  *
  * A conversation people can find again is worth more than one they have to
- * name, and the first question is what they will remember it by.
+ * name. The label is `agents/chat/title.ts`'s to write, and this only stores
+ * it: the rule for what makes a readable label is a pure one and belongs
+ * where it can be read and tested, not inside a SQL call.
  */
-export async function titleIfUnnamed(db: Queryable, conversationId: string, question: string): Promise<void> {
-  const title = question.length > 70 ? `${question.slice(0, 69)}…` : question;
+export async function titleIfUnnamed(db: Queryable, conversationId: string, title: string): Promise<void> {
   await db.query("update core.chat_conversations set title = $2::text where id = $1::uuid and title is null", [
     conversationId,
     title,

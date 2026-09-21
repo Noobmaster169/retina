@@ -2,21 +2,19 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
+import { AnimatePresence, motion } from "motion/react";
 
 import { Composer } from "@/components/chat/composer";
-import { LiveCalls } from "@/components/chat/live-calls";
-import { Markdown } from "@/components/chat/markdown";
-import { withoutUnfinishedLink } from "@/components/chat/mention";
-import { StatusLine } from "@/components/chat/status-line";
 import { Turn } from "@/components/chat/turn";
 import { openConversation, useChat } from "@/components/chat/use-chat";
 
 import { DockSync } from "@/components/dock/dock-sync";
 
 import { ConversationRail } from "./conversation-rail";
+import { Opening } from "./opening";
+import { Empty, Pending } from "./thread-parts";
 import { TopBar } from "@/components/shell/top-bar";
-import type { ChatToolCall } from "@/lib/api/chat-agent-schemas";
-import type { ChatConversation, ChatProgress, ChatThread } from "@/lib/api/chat-thread-schemas";
+import type { ChatConversation, ChatThread } from "@/lib/api/chat-thread-schemas";
 
 /**
  * The conversation, wide.
@@ -29,6 +27,14 @@ import type { ChatConversation, ChatProgress, ChatThread } from "@/lib/api/chat-
 
 /** There are no accounts in this build; a reviewer types their name once. This is the chat's. */
 const ACTOR = "the analyst";
+
+/**
+ * How the question box travels from the middle of the page to its foot. Long
+ * enough to read as one movement and not a jump, short enough that it is over
+ * before the first tool call comes back. Eased out, because the box is coming
+ * to rest against the bottom of the page and should look like it.
+ */
+const SETTLE = { duration: 0.42, ease: [0.22, 1, 0.36, 1] } as const;
 
 const SUGGESTIONS = [
   "Which client had the most mismatches in the latest run, and on which field?",
@@ -47,6 +53,13 @@ export function ChatPage({ runId, conversations, thread }: ChatPageProps) {
   const router = useRouter();
   const chat = useChat({ conversationId: thread?.conversation.id ?? null, actor: ACTOR, initial: thread?.turns ?? [] });
   const foot = useRef<HTMLDivElement>(null);
+
+  // Nothing has been asked here yet. `turns` holds the person's own question
+  // the moment they send it, before any answer, so this turns false on the
+  // keystroke that sends rather than when the model comes back: the box starts
+  // travelling while they are still looking at what they typed.
+  const opening = chat.turns.length === 0 && !chat.pending;
+  const scopeWords = thread?.conversation.scope.chips.map((chip) => chip.label).join(" and ") ?? "every run";
 
   // A new answer is long, and the thing a person wants to read is its top, not
   // its bottom. Scrolling to the end of the list puts the question they just
@@ -108,61 +121,32 @@ export function ChatPage({ runId, conversations, thread }: ChatPageProps) {
           )}
         </div>
 
+        {/*
+         * An empty conversation puts the question box in the middle of the
+         * page, where the only thing to do is ask, and travels it to the foot
+         * once there is a thread to read above it. The box itself never
+         * unmounts: `layout` animates the one element from where it was to
+         * where it now belongs, so the movement is the box moving and not one
+         * box disappearing while another appears. The spacer under it is what
+         * centres it, and its going is what sends the box down.
+         */}
         {thread ? (
-          <Composer
-            onAsk={chat.ask}
-            onStop={chat.stop}
-            pending={chat.pending}
-            suggestions={chat.turns.length === 0 ? SUGGESTIONS : []}
-            placeholder="Ask about this inbox"
-          />
+          <>
+            <AnimatePresence>{opening ? <Opening key="opening" scope={scopeWords} /> : null}</AnimatePresence>
+            <motion.div layout transition={SETTLE} className="shrink-0">
+              <Composer
+                onAsk={chat.ask}
+                onStop={chat.stop}
+                pending={chat.pending}
+                suggestions={opening ? SUGGESTIONS : []}
+                placeholder="Ask about this inbox"
+                seam={!opening}
+              />
+            </motion.div>
+            {opening ? <motion.div layout transition={SETTLE} className="min-h-0 grow" /> : null}
+          </>
         ) : null}
       </div>
     </>
-  );
-}
-
-/**
- * A turn in flight, in the order it happens: what it is doing, what it has
- * looked at, and the answer as it is written.
- *
- * The calls are open here and folded away once the turn is done, because they
- * are the only thing to read during the wait and the wrong thing to read after
- * it. The skeleton lasts only until the first words do: once the model is
- * writing, the prose is what stands for the wait, and the person can start
- * reading it seconds before it is finished.
- */
-function Pending({ progress, calls, since }: { progress: ChatProgress | null; calls: ChatToolCall[]; since: number }) {
-  return (
-    <div className="space-y-3">
-      <StatusLine progress={progress} since={since} />
-      <LiveCalls calls={calls} />
-      {progress?.answer ? (
-        <Markdown text={withoutUnfinishedLink(progress.answer)} />
-      ) : (
-        <>
-          <div className="h-4 w-2/3 rounded-xs bg-sunken" />
-          <div className="h-4 w-1/2 rounded-xs bg-sunken" />
-        </>
-      )}
-    </div>
-  );
-}
-
-function Empty({ onNew }: { onNew(): void }) {
-  return (
-    <div className="mx-auto max-w-[560px] pt-16 text-center">
-      <h1 className="font-display text-display font-normal tracking-[-0.01em]">Ask Retina</h1>
-      <p className="mt-1 text-body text-ink-tertiary">
-        A conversation that reads the whole model and answers from it, with the query it ran shown under every answer.
-      </p>
-      <button
-        type="button"
-        onClick={onNew}
-        className="mt-5 h-9 rounded-md bg-ink px-4 text-strong font-medium text-ink-inverse"
-      >
-        Start a conversation
-      </button>
-    </div>
   );
 }

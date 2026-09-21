@@ -71,8 +71,10 @@ describe("POST /chat/:id/messages", () => {
     const thread = await request(server).get(`/chat/${conversation.id}`).set("Authorization", `Bearer ${KEY}`);
     expect(thread.status).toBe(200);
     expect(thread.body.turns.map((turn: { role: string }) => turn.role)).toEqual(["user", "assistant"]);
-    // The question names an untitled conversation, so it can be found again.
-    expect(thread.body.conversation.title).toBe("what is the number?");
+    // The question names an untitled conversation, so it can be found again,
+    // trimmed to a label by agents/chat/title.ts: the rail shows a column of
+    // these and a column of cut sentences is not a column anyone can read.
+    expect(thread.body.conversation.title).toBe("what is the number");
   });
 
   it("keeps the person's words even when the model never answers", async () => {
