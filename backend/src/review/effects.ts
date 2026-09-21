@@ -27,6 +27,11 @@ export interface Effect {
   row: Pick<NewReviewAction, "field" | "side" | "oldValue" | "newValue">;
   /** Where the pipeline picks the email up again, or null where the action changed nothing outside the database. */
   rerun: RerunFrom | null;
+  /**
+   * The email is finished and is not a comparison, so the semantic layer has
+   * not been asked to read it. Enqueued only after this transaction commits.
+   */
+  read?: boolean;
   /** One sentence naming what was written, in the product's own voice. The frontend holds no wording of its own. */
   wrote: string;
 }
@@ -75,9 +80,12 @@ async function reclassify(tx: Queryable, at: CaseIdentity, body: Extract<ReviewA
   await comparisons.upsert(tx, { emailRunId: at.emailRunId, status: "OK", reviewReason: null, detail: { reclassified: true } });
   const comparisonId = await comparisons.idFor(tx, at.emailRunId);
   if (comparisonId) await fieldDiffs.replaceAll(tx, comparisonId, []);
-  await emailRuns.setStage(tx, at.runId, at.emailId, "done", { outcome: "not_comparable", finished: true });
+  await emailRuns.setStage(tx, at.runId, at.emailId, "done", {
+    outcome: body.category === "SI_REQUEST" ? "awaiting_draft" : "not_comparable",
+    finished: true,
+  });
   await reviewCases.resolve(tx, at.emailRunId, body.actor);
-  return { row, rerun: null, wrote: `Recorded ${at.emailId} as ${body.category}. There is no pair to compare, so the case is closed.` };
+  return { row, rerun: null, read: true, wrote: `Recorded ${at.emailId} as ${body.category}. There is no pair to compare, so the case is closed.` };
 }
 
 /** A failed job, sent back to the queue it failed on. The case stays open until the rerun says how it went. */

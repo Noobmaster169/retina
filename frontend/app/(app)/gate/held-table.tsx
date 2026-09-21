@@ -21,7 +21,8 @@ import { costLine, heldBecause } from "./wording";
  */
 
 const fetchHeld = parsedFetcher(GateHeldList);
-const EVERY_MS = 5000;
+/** What the gate is holding. A hold appears when an email arrives and leaves when a person releases it. */
+const EVERY_MS = 15_000;
 
 export function HeldTable({ initial, initialError }: { initial: GateHeldList | null; initialError: string | null }) {
   const { data, error, mutate } = useSWR("/api/gate/held", fetchHeld, {

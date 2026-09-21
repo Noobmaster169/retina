@@ -30,7 +30,7 @@ describe("laneMap, a run holding comparison requests with no draft yet", () => {
       outcomes: { ...run().outcomes, ok: 61, mismatch: 48 },
       review: { open: 20, byReason: { wrong_doc_type: 5, missing_attachment: 5, unreadable: 5, missing_value: 5 } },
     }),
-    queues({ handoff: { needCheck: 220, notComparable: 300, awaitingDraft: 91 } }),
+    queues({ handoff: { needCheck: 220, notComparable: 300, awaitingDraft: 91, instructionRequests: 0 } }),
   );
 
   it("measures the checked pairs against the pairs that had a draft, not against everything that crossed", () => {
@@ -55,7 +55,7 @@ describe("laneMap, a run holding comparison requests with no draft yet", () => {
       300,
       91,
     );
-    expect(flow.nodes.find((node) => node.id === "awaiting_draft")).toMatchObject({ count: 91, label: "Awaiting a draft" });
+    expect(flow.nodes.find((node) => node.id === "awaiting_draft")).toMatchObject({ count: 91, label: "Needs a draft" });
     expect(flow.nodes.find((node) => node.id === "awaiting_draft")?.filter).toBe("awaiting-draft");
   });
 

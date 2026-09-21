@@ -8,6 +8,32 @@ and merged into 13 afterwards.
 `docs/phases/phase-13-business-data.md` and phase 7's two `[~]` items are still under "Deferred"
 below.
 
+**2026-09-22: the stack can serve an inbox other than the organisers' 520.** The email server
+already took its dataset as configuration and the api only reaches it over HTTP, so this is one
+variable in `compose.local.yaml` and no code anywhere: `INBOX_DATA=../emails/data_5k docker compose
+-f compose.local.yaml up -d inbox`. Unset, it is the 520, which is what every published number was
+measured against.
+
+`emails/data_5k` is a 5,000-email set of the same shape, one year of threaded mail over 1,398
+shipments, 414 mismatches and 104 cases for a person, dropped in as `sdoc-synth-5k-data.zip`. It is
+gitignored: 145 MB open, and it carries an answer key of its own. Verified end to end without a
+single model call: the server reports 5,000 with scoring available, all 2,696 attachment references
+resolve, the api's health check picked the new count up without a restart, and its own
+`sample_submission.json` scores 0.0152 against its key with 414 end-to-end targets, which matches
+the ground truth exactly.
+
+It carries three files the organisers' bundle has no equivalent of, and all three are answer-key
+material, so `eval/` is the only code that may read them: `manifest.json` (true send time, thread
+parent, and the exact strings each document shows for the seven fields), `world.json` (the ledger of
+1,398 shipments, 161 companies, 134 ports and 26 staff the mail was rendered from) and
+`DEMO_QUESTIONS.md`, which is 18 chat questions with computed expected answers and is the baseline
+`pnpm eval:chat` has never had.
+
+**Two traps before a full run.** It is about ten times the work, near 13,000 model calls against the
+520 set's 1,351, so roughly two hours and ten times the cost: use a run `limit` first. And
+`pnpm eval:split` writes `eval/split.json`, so running it against this key overwrites the split every
+published number rests on. Copy it aside first. Both of those runs are the user's.
+
 **2026-09-22: a comparison request with no draft yet is its own outcome** (migration
 `028_awaiting_draft_outcome.sql`). 91 of the shipped inbox's 520 are `BL_COMPARISON` emails asking us
 to send a draft BL rather than attaching one, which the organisers' own README calls "a realistic

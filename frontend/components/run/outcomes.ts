@@ -48,13 +48,13 @@ export interface OutcomeBreakdown {
 
 /** What each outcome is called on screen, and what it means. Both trace to the organisers' definitions. */
 const WORDS: Record<string, { label: string; says: string }> = {
-  not_comparable: { label: "No check needed", says: "Sorted into a category that asks for no document check." },
+  not_comparable: { label: "Other mail", says: "Not a bill to check: an invoice question, or mail that is not about the documents." },
   awaiting_draft: {
-    label: "Awaiting a draft",
-    says: "A comparison request whose draft bill of lading has not been sent yet, so there was nothing to compare.",
+    label: "Needs a draft",
+    says: "The email is asking for a draft to be written, so there was nothing to compare yet.",
   },
-  OK: { label: "Documents agree", says: "Both documents were read and every compared field agreed." },
-  MISMATCH: { label: "Documents differ", says: "Both documents were read and at least one field differed." },
+  OK: { label: "Documents match", says: "Both documents were read and every compared field agreed." },
+  MISMATCH: { label: "Documents don't match", says: "Both documents were read and at least one field did not agree." },
   wrong_doc_type: { label: "Wrong document", says: "An attachment was not the document the email asked about." },
   missing_attachment: { label: "Document missing", says: "A document the comparison needs was not attached." },
   unreadable: { label: "Could not be read", says: "A file could not be read, so nothing could be compared." },

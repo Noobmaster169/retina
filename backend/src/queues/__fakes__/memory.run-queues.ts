@@ -8,6 +8,7 @@ export class MemoryRunQueues implements RunQueues {
   readonly removedFor: string[] = [];
   readonly promotedFor: string[] = [];
   readonly reruns: { queue: string; data: ClassifyJob; options: JobsOptions }[] = [];
+  readonly readings: { emailId: string; emailRunId: number }[] = [];
   readonly released: { runId: string; emailId: string }[] = [];
   /** Set to make every call fail the way an unreachable Redis does. */
   failWith: Error | undefined;
@@ -26,6 +27,11 @@ export class MemoryRunQueues implements RunQueues {
   async rerun(queue: "classify" | "compare", data: ClassifyJob, options: JobsOptions): Promise<void> {
     if (this.failWith) throw this.failWith;
     this.reruns.push({ queue, data, options });
+  }
+
+  async readShipment(emailId: string, emailRunId: number): Promise<void> {
+    if (this.failWith) throw this.failWith;
+    this.readings.push({ emailId, emailRunId });
   }
 
   async releaseEmail(runId: string, emailId: string): Promise<void> {

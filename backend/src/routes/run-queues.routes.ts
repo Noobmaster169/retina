@@ -34,7 +34,7 @@ function unreachable(name: QueueName): QueueView {
  * Separate from GET /runs/:id because it reads Redis on every poll, and that
  * summary must still answer when Redis is down.
  */
-export function runQueuesRouter(deps: RunQueuesDeps): Router {
+export function runQueuesRouter(deps: RunQueuesDeps): { router: Router; viewFor(runId: string): Promise<RunQueuesView> } {
   const router = Router();
   const { pool } = deps;
 
@@ -59,10 +59,12 @@ export function runQueuesRouter(deps: RunQueuesDeps): Router {
     return (emailId) => words.get(emailId);
   }
 
-  router.get("/:id/queues", async (req, res) => {
-    const runId = runIdParam(req, res);
-    if (!runId) return;
-
+  /**
+   * The whole view for one run. Exported through the router's closure because
+   * the event stream builds the same body on its own tick, and two readings of
+   * "who holds each slot" would be two answers to one question.
+   */
+  async function viewFor(runId: string): Promise<RunQueuesView> {
     const handoff = await emailRuns.handoff(pool, runId);
     let body: RunQueuesView;
     try {
@@ -88,8 +90,14 @@ export function runQueuesRouter(deps: RunQueuesDeps): Router {
       log.warn({ runId, err: error instanceof Error ? error.message : String(error) }, "queues unavailable");
       body = { classify: unreachable("classify"), compare: unreachable("compare"), handoff, reachable: false };
     }
-    res.json(body);
+    return body;
+  }
+
+  router.get("/:id/queues", async (req, res) => {
+    const runId = runIdParam(req, res);
+    if (!runId) return;
+    res.json(await viewFor(runId));
   });
 
-  return router;
+  return { router, viewFor };
 }

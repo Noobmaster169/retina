@@ -9,6 +9,14 @@ import {
 import { cached, RUN_SECONDS, RUNS } from "./cached";
 import { get, parseAs, refusalMessage, request } from "./transport";
 
+/**
+ * A run stream is held open for as long as the run is moving. Under the
+ * platform's own ceiling for the route that proxies it, so a stream that has
+ * outlived its welcome ends as a close the page can reconnect from rather than
+ * as an error page.
+ */
+const STREAM_TIMEOUT_MS = 280_000;
+
 export * from "./runs-schemas";
 
 /**
@@ -102,4 +110,17 @@ export async function deleteRun(id: string): Promise<{ ok: true } | { ok: false;
 /** The prompt versions a run may pin, per step. */
 export async function listPrompts(): Promise<PromptCatalog> {
   return get(PromptCatalog, "/prompts");
+}
+
+/**
+ * One run's progress as a stream, for a page that would rather hold a
+ * connection than poll two endpoints. The body is handed on unread; what the
+ * events mean is `components/run/use-run-live.ts`.
+ */
+export async function streamRun(id: string, signal?: AbortSignal): Promise<Response> {
+  return request(`/runs/${encodeURIComponent(id)}/stream`, {
+    headers: { accept: "text/event-stream" },
+    timeoutMs: STREAM_TIMEOUT_MS,
+    signal,
+  });
 }

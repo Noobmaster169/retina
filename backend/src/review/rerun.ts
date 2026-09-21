@@ -8,7 +8,7 @@ import type { RunQueues } from "../queues/run-queues";
 const log = childLogger({ module: "review.rerun" });
 
 /** The slice of the queues a person's correction needs. One seam, one real implementation, one fake. */
-export type ReviewQueues = Pick<RunQueues, "rerun">;
+export type ReviewQueues = Pick<RunQueues, "rerun" | "readShipment">;
 
 export interface RerunTarget {
   runId: string;
@@ -39,4 +39,17 @@ export async function requeue(db: Queryable, queues: ReviewQueues, target: Rerun
   await queues.rerun(queue, { runId, emailId, rerunFrom: from }, options);
   log.info({ runId, emailId, queue, rerunFrom: from, rerun, priority }, "a person sent the email back through");
   return queue;
+}
+
+/**
+ * Asks for a reading of an email a person just closed as not a comparison.
+ * A queue that will not take the job is logged and dropped: the category
+ * change is already committed, and a reading is never worth failing it over.
+ */
+export async function enqueueReading(queues: ReviewQueues, target: RerunTarget): Promise<void> {
+  try {
+    await queues.readShipment(target.emailId, Number(target.emailRunId));
+  } catch (error) {
+    log.warn({ runId: target.runId, emailId: target.emailId, err: error instanceof Error ? error.message : String(error) }, "could not queue the semantic reading");
+  }
 }

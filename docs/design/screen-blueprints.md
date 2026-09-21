@@ -275,14 +275,19 @@ the width to be read, with the field, the verdict and the confidence above it. T
 is drawn only when a quote was **not** found: "both quotes found in their documents" on every
 settled row was a line nobody read twice. Two controls sit at its right.
 
-**`Recommend action`**, drawn only where the judge called a field different, puts a question to
-the dock with the email attached and the `recommend-action` skill picked. It decides nothing
+**`Recommend action`**, under The check, on the right of the sender's name and address, and only where the judge called a
+field different, puts a question to the dock with the email attached and the `recommend-action` skill picked. It decides nothing
 itself: what to do turns on whether the quotes were found and on how often this sender has
 differed, which is a read of the model and of the ontology, not a rule that could live in a
 button. The answer comes back in a fixed shape (what differs, whether it is real, one named
-action per field, a draft reply to copy, and the counts it rests on) and nothing it recommends is
+action per field, and the counts it rests on) and nothing it recommends is
 written anywhere. The action names are ours and stay in the conversation; the organisers' enums
 are not added to.
+
+**`Draft reply`**, on that same row, on a shipping instruction or a bill of lading check, puts a question to
+the same dock with `draft-the-shipment` picked. The skill reads `shipment_facts` and writes the
+reply email from that record alone, naming every fact that is still blank. The message is the
+draft card. It does not recommend an action. The button writes nothing.
 
 **`Export`**, opens `/report/{runId}/{emailId}?print=1` in a tab of
 its own: the same check as a document, outside the shell, which opens the print dialog on
@@ -311,8 +316,10 @@ one sentence saying so. Do not relay the page out twice.
 Same shell, same seam, same chat. There is no check to show, so under the reading sits the case:
 **why** in plain English, the rendered pages as thumbnails with their per page OCR confidence, the
 garbled text it did manage quoted in a well, and what the parser saw (`format`, `pages`, `scanned`,
-warnings, straight off `DocumentView`). The action bar changes with it: `Agree, it needs a person`,
-`Upload a readable copy`, `Reclassify`.
+warnings, straight off `DocumentView`). The action bar no longer takes a replacement file.
+On the sender row, `Ask the sender` drafts a reply that names the file that arrived and what was
+wrong with it, and asks for the right one. `What should I do` explains the case and does not write
+that reply. A blank value is still `Fill in the blank` in the bar. `Reclassify` stays under More.
 
 In the chat, the person states a rule rather than a fix, and Retina proposes a `note`. That is the
 honest mapping: a note is what phase 11's drafting job reads.

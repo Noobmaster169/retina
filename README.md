@@ -90,6 +90,44 @@ In `frontend/.env.local` set `BACKEND_URL=https://fineness-getting-crusader.ngro
 and `API_SHARED_SECRET` to the production value (ask the box owner). Then you
 only need terminal 3.
 
+### Run a different inbox
+
+The email server takes its dataset as configuration, and the api only ever reaches it
+over HTTP, so a different set is a mount and never a code change. `INBOX_DATA` says which:
+
+```bash
+cd backend
+INBOX_DATA=../emails/data_5k docker compose -f compose.local.yaml up -d inbox
+curl -s 127.0.0.1:8080/health          # {"status":"ok","emails":5000,"scoring_available":true}
+docker compose -f compose.local.yaml up -d inbox    # unset: back to the organisers' 520
+```
+
+Nothing else moves. The api picks the new count up on its next health check without a
+restart, ingest lists what the server lists, and `POST /runs/:id/submit` scores against
+whichever answer key that set mounted. The new-run form on `/runs` reads that same count,
+so it offers "The whole inbox, 5,000" and counts up into the thousands, and it names what
+a run of that size costs before it starts one. The `dev` and `holdout` subsets are offered
+only against the organisers' 520, because the split under `eval/` names that set's ids and
+no other's.
+
+`emails/data_5k` is a 5,000-email set built in the same shape as the organisers' kit,
+one year of threaded mail over 1,398 shipments, with 414 mismatches and 104 cases for a
+person. It is **not in git**: 145 MB, and it carries an answer key of its own. Keep the
+zip, or regenerate it. It also ships three files the organisers' bundle has no equivalent
+of, all of them answer-key material and so `eval/`'s alone to read: `manifest.json` (the
+true send time, thread parent, and the exact strings each document shows), `world.json`
+(the ledger of shipments, companies, ports and staff the mail was rendered from), and
+`DEMO_QUESTIONS.md` (18 chat questions with computed answers).
+
+Two things to know before a full run:
+
+- **It is about ten times the work.** Roughly 13,000 model calls against the 520 set's
+  1,351, so on the measured rate near two hours and the cost of ten of those runs. Use a
+  run `limit` first.
+- **The committed eval split names the 520's ids.** `pnpm eval:split` writes
+  `eval/split.json`, so running it against another key overwrites the split every
+  published number was measured on. Copy it aside first.
+
 ## Models
 
 Aliases are model names. They live in `proxy/proxy.yaml`.

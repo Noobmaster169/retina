@@ -9,7 +9,8 @@ import type { LiveCalls } from "../../live";
 import { attachments, classifications, emailRuns, emails, llmCalls, type Run, runs, type StoredAttachment } from "../../ontology/repositories";
 import { buildClassifyInput, type ClassifyInput, decide, describeAttachments, needsVerifier } from "../../pipeline/classify";
 import type { ObjectStore } from "../../storage";
-import { type ClassifyJob, type CompareJob, JOB_NAMES, type JobAdder, jobOptions, rerunJobOptions } from "../names";
+import { type ClassifyJob, type CompareJob, JOB_NAMES, type JobAdder, type OntologyJob, jobOptions, rerunJobOptions } from "../names";
+import { queueOntology } from "../queue-ontology";
 import type { EmailRunIds } from "./ids";
 import { parseDocuments } from "./parse-documents";
 import { promptSetOf } from "./prompt-set-of";
@@ -25,6 +26,8 @@ export interface ClassifyDeps {
   docExtract: DocExtractClient;
   store: ObjectStore;
   compare: JobAdder<CompareJob>;
+  /** The semantic reading lane. Optional so classification still runs when that non-scored layer is disabled. */
+  ontology?: JobAdder<OntologyJob>;
   /** Where each call's answer so far is kept while it streams, for the run page. */
   live?: LiveCalls;
   /** Aborts this job's model calls when its run is paused. Set per job by the pause gate. */
@@ -159,10 +162,17 @@ export async function processClassify(deps: ClassifyDeps, data: ClassifyJob, pri
   await emailRuns.moveStage(deps.pool, runId, emailId, ["ingested", "classifying"], "classified");
 
   if (category !== "BL_COMPARISON") {
+    // A shipping instruction asks for a draft to be drawn up, so the inbox
+    // files it with the drafts that have not arrived. Anything else never
+    // needed a check.
     await emailRuns.moveStage(deps.pool, runId, emailId, ["classified"], "done", {
-      outcome: "not_comparable",
+      outcome: category === "SI_REQUEST" ? "awaiting_draft" : "not_comparable",
       finished: true,
     });
+    // These emails never enter the compare worker, which is the other place a
+    // finished email is handed to the semantic layer. Queue them here after
+    // `done` is durable so body-only shipping instructions are not stranded.
+    await queueOntology(deps, data);
     return;
   }
   await deps.compare.add(

@@ -3,7 +3,7 @@ import type { Queryable, Transactor } from "../db";
 import { TerminalError } from "../lib/errors";
 import { type CaseIdentity, reviewActions, reviewCases } from "../ontology/repositories";
 import { type Effect, effectOf } from "./effects";
-import { requeue, type ReviewQueues } from "./rerun";
+import { enqueueReading, requeue, type ReviewQueues } from "./rerun";
 
 /**
  * Every write a person makes against a case goes through here: one
@@ -85,6 +85,7 @@ export async function applyEffect(
   });
 
   const requeued = effect.rerun ? await requeue(deps.db, deps.queues, at, effect.rerun) : null;
+  if (effect.read) await enqueueReading(deps.queues, at);
   const item = await reviewCases.item(deps.db, at.id);
   if (!item) throw new TerminalError(`case ${at.id} disappeared while it was being written to`);
   return { case: item, action, requeued, wrote: effect.wrote };

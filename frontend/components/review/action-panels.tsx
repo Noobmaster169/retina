@@ -9,9 +9,12 @@ import { Category } from "@/lib/api/trace-schemas";
 import type { CaseActions } from "./use-case-actions";
 
 /**
- * The two panels that need a choice made before they write: what the email
- * actually is, and which document to read instead. Both open above the action
- * bar rather than over the case, so what is being corrected stays on screen.
+ * The panel that needs a choice made before it writes: what the email actually
+ * is. It opens above the action bar rather than over the case, so what is
+ * being corrected stays on screen.
+ *
+ * A person no longer supplies a replacement file from here. A file that could
+ * not be used is answered by a draft to the sender.
  */
 
 /** The one input surface in the review panels. A field is a hairline and ink, never a filled box. */
@@ -50,7 +53,11 @@ export function ReclassifyPanel({ actions, onClose }: { actions: CaseActions; on
   );
 }
 
-/** A document a person supplies for the place the one that arrived could not fill. */
+/**
+ * Kept, and no longer opened. The product used to let a person drop a
+ * replacement shipping instruction or bill of lading onto the case. That ask
+ * now goes to the original sender as a draft.
+ */
 export function UploadPanel({ actions, onClose }: { actions: CaseActions; onClose: () => void }) {
   const [role, setRole] = useState<"SI" | "BL">("BL");
   const [file, setFile] = useState<File | null>(null);

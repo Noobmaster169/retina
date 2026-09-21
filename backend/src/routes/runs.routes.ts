@@ -10,7 +10,7 @@ import { classifications, comparisons, emailRuns, gateDecisions, llmCalls, revie
 import type { RunQueues } from "../queues/run-queues";
 import { runIdParam } from "./params";
 import { planRun } from "./run-plan";
-import { type QueueSnapshot, toSummary } from "./run-summary";
+import * as summaries from "./run-summaries";
 
 export interface RunsDeps {
   pool: Pool;
@@ -23,50 +23,8 @@ export function runsRouter(deps: RunsDeps): Router {
   const router = Router();
   const { pool, runQueues } = deps;
 
-  /** Null when the queues cannot be reached. Runs live in Postgres and stay readable without Redis. */
-  async function queueSnapshot(): Promise<QueueSnapshot> {
-    try {
-      return await runQueues.counts();
-    } catch (error) {
-      if (!(error instanceof RetryableError)) throw error;
-      log.debug({ err: error.message }, "queue counts unavailable");
-      return null;
-    }
-  }
-
-  /** Every run's summary from one round of reads. The repositories answer for every id asked for. */
-  async function summariesOf(all: Run[]): Promise<RunSummary[]> {
-    const ids = all.map((run) => run.id);
-    const [stageCounts, queues, usage, verifierShare, review, outcomes, latest, lastFinished, heldByGate] = await Promise.all([
-      emailRuns.stageCountsForRuns(pool, ids),
-      queueSnapshot(),
-      llmCalls.usageForRuns(pool, ids),
-      classifications.verifierShareForRuns(pool, ids),
-      reviewCases.openCountsForRuns(pool, ids),
-      comparisons.outcomesForRuns(pool, ids),
-      submissions.latestForRuns(pool, ids),
-      emailRuns.lastFinishedForRuns(pool, ids),
-      gateDecisions.heldByRun(pool, ids),
-    ]);
-    const now = Date.now();
-    return all.map((run) =>
-      toSummary(run, {
-        stageCounts: stageCounts(run.id),
-        queues,
-        llm: { ...usage(run.id), verifierShare: verifierShare(run.id) },
-        review: review(run.id),
-        outcomes: outcomes(run.id),
-        lastSubmission: latest.get(run.id),
-        lastFinishedAt: lastFinished(run.id),
-        heldByGate: heldByGate(run.id),
-        now,
-      }),
-    );
-  }
-
-  async function summaryOf(run: Run): Promise<RunSummary> {
-    return (await summariesOf([run]))[0];
-  }
+  const summariesOf = (all: Run[]) => summaries.summariesOf(pool, runQueues, all);
+  const summaryOf = (run: Run) => summaries.summaryOf(pool, runQueues, run);
 
   /** Answers 404 or 409 for a move the run could not make. */
   async function refuseMove(res: Response, id: string, to: RunStatus): Promise<void> {

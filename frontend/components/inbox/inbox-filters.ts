@@ -10,10 +10,12 @@ import { type InboxRow, needsYou } from "./inbox-rows";
  * an array and nothing else, so the list can be re-narrowed on every keystroke
  * without a request.
  *
- * The filters are questions and not buckets. A row with an open case and two
- * differing fields is an honest answer to both `Needs you` and `Differences`,
- * and a chip count that said otherwise would be counting something other than
- * what its label promises.
+ * One email, one chip. The bar used to let a row answer two questions at once,
+ * so the same mail sat under two counts and the numbers did not add up to All.
+ * A person scanning it wants piles. The first match wins, in the order a clerk
+ * would ask: did it stop, does someone have to answer, is it still being read,
+ * is it asking for a draft, do the documents disagree, do they agree, was a
+ * problem already handled, or is it other mail.
  */
 
 export const FilterKey = z.enum([
@@ -52,35 +54,47 @@ interface FilterDef {
   matches: (row: InboxRow) => boolean;
 }
 
+/** Which pile an email belongs in. `all` is the only chip that is not a pile. */
+function pile(row: InboxRow): FilterKey {
+  if (row.stage === "failed") return "failed";
+  if (row.openCase !== null) return "needs-you";
+  if (row.outcome === null) return "moving";
+  if (row.outcome === "awaiting_draft") return "awaiting-draft";
+  if (row.defects > 0 || row.outcome === "MISMATCH") return "differences";
+  if (row.outcome === "OK") return "agreed";
+  if (REVIEW_REASONS.includes(row.outcome)) return "settled";
+  return "no-check";
+}
+
 export const FILTERS: FilterDef[] = [
   { key: "all", label: "All", tone: "accent", steady: true, matches: () => true },
-  { key: "needs-you", label: "Needs you", tone: "review", steady: true, matches: needsYou },
-  { key: "differences", label: "Differences", tone: "differ", steady: true, matches: (row) => row.defects > 0 },
-  { key: "agreed", label: "Agreed", tone: "match", steady: true, matches: (row) => row.outcome === "OK" },
-  // Sorted as a check, and there was nothing to check: the draft has not been
-  // sent yet. Its own chip because `Agreed` used to hold it, which said two
-  // documents had been read and agreed when none had been read at all.
+  { key: "needs-you", label: "Needs you", tone: "review", steady: true, matches: (row) => pile(row) === "needs-you" },
+  { key: "differences", label: "Documents don't match", tone: "differ", steady: true, matches: (row) => pile(row) === "differences" },
+  { key: "agreed", label: "Documents match", tone: "match", steady: true, matches: (row) => pile(row) === "agreed" },
+  // Asking for a draft to be written: a bill check whose draft was never sent,
+  // or a shipping instruction. Its own pile because `Documents match` used to
+  // hold the first of those, which said two documents had been read when none had.
   {
     key: "awaiting-draft",
-    label: "Awaiting a draft",
+    label: "Needs a draft",
     tone: "signal",
     steady: true,
-    matches: (row) => row.outcome === "awaiting_draft",
+    matches: (row) => pile(row) === "awaiting-draft",
   },
-  { key: "no-check", label: "No check", tone: "neutral", steady: true, matches: (row) => row.outcome === "not_comparable" },
+  { key: "no-check", label: "Other mail", tone: "neutral", steady: true, matches: (row) => pile(row) === "no-check" },
   {
-    // A reason that was raised and answered. Rare, and worth being able to find again.
+    // A problem that was raised and answered. Rare, and worth being able to find again.
     key: "settled",
-    label: "Settled",
+    label: "Already handled",
     tone: "neutral",
     steady: false,
-    matches: (row) => row.openCase === null && row.outcome !== null && REVIEW_REASONS.includes(row.outcome),
+    matches: (row) => pile(row) === "settled",
   },
-  { key: "moving", label: "Still moving", tone: "signal", steady: false, matches: (row) => row.outcome === null && row.stage !== "failed" },
-  // A job that stopped, which is a failure and never one of the organisers'
-  // reasons. `Needs you` holds these too; this is the chip the run page's own
-  // `failed` count links to, so the two agree on what it counted.
-  { key: "failed", label: "Failed", tone: "fault", steady: false, matches: (row) => row.stage === "failed" },
+  { key: "moving", label: "Still working", tone: "signal", steady: false, matches: (row) => pile(row) === "moving" },
+  // A job that stopped. Not one of the organisers' reasons, and not also
+  // `Needs you`: the run page's failed count links here, and a row in both
+  // piles would be counted twice.
+  { key: "failed", label: "Couldn't finish", tone: "fault", steady: false, matches: (row) => pile(row) === "failed" },
 ];
 
 /**

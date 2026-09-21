@@ -26,11 +26,11 @@ export function RecommendActionButton({ emailId, differing }: { emailId: string;
       variant="primary"
       onClick={() =>
         dock.ask(
-          `The documents on ${emailId} disagree on ${fields}. What should I do about it, and draft the reply to the sender.`,
+          `The documents on ${emailId} disagree on ${fields}. What should I do about each one? Recommend the action, and do not draft a reply.`,
           ["recommend-action"],
         )
       }
-      title="Ask Retina what to do about this, with a draft reply"
+      title="Ask Retina what to do about this"
     >
       <Icon name="chat" size={13} />
       Recommend action

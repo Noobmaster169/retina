@@ -45,8 +45,16 @@ export type QueueView = z.infer<typeof QueueView>;
 export const RunQueuesView = z.object({
   classify: QueueView,
   compare: QueueView,
-  /** `awaitingDraft` is a subset of `needCheck`: it crossed, and had no draft to check yet. */
-  handoff: z.object({ needCheck: z.number(), notComparable: z.number(), awaitingDraft: z.number() }),
+  /**
+   * `awaitingDraft` waits on a draft. `instructionRequests` is the shipping-instruction
+   * part of that count; it never crossed, so only the rest is a subset of `needCheck`.
+   */
+  handoff: z.object({
+    needCheck: z.number(),
+    notComparable: z.number(),
+    awaitingDraft: z.number(),
+    instructionRequests: z.number(),
+  }),
   reachable: z.boolean(),
 });
 export type RunQueuesView = z.infer<typeof RunQueuesView>;

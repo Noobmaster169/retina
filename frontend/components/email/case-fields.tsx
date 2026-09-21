@@ -82,7 +82,7 @@ export function CaseFields({ trace, correcting }: { trace: EmailTrace; correctin
       <div className="flex h-8 items-center">
         <h3 className="text-[14px] font-semibold tracking-[-0.01em]">The fields</h3>
         <span className="ml-2 min-w-0 truncate text-small text-ink-tertiary">
-          {correcting ? "Say what a document reads and Retina judges the pair again" : "As they stood when the case was settled"}
+          {correcting ? "Type what the document says and Retina checks the two again" : "As they stood when the case was settled"}
         </span>
       </div>
 

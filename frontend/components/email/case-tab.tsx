@@ -3,6 +3,7 @@
 import { Chip } from "@/components/ui/chip";
 import type { EmailTrace, ReviewCaseView } from "@/lib/api/trace-schemas";
 
+import { CaseActions } from "./case-actions";
 import { CaseFields, type Correcting } from "./case-fields";
 import { FailureBody } from "./case-failure";
 import { CaseHistory } from "./case-history";
@@ -34,7 +35,7 @@ export function CaseTab({ trace, message, review, correcting }: CaseTabProps) {
   return (
     <div className="px-6">
       <div className="pt-4">
-        <MessageCard message={message} documents={trace.documents} />
+        <MessageCard message={message} documents={trace.documents} actions={<CaseActions trace={trace} review={review} />} />
       </div>
       <Seam />
       <Reading facts={factsOf(trace, review)}>{readingOf(trace, review)}</Reading>

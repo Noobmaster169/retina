@@ -85,9 +85,7 @@ export function EmailPane({ runId, trace, message, subject, tab, onTab, onChange
 
   return (
     <Tabs value={open} onValueChange={onTab} className="flex min-w-0 grow flex-col border-r border-hairline">
-      {/* The email's own title block, under the page's breadcrumb. The way back
-          to the list and the way back to the chat are on that bar, which spans
-          both columns; this one names what is open and nothing else. */}
+      {/* The email's own title. The way back to the list sits on the bar above. */}
       <header className="flex h-14 shrink-0 items-center gap-2.5 border-b border-hairline px-4 md:px-6">
         <h1 className="min-w-0 grow truncate text-title font-semibold tracking-[-0.015em]">{subject}</h1>
         {classification ? <ClassificationChip category={classification} className="max-w-[180px]" /> : null}

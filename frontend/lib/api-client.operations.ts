@@ -86,6 +86,7 @@ export {
   type RunSubset,
   type RunSummary,
   Stage,
+  streamRun,
 } from "./api/runs-client";
 export {
   Category,

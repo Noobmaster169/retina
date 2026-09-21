@@ -7,24 +7,20 @@ import type { EmailTrace } from "@/lib/api/trace-schemas";
 import { anythingInDoubt, groupRows } from "./check-groups";
 import { Folded, Group } from "./field-groups";
 import { FieldRow, type FieldRowData } from "./field-row";
+import { EmailActions } from "./email-actions";
 import { MessageCard, type Message } from "./message-card";
-import { RecommendActionButton } from "./recommend-action-button";
 import { Seam } from "./seam";
 
 /**
  * The check: the message, the seam, what Retina made of it in plain English,
  * then the fields that are asking for something.
  *
- * What differs comes first and open; what had nothing to compare comes next;
+ * What differs comes first, every row expanded; what had nothing to compare comes next;
  * what agreed folds away under a line naming how many. The seven used to be
  * one flat list in the enum's order, which is right for a clerk reading a bill
  * of lading and wrong for a screen, because five rows of `agree` above the one
  * row that differs is five rows of nothing. The enum's order is kept inside
  * each group, so the reading order a clerk knows survives the grouping.
- *
- * A footer carries `Recommend action` where there is one to recommend: this is
- * the tab a reader lands on, so the step after the finding belongs here and
- * not on a second tab they may not open.
  */
 
 interface CheckTabProps {
@@ -37,9 +33,12 @@ export function CheckTab({ trace, message }: CheckTabProps) {
   const groups = groupRows(rows);
   const doubt = anythingInDoubt(groups);
 
-  const [open, setOpen] = useState<string | null>(groups.differing[0]?.judgement.field ?? groups.blank[0]?.judgement.field ?? null);
+  const [open, setOpen] = useState<string | null>(groups.blank[0]?.judgement.field ?? null);
   const [showAgreed, setShowAgreed] = useState(false);
   const toggle = (field: string) => setOpen(open === field ? null : field);
+  const drawDiffering = (row: FieldRowData) => (
+    <FieldRow key={row.judgement.field} row={row} open onToggle={() => {}} alwaysOpen />
+  );
   const draw = (row: FieldRowData) => (
     <FieldRow key={row.judgement.field} row={row} open={open === row.judgement.field} onToggle={() => toggle(row.judgement.field)} />
   );
@@ -48,14 +47,14 @@ export function CheckTab({ trace, message }: CheckTabProps) {
     <div className="flex min-h-0 grow flex-col">
       <div className="min-h-0 grow overflow-y-auto px-6 pb-4">
         <div className="pt-4">
-          <MessageCard message={message} documents={trace.documents} foldBody={rows.length > 0} />
+          <MessageCard message={message} documents={trace.documents} foldBody={rows.length > 0} actions={<EmailActions trace={trace} />} />
         </div>
         {rows.length > 0 ? (
           <>
             <Seam label="The check" />
             {groups.differing.length > 0 ? (
               <Group title="What differs" count={groups.differing.length} tone="differ">
-                {groups.differing.map(draw)}
+                <div className="flex flex-col gap-2.5 pt-0.5">{groups.differing.map(drawDiffering)}</div>
               </Group>
             ) : null}
 
@@ -77,15 +76,6 @@ export function CheckTab({ trace, message }: CheckTabProps) {
           </>
         ) : null}
       </div>
-
-      {groups.differing.length > 0 ? (
-        <footer className="flex shrink-0 items-center gap-2.5 border-t border-hairline bg-surface px-6 py-3">
-          <p className="min-w-0 grow truncate text-small text-ink-tertiary">
-            {groups.differing.length} field{groups.differing.length === 1 ? "" : "s"} {groups.differing.length === 1 ? "differs" : "differ"}.
-          </p>
-          <RecommendActionButton emailId={trace.emailId} differing={groups.differing.map((row) => row.judgement.field)} />
-        </footer>
-      ) : null}
     </div>
   );
 }

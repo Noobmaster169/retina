@@ -55,11 +55,18 @@ export interface Destination {
    * Fetch this one whole before it is clicked, rather than only as far as its
    * loading shell.
    *
-   * Every destination, because between the reuse in `lib/api/cached.ts` and
-   * the lists no longer drawing themselves whole, a warmed page is no longer
-   * an expensive thing to hold: the business reads behind one are a cache hit
-   * for a minute after anybody opens it, and a list that renders its first
-   * twenty-four rows is a fraction of the render it used to be.
+   * Only where the read behind it is cached. Every page here is dynamic, so a
+   * prefetch is a real server render and its reads are real requests to the
+   * backend across the tunnel; the rail is in the layout, so all of them sit in
+   * the viewport on every page and warm again whenever the entry goes stale.
+   *
+   * That is free for the business pages, whose reads are reused for a minute
+   * (`lib/api/cached.ts`), and it is not free for anything showing what the
+   * pipeline is doing right now. Those reads are deliberately uncached, because
+   * serving a poll from a cache makes a running replay look stopped, so
+   * prefetching them bought a warm page at the price of the whole read every
+   * time. Nine warmed destinations were about fifteen backend requests per page
+   * view, most of them thrown away.
    *
    * Next only prefetches in production, so this changes nothing in `pnpm dev`.
    */
@@ -67,16 +74,18 @@ export interface Destination {
 }
 
 export const DESTINATIONS: Destination[] = [
-  { key: "overview", label: "Overview", icon: "home", path: "", cluster: "operations", preload: true },
-  { key: "inbox", label: "Inbox", icon: "mail", path: "/inbox", cluster: "operations", preload: true },
+  { key: "overview", label: "Overview", icon: "home", path: "", cluster: "operations" },
+  { key: "inbox", label: "Inbox", icon: "mail", path: "/inbox", cluster: "operations" },
   // Beside the inbox, because that is where it acts: what the gate holds never
   // reaches the mail below it. It still answers the second question a person
   // asks about a sender, the first being its tier on `Senders`, which is why
   // the two read as a pair from either side.
-  { key: "gate", label: "Traffic", icon: "scale", path: "/gate", cluster: "operations", global: true, preload: true },
+  { key: "gate", label: "Traffic", icon: "scale", path: "/gate", cluster: "operations", global: true },
   { key: "database", label: "Database", icon: "table", path: "/database", cluster: "operations", preload: true, hidden: true },
-  { key: "ontology", label: "Ontology", icon: "graph", path: "/ontology", cluster: "operations", preload: true },
-  { key: "chat", label: "Ask Retina", icon: "chat", path: "/chat", cluster: "operations", preload: true },
+  // No preload despite being a business screen: its page reads the run's
+  // emails, which is a live read and uncached.
+  { key: "ontology", label: "Ontology", icon: "graph", path: "/ontology", cluster: "operations" },
+  { key: "chat", label: "Ask Retina", icon: "chat", path: "/chat", cluster: "operations" },
   { key: "company", label: "Companies", icon: "party", path: "/company", cluster: "business", global: true, preload: true },
   { key: "port", label: "Ports", icon: "port", path: "/port", cluster: "business", global: true, preload: true },
   { key: "shipment", label: "Shipments", icon: "ship", path: "/shipment", cluster: "business", global: true, preload: true },

@@ -12,11 +12,12 @@ import { displayLabel } from "./display-label";
 
 /** The plain-language chip beside the subject. Stored enums never leak into the working view. */
 export function statusOf(trace: EmailTrace): { value: string; tone: Tone } {
-  if (trace.stage === "failed") return { value: "Failed", tone: "fault" };
-  if (trace.review) return { value: "Needs review", tone: "review" };
+  if (trace.stage === "failed") return { value: "Couldn't finish", tone: "fault" };
+  if (trace.review) return { value: "Needs you", tone: "review" };
+  if (trace.comparison?.detail.awaiting_draft === true) return { value: "Needs a draft", tone: "signal" };
   const status = trace.comparison?.status;
-  if (status === "OK") return { value: "Agreed", tone: "match" };
-  if (status === "MISMATCH") return { value: "Differences", tone: "differ" };
+  if (status === "OK") return { value: "Documents match", tone: "match" };
+  if (status === "MISMATCH") return { value: "Documents don't match", tone: "differ" };
   if (trace.classification) {
     return { value: classificationLabel(trace.classification.humanCategory ?? trace.classification.finalCategory), tone: "accent" };
   }
@@ -32,6 +33,9 @@ export function statusOf(trace: EmailTrace): { value: string; tone: Tone } {
 export function openingLine(trace: EmailTrace): string {
   if (trace.review) return reviewOpening(trace, trace.review);
   const comparison = trace.comparison;
+  if (comparison?.detail.awaiting_draft === true) {
+    return "This email is asking for a draft, so there was nothing to compare yet.";
+  }
   if (!comparison) {
     return trace.classification
       ? `Sorted as ${classificationLabel(trace.classification.humanCategory ?? trace.classification.finalCategory)}, so no document check was needed.`

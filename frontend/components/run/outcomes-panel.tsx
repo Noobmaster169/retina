@@ -1,18 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Icon } from "@/components/ui/icons";
 import { Panel, PanelFoot, PanelHead } from "@/components/ui/panel";
 import { RunSummary } from "@/lib/api/runs-schemas";
 
 import { parkedReasons, runFlow } from "./flow";
-import { FlowDiagram, useFlowLayout } from "./flow-diagram";
+import { FlowDiagram } from "./flow-diagram";
+import { useFlowLayout } from "./flow-layout";
 import { FlowDots } from "./flow-dots";
+import { FlowLegend } from "./flow-legend";
 import { outcomeBreakdown } from "./outcomes";
 import { OutcomesBars } from "./outcomes-bars";
-import { SLICE_TONE } from "./outcome-tones";
 
 /**
  * Where the run's emails end up. Every outcome is named in plain English here
@@ -44,8 +45,10 @@ type View = "flow" | "bars";
 interface OutcomesPanelProps {
   run: RunSummary;
   notComparable: number;
-  /** Crossed into the second queue and found no draft to check. Its own slice, or the panel is short by it. */
+  /** Waiting on a draft. Its own slice, or the panel is short by it. */
   awaitingDraft: number;
+  /** Shipping instructions inside `awaitingDraft`. They never entered the second queue. */
+  instructionRequests?: number;
   /** Work is still moving, which is the only state the dots travel in. */
   live?: boolean;
   /** A paused run is polled and still: every moving thing here is a claim that work is happening. */
@@ -53,13 +56,51 @@ interface OutcomesPanelProps {
   className?: string;
 }
 
-export function OutcomesPanel({ run, notComparable, awaitingDraft, live = false, paused = false, className = "" }: OutcomesPanelProps) {
+export function OutcomesPanel({
+  run,
+  notComparable,
+  awaitingDraft,
+  instructionRequests = 0,
+  live = false,
+  paused = false,
+  className = "",
+}: OutcomesPanelProps) {
   const [view, setView] = useState<View>("flow");
   const [lit, setLit] = useState<string | null>(null);
-  const { slices, total } = outcomeBreakdown(run, notComparable, awaitingDraft);
-  const flow = runFlow(run, notComparable, awaitingDraft);
+  /*
+   * Keyed on the counts and not on the run.
+   *
+   * The page polls every two seconds and hands down a new `run` object each
+   * time, almost always holding the same numbers. Rebuilding the flow from it
+   * on every render made a new object, which made `useFlowLayout`'s memo miss,
+   * which ran the whole d3 layout again and handed the dots a new set of paths
+   * to follow: every dot in flight jumped back to the start of its band, twice
+   * a second, for numbers that had not moved.
+   */
+  const counted = [
+    notComparable,
+    awaitingDraft,
+    instructionRequests,
+    run.outcomes.ok,
+    run.outcomes.mismatch,
+    ...Object.entries(run.review.byReason).map(([key, count]) => `${key}:${count}`),
+  ].join("|");
+  const { slices, total } = useMemo(
+    () => outcomeBreakdown(run, notComparable, awaitingDraft),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `counted` is every number these read.
+    [counted],
+  );
+  const flow = useMemo(
+    () => runFlow(run, notComparable, awaitingDraft, instructionRequests),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- as above.
+    [counted],
+  );
+  const reasons = useMemo(
+    () => parkedReasons(run, notComparable, awaitingDraft),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- as above.
+    [counted],
+  );
   const layout = useFlowLayout(flow);
-  const reasons = parkedReasons(run, notComparable, awaitingDraft);
   const open = run.review.open;
 
   return (
@@ -81,7 +122,13 @@ export function OutcomesPanel({ run, notComparable, awaitingDraft, live = false,
             <FlowDiagram flow={flow} runId={run.id} lit={lit} onLight={setLit}>
               <FlowDots layout={layout} running={live && !paused} />
             </FlowDiagram>
-            {reasons.length > 0 ? <Reasons reasons={reasons} lit={lit} onLight={setLit} /> : null}
+            <FlowLegend
+              endings={flow.nodes.filter((node) => node.column === 2)}
+              reasons={reasons}
+              runId={run.id}
+              lit={lit}
+              onLight={setLit}
+            />
           </div>
         ) : (
           <OutcomesBars slices={slices} lit={lit} onLight={setLit} />
@@ -105,40 +152,6 @@ export function OutcomesPanel({ run, notComparable, awaitingDraft, live = false,
         </PanelFoot>
       ) : null}
     </Panel>
-  );
-}
-
-/**
- * The four reasons inside `Needs a person`. One band of twenty rather than
- * four of five, because four hairlines would cross the whole picture to reach
- * the foot of the column and none of them could be pointed at.
- */
-function Reasons({ reasons, lit, onLight }: { reasons: ReturnType<typeof parkedReasons>; lit: string | null; onLight(id: string | null): void }) {
-  return (
-    <div
-      onMouseEnter={() => onLight("needs-person")}
-      onMouseLeave={() => onLight(null)}
-      className={`flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-hairline-faint pt-2.5 transition-opacity duration-150 ${
-        lit === null || lit === "needs-person" ? "opacity-100" : "opacity-40"
-      }`}
-    >
-      {/*
-        One mark for the group and none on the reasons. All four are the same
-        outcome read four ways, so all four carry the review hue, and repeating
-        it beside each of them coloured four dots identically and told a reader
-        nothing they could not already see from the heading.
-      */}
-      <span className="flex items-center gap-1.5">
-        <span className="h-1.5 w-1.5 rounded-full" style={{ background: SLICE_TONE.review.bar }} />
-        <span className="text-caption text-review">Needs a person, by reason</span>
-      </span>
-      {reasons.map((reason) => (
-        <span key={reason.id} title={reason.says} className="flex items-center gap-1.5 text-caption">
-          <span className="text-ink-secondary">{reason.label}</span>
-          <span className="font-mono text-mono-sm tabular-nums text-ink">{reason.count}</span>
-        </span>
-      ))}
-    </div>
   );
 }
 

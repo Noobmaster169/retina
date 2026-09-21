@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { FakeLlmClient } from "../../src/agents/__fakes__/fake.llm-client";
 import type { LlmRequest } from "../../src/agents/llm-client";
-import { documents, emailRuns, entityResolution, extractions } from "../../src/ontology/repositories";
+import { classifications, documents, emailRuns, entityResolution, extractions } from "../../src/ontology/repositories";
 import { processOntology } from "../../src/queues/processors/ontology.processor";
 import { keys } from "../../src/storage";
 import { MemoryStore } from "../../src/storage/__fakes__/memory.store";
@@ -77,6 +77,43 @@ async function readEmail(tx: PoolClient, store: MemoryStore) {
   return { runId, emailId, emailRunId };
 }
 
+async function bodyOnlyShippingInstruction(tx: PoolClient) {
+  const { runId, emailId, emailRunId } = await classified(tx, []);
+  const subject = "RE_ CUST SI _ MEA _ 5RFR-64842 _ PO_25_3650";
+  const body = [
+    "Please find Shipping instruction for 5RFR-64842.",
+    "POL: RUGAO/NANTONG/SHANGHAI, CHINA",
+    "POD: AQABA, JORDAN",
+    "Shipper:",
+    "APRIL FAR EAST (M) SDN BHD",
+    "Consignee:",
+    "BALL & DOGGETT AUSTRALIA PTY LTD",
+    "Notify Party:",
+    "CERIX",
+    "Description of Goods:",
+    "5X40'HC",
+    "UNCOATED WOODFREE PAPER IN REAMS",
+    "H.S.CODE: 48025700",
+    "GROSS WT: 115,065 KG",
+    "Shipping line: LC TERM",
+  ].join("\n");
+  await tx.query("update core.emails set subject = $2, body = $3 where email_id = $1", [emailId, subject, body]);
+  await classifications.upsert(tx, {
+    emailRunId,
+    genCategory: "SI_REQUEST",
+    genConfidence: 0.98,
+    verCategory: null,
+    verConfidence: null,
+    finalCategory: "SI_REQUEST",
+    decidedBy: "llm",
+    rationale: { generator: "The body is the shipping instruction." },
+    model: "sonnet",
+    promptVersion: "v6",
+  });
+  await emailRuns.setStage(tx, runId, emailId, "done");
+  return { runId, emailId, emailRunId, subject, body };
+}
+
 const FIELD = { value: null, placeholder: null, source_quote: null, confidence: 0.9, note: null };
 
 async function storeFields(tx: PoolClient, emailRunId: string, values: Partial<Record<string, string>>): Promise<void> {
@@ -105,6 +142,61 @@ async function rows(tx: PoolClient, emailId: string) {
 }
 
 describe("the ontology processor", () => {
+  it("writes shipment facts carried only in an SI email body", async () => {
+    await inRollback(async (tx) => {
+      const store = new MemoryStore();
+      const { emailId, emailRunId } = await bodyOnlyShippingInstruction(tx);
+      const llm = new FakeLlmClient(
+        scripted(
+          reading({
+            references: {
+              oc_no: { value: "5RFR-64842", source_quote: "Please find Shipping instruction for 5RFR-64842.", source: "body" },
+              bl_no: null,
+              booking_ref: null,
+              invoice_no: null,
+              po_no: { value: "PO_25_3650", source_quote: "RE_ CUST SI _ MEA _ 5RFR-64842 _ PO_25_3650", source: "subject" },
+            },
+            parties: [
+              { role: "shipper", name: "APRIL FAR EAST (M) SDN BHD", address: null, source_quote: "APRIL FAR EAST (M) SDN BHD", source: "body" },
+              { role: "consignee", name: "BALL & DOGGETT AUSTRALIA PTY LTD", address: null, source_quote: "BALL & DOGGETT AUSTRALIA PTY LTD", source: "body" },
+              { role: "notify_party", name: "CERIX", address: null, source_quote: "CERIX", source: "body" },
+            ],
+            ports: {
+              port_of_loading: { value: "RUGAO/NANTONG/SHANGHAI, CHINA", source_quote: "POL: RUGAO/NANTONG/SHANGHAI, CHINA", source: "body" },
+              port_of_discharge: { value: "AQABA, JORDAN", source_quote: "POD: AQABA, JORDAN", source: "body" },
+            },
+            goods: { value: "UNCOATED WOODFREE PAPER IN REAMS", source_quote: "UNCOATED WOODFREE PAPER IN REAMS", source: "body" },
+            hs_code: { value: "48025700", source_quote: "H.S.CODE: 48025700", source: "body" },
+            container_count: { value: 5, source_quote: "5X40'HC", source: "body" },
+            container_type: { value: "40'HC", source_quote: "5X40'HC", source: "body" },
+            gross_weight_kg: { value: 115065, source_quote: "GROSS WT: 115,065 KG", source: "body" },
+            trade_term: { value: "LC TERM", source_quote: "Shipping line: LC TERM", source: "body" },
+          }),
+        ),
+      );
+
+      await processOntology(deps(tx, llm, store), { emailId, emailRunId: Number(emailRunId) });
+
+      expect(llm.requests[0].user).toContain("Read everything the email and its documents state.");
+      const { shipment } = await rows(tx, emailId);
+      expect(shipment).toMatchObject({
+        oc_no: "5RFR-64842",
+        po_no: "PO_25_3650",
+        hs_code: "48025700",
+        container_count: 5,
+        container_type: "40'HC",
+        gross_weight_kg: "115065",
+        trade_term: "LC TERM",
+      });
+      expect(shipment.shipper_id).not.toBeNull();
+      expect(shipment.consignee_id).not.toBeNull();
+      expect(shipment.notify_party_id).not.toBeNull();
+      expect(shipment.pol_id).not.toBeNull();
+      expect(shipment.pod_id).not.toBeNull();
+      expect(shipment.commodity_id).not.toBeNull();
+    });
+  });
+
   it("writes a shipment and the sightings nothing else holds", async () => {
     await inRollback(async (tx) => {
       const store = new MemoryStore();

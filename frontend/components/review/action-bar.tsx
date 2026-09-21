@@ -19,9 +19,9 @@ import type { ReviewCaseView } from "@/lib/api/trace-schemas";
  * state now names the one thing that actually answers it, says in a line what
  * pressing it records, and keeps the rest to one side.
  *
- * Nothing here arbitrates. `Say what a document reads` records what a person
- * read in one document; it never declares the other one wrong. That is section
- * 11 and it is the reason none of these buttons can be called `Fix`.
+ * Nothing here arbitrates. `Fill in the blank` records what a person read in
+ * one document; it never declares the other one wrong. That is section 11 and
+ * it is the reason none of these buttons can be called `Fix`.
  */
 
 interface ActionBarProps {
@@ -35,15 +35,14 @@ interface ActionBarProps {
   onName: (name: string) => void;
 }
 
-/** Which reasons are answered by supplying a better document. A missing value is answered by typing it. */
-const UPLOADABLE = ["missing_attachment", "unreadable", "wrong_doc_type"];
+/** A bad or missing file is answered by a draft to the sender, on the message above. */
+const ASKS_SENDER = ["missing_attachment", "unreadable", "wrong_doc_type"];
 
 /** What the leading action records, in the words a person would use for it. */
 const SAYS: Record<string, string> = {
-  retry: "Sends the email back through the pipeline from where it stopped.",
-  upload: "Replaces the file Retina could not read, and judges the pair again.",
-  correct: "Records what you read in one document. Retina judges the pair again from both sides.",
-  confirm: "Records that stopping here was right, and closes the case.",
+  retry: "Sends the email back through from where it stopped.",
+  correct: "Records what you read in one document. Retina checks the two again.",
+  confirm: "Records that this is as far as the check can go, and closes the case.",
 };
 
 export function ActionBar({ review, actions, onCorrect, actor, onName }: ActionBarProps) {
@@ -63,31 +62,37 @@ export function ActionBar({ review, actions, onCorrect, actor, onName }: ActionB
   const arm = (next: Armed) => () => setArmed(armed === next ? null : next);
   const confirm = guarded(() => void actions.act({ kind: "confirm" }));
 
-  // The leading action is whatever actually answers this case: a job that
-  // stopped is retried, a file nobody could read is replaced, a blank value is
-  // typed. Agreeing that a person was needed is the answer only when none of
-  // those is, and it is always available beside them.
+  // A job that stopped is retried. A blank value is typed. A file that could
+  // not be used is not replaced from here: the message above drafts the ask.
+  const asksSender = !failure && review.reason !== null && ASKS_SENDER.includes(review.reason);
   const lead = failure
     ? { key: "retry", label: actions.pending === "retry" ? "Sending it back" : "Try it again", run: guarded(() => void actions.act({ kind: "retry" })) }
-    : review.reason && UPLOADABLE.includes(review.reason)
-      ? { key: "upload", label: "Upload a readable copy", run: guarded(arm("upload")) }
+    : asksSender
+      ? null
       : onCorrect
-        ? { key: "correct", label: "Say what a document reads", run: guarded(onCorrect) }
-        : { key: "confirm", label: actions.pending === "confirm" ? "Recording" : "Agree, it needs a person", run: confirm };
+        ? { key: "correct", label: "Fill in the blank", run: guarded(onCorrect) }
+        : { key: "confirm", label: actions.pending === "confirm" ? "Recording" : "Nothing more to add", run: confirm };
+  const caption = !open
+    ? "This case is settled."
+    : asksSender
+      ? "Ask the sender for the right file, from the message above."
+      : SAYS[lead?.key ?? "confirm"];
 
   return (
     <div className="shrink-0 border-t border-hairline">
       <ActionStrip armed={armed} onClose={() => setArmed(null)} actions={actions} review={review} actor={actor} onName={onName} />
 
       <div className="flex min-h-[60px] flex-wrap items-center gap-2 px-6 py-3">
-        <Button variant="primary" disabled={!open || busy} onClick={lead.run}>
-          {lead.label}
-        </Button>
-        <span className="min-w-0 grow truncate text-caption text-ink-tertiary">{open ? SAYS[lead.key] : "This case is settled."}</span>
+        {lead ? (
+          <Button variant="primary" disabled={!open || busy} onClick={lead.run}>
+            {lead.label}
+          </Button>
+        ) : null}
+        <span className="min-w-0 grow truncate text-caption text-ink-tertiary">{caption}</span>
 
-        {!failure && lead.key !== "confirm" ? (
+        {!failure && lead?.key !== "confirm" ? (
           <Button variant="secondary" disabled={!open || busy} onClick={confirm}>
-            {actions.pending === "confirm" ? "Recording" : "Agree, it needs a person"}
+            {actions.pending === "confirm" ? "Recording" : "Nothing more to add"}
           </Button>
         ) : null}
 
@@ -98,14 +103,9 @@ export function ActionBar({ review, actions, onCorrect, actor, onName }: ActionB
 
       {more ? (
         <div className="flex flex-wrap items-center gap-2 border-t border-hairline-faint px-6 py-2.5">
-          {!failure && onCorrect && lead.key !== "correct" ? (
+          {!failure && onCorrect && lead?.key !== "correct" ? (
             <Button variant="quiet" disabled={!open || busy} onClick={guarded(onCorrect)}>
-              Say what a document reads
-            </Button>
-          ) : null}
-          {!failure && review.reason && UPLOADABLE.includes(review.reason) && lead.key !== "upload" ? (
-            <Button variant="quiet" disabled={!open || busy} onClick={guarded(arm("upload"))}>
-              Upload a readable copy
+              Fill in the blank
             </Button>
           ) : null}
           {!failure ? (

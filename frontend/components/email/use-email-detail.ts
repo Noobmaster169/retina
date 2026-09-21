@@ -18,9 +18,10 @@ import { parsedFetcher } from "@/lib/poll";
  */
 
 /** Still moving: worth a poll, because the next stage is about to change the pane. */
-const MOVING_MS = 2500;
+/** One email being watched through the pipeline. Its stage changes a handful of times in all. */
+const MOVING_MS = 4000;
 /** Parked: nothing changes until a person acts, and acting re-reads. A slow poll is for the other person. */
-const OPEN_CASE_MS = 8000;
+const OPEN_CASE_MS = 15_000;
 
 interface EmailDetail {
   trace: EmailTrace | undefined;

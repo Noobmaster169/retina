@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import type { FlowLayout } from "./flow-diagram";
+import type { FlowLayout } from "./flow-layout";
 import { SLICE_TONE } from "./outcome-tones";
 
 /**

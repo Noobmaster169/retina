@@ -30,8 +30,16 @@ export interface FlowNode {
   label: string;
   count: number;
   tone: SliceTone;
-  /** The column it sits in, left to right. */
-  depth: 0 | 1 | 2;
+  /**
+   * The column it sits in, left to right.
+   *
+   * Named `column` and not `depth` because d3-sankey owns `depth` on the
+   * objects it lays out and overwrites it with its own: the distance from the
+   * source, which is 1 for `No check needed` even as `sankeyJustify` correctly
+   * places it in the last column. A label that asked the node for its depth
+   * was told 1, drew itself on the left, and landed on top of the band.
+   */
+  column: 0 | 1 | 2;
   /**
    * Where it sits in its column, top to bottom.
    *
@@ -91,18 +99,24 @@ const FILTERS: Record<string, FilterKey> = {
  * denominator, so this reads its result rather than counting a second time and
  * risking a picture that disagrees with the legend beside it.
  */
-export function runFlow(run: Pick<RunSummary, "outcomes" | "review">, notComparable: number, awaitingDraft: number): RunFlow {
+export function runFlow(
+  run: Pick<RunSummary, "outcomes" | "review">,
+  notComparable: number,
+  awaitingDraft: number,
+  instructionRequests = 0,
+): RunFlow {
   const { slices, total } = outcomeBreakdown(run, notComparable, awaitingDraft);
   const ends = slices.filter((slice) => slice.count > 0);
 
   // Everything that is not `no check needed` crossed into the second queue,
-  // counted from the slices so the two halves cannot add up to anything but
-  // the whole.
+  // except a shipping instruction, which ends awaiting a draft without ever
+  // being a pair. Counted from the slices so the bands add up to the whole.
+  const requests = Math.min(Math.max(instructionRequests, 0), awaitingDraft);
   const crossed = ends.filter((slice) => slice.key !== "not_comparable");
-  const needCheck = crossed.reduce((sum, slice) => sum + slice.count, 0);
+  const needCheck = crossed.reduce((sum, slice) => sum + slice.count, 0) - requests;
 
   const nodes: FlowNode[] = [
-    { id: "arriving", label: "Arriving", count: total, tone: "muted", depth: 0, order: 0, filter: "all", says: "Every email this run was given." },
+    { id: "arriving", label: "Arriving", count: total, tone: "muted", column: 0, order: 0, filter: "all", says: "Every email this run was given." },
   ];
   const links: FlowLink[] = [];
 
@@ -112,7 +126,7 @@ export function runFlow(run: Pick<RunSummary, "outcomes" | "review">, notCompara
       label: "Needs a check",
       count: needCheck,
       tone: "muted",
-      depth: 1,
+      column: 1,
       order: 0,
       filter: null,
       says: "Sorted into a category that asks for the two documents to be compared.",
@@ -129,8 +143,10 @@ export function runFlow(run: Pick<RunSummary, "outcomes" | "review">, notCompara
   AFTER_CHECK.forEach((key, at) => {
     const slice = ends.find((one) => one.key === key);
     if (!slice) return;
-    nodes.push({ id: slice.key, label: slice.label, count: slice.count, tone: slice.tone, depth: 2, order: at, filter: FILTERS[slice.key] ?? null, says: slice.says });
-    links.push({ from: "needs-check", to: slice.key, count: slice.count, tone: slice.tone });
+    nodes.push({ id: slice.key, label: slice.label, count: slice.count, tone: slice.tone, column: 2, order: at, filter: FILTERS[slice.key] ?? null, says: slice.says });
+    const throughCheck = slice.key === "awaiting_draft" ? slice.count - requests : slice.count;
+    if (throughCheck > 0) links.push({ from: "needs-check", to: slice.key, count: throughCheck, tone: slice.tone });
+    if (slice.key === "awaiting_draft" && requests > 0) links.push({ from: "arriving", to: slice.key, count: requests, tone: slice.tone });
   });
 
   if (parkedCount > 0) {
@@ -139,7 +155,7 @@ export function runFlow(run: Pick<RunSummary, "outcomes" | "review">, notCompara
       label: "Needs a person",
       count: parkedCount,
       tone: "review",
-      depth: 2,
+      column: 2,
       // Directly under the three it shares a queue with, and above the band
       // that never entered one.
       order: AFTER_CHECK.length,
@@ -153,7 +169,7 @@ export function runFlow(run: Pick<RunSummary, "outcomes" | "review">, notCompara
   if (noCheck) {
     // Straight from the first node to the last column: it never entered the
     // second queue, and a middle node for it would draw a step it never took.
-    nodes.push({ id: noCheck.key, label: noCheck.label, count: noCheck.count, tone: noCheck.tone, depth: 2, order: 99, filter: FILTERS[noCheck.key] ?? null, says: noCheck.says });
+    nodes.push({ id: noCheck.key, label: noCheck.label, count: noCheck.count, tone: noCheck.tone, column: 2, order: 99, filter: FILTERS[noCheck.key] ?? null, says: noCheck.says });
     links.push({ from: "arriving", to: noCheck.key, count: noCheck.count, tone: "muted" });
   }
 
@@ -173,7 +189,7 @@ export function parkedReasons(
       label: slice.label,
       count: slice.count,
       tone: slice.tone,
-      depth: 2 as const,
+      column: 2 as const,
       order: at,
       filter: "needs-you" as FilterKey,
       says: slice.says,

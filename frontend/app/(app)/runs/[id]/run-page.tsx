@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import useSWR from "swr";
 
 import { TopBar } from "@/components/shell/top-bar";
@@ -7,7 +8,8 @@ import { LaneMapPanel } from "@/components/run/lane-map";
 import { MachineryPanel } from "@/components/run/machinery-panel";
 import { OutcomesPanel } from "@/components/run/outcomes-panel";
 import { laneMap } from "@/components/run/progress";
-import { QueuePanel } from "@/components/run/queue-panel";
+import { useRunLive } from "@/components/run/use-run-live";
+import { stagePeeks } from "@/components/run/stage-peeks";
 import { SendersPanel } from "@/components/run/senders-panel";
 import { RunHeader, statusWord } from "@/components/run/run-header";
 import { PageContext } from "@/components/dock/page-context-announcer";
@@ -26,26 +28,83 @@ import { useRunActions } from "./use-run-actions";
  * whole argument of the trouble and finished boards.
  */
 
-/** A live run is polled at the rate the phase 7 spec sets; a finished one is not polled at all. */
-const LIVE_MS = 2000;
-const HEALTH_MS = 10_000;
+/**
+ * A live run is watched over one connection, not polled.
+ *
+ * It used to poll `/api/runs/:id` and `/api/runs/:id/queues` every two seconds
+ * each, which is a request a second, every second, for as long as a tab was
+ * open, and every one of them crossed the tunnel to the box. The stream does
+ * the same reads on the same tick, on the server's side of that tunnel, and
+ * sends only what changed. See `use-run-live.ts`.
+ *
+ * The polls below are the fallback and nothing else. They run when the stream
+ * could not be held at all, and deliberately slower than the old ones: a
+ * screen that has lost its connection is worth keeping alive, not worth a
+ * request a second.
+ *
+ * Health is a dependency banner. Nothing it reports changes faster than this,
+ * and a tunnel or a proxy that has gone away is still named within half a
+ * minute.
+ */
+const FALLBACK_SUMMARY_MS = 8000;
+const FALLBACK_SLOTS_MS = 12_000;
+const HEALTH_MS = 30_000;
 
 export function RunPage({ initialRun }: { initialRun: RunSummary }) {
   const id = initialRun.id;
-  const { data: run = initialRun, mutate } = useSWR(`/api/runs/${id}`, parsedFetcher(RunSummary), {
+  // The server's render is the first frame, and it is what decides whether
+  // there is anything left to watch. The stream stops itself when the run
+  // finishes, so nothing here has to notice that and turn it off.
+  const watching = !initialRun.processingDone;
+  const streamed = useRunLive(id, watching);
+
+  const { data: polled = initialRun, mutate } = useSWR(`/api/runs/${id}`, parsedFetcher(RunSummary), {
     fallbackData: initialRun,
-    refreshInterval: initialRun.processingDone ? 0 : LIVE_MS,
+    refreshInterval: watching && streamed.stale ? FALLBACK_SUMMARY_MS : 0,
     keepPreviousData: true,
   });
+  const run = streamed.summary ?? polled;
   const live = !run.processingDone;
-  const { data: queues } = useSWR(`/api/runs/${id}/queues`, parsedFetcher(RunQueuesView), {
-    refreshInterval: live ? LIVE_MS : 0,
+  const { data: polledQueues } = useSWR(`/api/runs/${id}/queues`, parsedFetcher(RunQueuesView), {
+    // Asked for once whatever happens, because the first frame of a finished
+    // run has no stream behind it, then only while the stream is down.
+    refreshInterval: live && streamed.stale ? FALLBACK_SLOTS_MS : 0,
     keepPreviousData: true,
   });
+  const queues = streamed.queues ?? polledQueues;
   const { data: health = null } = useSWR("/api/health", parsedFetcher(HealthReport), {
     refreshInterval: HEALTH_MS,
     keepPreviousData: true,
   });
+
+  // Same reason as the flow panel: the poll hands down new objects twice a
+  // second, and rebuilding the map from them re-ran every card's arrival
+  // animation for numbers that had not moved. One string of every number the
+  // map reads, so the work happens when something changed and not before.
+  const counted = [
+    run.status,
+    run.totalEmails,
+    run.outcomes.ok,
+    run.outcomes.mismatch,
+    run.review.open,
+    Object.values(run.stageCounts).join(","),
+    queues?.handoff.needCheck,
+    queues?.handoff.notComparable,
+    queues?.handoff.awaitingDraft,
+    queues?.handoff.instructionRequests,
+    queues?.classify.active,
+    queues?.classify.concurrency,
+    queues?.classify.heldUntil,
+    queues?.compare.active,
+    queues?.compare.concurrency,
+    queues?.compare.waiting,
+    queues?.compare.heldUntil,
+  ].join("|");
+  const map = useMemo(
+    () => (queues ? laneMap(run, queues) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `counted` is every number the map reads.
+    [counted],
+  );
 
   const actions = useRunActions(id, () => void mutate());
   const status = statusWord(run, degraded(health, queues ?? null));
@@ -77,17 +136,15 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
         <div className="flex min-h-0 grow flex-col gap-4 overflow-y-auto px-6 pb-6">
           {queues ? (
             <LaneMapPanel
-              map={laneMap(run, queues)}
+              map={map ?? laneMap(run, queues)}
               note={laneNote(live, paused, queues.compare.heldUntil !== null)}
               slots={{ classify: queues.classify.concurrency, compare: queues.compare.concurrency }}
               flowing={live && !paused}
+              peeks={stagePeeks(queues)}
+              runId={id}
             />
           ) : null}
 
-          {/*
-            Tall enough for the flow to be read at, and no taller. `grow` here
-            would go back to dividing a fixed height between the panels.
-          */}
           {/*
             The flow first in both states, and at full width while a run is
             live. It used to come third in that row, behind two fixed panels,
@@ -99,34 +156,15 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
               run={run}
               notComparable={queues?.handoff.notComparable ?? 0}
               awaitingDraft={queues?.handoff.awaitingDraft ?? 0}
+              instructionRequests={queues?.handoff.instructionRequests ?? 0}
               live={live}
               paused={paused}
               className="min-w-0 grow"
             />
-            {live ? null : <MachineryPanel run={run} className="w-[372px] shrink-0" />}
+            {/* Always, now the queues have no panel of their own: while a run
+                works this is the only thing on the page whose numbers climb. */}
+            <MachineryPanel run={run} className="w-[372px] shrink-0" />
           </div>
-
-          {live && queues ? (
-            <div className="flex min-h-[300px] shrink-0 gap-4">
-              <QueuePanel
-                title="Sorting now"
-                queue={queues.classify}
-                runId={id}
-                paused={paused}
-                drained="Every email has been read. Only a comparison request crossed into the second queue, and that queue is still working."
-                className="min-w-0 grow"
-              />
-              <QueuePanel
-                title="Checking now"
-                queue={queues.compare}
-                runId={id}
-                paused={paused}
-                drained="Nothing is waiting for a check. Every pair that crossed has been judged; the rest of the inbox never needed one."
-                className="min-w-0 grow"
-              />
-              <MachineryPanel run={run} className="w-[372px] shrink-0" />
-            </div>
-          ) : null}
 
           {/*
             Under everything, because it is the one control on this page and

@@ -75,10 +75,17 @@ export const RunQueuesView = z.object({
   compare: QueueView,
   /**
    * Of the emails sorted so far: how many cross into the second queue, how many
-   * stop at the first, and how many of the crossing had no draft to check yet.
-   * `awaitingDraft` is a subset of `needCheck`, never of `notComparable`.
+   * stop at the first, and how many are waiting on a draft.
+   * `awaitingDraft` is that waiting count. `instructionRequests` is the part of
+   * it that is a shipping instruction: those never entered the second queue, so
+   * only `awaitingDraft - instructionRequests` is a subset of `needCheck`.
    */
-  handoff: z.object({ needCheck: z.number(), notComparable: z.number(), awaitingDraft: z.number() }),
+  handoff: z.object({
+    needCheck: z.number(),
+    notComparable: z.number(),
+    awaitingDraft: z.number(),
+    instructionRequests: z.number(),
+  }),
   /** Null when the queues cannot be reached. The page then says so rather than drawing zeroes. */
   reachable: z.boolean(),
 });
