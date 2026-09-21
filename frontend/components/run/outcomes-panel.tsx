@@ -45,8 +45,10 @@ type View = "flow" | "bars";
 interface OutcomesPanelProps {
   run: RunSummary;
   notComparable: number;
-  /** Crossed into the second queue and found no draft to check. Its own slice, or the panel is short by it. */
+  /** Waiting on a draft. Its own slice, or the panel is short by it. */
   awaitingDraft: number;
+  /** Shipping instructions inside `awaitingDraft`. They never entered the second queue. */
+  instructionRequests?: number;
   /** Work is still moving, which is the only state the dots travel in. */
   live?: boolean;
   /** A paused run is polled and still: every moving thing here is a claim that work is happening. */
@@ -54,7 +56,15 @@ interface OutcomesPanelProps {
   className?: string;
 }
 
-export function OutcomesPanel({ run, notComparable, awaitingDraft, live = false, paused = false, className = "" }: OutcomesPanelProps) {
+export function OutcomesPanel({
+  run,
+  notComparable,
+  awaitingDraft,
+  instructionRequests = 0,
+  live = false,
+  paused = false,
+  className = "",
+}: OutcomesPanelProps) {
   const [view, setView] = useState<View>("flow");
   const [lit, setLit] = useState<string | null>(null);
   /*
@@ -70,6 +80,7 @@ export function OutcomesPanel({ run, notComparable, awaitingDraft, live = false,
   const counted = [
     notComparable,
     awaitingDraft,
+    instructionRequests,
     run.outcomes.ok,
     run.outcomes.mismatch,
     ...Object.entries(run.review.byReason).map(([key, count]) => `${key}:${count}`),
@@ -80,7 +91,7 @@ export function OutcomesPanel({ run, notComparable, awaitingDraft, live = false,
     [counted],
   );
   const flow = useMemo(
-    () => runFlow(run, notComparable, awaitingDraft),
+    () => runFlow(run, notComparable, awaitingDraft, instructionRequests),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- as above.
     [counted],
   );

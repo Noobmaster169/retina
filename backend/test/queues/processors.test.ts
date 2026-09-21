@@ -8,7 +8,7 @@ import { proxyLlmClient } from "../../src/agents/llm-client";
 import { RetryableError, TerminalError, UpstreamError } from "../../src/lib/errors";
 import { attachments, classifications, documents, emailRuns, llmCalls, runs } from "../../src/ontology/repositories";
 import { RecordingAdder } from "../../src/queues/__fakes__/recording.adder";
-import type { CompareJob } from "../../src/queues/names";
+import type { CompareJob, OntologyJob } from "../../src/queues/names";
 import { processClassify } from "../../src/queues/processors/classify.processor";
 import { processCompare } from "../../src/queues/processors/compare.processor";
 import { keys } from "../../src/storage";
@@ -125,7 +125,12 @@ describe("classify processor", () => {
     });
   });
 
-  it.each(["SI_REQUEST", "INVOICE_QUERY", "GENERAL", "SPAM"])("finishes a %s email without comparing it", async (category) => {
+  it.each([
+    ["SI_REQUEST", "awaiting_draft"],
+    ["INVOICE_QUERY", "not_comparable"],
+    ["GENERAL", "not_comparable"],
+    ["SPAM", "not_comparable"],
+  ] as const)("finishes a %s email as %s without comparing it", async (category, outcome) => {
     await inRollback(async (tx) => {
       const { runId, emailId } = await ingested(tx);
       const compare = new RecordingAdder<CompareJob>();
@@ -133,8 +138,43 @@ describe("classify processor", () => {
       await processClassify({ ...parsers(), pool: tx, llm: new FakeLlmClient(answer(category)), compare }, { runId, emailId }, 600);
 
       const { rows } = await tx.query("select stage, outcome from core.email_runs where run_id = $1", [runId]);
-      expect(rows[0]).toEqual({ stage: "done", outcome: "not_comparable" });
+      expect(rows[0]).toEqual({ stage: "done", outcome });
       expect(compare.added).toEqual([]);
+    });
+  });
+
+  it("queues an attachment-free shipping instruction for ontology extraction", async () => {
+    await inRollback(async (tx) => {
+      const { runId, emailId, emailRunId } = await ingested(tx);
+      await tx.query(
+        "update core.emails set subject = $2, body = $3 where email_id = $1",
+        [
+          emailId,
+          "RE_ CUST SI _ MEA _ 5RFR-64842 _ PO_25_3650",
+          "Please find Shipping instruction for 5RFR-64842.\n\nPOL: RUGAO/NANTONG/SHANGHAI, CHINA\nPOD: AQABA, JORDAN\n\nShipper:\nAPRIL FAR EAST (M) SDN BHD\n\nConsignee:\nBALL & DOGGETT AUSTRALIA PTY LTD\n\nGROSS WT: 115,065 KG",
+        ],
+      );
+      const ontology = new RecordingAdder<OntologyJob>();
+
+      await processClassify(
+        {
+          ...parsers(),
+          pool: tx,
+          llm: new FakeLlmClient(answer("SI_REQUEST")),
+          compare: new RecordingAdder<CompareJob>(),
+          ontology,
+        },
+        { runId, emailId },
+        600,
+      );
+
+      expect(ontology.added).toEqual([
+        {
+          name: "read-shipment",
+          data: { emailId, emailRunId: Number(emailRunId) },
+          options: expect.objectContaining({ jobId: emailId }),
+        },
+      ]);
     });
   });
 

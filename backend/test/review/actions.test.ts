@@ -136,6 +136,7 @@ describe("reclassify", () => {
       const result = await applyAction(at, caseId, { kind: "reclassify", actor: "kai", category: "BL_COMPARISON" });
 
       expect(result?.requeued).toBe("compare");
+      expect(at.queues.readings).toHaveLength(0);
       expect(at.queues.reruns[0].data.rerunFrom).toBe("triage");
       expect(result?.action).toMatchObject({ oldValue: "GENERAL", newValue: "BL_COMPARISON" });
       expect(result?.case.status).toBe("open");
@@ -143,9 +144,9 @@ describe("reclassify", () => {
     });
   });
 
-  it("to a category with no pair clears the judgements, ends the email OK and closes the case", async () => {
+  it("to a shipping instruction clears the judgements, marks it awaiting a draft and closes the case", async () => {
     await inRollback(async (tx) => {
-      const { emailRunId, caseId } = await parked(tx);
+      const { emailId, emailRunId, caseId } = await parked(tx);
       const at = deps(tx);
       await tx.query(
         `insert into core.classifications (email_run_id, gen_category, gen_confidence, final_category, decided_by)
@@ -160,8 +161,9 @@ describe("reclassify", () => {
       const result = await applyAction(at, caseId, { kind: "reclassify", actor: "kai", category: "SI_REQUEST" });
 
       expect(result?.requeued).toBeNull();
+      expect(at.queues.readings).toEqual([{ emailId, emailRunId: Number(emailRunId) }]);
       expect(result?.case.status).toBe("resolved");
-      expect(await outcome(tx, emailRunId)).toMatchObject({ stage: "done", outcome: "not_comparable", status: "OK", review_reason: null, detail: { reclassified: true } });
+      expect(await outcome(tx, emailRunId)).toMatchObject({ stage: "done", outcome: "awaiting_draft", status: "OK", review_reason: null, detail: { reclassified: true } });
       expect(await fieldDiffs.listForComparison(tx, (await comparisons.idFor(tx, emailRunId)) as string)).toEqual([]);
     });
   });

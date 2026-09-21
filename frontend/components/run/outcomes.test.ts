@@ -47,10 +47,10 @@ describe("outcomeBreakdown", () => {
 
   it("names each one in plain English, because the enums are not what a business owner reads", () => {
     expect(breakdown.slices.map((slice) => slice.label)).toEqual([
-      "No check needed",
-      "Awaiting a draft",
-      "Documents agree",
-      "Documents differ",
+      "Other mail",
+      "Needs a draft",
+      "Documents match",
+      "Documents don't match",
       "Wrong document",
       "Document missing",
       "Could not be read",
@@ -86,7 +86,7 @@ describe("outcomeBreakdown", () => {
     expect(breakdown.total).toBe(300 + 91 + 62 + 46 + 20);
   });
 
-  it("keeps them out of Documents agree, where no document was read at all", () => {
+  it("keeps them out of Documents match, where no document was read at all", () => {
     expect(breakdown.slices.find((slice) => slice.key === "OK")?.count).toBe(62);
   });
 

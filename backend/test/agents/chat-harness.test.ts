@@ -103,11 +103,11 @@ describe("the skills that ship", () => {
   const all = loadSkills();
   const recipes = loadRecipes();
 
-  it("are the thirteen that ship, each with a version and a sentence on when", () => {
+  it("are the sixteen that ship, each with a version and a sentence on when", () => {
     expect([...all.keys()].sort()).toEqual([
-      "ask-back", "counts-and-rates", "explain-an-email", "explore-values", "find-references",
+      "ask-back", "ask-for-the-document", "counts-and-rates", "draft-the-shipment", "explain-an-email", "explore-values", "find-references",
       "ground-names", "lanes-and-ports", "meaning-terms", "near-misses", "pick-the-run",
-      "quality-and-review", "recommend-action", "time-questions",
+      "quality-and-review", "recommend-action", "settle-the-case", "time-questions",
     ]);
     for (const skill of all.values()) {
       expect(skill.version).toBeGreaterThanOrEqual(1);

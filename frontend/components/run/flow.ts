@@ -99,15 +99,21 @@ const FILTERS: Record<string, FilterKey> = {
  * denominator, so this reads its result rather than counting a second time and
  * risking a picture that disagrees with the legend beside it.
  */
-export function runFlow(run: Pick<RunSummary, "outcomes" | "review">, notComparable: number, awaitingDraft: number): RunFlow {
+export function runFlow(
+  run: Pick<RunSummary, "outcomes" | "review">,
+  notComparable: number,
+  awaitingDraft: number,
+  instructionRequests = 0,
+): RunFlow {
   const { slices, total } = outcomeBreakdown(run, notComparable, awaitingDraft);
   const ends = slices.filter((slice) => slice.count > 0);
 
   // Everything that is not `no check needed` crossed into the second queue,
-  // counted from the slices so the two halves cannot add up to anything but
-  // the whole.
+  // except a shipping instruction, which ends awaiting a draft without ever
+  // being a pair. Counted from the slices so the bands add up to the whole.
+  const requests = Math.min(Math.max(instructionRequests, 0), awaitingDraft);
   const crossed = ends.filter((slice) => slice.key !== "not_comparable");
-  const needCheck = crossed.reduce((sum, slice) => sum + slice.count, 0);
+  const needCheck = crossed.reduce((sum, slice) => sum + slice.count, 0) - requests;
 
   const nodes: FlowNode[] = [
     { id: "arriving", label: "Arriving", count: total, tone: "muted", column: 0, order: 0, filter: "all", says: "Every email this run was given." },
@@ -138,7 +144,9 @@ export function runFlow(run: Pick<RunSummary, "outcomes" | "review">, notCompara
     const slice = ends.find((one) => one.key === key);
     if (!slice) return;
     nodes.push({ id: slice.key, label: slice.label, count: slice.count, tone: slice.tone, column: 2, order: at, filter: FILTERS[slice.key] ?? null, says: slice.says });
-    links.push({ from: "needs-check", to: slice.key, count: slice.count, tone: slice.tone });
+    const throughCheck = slice.key === "awaiting_draft" ? slice.count - requests : slice.count;
+    if (throughCheck > 0) links.push({ from: "needs-check", to: slice.key, count: throughCheck, tone: slice.tone });
+    if (slice.key === "awaiting_draft" && requests > 0) links.push({ from: "arriving", to: slice.key, count: requests, tone: slice.tone });
   });
 
   if (parkedCount > 0) {

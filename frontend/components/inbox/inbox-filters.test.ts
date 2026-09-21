@@ -106,10 +106,12 @@ describe("search", () => {
 });
 
 describe("countsOf", () => {
-  it("counts every chip over the same rows, letting one row answer two questions", () => {
-    expect(countsOf(ROWS)).toEqual({
+  it("puts every email in exactly one pile, so the piles add up to All", () => {
+    const counts = countsOf(ROWS);
+    const piles = FILTERS.filter((filter) => filter.key !== "all").reduce((sum, filter) => sum + counts[filter.key], 0);
+    expect(counts).toEqual({
       all: 8,
-      "needs-you": 3,
+      "needs-you": 2,
       differences: 1,
       agreed: 1,
       "awaiting-draft": 0,
@@ -118,6 +120,7 @@ describe("countsOf", () => {
       moving: 1,
       failed: 1,
     });
+    expect(piles).toBe(counts.all);
   });
 
   it("counts over what the search left and not over the run", () => {
@@ -145,11 +148,11 @@ describe("the emails waiting for a draft", () => {
     expect(narrow(rows, "awaiting-draft", "id").map((row) => row.emailId)).toEqual(["email_003", "email_004"]);
   });
 
-  it("leaves Agreed to the pairs that were actually read", () => {
+  it("leaves Documents match to the pairs that were actually read", () => {
     expect(narrow(rows, "agreed", "id").map((row) => row.emailId)).toEqual(["email_005"]);
   });
 
-  it("is not a row that never needed a check, which is a different thing entirely", () => {
+  it("is not other mail, which is a different thing entirely", () => {
     expect(narrow(rows, "no-check", "id")).toEqual([]);
   });
 
@@ -163,12 +166,12 @@ describe("narrow", () => {
     { name: "ids sort by number and not by text", filter: "all", sort: "id", expect: ["email_9", "email_10", "email_506", "email_512", "email_519", "email_600", "email_700", "email_800"] },
     { name: "the oldest waiting case comes first, then the rest by urgency", filter: "all", sort: "attention", expect: ["email_512", "email_506", "email_800", "email_10", "email_700", "email_9", "email_519", "email_600"] },
     { name: "most differing fields first", filter: "all", sort: "differences", expect: ["email_10", "email_9", "email_506", "email_512", "email_519", "email_600", "email_700", "email_800"] },
-    { name: "needs you holds the two cases and the failed job", filter: "needs-you", sort: "id", expect: ["email_506", "email_512", "email_800"] },
-    { name: "differences holds only a judged defect", filter: "differences", sort: "id", expect: ["email_10"] },
-    { name: "no check holds what was never compared", filter: "no-check", sort: "id", expect: ["email_600"] },
-    { name: "settled holds a reason that was answered", filter: "settled", sort: "id", expect: ["email_519"] },
-    { name: "still moving excludes a job that stopped", filter: "moving", sort: "id", expect: ["email_700"] },
-    { name: "failed holds only the job that stopped, which needs you counts too", filter: "failed", sort: "id", expect: ["email_800"] },
+    { name: "needs you holds the open cases and not the job that stopped", filter: "needs-you", sort: "id", expect: ["email_506", "email_512"] },
+    { name: "documents don't match holds only a judged defect", filter: "differences", sort: "id", expect: ["email_10"] },
+    { name: "other mail holds what was never a bill check", filter: "no-check", sort: "id", expect: ["email_600"] },
+    { name: "already handled holds a reason that was answered", filter: "settled", sort: "id", expect: ["email_519"] },
+    { name: "still working excludes a job that stopped", filter: "moving", sort: "id", expect: ["email_700"] },
+    { name: "couldn't finish holds only the job that stopped", filter: "failed", sort: "id", expect: ["email_800"] },
   ];
 
   for (const one of cases) {
@@ -182,7 +185,7 @@ describe("narrow", () => {
   });
 
   it("sorts by sender name and not by the header it came in", () => {
-    expect(idsOf(narrow(ROWS, "needs-you", "sender"))).toEqual(["email_506", "email_800", "email_512"]);
+    expect(idsOf(narrow(ROWS, "needs-you", "sender"))).toEqual(["email_506", "email_512"]);
   });
 });
 
@@ -199,8 +202,8 @@ describe("emphasisOf", () => {
     ["Needs you with rows asks", ["review", 4, false], "asking"],
     ["Failed with rows asks", ["fault", 1, false], "asking"],
     ["Needs you at zero is not important", ["review", 0, false], "empty"],
-    ["Differences with rows holds", ["differ", 10, false], "holding"],
-    ["Agreed with rows holds", ["match", 30, false], "holding"],
+    ["Documents don't match with rows holds", ["differ", 10, false], "holding"],
+    ["Documents match with rows holds", ["match", 30, false], "holding"],
     ["Still moving with rows holds", ["signal", 2, false], "holding"],
     ["a neutral chip stays grey however many rows it has", ["neutral", 520, false], "empty"],
   ];

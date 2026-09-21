@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/chip";
 import type { ReviewCaseView } from "@/lib/api/trace-schemas";
 import { panel } from "@/lib/motion";
 
-import { FIELD, ReclassifyPanel, UploadPanel } from "./action-panels";
+import { FIELD, ReclassifyPanel } from "./action-panels";
 import type { CaseActions } from "./use-case-actions";
 
 /**
@@ -17,7 +17,7 @@ import type { CaseActions } from "./use-case-actions";
  * rule that keeps a correction on its comparison row.
  */
 
-export type Armed = "note" | "reclassify" | "upload" | "name" | null;
+export type Armed = "note" | "reclassify" | "name" | null;
 
 interface ActionStripProps {
   armed: Armed;
@@ -43,7 +43,6 @@ export function ActionStrip({ armed, onClose, actions, review, actor, onName }: 
           <div className="px-6 py-3">
             {armed === "note" ? <NotePanel actions={actions} review={review} onClose={onClose} /> : null}
             {armed === "reclassify" ? <ReclassifyPanel actions={actions} onClose={onClose} /> : null}
-            {armed === "upload" ? <UploadPanel actions={actions} onClose={onClose} /> : null}
             {armed === "name" ? <NamePanel actor={actor} onName={onName} onClose={onClose} /> : null}
           </div>
         </motion.div>

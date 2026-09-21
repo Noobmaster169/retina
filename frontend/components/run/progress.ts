@@ -72,7 +72,10 @@ export function laneMap(run: RunSummary, queues: RunQueuesView): LaneMap {
   // Only the emails that had a draft to check can ever be checked. Counting
   // the rest in the denominator read as work the run had skipped: "129 of 220"
   // on a run that was finished, with nothing on the page holding the other 91.
-  const checkable = Math.max(0, needCheck - awaitingDraft);
+  // A shipping instruction is also awaiting a draft, and it never crossed, so
+  // it is not part of that remainder.
+  const draftsThatCrossed = Math.max(0, awaitingDraft - queues.handoff.instructionRequests);
+  const checkable = Math.max(0, needCheck - draftsThatCrossed);
   const compareHeld = queues.compare.heldUntil !== null;
   const classifyHeld = queues.classify.heldUntil !== null;
   const paused = run.status === "paused";

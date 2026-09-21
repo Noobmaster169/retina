@@ -5,7 +5,7 @@ import { RetryableError } from "../lib/errors";
 import { runIdOfJob } from "../lib/ids";
 import { withTimeout } from "../lib/time";
 import { redisIsDown } from "./connection";
-import { type ClassifyJob, ingestJobOptions, JOB_NAMES, releaseJobOptions } from "./names";
+import { type ClassifyJob, ingestJobOptions, JOB_NAMES, ontologyJobOptions, releaseJobOptions } from "./names";
 import { getQueues } from "./queues";
 
 /** What the run routes need from the queues. */
@@ -26,6 +26,8 @@ export interface RunQueues {
    * it completes and BullMQ refuses a second under the same one.
    */
   rerun(queue: "classify" | "compare", data: ClassifyJob, options: JobsOptions): Promise<void>;
+  /** One finished email's semantic reading. The job id is the email id, so a second add while one waits is the same work. */
+  readShipment(emailId: string, emailRunId: number): Promise<void>;
   /**
    * Sends one email the gate held back through ingest, with the gate bypassed.
    * On the ingest queue and not inline, because a release still has to copy
@@ -108,6 +110,12 @@ export function bullRunQueues(): RunQueues {
     },
     async rerun(queue, data, options) {
       await bounded(() => getQueues()[queue].add(JOB_NAMES[queue], data, options), `rerun on ${queue}`);
+    },
+    async readShipment(emailId, emailRunId) {
+      await bounded(
+        () => getQueues().ontology.add(JOB_NAMES.ontology, { emailId, emailRunId }, ontologyJobOptions(emailId)),
+        "read a shipment",
+      );
     },
     async removeWaiting(runId) {
       const { classify, compare } = getQueues();

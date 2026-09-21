@@ -1,8 +1,8 @@
 const LABELS: Record<string, string> = {
-  OK: "Agreed",
-  MISMATCH: "Differences",
+  OK: "Documents match",
+  MISMATCH: "Documents don't match",
   NEEDS_REVIEW: "Needs review",
-  awaiting_draft: "Awaiting draft",
+  awaiting_draft: "Needs a draft",
   wrong_doc_type: "Wrong document",
   missing_attachment: "Missing attachment",
   unreadable: "Unreadable",
@@ -13,7 +13,7 @@ const LABELS: Record<string, string> = {
   comparing: "Checking documents",
   review: "Needs review",
   done: "Done",
-  failed: "Failed",
+  failed: "Couldn't finish",
 };
 
 /** Keep stored values exact while making every visible state readable. */

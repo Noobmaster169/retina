@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Icon } from "@/components/ui/icons";
 import type { DocumentView } from "@/lib/api/trace-schemas";
@@ -53,12 +53,15 @@ export function MessageCard({
   documents = [],
   to = "ops@aprilasia.com",
   foldBody = true,
+  actions,
 }: {
   message: Message;
   documents?: DocumentView[];
   to?: string;
   /** Keep long mail compact only when the page has analysis below it. */
   foldBody?: boolean;
+  /** Sits on the right of the sender's name and address. Only the check passes any. */
+  actions?: ReactNode;
 }) {
   const [opened, setOpened] = useState<DocumentView | null>(null);
   const [whole, setWhole] = useState(false);
@@ -82,10 +85,11 @@ export function MessageCard({
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-tint text-[11px] font-semibold text-accent">
           {senderInitials(message.from)}
         </span>
-        <span className="min-w-0 pt-0.5">
+        <span className="min-w-0 grow pt-0.5">
           <span className="block truncate text-strong font-medium">{senderName(message.from)}</span>
           <span className="block truncate text-caption text-ink-tertiary">{senderAddress(message.from)}</span>
         </span>
+        {actions ? <div className="flex shrink-0 items-center gap-2 self-center">{actions}</div> : null}
       </header>
       <div className="mt-3 flex items-baseline gap-2 text-small">
         <span className="shrink-0 font-medium text-ink-tertiary">To</span>

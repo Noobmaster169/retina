@@ -91,6 +91,7 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
     queues?.handoff.needCheck,
     queues?.handoff.notComparable,
     queues?.handoff.awaitingDraft,
+    queues?.handoff.instructionRequests,
     queues?.classify.active,
     queues?.classify.concurrency,
     queues?.classify.heldUntil,
@@ -155,6 +156,7 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
               run={run}
               notComparable={queues?.handoff.notComparable ?? 0}
               awaitingDraft={queues?.handoff.awaitingDraft ?? 0}
+              instructionRequests={queues?.handoff.instructionRequests ?? 0}
               live={live}
               paused={paused}
               className="min-w-0 grow"

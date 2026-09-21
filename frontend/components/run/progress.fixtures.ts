@@ -17,7 +17,7 @@ export function queues(over: Partial<RunQueuesView> = {}): RunQueuesView {
   return {
     classify: queue(),
     compare: queue({ name: "compare", concurrency: 4 }),
-    handoff: { needCheck: 220, notComparable: 300, awaitingDraft: 0 },
+    handoff: { needCheck: 220, notComparable: 300, awaitingDraft: 0, instructionRequests: 0 },
     reachable: true,
     ...over,
   };
