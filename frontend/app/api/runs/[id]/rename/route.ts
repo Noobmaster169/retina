@@ -1,4 +1,7 @@
+import { revalidateTag } from "next/cache";
+
 import { renameRun } from "@/lib/api-client";
+import { RUNS } from "@/lib/api/cached";
 import { backendFailure } from "@/lib/api-route";
 import { hasSiteAccess } from "@/lib/site-gate";
 
@@ -14,7 +17,11 @@ export async function POST(request: Request, ctx: RouteContext<"/api/runs/[id]/r
   if (typeof body.name !== "string") return Response.json({ error: "A rename needs a name." }, { status: 400 });
   try {
     const outcome = await renameRun(id, body.name);
-    if (outcome.ok) return Response.json(outcome.run);
+    if (outcome.ok) {
+    // A run changed shape, so the ten seconds of reuse in `lib/api/cached.ts` end here.
+    revalidateTag(RUNS, { expire: 0 });
+      return Response.json(outcome.run);
+    }
     return Response.json({ error: outcome.message }, { status: outcome.status });
   } catch (error) {
     return backendFailure("rename run", error);

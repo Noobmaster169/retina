@@ -1,4 +1,7 @@
+import { revalidateTag } from "next/cache";
+
 import type { EditOutcome } from "@/lib/api-client";
+import { BUSINESS } from "@/lib/api/cached";
 import { backendFailure } from "@/lib/api-route";
 import { EntityKind } from "@/lib/api/semantic-schemas";
 import { hasSiteAccess } from "@/lib/site-gate";
@@ -11,6 +14,11 @@ export async function edit(type: string, work: (kind: EntityKind) => Promise<Edi
   try {
     const outcome = await work(kind.data);
     if (!outcome.ok) return Response.json({ error: outcome.message }, { status: outcome.status });
+    // The three writes are the only way a resolved thing changes from in here,
+    // so this is the one place the reuse in `lib/api/cached.ts` has to end. A
+    // rename reaches a list, a card and a counterpart, and a merge reaches the
+    // thing it merged away, so the tag is dropped whole rather than by id.
+    revalidateTag(BUSINESS, { expire: 0 });
     return Response.json(outcome.row);
   } catch (error) {
     return backendFailure(what, error);

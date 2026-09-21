@@ -1,4 +1,7 @@
+import { revalidateTag } from "next/cache";
+
 import { cancelRun, pauseRun, resumeRun } from "@/lib/api-client";
+import { RUNS } from "@/lib/api/cached";
 import { hasSiteAccess } from "@/lib/site-gate";
 
 const ACTIONS = { pause: pauseRun, resume: resumeRun, cancel: cancelRun };
@@ -19,6 +22,8 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/runs/[id]/
   try {
     const outcome = await ACTIONS[action](id);
     if (!outcome.ok) return Response.json({ error: outcome.message }, { status: outcome.status });
+    // A run changed shape, so the ten seconds of reuse in `lib/api/cached.ts` end here.
+    revalidateTag(RUNS, { expire: 0 });
     return Response.json(outcome.run);
   } catch (error) {
     console.error(`[api/runs] ${action} failed:`, error);

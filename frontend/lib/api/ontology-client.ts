@@ -14,6 +14,7 @@ import {
 } from "./ontology-schemas";
 import type { EntityKind } from "./semantic-schemas";
 import { ConsignmentDetail, ConsignmentList } from "./shipment-schemas";
+import { BUSINESS, BUSINESS_SECONDS, cached } from "./cached";
 import { get } from "./transport";
 
 export type {
@@ -51,31 +52,43 @@ export async function listObjectTypes(): Promise<ObjectTypeSummary[]> {
 }
 
 /** The resolved things of one kind, any of the six, each with its attributes, summary and roles. */
-export async function listEntities(type: EntityKind): Promise<EntityList> {
-  return get(EntityList, `/ontology/${type}`);
-}
+export const listEntities = cached(
+  "listEntities",
+  async (type: EntityKind): Promise<EntityList> => get(EntityList, `/ontology/${type}`),
+  { seconds: BUSINESS_SECONDS, tags: [BUSINESS] },
+);
 
 /** Every lane the shipments state between two ports, busiest first. */
-export async function listLanes(): Promise<Lane[]> {
-  return (await get(LaneList, "/ontology/lanes")).lanes;
-}
+export const listLanes = cached(
+  "listLanes",
+  async (): Promise<Lane[]> => (await get(LaneList, "/ontology/lanes")).lanes,
+  { seconds: BUSINESS_SECONDS, tags: [BUSINESS] },
+);
 
 export type Beside = "people" | "ports" | "parties";
 
 /** What sits beside a thing: a company's people and ports, a port's companies. */
-export async function listCounterparts(type: EntityKind, id: string, beside: Beside): Promise<Counterpart[]> {
-  return (await get(CounterpartList, `/ontology/${type}/${encodeURIComponent(id)}/${beside}`)).counterparts;
-}
+export const listCounterparts = cached(
+  "listCounterparts",
+  async (type: EntityKind, id: string, beside: Beside): Promise<Counterpart[]> =>
+    (await get(CounterpartList, `/ontology/${type}/${encodeURIComponent(id)}/${beside}`)).counterparts,
+  { seconds: BUSINESS_SECONDS, tags: [BUSINESS] },
+);
 
 /** The consignments the mail is about, newest first. */
-export async function listConsignments(): Promise<ConsignmentList> {
-  return get(ConsignmentList, "/ontology/shipment");
-}
+export const listConsignments = cached(
+  "listConsignments",
+  async (): Promise<ConsignmentList> => get(ConsignmentList, "/ontology/shipment"),
+  { seconds: BUSINESS_SECONDS, tags: [BUSINESS] },
+);
 
 /** One consignment: its references, the things on it, and what each email said. */
-export async function getConsignment(id: string): Promise<ConsignmentDetail | null> {
-  return orNull(get(ConsignmentDetail, `/ontology/shipment/${encodeURIComponent(id)}`));
-}
+export const getConsignment = cached(
+  "getConsignment",
+  async (id: string): Promise<ConsignmentDetail | null> =>
+    orNull(get(ConsignmentDetail, `/ontology/shipment/${encodeURIComponent(id)}`)),
+  { seconds: BUSINESS_SECONDS, tags: [BUSINESS] },
+);
 
 /** Null for an id nothing holds, and for a type that is designed and not built. */
 export async function getObjectRecord(
@@ -88,9 +101,12 @@ export async function getObjectRecord(
 }
 
 /** The four parts a resolved thing opens into. */
-export async function getEntityDetail(type: EntityKind, id: string): Promise<EntityDetail | null> {
-  return orNull(get(EntityDetail, `/ontology/${type}/${encodeURIComponent(id)}/detail`));
-}
+export const getEntityDetail = cached(
+  "getEntityDetail",
+  async (type: EntityKind, id: string): Promise<EntityDetail | null> =>
+    orNull(get(EntityDetail, `/ontology/${type}/${encodeURIComponent(id)}/detail`)),
+  { seconds: BUSINESS_SECONDS, tags: [BUSINESS] },
+);
 
 /**
  * One resolved thing, small, for the card a chat mention opens on hover.
@@ -98,9 +114,12 @@ export async function getEntityDetail(type: EntityKind, id: string): Promise<Ent
  * By id alone: a link in an answer carries the id the agent was shown, and the
  * kind comes back on the row rather than having to be known to ask.
  */
-export async function getEntityPreview(id: string): Promise<EntityRow | null> {
-  return orNull(get(EntityRow, `/ontology/entity/${encodeURIComponent(id)}/preview`));
-}
+export const getEntityPreview = cached(
+  "getEntityPreview",
+  async (id: string): Promise<EntityRow | null> =>
+    orNull(get(EntityRow, `/ontology/entity/${encodeURIComponent(id)}/preview`)),
+  { seconds: BUSINESS_SECONDS, tags: [BUSINESS] },
+);
 
 /** One email, one or two hops out, as nodes and named edges. Carries no coordinates: the layout is ours. */
 export async function getObjectGraph(id: string, runId: string, hops: 1 | 2 = 1): Promise<ObjectGraph | null> {

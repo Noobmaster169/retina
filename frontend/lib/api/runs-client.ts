@@ -6,6 +6,7 @@ import {
   type RunSubset,
   RunSummary,
 } from "./runs-schemas";
+import { cached, RUN_SECONDS, RUNS } from "./cached";
 import { get, parseAs, refusalMessage, request } from "./transport";
 
 export * from "./runs-schemas";
@@ -39,14 +40,24 @@ export async function listRuns(): Promise<RunList> {
   return get(RunList, "/runs");
 }
 
-/** Null when there is no such run. */
-export async function getRun(id: string): Promise<RunSummary | null> {
-  const path = `/runs/${encodeURIComponent(id)}`;
-  const response = await request(path);
-  if (response.status === 404 || response.status === 400) return null;
-  if (!response.ok) throw new Error(`Backend GET ${path} → ${response.status}`);
-  return parseAs(RunSummary, response, `GET ${path}`);
-}
+/**
+ * Null when there is no such run.
+ *
+ * Ten seconds, which is a run's shape and not its progress: what moves while a
+ * replay runs is the emails, and every screen that draws them polls its own
+ * read from the browser rather than this one.
+ */
+export const getRun = cached(
+  "getRun",
+  async (id: string): Promise<RunSummary | null> => {
+    const path = `/runs/${encodeURIComponent(id)}`;
+    const response = await request(path);
+    if (response.status === 404 || response.status === 400) return null;
+    if (!response.ok) throw new Error(`Backend GET ${path} → ${response.status}`);
+    return parseAs(RunSummary, response, `GET ${path}`);
+  },
+  { seconds: RUN_SECONDS, tags: [RUNS] },
+);
 
 export async function createRun(input: CreateRunInput): Promise<RunOutcome> {
   const response = await request("/runs", { method: "POST", body: JSON.stringify(input) });

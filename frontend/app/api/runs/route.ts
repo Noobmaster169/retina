@@ -1,4 +1,7 @@
+import { revalidateTag } from "next/cache";
+
 import { createRun, type CreateRunInput, listRuns } from "@/lib/api-client";
+import { RUNS } from "@/lib/api/cached";
 import { gatedRead } from "@/lib/api-route";
 import { hasSiteAccess } from "@/lib/site-gate";
 
@@ -18,6 +21,8 @@ export async function POST(request: Request) {
   try {
     const outcome = await createRun(body);
     if (!outcome.ok) return refused(outcome.status, outcome.message);
+    // A run changed shape, so the ten seconds of reuse in `lib/api/cached.ts` end here.
+    revalidateTag(RUNS, { expire: 0 });
     return Response.json(outcome.run, { status: 201 });
   } catch (error) {
     console.error("[api/runs] create failed:", error);
