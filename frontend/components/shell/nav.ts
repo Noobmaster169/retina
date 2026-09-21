@@ -17,6 +17,13 @@ import type { IconName } from "@/components/ui/icons";
  * `hidden` keeps a destination built and reachable by its URL while taking it
  * out of the rail. None is hidden today: the database page is offered again,
  * because `As rows` is the page that proves the ontology is not a mock-up.
+ *
+ * `Needs a person` was a destination of its own until it stopped earning one.
+ * It listed the same emails the inbox lists, from a second component set, with
+ * a second idea of what was selected, and moving between the two lost your
+ * place both ways. It is a chip on the inbox now, and `/runs/{id}/review`
+ * redirects to it. What it keeps is its count, which reaches the rail as an
+ * alert beside `Inbox`.
  */
 export type Cluster = "operations" | "business";
 
@@ -41,7 +48,6 @@ export interface Destination {
 export const DESTINATIONS: Destination[] = [
   { key: "overview", label: "Overview", icon: "home", path: "", cluster: "operations" },
   { key: "inbox", label: "Inbox", icon: "mail", path: "/inbox", cluster: "operations" },
-  { key: "review", label: "Needs a person", icon: "eye", path: "/review", cluster: "operations" },
   { key: "database", label: "Database", icon: "table", path: "/database", cluster: "operations" },
   { key: "ontology", label: "Ontology", icon: "graph", path: "/ontology", cluster: "operations" },
   { key: "chat", label: "Ask Retina", icon: "chat", path: "/chat", cluster: "operations" },
@@ -72,6 +78,13 @@ export const RAIL_DESTINATIONS = DESTINATIONS.filter((destination) => !destinati
 /** Counts the rail shows against its destinations. Absent keys render no count. */
 export type NavCounts = Partial<Record<string, number>>;
 
+/**
+ * Counts the rail tints. An alert is not a bigger count, it is a different
+ * question: `Inbox 104` says how much there is and `3` beside it says how much
+ * of it is waiting on you. Zero draws nothing, so a quiet run stays quiet.
+ */
+export type NavAlerts = Partial<Record<string, number>>;
+
 const RUN_ROUTE = /^\/runs\/([0-9a-f-]{36})(?:\/([^/]+))?/;
 
 export function runIdFrom(pathname: string): string | null {
@@ -84,7 +97,8 @@ export function activeFor(pathname: string): string {
   if (run) {
     const section = run[2] ?? "";
     if (section === "") return "overview";
-    if (section === "emails") return "inbox";
+    // Both redirect into the inbox, so the rail names the inbox while they do.
+    if (section === "emails" || section === "review") return "inbox";
     return DESTINATIONS.some((destination) => destination.path === `/${section}`) ? section : "";
   }
   const head = `/${pathname.split("/")[1] ?? ""}`;

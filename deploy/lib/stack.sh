@@ -11,8 +11,8 @@
 # auto-deploy.sh's hand-over covers a change to this file for the same reason
 # it covers a change to itself.
 
-# Where the box keeps things. Every value stays overridable, which is how
-# deploy/sim points them somewhere else.
+# Where the box keeps things. Every value stays overridable, so a scripted run
+# can point them somewhere other than a real box.
 retina_stack_defaults() {
   REPO="${REPO:-$HOME/projects/retina}"
   STACK="${STACK:-$HOME/retina}"

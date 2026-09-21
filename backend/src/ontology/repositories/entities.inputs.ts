@@ -96,11 +96,13 @@ export async function loadVerdicts(db: Queryable): Promise<Verdict[]> {
  * It is the same shape the field judge's verdicts arrive in, so the resolver
  * has one rule for both and the two sources of joins cannot disagree about
  * which cluster a spelling is in. The pair is the spelling and the canonical
- * of the thing it was judged into, which is a spelling of that thing too.
+ * of the thing it was judged into, which is a spelling of that thing too. The
+ * step comes back as stored, so a join the port list made stays labelled as
+ * the port list's and never turns into a model's claim on the next pass.
  */
 export async function loadResolveJoins(db: Queryable): Promise<Verdict[]> {
-  const { rows } = await db.query<{ kind: EntityKind; value: string; canonical: string; confidence: string | null }>(
-    `select e.kind, n.value, e.canonical, n.confidence::text as confidence
+  const { rows } = await db.query<{ kind: EntityKind; value: string; canonical: string; confidence: string | null; joined_step: string }>(
+    `select e.kind, n.value, e.canonical, n.confidence::text as confidence, n.joined_step
        from core.entity_names n
        join core.entities e on e.id = n.entity_id
       where n.joined_step is not null and e.merged_into is null`,
@@ -111,7 +113,7 @@ export async function loadResolveJoins(db: Queryable): Promise<Verdict[]> {
     blValue: row.canonical,
     same: true,
     confidence: row.confidence === null ? null : Number(row.confidence),
-    step: "entity-resolve",
+    step: row.joined_step,
   }));
 }
 

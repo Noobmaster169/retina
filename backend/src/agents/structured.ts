@@ -21,6 +21,8 @@ export interface StructuredCall<T> {
   /** Rendered as labelled sections, in this order. */
   input: Record<string, string | string[]>;
   schema: z.ZodType<T>;
+  /** Pictures the model is asked to look at, sent beside the rendered input. */
+  images?: { mediaType: string; base64: string }[];
   project: string;
   /** Null for a call that belongs to no run: the chat agent's loop is the only one. */
   runId: string | null;
@@ -171,6 +173,7 @@ export async function callStructured<T>(deps: StructuredDeps, call: StructuredCa
       maxTokens: prompt.maxTokens,
       outputSchema,
       project: call.project,
+      images: call.images,
     };
     const row = {
       runId: call.runId,

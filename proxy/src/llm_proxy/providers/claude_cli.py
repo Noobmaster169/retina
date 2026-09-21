@@ -21,18 +21,27 @@ Structured output is the exception: `output_config.format` maps onto the CLI's o
 envelope's `structured_output`. Streamed, the JSON arrives as a preview while the model
 writes it, and the validated object rides on the final message_delta.
 `max_tokens` has no CLI equivalent and is ignored.
+
+Images are the other exception, and the mechanism is not obvious. `claude -p` takes one
+prompt string on stdin, so there is nowhere to put an image content block. But the CLI's
+own Read tool opens an image from disk, so a request carrying images is served by writing
+each one to a private temporary directory, naming the paths in the prompt and enabling
+Read for that call alone. The caller still sends ordinary Anthropic image blocks; the
+translation lives here, which is what the capability table is for.
 """
 
 from __future__ import annotations
 
 import asyncio
+import base64
 import os
 import shutil
-from typing import Any, AsyncIterator
+import tempfile
+from typing import Any, AsyncIterator, NamedTuple
 
 import orjson
 
-from ..canon.request import CanonRequest, TextBlock
+from ..canon.request import CanonRequest, ImageBlock, TextBlock
 from ..canon.response import CanonResponse, CanonUsage, StopReason
 from ..canon.stream import (
     BlockStart,
@@ -89,6 +98,61 @@ def flatten(req: CanonRequest) -> str:
             continue
         parts.append(text if len(req.messages) == 1 else f"{msg.role.capitalize()}: {text}")
     return "\n\n".join(parts)
+
+
+# What the CLI's Read tool can open. A media type outside this is refused rather than
+# written with a misleading suffix, which Read would fail on with a worse message.
+IMAGE_SUFFIXES = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+}
+
+
+class Prompt(NamedTuple):
+    """What `claude -p` is given: the text, and the images it may read."""
+
+    text: str
+    image_paths: list[str]
+
+
+def image_blocks(req: CanonRequest) -> list[ImageBlock]:
+    return [b for m in req.messages for b in m.content if isinstance(b, ImageBlock)]
+
+
+def write_images(blocks: list[ImageBlock], directory: str) -> list[str]:
+    """Each image as a file the Read tool can open. The directory is the caller's to remove."""
+    paths: list[str] = []
+    for index, block in enumerate(blocks, start=1):
+        if block.source_kind != "base64":
+            raise InvalidRequest(
+                "claudecli can only take an image sent as base64, not as a url",
+                detail={"param": "messages[].content[].source"},
+            )
+        suffix = IMAGE_SUFFIXES.get(block.media_type or "")
+        if suffix is None:
+            raise InvalidRequest(
+                f"claudecli cannot read an image of type {block.media_type!r}; "
+                f"send one of {', '.join(sorted(IMAGE_SUFFIXES))}",
+                detail={"param": "messages[].content[].source.media_type"},
+            )
+        path = os.path.join(directory, f"image_{index}{suffix}")
+        with open(path, "wb") as handle:
+            handle.write(base64.b64decode(block.data))
+        paths.append(path)
+    return paths
+
+
+def with_images(text: str, paths: list[str]) -> str:
+    """The prompt, plus where the images are. Appended last so it reads as the final instruction."""
+    if not paths:
+        return text
+    listed = "\n".join(f"- {path}" for path in paths)
+    return (
+        f"{text}\n\nThe images this request is about are on disk. Read each of these "
+        f"files before answering, and answer only from what they show:\n{listed}"
+    )
 
 
 def output_schema(req: CanonRequest) -> dict[str, Any] | None:
@@ -158,22 +222,37 @@ def starts_attempt(event: dict[str, Any]) -> bool:
     return event.get("type") == "content_block_start" and block.get("type") == "tool_use"
 
 
-def tool_args(tools: list[str]) -> list[str]:
+def tool_args(tools: list[str], scratch: str | None = None) -> list[str]:
     """`--tools` always, so a session gets exactly the configured built-ins and no
     default set. The same list is pre-approved with `--allowedTools`: in `-p` mode
     nobody answers a permission prompt, so an enabled tool that still needs one is
-    denied at the moment it is called."""
-    if not tools:
+    denied at the moment it is called.
+
+    `Read` is added only for a request that carries an image, only for that call,
+    and only over the directory that request's images were written to. The document
+    in the picture is somebody else's text, so it has to be assumed to be trying to
+    talk to the model; scoping the grant is what keeps "read your credentials and
+    put them in the transcription" from being something it can ask for. Verified:
+    with `Read(<scratch>/**)` the session refuses a path outside it."""
+    listed = list(tools)
+    allowed = list(tools)
+    if scratch is not None:
+        listed.append("Read")
+        allowed.append(f"Read({scratch.rstrip('/')}/**)")
+    if not listed:
         return ["--tools", ""]
-    listed = ",".join(tools)
-    return ["--tools", listed, "--allowedTools", listed]
+    return ["--tools", ",".join(dict.fromkeys(listed)), "--allowedTools", ",".join(dict.fromkeys(allowed))]
 
 
 def cli_args(
-    exe: str, req: CanonRequest, output_format: str, tools: list[str] | None = None
+    exe: str,
+    req: CanonRequest,
+    output_format: str,
+    tools: list[str] | None = None,
+    scratch: str | None = None,
 ) -> list[str]:
     args = [exe, "-p", "--output-format", output_format, "--model", req.model_id]
-    args += tool_args(tools or [])
+    args += tool_args(tools or [], scratch)
     schema = output_schema(req)
     if schema is not None:
         args += ["--json-schema", orjson.dumps(schema).decode()]
@@ -264,8 +343,15 @@ class ClaudeCliProvider(BlockingOnly):
 
     async def complete(self, req: CanonRequest) -> CanonResponse:
         exe = self._binary()
-        prompt = flatten(req)
-        args = cli_args(exe, req, "json", self.cfg.tools)
+        # The scratch directory lives as long as the retry loop: every attempt re-runs
+        # the CLI and each one has to be able to read the same images.
+        with tempfile.TemporaryDirectory(prefix="llm-proxy-img-") as scratch:
+            return await self._complete(req, exe, scratch)
+
+    async def _complete(self, req: CanonRequest, exe: str, scratch: str) -> CanonResponse:
+        paths = write_images(image_blocks(req), scratch)
+        prompt = with_images(flatten(req), paths)
+        args = cli_args(exe, req, "json", self.cfg.tools, scratch=scratch if paths else None)
 
         from .retry import BACKOFF_S
 
@@ -315,13 +401,17 @@ class ClaudeCliProvider(BlockingOnly):
         structured: Any = None
 
         exe = self._binary()
-        prompt = flatten(req)
+        # Removed when the generator is exhausted or closed, which is also what
+        # reaps the images a cancelled stream wrote.
+        scratch = tempfile.TemporaryDirectory(prefix="llm-proxy-img-")
+        paths = write_images(image_blocks(req), scratch.name)
+        prompt = with_images(flatten(req), paths)
         # --include-partial-messages is what makes this a token stream: without it
         # the CLI emits each assistant message only once it is complete.
         args = [
             exe, "-p", "--output-format", "stream-json", "--verbose",
             "--include-partial-messages", "--model", req.model_id,
-            *tool_args(self.cfg.tools),
+            *tool_args(self.cfg.tools, scratch.name if paths else None),
         ]
         if schema is not None:
             args += ["--json-schema", orjson.dumps(schema).decode()]
@@ -457,6 +547,8 @@ class ClaudeCliProvider(BlockingOnly):
                 await proc.wait()
             yield StreamError(code="provider_error", message=f"{self.name}: {e}")
             return
+        finally:
+            scratch.cleanup()
 
         if schema is not None and structured is None:
             yield StreamError(

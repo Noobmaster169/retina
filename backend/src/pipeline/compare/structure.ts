@@ -61,20 +61,18 @@ export function documentVerdicts(docs: DocumentSummary[]): Map<string, TypeVerdi
  * they be read, and are they what they claim to be. Escalation precedence when
  * several apply is unreadable, then wrong_doc_type, then missing_attachment.
  *
- * A scan is escalated too: OCR text is never silently trusted. Phase 6 adds a
- * provisional comparison to that case for the reviewer.
+ * A document that was read by looking at it is not escalated for that reason. It
+ * has text like any other, and `unreadable` now means what a person means by it:
+ * nobody could read this, a reader with eyes included. A scan escalated on sight
+ * made a clean bill of lading and a truncated file mean the same thing, and the
+ * only judgement it really encoded was that a character recogniser was not
+ * trusted, which is a fact about the recogniser and not about the document.
  */
 export function checkStructure(docs: DocumentSummary[], request: TriageRequest | null): StructureOutcome {
   const unreadable = docs.filter((doc) => doc.unreadable);
   if (unreadable.length > 0) {
     const files = unreadable.map(({ filename, warnings, scanned }) => ({ filename, warnings, scanned }));
     return { kind: "review", reason: "unreadable", detail: { files } };
-  }
-
-  const scanned = docs.filter((doc) => doc.scanned);
-  if (scanned.length > 0) {
-    const files = scanned.map(({ filename, warnings, scanned: isScanned }) => ({ filename, warnings, scanned: isScanned }));
-    return { kind: "review", reason: "unreadable", detail: { scanned: true, files, provisional: null } };
   }
 
   const roles = resolveRoles(docs);

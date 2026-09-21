@@ -6,9 +6,10 @@ export function readable(text: string, format: ExtractResponse["format"] = "txt"
   return {
     format,
     text,
-    pages: [{ index: 1, text, source: "text_layer", ocr_confidence: null }],
+    pages: [{ index: 1, text, source: "text_layer" }],
     unreadable: false,
-    scanned: false,
+    has_images: false,
+    images: [],
     warnings: [],
     bytes: Buffer.byteLength(text),
   };
@@ -16,18 +17,22 @@ export function readable(text: string, format: ExtractResponse["format"] = "txt"
 
 /** What the service answers for a file that will not open, is empty, or has no text. */
 export function unreadable(warning: string, format: ExtractResponse["format"] = "pdf"): ExtractResponse {
-  return { format, text: "", pages: [], unreadable: true, scanned: false, warnings: [warning], bytes: 0 };
+  return { format, text: "", pages: [], unreadable: true, has_images: false, images: [], warnings: [warning], bytes: 0 };
 }
 
-/** A page read by OCR: text present, `scanned` set, with the confidence tesseract reported. */
-export function scanned(text: string, confidence = 88): ExtractResponse {
+/**
+ * A page with no text layer: nothing read yet, its pixels waiting to be looked at.
+ * Not unreadable, which is the distinction the vision step turns on.
+ */
+export function scanned(key = "runs/r/emails/e/images/f/1.png"): ExtractResponse {
   return {
     format: "pdf",
-    text,
-    pages: [{ index: 1, text, source: "ocr", ocr_confidence: confidence }],
+    text: "",
+    pages: [{ index: 1, text: "", source: "image" }],
     unreadable: false,
-    scanned: true,
-    warnings: ["page 1: no text layer, read by OCR"],
+    has_images: true,
+    images: [{ index: 1, key, origin: "page" }],
+    warnings: ["page 1: no text layer, sent to be read as an image"],
     bytes: 20_000,
   };
 }

@@ -83,11 +83,29 @@ function matches(port: ReferencePort, words: string[]): number {
   return best;
 }
 
+/**
+ * A spelling with no country word at all, such as "LE HAVRE", is looked for
+ * by its whole name across the world. Only an exact name, and only when one
+ * country holds it: "SANTOS" is in two, and guessing between them would be
+ * a rule, so it stays unplaced until a person says which.
+ */
+function byNameAlone(city: string): LocatedPort | null {
+  const wanted = normaliseName(city);
+  if (!wanted) return null;
+  const exact = PORTS.filter((port) => [port.name, ...port.aliases].some((name) => normaliseName(name) === wanted));
+  const countries = new Set(exact.map((port) => port.countryCode));
+  if (countries.size !== 1) return null;
+  const pick = exact[0];
+  const country = countryByCode(pick.countryCode);
+  if (!country) return null;
+  return { country, locode: pick.locode, lat: pick.lat, lon: pick.lon, matched: pick.name };
+}
+
 export function locatePort(canonical: string): LocatedPort | null {
   const parsed = parsePortName(canonical);
   // A city that is a country, such as Singapore, names its own country.
   const country = countryByName(parsed.countryWord) ?? countryByName(parsed.city) ?? (parsed.code ? countryByCode(parsed.code.slice(0, 2)) : null);
-  if (!country) return null;
+  if (!country) return parsed.countryWord === null ? byNameAlone(parsed.city) : null;
   const words = cityWords(parsed.city);
   const candidates = (BY_COUNTRY.get(country.code) ?? [])
     .map((port) => ({ port, score: words.length ? matches(port, words) : port.name.toUpperCase() === country.name.toUpperCase() ? 1 : 0 }))

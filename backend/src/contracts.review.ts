@@ -13,7 +13,7 @@ import { ReviewReason } from "./contracts.scoring";
 export const DocType = z.enum(["SI", "BL", "INVOICE", "PACKING_LIST", "COO", "OTHER"]);
 export type DocType = z.infer<typeof DocType>;
 
-export const DocumentFormat = z.enum(["txt", "pdf", "docx", "xlsx", "unknown"]);
+export const DocumentFormat = z.enum(["txt", "pdf", "docx", "xlsx", "image", "unknown"]);
 export type DocumentFormat = z.infer<typeof DocumentFormat>;
 
 /**
@@ -47,17 +47,30 @@ export const DocumentView = z.object({
   unreadable: z.boolean(),
   warnings: z.array(z.string()),
   /**
-   * Mean OCR word confidence per page, 0 to 100, in page order: tesseract's
-   * own scale, as doc-extract reports it, and the same one the 40 percent
-   * floor is written on. Empty for a document with a text layer, which is most
-   * of them. The review case shows which page failed and how badly, and one
-   * number for the whole file could not say that.
+   * Always empty. It held the mean OCR word confidence of each page, on the
+   * character recogniser's own scale, and there is no recogniser now: a page
+   * with no text layer is read by looking at it, which either works or is
+   * reported as illegible. Kept on the contract, and stored, so a row written
+   * before that still reads back; nothing populates it.
    */
   pageConfidence: z.array(z.number()),
   /** The file's size, which the message card states beside its name. */
   bytes: z.number(),
   /** `human` is a document a reviewer supplied for a case. It fills its place ahead of the sender's own. */
   origin: z.enum(["source", "human"]),
+  /**
+   * Where the file itself sits in the object store, and where the text the
+   * parser read out of it sits. Both are streamed by `GET /files/:key`, which
+   * is how a page shows a document rather than only the seven quotes taken
+   * from it.
+   *
+   * They are keys and never URLs, because `storage/keys.ts` is the only place
+   * that composes one and a page that built its own would be a second. The
+   * text key is null for a document the parser could not read, which is the
+   * same condition as `unreadable`.
+   */
+  objectKey: z.string(),
+  textObjectKey: z.string().nullable(),
 });
 export type DocumentView = z.infer<typeof DocumentView>;
 

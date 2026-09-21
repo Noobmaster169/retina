@@ -100,21 +100,34 @@ services:
   # model call fails fast as "not logged in", the same way a missing MinIO
   # degrades /health rather than blocking a deploy. auto-deploy.sh rebuilds it
   # when proxy/ changes.
+  #
+  # A request carrying an image is served by writing it to a private temporary
+  # directory inside this container and letting the CLI's own Read tool open it,
+  # scoped to that directory and nothing else. So the container needs a writable
+  # /tmp, which it has: do not add `read_only: true` here without a
+  # `tmpfs: [/tmp]` beside it, or every scanned document stops being readable.
+  # Nothing else about this service changed for images.
   llm-proxy:
     build: ../projects/retina/proxy
     restart: unless-stopped
     environment:
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
 
-  # The parser: services/doc-extract from the clone, tesseract inside. It reads
-  # attachments from MinIO by key and writes page images back, so the worker
-  # never carries file bytes. No published port: only the worker calls it.
-  # auto-deploy.sh rebuilds it when services/doc-extract/ changes. The memory
-  # cap is for a runaway OCR of a large scan, not a sizing.
+  # The parser: services/doc-extract from the clone. It reads attachments from
+  # MinIO by key and writes back the pixels it could not turn into text, so the
+  # worker never carries file bytes and nothing here recognises characters. No
+  # published port: only the worker calls it. auto-deploy.sh rebuilds it when
+  # services/doc-extract/ changes.
+  #
+  # The memory cap is a guard against a runaway file, not a sizing. It was 1g,
+  # which the service outgrew at 8 pages at once (measured: OOM-killed) back when
+  # it ran OCR; drawing a page is far lighter than reading one, and four worker
+  # processes carry about 0.4 GB each, so 8g is now generous. CPU is deliberately
+  # not capped: capped, an overloaded service got slower, not just saturated.
   doc-extract:
     build: ../projects/retina/services/doc-extract
     restart: unless-stopped
-    mem_limit: 1g
+    mem_limit: 8g
     environment:
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?set MINIO_ACCESS_KEY in .env}
@@ -172,8 +185,8 @@ services:
   # this command replaces it), so there is no race to order around, and the
   # worker touches Postgres when a job arrives rather than at boot. Waiting on
   # the api's health instead couples the two: a deploy whose api is unhealthy
-  # aborts the whole `up` and leaves the worker down, which is what the
-  # simulator caught.
+  # aborts the whole `up` and leaves the worker down, which is what a rehearsed
+  # rollback caught when there was one to rehearse it in.
   worker:
     image: ghcr.io/noobmaster169/retina-api:main
     restart: unless-stopped

@@ -12,6 +12,7 @@ const ENV_MODELS: Record<PromptStep, string | undefined> = {
   extract: config.LLM_MODEL_EXTRACT,
   "extract-verify": config.LLM_MODEL_EXTRACT_VERIFY,
   "field-judge": config.LLM_MODEL_FIELD_JUDGE,
+  "vision-read": config.LLM_MODEL_VISION_READ,
 };
 
 export function envModel(step: PromptStep): string | undefined {

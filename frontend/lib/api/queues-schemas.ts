@@ -55,10 +55,10 @@ export const CheckStatus = z.enum(["up", "down"]);
 export type CheckStatus = z.infer<typeof CheckStatus>;
 
 /**
- * A check carries its own detail, and the rail shows it on hover: which
- * tesseract read a scan, how many emails the inbox is serving, how many
- * aliases the proxy has. Every one of those has looked like a healthy system
- * from the outside at least once.
+ * A check carries its own detail, and the rail shows it on hover: how many
+ * emails the inbox is serving, how many aliases the proxy has. Both have looked
+ * like a healthy system from the outside at least once. doc-extract carries
+ * none: it answers that it is up and there is nothing else it can say.
  */
 const check = z.object({ status: CheckStatus, latencyMs: z.number().optional() });
 
@@ -69,7 +69,7 @@ export const HealthReport = z.object({
     redis: check,
     minio: check,
     inbox: check.extend({ emails: z.number().optional(), scoringAvailable: z.boolean().optional() }),
-    docExtract: check.extend({ tesseract: z.string().nullable().optional() }),
+    docExtract: check,
     llmProxy: check.extend({ models: z.number().optional() }),
     /** Not a probe: the mark the worker leaves in Redis every ten seconds. Null when none stands. */
     worker: check.extend({ heartbeatAt: z.string().nullable() }),
@@ -101,7 +101,6 @@ export const DEPENDENCY_LABELS: Record<(typeof DEPENDENCIES)[number], string> = 
 export function checkDetail(health: HealthReport, key: (typeof DEPENDENCIES)[number]): string {
   const one = health.checks[key];
   if (key === "inbox" && "emails" in one && one.emails !== undefined) return `${one.emails} emails`;
-  if (key === "docExtract" && "tesseract" in one && one.tesseract) return `tesseract ${one.tesseract}`;
   if (key === "llmProxy" && "models" in one && one.models !== undefined) return `${one.models} models`;
   if (key === "worker" && "heartbeatAt" in one && one.heartbeatAt) return `last beat ${one.heartbeatAt}`;
   return "";

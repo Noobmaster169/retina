@@ -45,6 +45,16 @@ async function writeNames(tx: Queryable, id: string, entity: ResolvedEntity): Pr
  * profile is rewritten and the next question judges it once.
  */
 export async function applyMerge(tx: Queryable, from: number, into: number): Promise<void> {
+  // One email sighting both spellings in one role and one source is one
+  // appearance of one thing, and the sightings table says so with a unique
+  // key. The survivor's row is that appearance; the loser's would collide.
+  await tx.query(
+    `delete from core.entity_sightings s
+      where s.entity_id = $1::bigint
+        and exists (select 1 from core.entity_sightings t
+                     where t.entity_id = $2::bigint and t.email_id = s.email_id and t.role = s.role and t.source = s.source)`,
+    [from, into],
+  );
   await tx.query("update core.entity_sightings set entity_id = $2::bigint where entity_id = $1::bigint", [from, into]);
   for (const column of ["shipper_id", "consignee_id", "notify_party_id", "pol_id", "pod_id", "carrier_id", "vessel_id", "commodity_id"]) {
     await tx.query(`update core.email_shipments set ${column} = $2::bigint where ${column} = $1::bigint`, [from, into]);
@@ -76,6 +86,9 @@ async function park(tx: Queryable, keep: ReconcilePlan["keep"]): Promise<void> {
 }
 
 export async function applyResolution(tx: Queryable, plan: ReconcilePlan): Promise<number> {
+  // A refresh renames, merges and deletes things a reading may be deciding
+  // about, so it takes turns with every reading's write.
+  await lockWrites(tx);
   for (const merge of plan.merge) await applyMerge(tx, merge.from, merge.into);
   if (plan.drop.length > 0) {
     // Cascades to its names, mentions, sightings and verdicts. reconcile only
@@ -117,6 +130,19 @@ export async function applyResolution(tx: Queryable, plan: ReconcilePlan): Promi
   return plan.keep.length + plan.insert.length;
 }
 
+/** An arbitrary constant, one per purpose: the number every ontology write takes the advisory lock under. */
+const ONTOLOGY_WRITE_LOCK = 7_204_112_001;
+
+/**
+ * Held to the end of the transaction. Every reading's write takes it, so two
+ * readings cannot each decide against a list of near things the other is about
+ * to change. It orders writers and nothing else: readers, and the model calls
+ * that come before a write, never wait on it.
+ */
+export async function lockWrites(tx: Queryable): Promise<void> {
+  await tx.query("select pg_advisory_xact_lock($1::bigint)", [ONTOLOGY_WRITE_LOCK]);
+}
+
 /** The chosen name is a spelling of the thing too, so a search by it finds it after every pass rewrote the names. */
 async function keepHumanName(tx: Queryable, id: string): Promise<void> {
   await tx.query(
@@ -153,18 +179,22 @@ export async function insertFromSighting(tx: Queryable, kind: string, surface: s
   return id;
 }
 
+/** Who joined a spelling to a thing it was not read as: the `entity-resolve` model, or the world's port list. */
+export type JoinStep = "entity-resolve" | "reference";
+
 /**
- * A spelling the `entity-resolve` step said denotes a thing we already hold.
+ * A spelling a judge said denotes a thing we already hold: the
+ * `entity-resolve` step, or the port list placing it at the thing's code.
  *
  * `joined_step` is what the next resolution pass reads back as a verdict, so
- * the two judges cannot disagree about which cluster a spelling is in.
+ * the judges cannot disagree about which cluster a spelling is in.
  */
-export async function addJudgedName(tx: Queryable, entityId: number, value: string, confidence: number): Promise<void> {
+export async function addJudgedName(tx: Queryable, entityId: number, value: string, confidence: number | null, step: JoinStep = "entity-resolve"): Promise<void> {
   await tx.query(
     `insert into core.entity_names (entity_id, value, seen_count, joined_by, confidence, joined_step)
-     values ($1::bigint, $2::text, 1, 'judge', $3::numeric, 'entity-resolve')
-     on conflict (entity_id, value) do update set joined_step = coalesce(core.entity_names.joined_step, 'entity-resolve')`,
-    [entityId, value, confidence],
+     values ($1::bigint, $2::text, 1, $4::text, $3::numeric, $5::text)
+     on conflict (entity_id, value) do update set joined_step = coalesce(core.entity_names.joined_step, $5::text)`,
+    [entityId, value, confidence, step === "reference" ? "reference" : "judge", step],
   );
   await tx.query("update core.entities set sighting_count = sighting_count + 1, stale = true where id = $1::bigint", [entityId]);
 }

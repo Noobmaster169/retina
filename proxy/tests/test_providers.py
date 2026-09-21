@@ -6,15 +6,17 @@ a real executable stub placed on PATH.
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import stat
+import sys
 import textwrap
 
 import httpx
 import pytest
 
-from llm_proxy.canon.request import CanonMessage, CanonRequest, TextBlock
+from llm_proxy.canon.request import CanonMessage, CanonRequest, ImageBlock, TextBlock
 from llm_proxy.canon.stream import aggregate
 from llm_proxy.config import ProviderConfig
 from llm_proxy.errors import (
@@ -31,6 +33,7 @@ from llm_proxy.providers.claude_cli import (
     failure_detail,
     flatten,
     partial_text,
+    write_images,
     starts_attempt,
     tool_args,
 )
@@ -255,11 +258,25 @@ def fake_claude(tmp_path, monkeypatch):
     regression documented in claude_cli.child_env — a deleted key gets refilled by
     the child's own load_dotenv(), the CLI then warns that the API key takes
     precedence over the claude.ai login, and exits 1.
+
+    On Windows the stub needs a PATHEXT extension and a launcher. Without them
+    `shutil.which("claude")` walks past an extensionless file and finds the real
+    `claude.EXE`, so every test here quietly drove the live CLI and spent real
+    subscription tokens instead of exercising the stub.
     """
     def make(script: str) -> str:
-        path = tmp_path / "claude"
-        path.write_text(script)
-        path.chmod(path.stat().st_mode | stat.S_IEXEC)
+        if os.name == "nt":
+            stub = tmp_path / "claude_stub.py"
+            # Explicit, because a stub carrying a non-ASCII byte written in the
+            # console codepage is not the UTF-8 source Python then reads it as.
+            stub.write_text(script, encoding="utf-8")
+            launcher = tmp_path / "claude.bat"
+            launcher.write_text(f'@echo off\r\n"{sys.executable}" "{stub}" %*\r\n')
+            path = launcher
+        else:
+            path = tmp_path / "claude"
+            path.write_text(script)
+            path.chmod(path.stat().st_mode | stat.S_IEXEC)
         monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
         return str(path)
 
@@ -749,3 +766,120 @@ def test_only_a_tool_call_opens_an_attempt():
     assert starts_attempt({"type": "content_block_start", "content_block": {"type": "tool_use"}})
     assert not starts_attempt({"type": "content_block_start", "content_block": {"type": "thinking"}})
     assert not starts_attempt({"type": "content_block_delta", "delta": {}})
+
+
+# ------------------------------------------------------- claudecli: images
+
+# Reports what it was given, so a test can assert the flags and the prompt the
+# provider built rather than the answer it got back.
+ECHO_STUB = textwrap.dedent("""\
+    #!/usr/bin/env python3
+    import json, sys
+    prompt = sys.stdin.read()
+    print(json.dumps({
+        "subtype": "success", "is_error": False,
+        "result": json.dumps({"argv": sys.argv[1:], "prompt": prompt}),
+        "session_id": "sess_img", "usage": {"input_tokens": 1, "output_tokens": 1},
+    }))
+""")
+
+PNG = base64.b64encode(b"\x89PNG\r\n\x1a\nnot-really-a-png").decode()
+
+
+def image_req(**kw):
+    return canon_req(
+        "claudecli",
+        "sonnet",
+        messages=[CanonMessage(role="user", content=[
+            TextBlock(text="What does it say?"),
+            ImageBlock(source_kind="base64", media_type="image/png", data=PNG, **kw),
+        ])],
+    )
+
+
+async def test_an_image_is_written_to_disk_and_read_by_the_session(fake_claude):
+    """`claude -p` takes no image block, so the provider hands the CLI a file and Read."""
+    fake_claude(ECHO_STUB)
+    provider = ClaudeCliProvider("claudecli", ProviderConfig(type="claudecli"))
+
+    said = json.loads((await provider.complete(image_req())).text())
+
+    assert "--tools" in said["argv"]
+    assert "Read" in said["argv"][said["argv"].index("--tools") + 1]
+    # Pre-approved, and only over the directory this request's images went to.
+    allowed = said["argv"][said["argv"].index("--allowedTools") + 1]
+    assert allowed.startswith("Read(") and allowed.endswith("/**)")
+    written = [line[2:] for line in said["prompt"].splitlines() if line.startswith("- ")]
+    assert len(written) == 1 and written[0].endswith(".png")
+    assert "What does it say?" in said["prompt"]
+
+
+async def test_the_image_file_holds_the_decoded_bytes_and_is_removed_after(fake_claude):
+    """The scratch directory is the request's, and it does not outlive it."""
+    seen: dict[str, bytes] = {}
+    fake_claude(ECHO_STUB)
+    provider = ClaudeCliProvider("claudecli", ProviderConfig(type="claudecli"))
+
+    original = write_images
+
+    def spy(blocks, directory):
+        paths = original(blocks, directory)
+        for path in paths:
+            seen[path] = open(path, "rb").read()
+        return paths
+
+    import llm_proxy.providers.claude_cli as module
+    module.write_images = spy
+    try:
+        await provider.complete(image_req())
+    finally:
+        module.write_images = original
+
+    (path, data), = seen.items()
+    assert data == base64.b64decode(PNG)
+    assert not os.path.exists(path), "the scratch directory must not outlive the request"
+
+
+async def test_a_request_with_no_image_gets_no_filesystem(fake_claude):
+    fake_claude(ECHO_STUB)
+    provider = ClaudeCliProvider("claudecli", ProviderConfig(type="claudecli"))
+
+    said = json.loads((await provider.complete(canon_req("claudecli", "sonnet"))).text())
+
+    assert said["argv"][said["argv"].index("--tools") + 1] == ""
+    assert "--allowedTools" not in said["argv"]
+
+
+async def test_a_url_image_is_refused(fake_claude):
+    fake_claude(ECHO_STUB)
+    provider = ClaudeCliProvider("claudecli", ProviderConfig(type="claudecli"))
+    req = canon_req("claudecli", "sonnet", messages=[CanonMessage(role="user", content=[
+        ImageBlock(source_kind="url", data="https://example.test/bl.png"),
+    ])])
+
+    with pytest.raises(InvalidRequest, match="base64"):
+        await provider.complete(req)
+
+
+async def test_a_media_type_read_cannot_open_is_refused(fake_claude):
+    """Refused here rather than written with a misleading suffix that Read then fails on."""
+    fake_claude(ECHO_STUB)
+    provider = ClaudeCliProvider("claudecli", ProviderConfig(type="claudecli"))
+    req = canon_req("claudecli", "sonnet", messages=[CanonMessage(role="user", content=[
+        ImageBlock(source_kind="base64", media_type="image/tiff", data=PNG),
+    ])])
+
+    with pytest.raises(InvalidRequest, match="image/tiff"):
+        await provider.complete(req)
+
+
+def test_read_is_granted_only_for_images_and_only_over_that_request_s_directory():
+    """The picture is somebody else's text. A grant over the whole filesystem would
+    make "read your credentials into the transcription" a thing it could ask for."""
+    assert tool_args([]) == ["--tools", ""]
+    assert tool_args([], "/tmp/x") == ["--tools", "Read", "--allowedTools", "Read(/tmp/x/**)"]
+    # A trailing slash must not become `Read(/tmp/x//**)`, which matches nothing.
+    assert tool_args([], "/tmp/x/")[3] == "Read(/tmp/x/**)"
+    assert tool_args(["WebSearch"], "/tmp/x") == [
+        "--tools", "WebSearch,Read", "--allowedTools", "WebSearch,Read(/tmp/x/**)",
+    ]

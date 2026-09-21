@@ -17,7 +17,7 @@ export const AttachmentRole = z.enum(["SI", "BL", "UNKNOWN"]);
 export type AttachmentRole = z.infer<typeof AttachmentRole>;
 
 /** Ours, not an organiser enum: the LLM steps whose prompt a run pins. */
-export const PromptStep = z.enum(["classify", "classify-verify", "triage", "doc-type", "extract", "extract-verify", "field-judge"]);
+export const PromptStep = z.enum(["classify", "classify-verify", "triage", "doc-type", "extract", "extract-verify", "field-judge", "vision-read"]);
 export type PromptStep = z.infer<typeof PromptStep>;
 
 /** What one step of a run runs: a prompt file and a proxy alias. Fixed when the run is created. */
@@ -38,6 +38,7 @@ export const PromptSet = z.object({
   extract: PinnedPrompt.optional(),
   "extract-verify": PinnedPrompt.optional(),
   "field-judge": PinnedPrompt.optional(),
+  "vision-read": PinnedPrompt.optional(),
 });
 export type PromptSet = z.infer<typeof PromptSet>;
 

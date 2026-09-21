@@ -1,13 +1,11 @@
-from io import BytesIO
 from typing import NamedTuple
 
 import fitz
-from PIL import Image
 
-from extractors.base import Extracted, ExtractedPage
-from extractors.ocr import OcrUnavailable, ocr_image
+from extractors.base import Extracted, ExtractedImage, ExtractedPage
 
-# A page whose text layer says less than this is taken to be an image and read by OCR.
+# A page whose text layer says less than this carries no usable text, so its pixels
+# go to a reader that can see rather than to a character recogniser that guesses.
 MIN_TEXT_LAYER_CHARS = 20
 # Words whose baselines sit within this many points are one line.
 BASELINE_TOLERANCE_PT = 2.0
@@ -49,20 +47,14 @@ def lines_from_words(words: list[tuple]) -> str:
     return "\n".join(" ".join(w.text for w in sorted(line, key=lambda w: w.x0)) for line in lines)
 
 
-def _ocr_page(page: fitz.Page, index: int, dpi: int, langs: str, out: Extracted) -> ExtractedPage:
-    pixmap = page.get_pixmap(dpi=dpi, colorspace=fitz.csGRAY)
-    image = Image.open(BytesIO(pixmap.tobytes("png")))
-    try:
-        result = ocr_image(image, langs)
-    except OcrUnavailable as error:
-        out.warnings.append(f"page {index}: no text layer and {error}")
-        return ExtractedPage(index=index, text="", source="none")
-    out.warnings.extend(f"page {index}: {w}" for w in result.warnings)
-    out.warnings.append(f"page {index}: no text layer, read by OCR")
-    return ExtractedPage(index=index, text=result.text, source="ocr", ocr_confidence=result.confidence)
+def extract_pdf(data: bytes, render_dpi: int) -> Extracted:
+    """Text where the page has a text layer, pixels where it does not.
 
-
-def extract_pdf(data: bytes, ocr_dpi: int, ocr_langs: str) -> Extracted:
+    A page is never half-read: either its text layer is worth having, or the page is
+    handed on as an image for a model to look at. Nothing here tries to recognise
+    characters, which is what kept rotation, language packs and confidence floors in
+    this file and got them wrong anyway.
+    """
     out = Extracted()
     try:
         document = fitz.open(stream=data, filetype="pdf")
@@ -84,7 +76,18 @@ def extract_pdf(data: bytes, ocr_dpi: int, ocr_langs: str) -> Extracted:
             if len(text.strip()) >= MIN_TEXT_LAYER_CHARS:
                 out.pages.append(ExtractedPage(index=number, text=text, source="text_layer"))
                 continue
-            out.pages.append(_ocr_page(page, number, ocr_dpi, ocr_langs, out))
+            out.pages.append(ExtractedPage(index=number, text="", source="image"))
+            try:
+                out.images.append(
+                    ExtractedImage(
+                        index=number,
+                        png=page.get_pixmap(dpi=render_dpi).tobytes("png"),
+                        origin="page",
+                    )
+                )
+                out.warnings.append(f"page {number}: no text layer, sent to be read as an image")
+            except Exception as error:  # noqa: BLE001 - a page that will not draw is reported, the rest still read
+                out.warnings.append(f"page {number}: no text layer and it would not render: {error}")
     return out
 
 

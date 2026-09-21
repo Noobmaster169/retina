@@ -21,6 +21,8 @@ const PATHS = {
   memory: "M3 3.5 h6.5 a2.5 2.5 0 0 1 0 5 H5 a2.5 2.5 0 0 0 0 5 h8",
   panel: "M2.5 3 h11 v10 h-11 z M6.5 3 v10",
   chevron: "M6 3.5 L10.5 8 L6 12.5",
+  search: "M7 2.5 a4.5 4.5 0 1 0 0.01 0 M10.4 10.4 L13.5 13.5",
+  close: "M4 4 L12 12 M12 4 L4 12",
   back: "M10 3.5 L5.5 8 L10 12.5",
   warning: "M8 2.2 L14.5 13.5 h-13 z M8 6.4 v3.1 M8 11.3 v0.6",
   send: "M8 12.5 V3.5 M4.5 7 L8 3.5 L11.5 7",
@@ -49,7 +51,6 @@ const PATHS = {
   dock: "M2.5 3 h11 v10 h-11 z M9.5 3 v10",
   plus: "M8 3.5 v9 M3.5 8 h9",
   expand: "M9.5 2.5 h4 v4 M13.5 2.5 L9 7 M6.5 13.5 h-4 v-4 M2.5 13.5 L7 9",
-  close: "M4 4 L12 12 M12 4 L4 12",
 } as const;
 
 export type IconName = keyof typeof PATHS;

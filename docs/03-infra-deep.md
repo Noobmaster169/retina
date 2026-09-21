@@ -73,7 +73,7 @@ frontend/
 | api | ghcr.io/noobmaster169/retina-api:main | `127.0.0.1:8091:8091` | none | runs migrations then listens; depends on postgres, redis, minio healthy |
 | worker | same image | none | none | `command: node --import tsx src/worker.ts` (no build step; the image runs TypeScript through tsx); `depends_on: api, llm-proxy: service_started`, not `service_healthy`: an unhealthy api must not also take the worker down, and waiting on it aborted a deploy |
 | llm-proxy | built from `proxy/` in the clone (Python, plus the Claude Code CLI pinned by `CLAUDE_CODE_VERSION`) | none (private to the network) | none | `http://llm-proxy:4000` inside the network. Logged in by `CLAUDE_CODE_OAUTH_TOKEN` from `.env`, optional so the stack comes up without it; a call without a login is `provider_not_logged_in`, never retried. `auto-deploy.sh` rebuilds it when `proxy/` changes |
-| doc-extract | built from `services/doc-extract` in the clone (Python on uv, tesseract with `eng` and `chi_sim`) | none (private to the network) | none | `http://doc-extract:8000`; healthcheck `/healthz`; 1 GB memory limit. `auto-deploy.sh` rebuilds it when `services/doc-extract/` changes |
+| doc-extract | built from `services/doc-extract` in the clone (Python on uv; no character recogniser, see section 6) | none (private to the network) | none | `http://doc-extract:8000`; healthcheck `/healthz`; 16 GB memory limit, no CPU limit (see section 6, how it scales). `auto-deploy.sh` rebuilds it when `services/doc-extract/` changes |
 | inbox | built from `emails/server` in the clone | none (private to the network) | `emails/data_v2:/data:ro`, `emails/data_v2/ground_truth.json:/secrets/ground_truth.json:ro` | organiser image, unchanged code |
 
 The organiser kit is kept in the same compose file, as the service `inbox`, so `api` and
@@ -104,12 +104,12 @@ Backend (`deploy/.env`, mirrored in `backend/.env.example`):
 | `LLM_PROXY_URL` | `http://llm-proxy:4000` in compose; `http://127.0.0.1:4001` from the host with `compose.local.yaml`. A remote `/ai/chat` is refused at boot | api, worker |
 | `CLAUDE_CODE_OAUTH_TOKEN` | from `claude setup-token`; read by compose into the llm-proxy container only | llm-proxy |
 | `LLM_MODEL_CLASSIFY`, `LLM_MODEL_VERIFY`, `LLM_MODEL_TRIAGE`, `LLM_MODEL_DOC_TYPE`, and one per phase 10f step (`LLM_MODEL_SHIPMENT_READ`, `LLM_MODEL_ENTITY_RESOLVE`, `LLM_MODEL_ENTITY_PROFILE`, `LLM_MODEL_CONCEPT_DEFINE`, `LLM_MODEL_CONCEPT_JUDGE`) | unset: every step runs the model its prompt file names, sonnet. An override must be a proxy alias from `proxy/proxy.yaml` | worker, api |
-| `LLM_MAX_CONCURRENCY` | follows `CLASSIFY_CONCURRENCY` when unset, so one number sets how parallel every run is. Model calls in flight per worker process | worker (in-process semaphore) |
+| `LLM_MAX_CONCURRENCY` | unset: `CLASSIFY_CONCURRENCY` plus `COMPARE_CONCURRENCY`, so `20`. Model calls in flight per worker process | worker (in-process semaphore) |
 | `ONTOLOGY_KNOWLEDGE` | `mail+model` (the default) or `mail`. Whether an entity profile carries a `general` section from the model's own knowledge, labelled unverified. A person never gets one under either setting | worker |
 | `JUDGE_BUDGET`, `JUDGE_BATCH`, `CANDIDATE_CAP`, `PROFILE_BATCH`, `PROFILE_FLOOR_HOURS` | `400`, `40`, `5000`, `50`, `24`. Starting values; `pnpm eval:chat --set ontology` is what says whether moving one helped | api (find_entities), worker |
 | `SHIPMENT_TEXT_CHARS` | `14000`. How much of an email and its documents the shipment reader sees. A cost guard, not a judgement | worker |
-| `ONTOLOGY_CONCURRENCY` | `2`. Left out of `LLM_MAX_CONCURRENCY`'s sum on purpose: its jobs take the same model slots and so wait behind scored work | worker |
-| `CLASSIFY_CONCURRENCY`, `COMPARE_CONCURRENCY` | `2`, `4`. Classify is 2 because the `claudecli` provider serves two calls at a time; more workers only queue inside the proxy with their request timeout already running | worker |
+| `ONTOLOGY_CONCURRENCY` | `10`. Left out of `LLM_MAX_CONCURRENCY`'s sum on purpose: the queue has a model lane of its own, as wide as this, so a reading cannot take a scored call's slot. `proxy.yaml`'s `max_concurrency` is the three lanes added up | worker |
+| `CLASSIFY_CONCURRENCY`, `COMPARE_CONCURRENCY` | `10`, `10`. Emails in flight per stage. Their sum is the scored lane's model cap, and with the ontology lane the whole of `proxy.yaml`'s `max_concurrency`, so they move together; more workers than the proxy serves only queue inside it with their request timeout already running. Leave them unset: a pinned copy in a `.env` is how a machine ends up on other numbers than the code | worker |
 | `GATE_MODE` | `off \| observe \| enforce`, default `observe`. What the ingest gate does with a verdict it reached. `observe` prices every email, charges every bucket and records every row, then admits anyway; only a policy a person set holds anything. The default is not timidity: the Averis replay is 520 emails from fifteen domains, all unknown senders on their first day, and a live gate would hold most of a demo | worker |
 | `GATE_DAILY_BUDGET_USD` | `25`. What a day of model calls may cost before the gate refuses by standing. Summed from `core.llm_calls.cost_usd`, so it measures what was actually spent | worker, api |
 | `GATE_GLOBAL_BURST`, `GATE_GLOBAL_DAILY` | `4000`, `60000`. The bucket no sender can rotate around | worker, api |
@@ -216,9 +216,14 @@ Unset, it is `CLASSIFY_CONCURRENCY + COMPARE_CONCURRENCY`, because that is how m
 runs at once and all of them contend for these slots. It used to be `CLASSIFY_CONCURRENCY` alone:
 eight classify jobs could hold every slot while four compare jobs sat blocked in the semaphore,
 which the run page drew as sorting unaffected and checking paused, with nothing saying why.
-`proxy.yaml`'s `max_concurrency` is 12 to match. Both sit well under the measured ceilings: the
-`claudecli` provider serves about 0.5 requests a second, and ngrok falls over above roughly 64
-sockets.
+`proxy.yaml`'s `max_concurrency` is 30 to match. The rule is one number per stage (10), the scored
+model cap is classify plus compare, the ontology queue has its own lane of the same width beside it
+(`WorkerDeps.ontologyLlm`, so a reading of about two minutes cannot hold a slot a scored email is
+waiting for, the semaphore being first come first served), and the proxy's gate is the three added up. Against the measured ceilings: at a gate of
+12 a 40 email burst ran at about 0.6 calls a second, and dropping the cap from 12 to 2 slowed the
+same work 3.3x, so throughput grows with the cap but not in proportion. 20 is unmeasured. ngrok
+falls over above roughly 64 sockets, which the pipeline never crosses because the worker reaches
+the proxy on the compose network.
 
 The semaphore reports `peak()`, the most calls it ever had in flight, and logs it whenever it
 rises. `scripts/load-test.ts` computes the same number independently by sweeping `llm_calls`
@@ -652,13 +657,21 @@ drafter that reads it.
 
 ## 6. doc-extract service
 
-`services/doc-extract`, Python 3.12 on uv, FastAPI, tesseract in the image. Reads bytes from
-MinIO by key so large files never pass through Node. The worker reaches it through
-`DocExtractClient` (`src/doc-extract/`, zod-parsed, with a memory fake).
+`services/doc-extract`, Python 3.12 on uv, FastAPI. Reads bytes from MinIO by key so large
+files never pass through Node. The worker reaches it through `DocExtractClient`
+(`src/doc-extract/`, zod-parsed, with a memory fake).
+
+**It turns bytes into something a model can read, and never tries to be clever about
+pixels.** Three branches and no fourth: exact text where the file carries it, pixels where it
+does not, and `unreadable` where there is neither. There is no character recogniser here: the
+tesseract packages, the language packs, the confidence floor and the `ocr` page source are all
+gone, and with them the tail they existed to fight (rotation, `--psm` tuning, a pack per
+language, deskewing). A page with no text layer is drawn at `render_dpi` and handed back as a
+PNG for the worker's `vision-read` step to look at.
 
 | Route | Body | Returns |
 |---|---|---|
-| `GET /healthz` | | `{ ok, tesseract: version, langs }` |
+| `GET /healthz` | | `{ ok }`. Nothing else: there is no recogniser in this image to name a build of |
 | `POST /extract` | `{ key, filename, content_type? }` | see below |
 | `POST /render` | `{ key, filename, out_prefix, dpi? }` | `{ pages: [{ index, key: "<out_prefix>/1.png", width, height }] }`; `[]` for a non-PDF or a file that will not open |
 
@@ -681,23 +694,65 @@ Per format:
 | Format | Library | Notes |
 |---|---|---|
 | `.txt` | stdlib, utf-8 then cp1252 | line endings normalised |
-| `.pdf` | PyMuPDF words regrouped by baseline, so a label and the value drawn beside it share a line; a page with under 20 characters of text layer is rasterised at 220 dpi and read by tesseract (`--psm 6`, `eng+chi_sim`, falling back to `eng` with a warning) | garbled or unopenable → `unreadable: true` |
-| `.docx` | python-docx, paragraphs and tables in document order, each table row `label: value` with further cells after a bar | bilingual labels kept as-is |
-| `.xlsx` | openpyxl, each row `A: B` (`A` alone when only the first cell is set), one page per sheet, integral numbers without separators | |
+| `.pdf` | PyMuPDF words regrouped by baseline, so a label and the value drawn beside it share a line; a page with under 20 characters of text layer is drawn at `render_dpi` and returned in `images` | encrypted or unopenable → `unreadable: true` |
+| `.png .jpg .gif .webp .bmp .tif` | nothing is read: a photographed or faxed document is returned whole in `images`, one per frame, so a multi-page TIFF is a multi-page document | will not open → `unreadable: true` |
+| `.docx` | python-docx, paragraphs and tables in document order, each table row `label: value` with further cells after a bar; every picture in `word/media/` comes back in `images` | bilingual labels kept as-is |
+| `.xlsx` | openpyxl, each row `A: B` (`A` alone when only the first cell is set), one page per sheet, integral numbers without separators; pictures in `xl/media/` come back in `images` | formula cells with no cached value read blank |
 | 0 bytes, unknown extension | | `unreadable: true` |
 
-Unreadable, decided by the service: empty, would not open, no pages, every page without text,
-under 40 characters in total after OCR, or OCR confidence under 40 on every page. A bad file is
-never a 5xx: it is HTTP 200 with `unreadable: true` and the reason in `warnings`. The only 5xx is
-the object store failing, answered 503 with `retryable: true`; the client turns that, and an
-unreachable service, into `DocExtractUnavailableError`, which pauses the queue like an LLM outage.
+**`unreadable` means nobody could read it, a person included**: empty, would not open, or
+nothing in it to read and nothing to look at. A legible scan is not unreadable; it is a document
+nothing has read yet, and it arrives with `images` instead of text. The judgement that a
+document truly cannot be read is the `vision-read` step's, because what a model cannot make out
+of a picture is what a person opening the same file cannot make out either. Before this, any page
+that went through OCR was escalated on sight, which made a clean bill of lading and a truncated
+file mean the same thing and only ever encoded distrust of the recogniser.
+
+The format is decided by the bytes first and the name second (`registry.py`): real mail carries a
+TIFF called `.pdf`. A bad file is never a 5xx: it is HTTP 200 with `unreadable: true` and the
+reason in `warnings`. The only 5xx is the object store failing, answered 503 with
+`retryable: true`; the client turns that, and an unreachable service, into
+`DocExtractUnavailableError`, which pauses the queue like an LLM outage.
 
 The worker writes the extracted text to MinIO under `.../text/{name}.txt`; the service stays
 stateless.
 
-Vision path (*verify*): if the proxy accepts image content blocks, `compare.worker` sends the
-rendered page PNGs to the extraction model when `ocr_confidence < 0.7`. If the proxy drops
-images, OCR text is used and the reviewer sees the PNG.
+### How it scales
+
+Measured against the real container on a 20 core host, with scans built from the dataset's own
+scanned PDFs, driven at rising concurrency through `POST /extract` with the backend's 60 s
+timeout. The dataset itself is nearly free to read (192 of 250 attachments are `.txt` at under a
+millisecond, the six scanned single-page PDFs take about 0.7 s each), so this matters for a fresh
+dataset with many scans, and for classify prompts that read attachments, where up to
+`CLASSIFY_CONCURRENCY + COMPARE_CONCURRENCY` files are parsed at once.
+
+| Setting | What it did to a 1-page scan |
+|---|---|
+| Tesseract's default threading | One OpenMP thread per core per page. 4.8 pages a second at 8 in flight, **0.5 at 16 with every core busy, and timeouts at 32**. A client timeout does not stop the work, so the abandoned pages kept burning the cores |
+| `OMP_THREAD_LIMIT=1` | No cliff: no timeouts at 48 in flight. One process tops out at about 8.5 pages a second, with 8 of 20 cores busy, because the GIL is the limit |
+| plus `UVICORN_WORKERS=4` (the image default) | 12 pages a second at 32 in flight; 8 workers reach 14 and the cores are then the limit at about 0.8 core-seconds a page |
+| the box's old 1 GB memory cap | OOM-killed at 8 pages in flight. Each worker process holds about 0.4 GB and each page in flight about 50 MB |
+| a CPU cap (`--cpus 6`, 4 workers) | Slower than uncapped even below saturation, and worse under overload: 3.3 pages a second at 32 in flight against 5.9 at 8, with timeouts on 5 page scans. **Do not cap CPU**; a capped service gets slower, not just full |
+
+So the bottleneck is CPU, and not RAM or Docker's allowance: at its defaults the service spent every
+core on thread contention. Both settings are baked into the image (`Dockerfile`), so the box and a
+laptop behave the same. Memory is the guard: 16 GB on the box, 8 GB in `compose.local.yaml`. On
+Docker Desktop the VM's own memory (half the laptop's RAM by default) is the ceiling for every
+container together, and raising it is a `.wslconfig` setting on the host, not a compose one.
+
+**The vision path, built.** `queues/processors/parse-documents.ts` sends whatever came back in
+`images` to `agents/vision-read.ts`, one call per document however many pages it has. It
+**transcribes and never extracts**: what comes back becomes the document's text and goes through
+the same doc-type, extraction, evidence and judging path as every other document, so a value
+still carries the quote it was read from and every improvement to those prompts reaches a scan
+for free. Asking it for the seven fields instead would be a second extractor to tune, and one
+whose answers nothing could be checked against. `legible: false` is the one honest `unreadable`.
+
+`claude -p` takes no image content block, so the proxy writes each image to a private temporary
+directory, names the paths in the prompt and enables the session's own `Read` tool for that call
+alone (`proxy/src/llm_proxy/providers/claude_cli.py`). Callers send ordinary Anthropic image
+blocks either way. Verified live on the organisers' own files: emails 512, 513 and 514 read in 6
+to 12 s each, and 511 and 515, whose bills of lading will not open, stay `unreadable`.
 
 ## 7. LLM layer
 
@@ -788,7 +843,7 @@ attachments        (id bigserial pk, email_id fk, run_id fk, filename text, role
 documents          (id bigserial pk, email_run_id fk, attachment_id fk, role text, doc_type text,
                     doc_type_confidence numeric, doc_type_rationale text, format text, text_object_key text,
                     pages int, scanned bool, unreadable bool, warnings jsonb,
-                    page_confidence numeric[],   -- mean OCR word confidence per page, 0 to 100, tesseract's own scale
+                    page_confidence numeric[],   -- always empty now; it held OCR confidence per page and there is no recogniser
                     unique(email_run_id, attachment_id))
 classifications    (id bigserial pk, email_run_id fk unique,
                     gen_category text, gen_confidence numeric, ver_category text, ver_confidence numeric,
@@ -883,10 +938,16 @@ Migration `013_ontology_entities.sql`. `core.entities`, `core.entity_names`,
 `core.entity_mentions`, all derived and rebuildable: `pipeline/ontology/resolve.ts` produces them
 from `extraction_fields` and `field_diffs` alone.
 
-**The only edge that joins two spellings is a `field_diffs` row with `same = true`.** No
-lowercasing, no punctuation stripping, no edit distance, no lookup table: all four are rules fitted
-to one seed of one dataset. Two spellings no judge ever compared stay two things, and
-`entity_names.joined_by` says how each one joined, so that reads as a fact about the data.
+**The only edge that joins two spellings is a verdict.** A `field_diffs` row with `same = true`,
+an `entity-resolve` answer, a person's fold, or, for a port, the world's port list placing two
+spellings at one UN/LOCODE (`pipeline/ontology/reference-joins.ts`, computed afresh on every pass
+and never stored). No lowercasing, no punctuation stripping, no edit distance, no lookup table
+fitted to the inbox: all four are rules fitted to one seed of one dataset. A port is unique by its
+code, so two spellings no judge ever compared still fold when the reference places both at one
+code; any other two stay two things. `entity_names.joined_by` says how each one joined (`kept`,
+`judge`, `human`, `reference`, migration `026`), so that reads as a fact about the data. A new
+spelling of a port the list places at a code some live port already holds joins that port in
+`ontology-resolve` without a model call.
 
 `kind` was `port` (from `port_of_loading`, `port_of_discharge`) or `party` (from `shipper`,
 `consignee`, `notify_party`). Phase 10f widened it to six: `carrier`, `person`, `commodity` and
@@ -964,13 +1025,38 @@ Five LLM steps, all `sonnet`, all under `agents/prompts/<step>/v1.md`:
 - **`concept-judge`**, `JUDGE_BATCH` things per call, with the schema built from exactly the ids
   sent. `unknown` is "no basis either way" and is reported apart from `no`.
 
-The `ontology` queue carries one job per email at priority 2000, below every scored job. It is
+The `ontology` queue carries one job per email at priority 2000, below every scored job. It
+only ever hears of an email the compare worker finished, so the live pipeline reads
+`BL_COMPARISON` mail and nothing else; the categories that end in classify reach the semantic layer
+only through `pnpm ontology:backfill`. It is
 enqueued by the compare worker once the email reaches `done` or `review`, and its job id is the
 email id with `removeOnComplete: true`, so a reviewer's correction can send the same email
 through again. Two scheduled tasks run beside it: `refresh-profiles` every ten minutes
 (`PROFILE_BATCH` stale things, never-profiled first, skipping anything written within
 `PROFILE_FLOOR_HOURS`) and `backfill-concepts` every five (one concept marked `backfill_wanted`,
 one budget of it).
+
+**Readings that run at once** (`queues/processors/ontology-commit.ts`). A reading is judged
+against what was committed when it began, so two that meet a company for the first time, spelled two
+ways, would each create it where the second of a serial pair would have been shown the first. The
+write therefore does not trust its judgements. Under `entityResolution.lockWrites` (a Postgres
+advisory lock, also taken by `applyResolution`, so a refresh takes turns with every reading) it asks
+whether the list of near things each judgement was shown is still the list there is
+(`pipeline/ontology/revalidate.ts`, pure and table-tested) and, where it is not, judges that spelling
+again outside the lock and tries again. A spelling that another reading created under exactly this
+spelling is adopted with no call. The model never runs under the lock, and a reading that nothing
+moved under it pays two reads per judged spelling. Twelve rounds is the bound, then the job goes
+back to the queue. Two further changes cost no semantics: a spelling with nothing near it is new
+without asking (the prompt makes the answer `null`, `ambiguous` false, whatever the model says), and
+one email's spellings are judged four at a time, since each reads committed state and writes nothing.
+
+Measured on 13 emails read by haiku, with the serial run's readings replayed so that only resolution
+varies: at concurrency 10 the unchanged code lost the same serial join (a person's name and their
+email address) in all three runs, and the revalidating code matched the serial graph on every one of
+146 spelling pairs in all three, with 14 model calls where the unchanged code made 36. End to end,
+with real reads, 13 emails took 4.1 minutes at 10 and 26.7 serially. `scripts/ontology-parallel-bench.ts`
+and `scripts/ontology-bench-compare.ts` are the harness; they write to whatever `PG_DATABASE` names, so
+point them at a scratch clone.
 
 **The cost model is `plan-judging.ts`.** A verdict is stored against the profile version it read,
 so a question asked twice is a lookup and a rewritten profile re-judges exactly the things it
@@ -1031,7 +1117,7 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 
 | Method, path | Purpose |
 |---|---|
-| `GET /health` | `{ status: ok \| degraded \| down, checks, version, queues }`, 2 s per check, unauthenticated. A check is an object: `{ status, latencyMs }` plus whatever that dependency says about itself, which comes free from its own health payload (`inbox` its email count and whether scoring is available, `docExtract` its tesseract build, `llmProxy` its alias count, `worker` its last heartbeat). `worker` is not a probe but the mark the worker leaves in Redis every 10 s, read back; null when none stands. `down` and 503 only for postgres or redis, which is the signal auto-deploy rolls back on: everything else, a stale heartbeat included, is `degraded` and still 200. `llmProxy` is read through its `/healthz`, which lists aliases and starts no session, so a cold model never reads as an outage. `version` is `GIT_SHA` from the build arg, `dev` outside an image. `queues` is null when Redis cannot be reached |
+| `GET /health` | `{ status: ok \| degraded \| down, checks, version, queues }`, 2 s per check, unauthenticated. A check is an object: `{ status, latencyMs }` plus whatever that dependency says about itself, which comes free from its own health payload (`inbox` its email count and whether scoring is available, `llmProxy` its alias count, `worker` its last heartbeat; `docExtract` carries none, because being up is the whole of what it can say). `worker` is not a probe but the mark the worker leaves in Redis every 10 s, read back; null when none stands. `down` and 503 only for postgres or redis, which is the signal auto-deploy rolls back on: everything else, a stale heartbeat included, is `degraded` and still 200. `llmProxy` is read through its `/healthz`, which lists aliases and starts no session, so a cold model never reads as an outage. `version` is `GIT_SHA` from the build arg, `dev` outside an image. `queues` is null when Redis cannot be reached |
 | `GET /gate` | what the gate is doing: `mode`, `budget` (today's spend, the day's budget, the two thresholds), the `global` bucket read from Postgres rather than the meter so the page stays readable exactly when Redis is what went wrong, and `decisionsToday`, `heldToday`, `waiting` |
 | `GET /gate/senders?limit=`, `PUT /gate/senders/:principal` | every principal seen or decided about, busiest today first, `limit` 500 by default and 100000 at most, with its standing, the two numbers that earned it, today's units against its clamped cap, and how many of its emails were held. The caps come from the same pure functions the enqueue path calls, so the page and the gate cannot quote different numbers. The `PUT` takes `{ scope: address \| domain, policy: auto \| allow \| block, note? }`; `auto` deletes the row rather than storing a third value. It decides no category |
 | `GET /gate/held`, `GET /gate/decisions` | the holding pen, and the whole log. The pen lists only holds that were enforced, are unreleased, and belong to a run: a hold with no run cannot be released, so listing one would put a button on the page that could only refuse |
@@ -1046,7 +1132,7 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 | `GET /runs/:id/queues` | who holds each slot of each queue and who is next: per queue `concurrency` (from the worker's env), `waiting`, `active`, `failed`, `heldUntil` (set while `failure-policy.ts` has it rate limited, an instant so a stale poll cannot skew the countdown), `slots` (`emailId`, what the model is doing in plain English, `startedAt`, `elapsedMs`) and `next` (the five oldest waiting, with their attachments read as "two files, txt and pdf" and how long they have held). Plus `handoff: { needCheck, notComparable }`, the crossing between the two queues, aggregated here because the frontend holds no business logic. `reachable: false` with empty queues when Redis cannot be reached, never zeroes, which would read as a finished run |
 | `GET /runs/:id/calls?after=&limit=` | the run's newest `llm_calls` as summaries (no prompt or email text), newest first, for a live feed; `after` returns only newer ids |
 | `GET /runs/:id/live` | the run's model calls running now, each with the answer written so far (`LiveCallView`) |
-| `GET /runs/:id/emails/:emailId/trace` | one email: stage, error, how its category was settled (each reader's category, confidence, reasoning, counter-cases, verifier error), its documents (the role the filename claims, the model's type with confidence and rationale, format, pages, scanned, unreadable, warnings, `pageConfidence`: the mean OCR word confidence per page in page order, empty for a document with a text layer), its open review case, its `extractions` (per document: the place it filled, whether the verifier ran, the seven fields with value, placeholder, quote, confidence, evidence and any human value), its `comparison` (status, reason, defect fields, every field's judgement), the call running now, and every finished call oldest first with system prompt, input, answer text, parsed answer, tokens, cost, latency |
+| `GET /runs/:id/emails/:emailId/trace` | one email: stage, error, how its category was settled (each reader's category, confidence, reasoning, counter-cases, verifier error), its documents (the role the filename claims, the model's type with confidence and rationale, format, pages, scanned, unreadable, warnings, `pageConfidence`: the mean OCR word confidence per page in page order, empty for a document with a text layer, and since phase 15 `objectKey` and `textObjectKey`: where the file itself and the text the parser read out of it sit in the store, both streamed by `GET /files/:key`, so a page can show a document and not only the seven quotes taken from it. `textObjectKey` is null exactly when the document is unreadable), its open review case, its `extractions` (per document: the place it filled, whether the verifier ran, the seven fields with value, placeholder, quote, confidence, evidence and any human value), its `comparison` (status, reason, defect fields, every field's judgement), the call running now, and every finished call oldest first with system prompt, input, answer text, parsed answer, tokens, cost, latency |
 | `GET /prompts` | each prompt step's versions on disk, newest first, with the active one, the model the file names and any notes; the runs page offers exactly these |
 | `GET /emails/:runId/:emailId` | full trace: email, attachments, classification, extractions with fields, comparison, diffs, review case, llm_calls summary |
 | `GET /review?status=&reason=&kind=&runId=&page=&pageSize=` | the review inbox, oldest first: each case with its email's subject and sender, the reason, `openedAt` as an instant, and how many actions it has had with who last wrote one. `status` defaults to `open` |
@@ -1065,6 +1151,7 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 | `GET /ontology/types` | the types the rail offers, with live counts and `built`: Emails, then the six resolved kinds, then Shipments, built since phase 10g over `core.shipments` (a group of emails sharing an identifier). A company and a port answer an `openHref` to their business pages since phase 13. The other seven `ObjectType`s are real and are reached through an object rather than browsed; `client` in particular folds into `party`, since a sender domain and a consignee are the same company read two ways |
 | `GET /ontology/:type`, `GET /ontology/:type/:id`, `/:id/detail`, `/:id/graph?hops=1\|2` | the index of a resolved kind; one object in the one shape every type shares; the four parts a resolved thing opens into; and one email's graph as nodes and named edges. The graph carries no coordinates: the layout is one pure function in the frontend with a table-driven test. All six kinds of `EntityKind` list and open; a type that is a table of its own answers 404 naming `/database/tables`. `detail` carries `insight`: the summary, the identity facts with a `verified` flag per attribute, the scale (emails, appearances, spellings, disputed, first and last mail date) and at most three facets of the kind's own trade, built by the pure `pipeline/ontology/insight.ts` from the same `DossierInput` the profile prompt is rendered from |
 | `PATCH /ontology/:kind/:id/attributes`, `POST /ontology/:kind/:id/rename`, `POST /ontology/:kind/:id/merge` | a person correcting a thing from its page (phase 13): attributes with source `human`, which no profile rewrite touches; a chosen name kept as `human_name`, which every resolution pass prefers; and a merge recorded as the person's join of every spelling, so the pass keeps the two together. Each takes `actor` and answers the row |
+| `GET /ontology/lanes` | every lane the shipments state between two resolved ports, busiest first: `pol` and `pod` as `{id, name}`, `count` in shipments, and `disputed`, how many of those the judge called different at one of the two ports. What the port map draws between pins; it carries no coordinates, which the port rows already hold (business-data fix session) |
 | `GET /shipments?partyId&portId&disputed&q&page&pageSize`, `GET /shipments/:emailId` | shipments as the mail states them, each party and port a reference to the resolved thing; one shipment with everything shipment-read wrote (phase 13). One row per email, which is a different grain from `/ontology/shipment` below; the code calls that one a `Consignment` so the two contracts do not collide |
 | `GET /ontology/:kind` for all six kinds; `GET /ontology/party/:id/people`, `/party/:id/ports`, `/port/:id/parties` | a kind's list carries attributes, the profile's first sentence and distinct emails per role; the three counterpart lists count distinct undisputed emails (phase 13) |
 | `GET /ontology/shipment`, `/shipment/:id` | the consignments, newest first, and one opened: its references, the eight things on it in bill-of-lading order with the disputed ones marked, and what each email of the group stated with the line it was read from. A shipment is a group of emails sharing an identifier (`oc_no`, `bl_no`, `booking_ref`, `invoice_no`, `po_no`), grouped by the pure `pipeline/ontology/shipment-group.ts` and regrouped whole every minute by the `regroup-shipments` scheduler. On this inbox every group holds one email: the generator draws fresh references per mail |
@@ -1283,8 +1370,9 @@ Pages (all behind the `proxy.ts` password gate; the cookie is an HMAC of `SITE_P
 | `/login` | password form | |
 | `/runs` | table of runs with score, the env concurrency, start-run form (dev sample, holdout, all 520 or first N; rate; optional prompt version and model) | 3 s |
 | `/runs/[id]` | the two queues left to right, one panel per queue with a row per email holding a slot, and where they end up. Replaces its panels rather than emptying them: a held queue says what is holding it and when it retries, a finished run shows outcomes, what it took and the score | 2 s while live, not at all once `processingDone` |
-| `/runs/[id]/emails/[emailId]` | the message as a bordered card, the seam, the reading in plain English, then the check. Tabs for `The check` (or `The case`), `Both documents` and `Model calls`, the `Links to` strip, and the action bar drawn for phase 8. The 340px chat column is present and inert | 3 s until the email's stage is terminal |
-| `/review` | open cases grouped by reason, plus Failures tab; case detail with actions and upload | 3 s |
+| `/runs/[id]/inbox` | the one screen over a run's emails: the 300px list with a search, filter chips (`All`, `Needs you`, `Differences`, `Agreed`, `No check`, and `Settled` and `Still moving` where either has rows) and one ordering; the open email in the middle as a bordered message card, the seam, then the check, with tabs for `The check` (or `The case`), `Both documents` and `Model calls`, the `Links to` strip and the action bar; the 340px chat column on the right. Every row of the run is loaded, so narrowing costs no request. Which email is open lives in React, echoes to the URL through `history.replaceState`, and is remembered in the `retina_inbox` cookie so another destination and back lands where it left. Below 768px the list and the email take turns | emails 4 s while anything is moving, 30 s once nothing is; the open email 2.5 s while it moves, 8 s while its case is open, not at all once settled |
+| `/runs/[id]/emails/[emailId]` | redirects to `/runs/[id]/inbox?email=...`. The route stays because the ontology, the chat, the queue panel and the results table all link an email by it | |
+| `/runs/[id]/review` | redirects to `/runs/[id]/inbox?filter=needs-you`, carrying `?email=` through. `Needs a person` was a page of its own until phase 15: it listed the same emails from a second component set with a second idea of what was selected, and its count is an alert beside `Inbox` in the rail now | |
 | `/chat` | conversations, messages, SQL shown in a collapsible block, result tables | on send |
 | `/eval` | score history per run and prompt set; dev-only holdout view | 10 s |
 | `/clients` | tier editor | |

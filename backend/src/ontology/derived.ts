@@ -2,7 +2,7 @@ import type { Pool } from "pg";
 
 import { withTx } from "../db";
 import { childLogger } from "../lib/logger";
-import { reconcile, resolveEntities } from "../pipeline/ontology";
+import { reconcile, referenceJoins, resolveEntities } from "../pipeline/ontology";
 import { analytics, entities, entityInputs, entityResolution } from "./repositories";
 
 const log = childLogger({ module: "derived" });
@@ -30,7 +30,8 @@ export interface RefreshResult {
  * judge's, on two values it compared side by side, and `entity-resolve`'s, on
  * a spelling the field judge never saw. Reading the second back from the names
  * it wrote is what stops the two disagreeing about which cluster a spelling is
- * in.
+ * in. The third verdict is the world's port list: two spellings it places at
+ * one UN/LOCODE are one port, computed afresh on every pass.
  */
 export async function resolveAll(db: Pool): Promise<number> {
   const [mentions, verdicts, joins, sightings, existing] = await Promise.all([
@@ -40,7 +41,7 @@ export async function resolveAll(db: Pool): Promise<number> {
     entityInputs.loadSightings(db),
     entityInputs.loadExisting(db),
   ]);
-  const resolved = resolveEntities(mentions, [...verdicts, ...joins], sightings);
+  const resolved = resolveEntities(mentions, [...verdicts, ...joins, ...referenceJoins(mentions, sightings)], sightings);
   const plan = reconcile(resolved, existing);
   // One transaction, because the merges, the drops and the writes are one
   // replacement: a reader between them would see an ontology half rebuilt.

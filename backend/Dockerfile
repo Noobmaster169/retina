@@ -26,6 +26,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json tsconfig.json ./
 COPY src ./src
 COPY db ./db
+# The world's ports and countries, imported as JSON by src/reference at startup.
+COPY reference ./reference
 # Id lists only, so a run can be started on the dev sample or the holdout. Never the answer key, never reports.
 COPY eval/split.json eval/dev-sample.json ./eval/
 

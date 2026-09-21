@@ -136,7 +136,7 @@ cd backend  && pnpm type-check && pnpm test        # 188 at the time of writing
 cd frontend && pnpm type-check && pnpm lint && pnpm build
 cd proxy    && uv run ruff check . && uv run pytest -q
 cd backend  && pnpm eval:parity                     # 7 cases, four decimals
-cd deploy/sim && ./sim.sh test <your-branch>        # only if you touch deploy/
+# deploy/sim was removed on 2026-09-21; a deploy/ change now has no local gate
 ```
 
 `proxy/tests/test_providers.py` has 6 failures on Windows that predate all of this: the

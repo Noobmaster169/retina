@@ -65,7 +65,12 @@ export function httpDocExtractClient(baseUrl: string, fetchImpl: typeof fetch = 
 
   return {
     extract(request: ExtractRequest) {
-      const body = { key: request.key, filename: request.filename, content_type: request.contentType ?? null };
+      const body = {
+        key: request.key,
+        filename: request.filename,
+        content_type: request.contentType ?? null,
+        out_prefix: request.outPrefix ?? null,
+      };
       return post("/extract", body, ExtractResponse, EXTRACT_TIMEOUT_MS);
     },
     render(request: RenderRequest) {

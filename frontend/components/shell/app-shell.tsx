@@ -5,6 +5,7 @@ import { useState, type ReactNode } from "react";
 import useSWR from "swr";
 
 import { RunList, type RunSummary } from "@/lib/api/runs-schemas";
+import { useMediaQuery } from "@/lib/use-media-query";
 import { parsedFetcher } from "@/lib/poll";
 
 import { Dock } from "@/components/dock/dock";
@@ -43,7 +44,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 function Frame({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const runId = runIdFrom(pathname);
-  const counts = useNavCounts();
+  const { counts, alerts } = useNavCounts();
   const dock = useDock();
   // The chat page is the conversation, wide; a dock beside it would be the same thread twice.
   const onChatPage = activeFor(pathname) === "chat";
@@ -56,16 +57,22 @@ function Frame({ children }: { children: ReactNode }) {
   // The rail is open or closed because a person said so, and for no other
   // reason. It used to close itself for a pane that wanted the width, which
   // made switching a tab move the navigation.
+  //
+  // The one exception is a phone, where 232px of navigation is most of the
+  // screen. That is not a pane asking for width, it is there being none: the
+  // person's choice is kept and applied again the moment there is room.
   const [railOpen, setRailOpen] = useState(true);
+  const narrow = useMediaQuery("(max-width: 767px)");
 
   return (
     <ToastHost>
       <div className="flex h-dvh overflow-hidden bg-canvas text-ink">
         <Rail
-          open={railOpen}
+          open={railOpen && !narrow}
           onToggle={() => setRailOpen((was) => !was)}
           active={activeFor(pathname)}
           counts={counts}
+          alerts={alerts}
           current={current}
           runId={runId}
           conversationId={dock.conversationId}

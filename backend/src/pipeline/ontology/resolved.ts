@@ -8,8 +8,8 @@ import type { ComparisonField, EntityKind } from "../../contracts";
  * needs the union-find to say so.
  */
 
-/** How a spelling came to be part of a thing. Nothing writes `human` until the action-card contract lands. */
-export type JoinedBy = "kept" | "judge" | "human";
+/** How a spelling came to be part of a thing: the most-seen one, a model's verdict, a person's, or the world's port list placing it at the same code. */
+export type JoinedBy = "kept" | "judge" | "human" | "reference";
 
 /** One value as one document had it, at the point the extractor read it. */
 export interface Mention {
@@ -46,7 +46,7 @@ export interface Verdict {
   blValue: string | null;
   same: boolean;
   confidence: number | null;
-  /** Which step judged it. Null for the field judge, which is the one that has always been here. */
+  /** Which step judged it. Null for the field judge, which is the one that has always been here; `reference` for the world's port list. */
   step?: string | null;
 }
 

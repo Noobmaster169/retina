@@ -1,25 +1,31 @@
 "use client";
 
 import { useState } from "react";
-import { motion } from "motion/react";
 
-import { MarkedSpan, type MarkState } from "@/components/ui/marked-span";
-import type { EmailTrace } from "@/lib/api/trace-schemas";
-import { panel } from "@/lib/motion";
+import { MarkedSpan } from "@/components/ui/marked-span";
+import type { ComparisonField } from "@/lib/api/runs-schemas";
+import type { DocumentView, EmailTrace } from "@/lib/api/trace-schemas";
 
+import { DocumentSheet } from "./document-sheet";
 import { markOf, splitQuote, verdictWords } from "./field-reading";
 import type { FieldRowData } from "./field-row";
 
 /**
- * Both documents, in the same palette and type as everything else. The seven
- * fields become the left column, and the selected one is filled on both sides.
+ * Both documents, line against line.
  *
- * There is no document text to lay out yet: what each value was read from is
- * its quote, which is the line it came from and is what the evidence check
- * already proved is in the file. So the two columns are the quotes, in field
- * order, which is the part a person comparing two documents is actually
- * reading.
+ * One table and not a list beside two columns. The field rail this used to
+ * carry named the same seven fields the columns already name, in the same
+ * order, one pixel row apart: a second copy of the list, paid for in 152px and
+ * in the reader deciding which of the two to look at. The field name is a
+ * column now, the rows line up across all three, and clicking anywhere on a
+ * row selects it.
+ *
+ * Every field stays on screen, agreeing or not, because this is the tab for
+ * reading the two documents against each other and a check you cannot see is
+ * a check you have to take on trust. Only the marking changes.
  */
+
+const GRID = "grid grid-cols-[124px_minmax(0,1fr)_minmax(0,1fr)]";
 
 interface DocumentsTabProps {
   trace: EmailTrace;
@@ -28,153 +34,149 @@ interface DocumentsTabProps {
 
 export function DocumentsTab({ trace, rows }: DocumentsTabProps) {
   const [selected, setSelected] = useState(trace.comparison?.defectFields[0] ?? rows[0]?.judgement.field ?? null);
+  const [previewing, setPreviewing] = useState<DocumentView | null>(null);
   const si = trace.documents.find((document) => document.role === "SI");
   const bl = trace.documents.find((document) => document.role === "BL");
   const chosen = rows.find((row) => row.judgement.field === selected);
 
   return (
     <div className="flex min-h-0 grow flex-col">
-      <div className="flex min-h-0 grow overflow-hidden">
-        <nav className="flex w-[152px] shrink-0 flex-col border-r border-hairline" aria-label="The seven fields">
-          <div className="flex h-10 shrink-0 items-center px-3">
-            <span className="text-small font-medium text-ink-tertiary">The seven fields</span>
-          </div>
-          {rows.map((row) => {
-            const differs = !row.judgement.same && !row.judgement.missing;
-            const active = row.judgement.field === selected;
-            return (
-              <button
-                key={row.judgement.field}
-                type="button"
-                onClick={() => setSelected(row.judgement.field)}
-                aria-current={active}
-                className={`relative h-[46px] shrink-0 border-t border-hairline-faint px-3 text-left transition-colors duration-150 hover:bg-sunken ${
-                  active ? "bg-sunken shadow-[inset_2px_0_0_0_var(--ink)]" : ""
-                }`}
-              >
-                <span
-                  className={`block truncate font-mono text-micro ${
-                    active ? "text-ink" : differs ? "text-differ" : "text-ink-tertiary"
-                  }`}
-                >
-                  {row.judgement.field}
-                </span>
-                <span className={`mt-0.5 block text-caption ${differs ? "text-differ" : "text-ink-tertiary"}`}>
-                  {verdictWords(row.judgement)}
-                </span>
-              </button>
-            );
-          })}
-          <span className="grow" />
-          <p className="border-t border-hairline px-3 py-3 text-caption leading-[17px] text-ink-tertiary">
-            The model judged each field on its own. Code only collected the ones it called different.
-          </p>
-        </nav>
-
-        <Column
-          label="SI"
-          filename={si?.filename ?? "no shipping instruction"}
-          meta={si ? `${si.format}, ${si.pages} page${si.pages === 1 ? "" : "s"}` : ""}
-          rows={rows}
-          selected={selected}
-          side="si"
-          bordered
-        />
-        <Column
-          label="BL"
-          filename={bl?.filename ?? "no bill of lading"}
-          meta={bl ? `${bl.format}, ${bl.pages} page${bl.pages === 1 ? "" : "s"}` : ""}
-          rows={rows}
-          selected={selected}
-          side="bl"
-        />
+      <div className={`${GRID} h-11 shrink-0 items-stretch border-b border-hairline bg-surface`}>
+        <span className="flex items-center border-r border-hairline px-3 text-caption text-ink-tertiary">Field</span>
+        <Head document={si} role="SI" missing="no shipping instruction" onPreview={setPreviewing} bordered />
+        <Head document={bl} role="BL" missing="no bill of lading" onPreview={setPreviewing} />
       </div>
 
-      <footer className="flex shrink-0 gap-5 border-t border-hairline px-[22px] py-3">
-        <div className="w-[152px] shrink-0 pr-4">
-          <div className="text-small font-medium text-ink-tertiary">What the judge said</div>
-          <div className="mt-1.5 flex items-center gap-2">
-            <span
-              className={`inline-flex h-[21px] items-center rounded-sm px-2 font-mono text-mono-xs ${
-                chosen?.judgement.same ? "bg-match-tint text-match" : "bg-differ-tint text-differ"
-              }`}
-            >
-              {chosen?.judgement.missing ? "missing" : chosen?.judgement.same ? "the same" : "different"}
-            </span>
-            {chosen?.judgement.confidence === null || chosen?.judgement.confidence === undefined ? null : (
-              <span className="text-caption text-ink-tertiary">{chosen.judgement.confidence.toFixed(2)} sure</span>
-            )}
-          </div>
-        </div>
-        <div className="min-w-0 grow">
-          <p className="max-w-[68ch] text-strong leading-5 text-ink-secondary">
-            {chosen?.judgement.rationale ?? "Select a field to read what the judge made of it."}
-          </p>
-          <div className="mt-1.5 flex items-center gap-2 text-caption text-ink-tertiary">
-            <span>Evidence</span>
-            <span className="font-mono text-micro text-ink-secondary">
-              {chosen?.si?.evidenceOk && chosen?.bl?.evidenceOk
-                ? "both quotes were found in their documents"
-                : "one quote could not be found in its document"}
-            </span>
-          </div>
-        </div>
+      <div className="min-h-0 grow overflow-y-auto">
+        {rows.length === 0 ? (
+          <p className="px-3 py-4 text-small text-ink-tertiary">Nothing has been read from these documents yet.</p>
+        ) : (
+          rows.map((row) => (
+            <Row key={row.judgement.field} row={row} selected={row.judgement.field === selected} onSelect={setSelected} />
+          ))
+        )}
+      </div>
+
+      <footer className="shrink-0 border-t border-hairline px-3 py-3">
+        {chosen ? (
+          <>
+            <div className="flex items-center gap-2">
+              <span
+                className={`inline-flex h-[21px] items-center rounded-sm px-2 font-mono text-mono-xs ${
+                  chosen.judgement.missing ? "bg-review-tint text-review" : chosen.judgement.same ? "bg-match-tint text-match" : "bg-differ-tint text-differ"
+                }`}
+              >
+                {chosen.judgement.missing ? "missing" : chosen.judgement.same ? "the same" : "different"}
+              </span>
+              <span className="font-mono text-mono-xs text-ink-tertiary">{chosen.judgement.field}</span>
+              {chosen.judgement.confidence === null ? null : (
+                <span className="text-caption text-ink-tertiary">{chosen.judgement.confidence.toFixed(2)} sure</span>
+              )}
+              <span className="grow" />
+              <span className="shrink-0 text-caption text-ink-tertiary">
+                {chosen.si?.evidenceOk && chosen.bl?.evidenceOk ? "both quotes found in their documents" : "a quote could not be found in its document"}
+              </span>
+            </div>
+            <p className="mt-1.5 max-w-[78ch] text-strong leading-5 text-ink-secondary">
+              {chosen.judgement.rationale ?? "The judge recorded no reasoning for this field."}
+            </p>
+          </>
+        ) : (
+          <p className="text-small text-ink-tertiary">Choose a row to read what the judge made of it.</p>
+        )}
       </footer>
+
+      {previewing ? <DocumentSheet document={previewing} onClose={() => setPreviewing(null)} /> : null}
     </div>
   );
 }
 
-function Column({
-  label,
-  filename,
-  meta,
-  rows,
-  selected,
-  side,
+/** One document's column head: what it is, and the way into reading the whole of it. */
+function Head({
+  document: doc,
+  role,
+  missing,
+  onPreview,
   bordered = false,
 }: {
-  label: string;
-  filename: string;
-  meta: string;
-  rows: FieldRowData[];
-  selected: string | null;
-  side: "si" | "bl";
+  document: DocumentView | undefined;
+  role: string;
+  missing: string;
+  onPreview: (document: DocumentView) => void;
   bordered?: boolean;
 }) {
   return (
-    <div className={`flex min-w-0 grow basis-0 flex-col ${bordered ? "border-r border-hairline" : ""}`}>
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-hairline bg-surface px-3">
-        <span className="inline-flex h-[19px] shrink-0 items-center rounded-xs border border-hairline bg-canvas px-1.5 font-mono text-[10px] text-ink-secondary">
-          {label}
+    <span className={`flex min-w-0 items-center gap-2 px-3 ${bordered ? "border-r border-hairline" : ""}`}>
+      <span className="inline-flex h-[19px] shrink-0 items-center rounded-xs border border-hairline bg-canvas px-1.5 font-mono text-[10px] text-ink-secondary">
+        {role}
+      </span>
+      <span className="min-w-0 truncate font-mono text-mono-sm">{doc?.filename ?? missing}</span>
+      <span className="grow" />
+      {doc ? (
+        <>
+          <span className="shrink-0 text-micro text-ink-tertiary">
+            {doc.format}, {doc.pages} page{doc.pages === 1 ? "" : "s"}
+          </span>
+          <button
+            type="button"
+            onClick={() => onPreview(doc)}
+            className="inline-flex h-[23px] shrink-0 items-center rounded-sm border border-hairline bg-canvas px-2 text-caption text-ink-secondary transition-colors duration-150 hover:border-hairline-strong hover:text-ink"
+          >
+            Open
+          </button>
+        </>
+      ) : null}
+    </span>
+  );
+}
+
+/**
+ * One field across both documents. The line each value was read from is shown
+ * whole and only the value takes the mark: a row that shaded its background
+ * would say the row is wrong, when two words are.
+ */
+function Row({ row, selected, onSelect }: { row: FieldRowData; selected: boolean; onSelect: (field: ComparisonField) => void }) {
+  const { judgement } = row;
+  const differs = !judgement.same && !judgement.missing;
+  const mark = markOf(judgement, selected);
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(judgement.field)}
+      aria-current={selected ? "true" : undefined}
+      className={`${GRID} w-full items-start border-b border-hairline-faint text-left transition-colors duration-150 hover:bg-sunken ${
+        selected ? "bg-[#FFFBF0]" : ""
+      }`}
+    >
+      <span className={`min-w-0 border-r border-hairline px-3 py-2 ${selected ? "shadow-[inset_2px_0_0_0_var(--ink)]" : ""}`}>
+        <span className={`block truncate font-mono text-micro ${selected ? "text-ink" : differs ? "text-differ" : "text-ink-tertiary"}`}>
+          {judgement.field}
         </span>
-        <span className="min-w-0 truncate font-mono text-mono-sm">{filename}</span>
-        <span className="grow" />
-        <span className="shrink-0 text-micro text-ink-tertiary">{meta}</span>
-      </div>
-      <div className="min-h-0 grow overflow-y-auto py-2">
-        {rows.map((row) => {
-          const field = side === "si" ? row.si : row.bl;
-          const value = side === "si" ? row.judgement.siValue : row.judgement.blValue;
-          const active = row.judgement.field === selected;
-          const mark: MarkState = markOf(row.judgement, active);
-          return (
-            <motion.div
-              key={row.judgement.field}
-              layout
-              transition={panel}
-              className={`flex min-h-[22px] items-start px-3 py-1 ${active ? "bg-[#FFFBF0]" : ""}`}
-            >
-              <span className="min-w-0 font-mono text-mono-sm leading-[18px] text-ink-tertiary">
-                {value === null ? (
-                  <span className="text-ink-faint">nothing to compare</span>
-                ) : (
-                  <MarkedSpan {...splitQuote(field?.sourceQuote ?? null, value)} state={mark} />
-                )}
-              </span>
-            </motion.div>
-          );
-        })}
-      </div>
-    </div>
+        <span className={`mt-0.5 block text-caption leading-[15px] ${differs ? "text-differ" : "text-ink-tertiary"}`}>
+          {verdictWords(judgement)}
+        </span>
+      </span>
+      <Cell value={judgement.siValue} quote={row.si?.sourceQuote ?? null} mark={mark} bordered />
+      <Cell value={judgement.blValue} quote={row.bl?.sourceQuote ?? null} mark={mark} />
+    </button>
+  );
+}
+
+function Cell({
+  value,
+  quote,
+  mark,
+  bordered = false,
+}: {
+  value: string | null;
+  quote: string | null;
+  mark: ReturnType<typeof markOf>;
+  bordered?: boolean;
+}) {
+  return (
+    <span className={`min-w-0 px-3 py-2 font-mono text-mono-sm leading-[18px] text-ink-tertiary ${bordered ? "border-r border-hairline" : ""}`}>
+      {value === null ? <span className="text-ink-faint">nothing to compare</span> : <MarkedSpan {...splitQuote(quote, value)} state={mark} />}
+    </span>
   );
 }

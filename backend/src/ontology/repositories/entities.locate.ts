@@ -37,6 +37,23 @@ export async function locateEntity(tx: Queryable, id: string, kind: string, cano
   return true;
 }
 
+/**
+ * The live port already placed at this UN/LOCODE, if there is one.
+ *
+ * What makes a new spelling of a known port cost no model call and create no
+ * second row: the resolver reads the code off the reference list for the
+ * spelling, and this says which thing already holds it.
+ */
+export async function holderOfLocode(db: Queryable, locode: string): Promise<number | null> {
+  const { rows } = await db.query<{ id: string }>(
+    `select id::text as id from core.entities
+      where kind = 'port' and merged_into is null and attributes->>'locode' = $1::text
+      order by mention_count + sighting_count desc, id asc limit 1`,
+    [locode],
+  );
+  return rows[0] ? Number(rows[0].id) : null;
+}
+
 /** A company's country code from the country name its profile carries. Null when the name is not a country the list knows. */
 export function countryCodeFor(attributes: Record<string, string | null>): string | null {
   return countryByName(attributes.country)?.code ?? null;

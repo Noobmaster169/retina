@@ -17,10 +17,13 @@ export type CheckStatus = z.infer<typeof CheckStatus>;
 /**
  * One dependency, and whatever it says about itself beyond being up.
  *
- * The detail is not decoration: `tesseract` names the OCR build a scan was
- * read with, `emails` catches a bind mount that came up empty, and `models`
- * catches a proxy serving an empty alias table. Each of those has looked
- * exactly like a working system from the outside at least once.
+ * The detail is not decoration: `emails` catches a bind mount that came up
+ * empty and `models` catches a proxy serving an empty alias table. Both have
+ * looked exactly like a working system from the outside at least once.
+ *
+ * doc-extract has no such detail any more. It used to report the tesseract
+ * build a scan would be read with; there is no character recogniser in that
+ * image now, so being up is the whole of what it can say about itself.
  */
 const check = <T extends z.ZodRawShape>(detail: T) =>
   z.object({ status: CheckStatus, latencyMs: z.number().optional(), ...detail });
@@ -31,7 +34,7 @@ export const HealthChecks = z.object({
   minio: check({}),
   /** The Averis server in emails/. Named for what it is to us, which is where email comes from. */
   inbox: check({ emails: z.number().optional(), scoringAvailable: z.boolean().optional() }),
-  docExtract: check({ tesseract: z.string().nullable().optional() }),
+  docExtract: check({}),
   llmProxy: check({ models: z.number().optional() }),
   /**
    * Not a probe: the worker is another container with no route into it. This

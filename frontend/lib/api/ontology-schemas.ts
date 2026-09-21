@@ -111,7 +111,7 @@ export const EntityName = z.object({
   value: z.string(),
   seenCount: z.number().int(),
   /** How this spelling joined. Nothing but a judge verdict or a person ever joins one. */
-  joinedBy: z.enum(["kept", "judge", "human"]),
+  joinedBy: z.enum(["kept", "judge", "human", "reference"]),
   confidence: z.number().nullable(),
 });
 export type EntityName = z.infer<typeof EntityName>;
@@ -161,6 +161,16 @@ export type Counterpart = z.infer<typeof Counterpart>;
 
 export const CounterpartList = z.object({ counterparts: z.array(Counterpart) });
 export type CounterpartList = z.infer<typeof CounterpartList>;
+
+/** One lane the mail states between two resolved ports, counted in shipments. Mirrors `Lane` in the backend. */
+export const Lane = z.object({
+  pol: z.object({ id: z.string(), name: z.string() }),
+  pod: z.object({ id: z.string(), name: z.string() }),
+  count: z.number().int(),
+  disputed: z.number().int(),
+});
+export type Lane = z.infer<typeof Lane>;
+export const LaneList = z.object({ lanes: z.array(Lane) });
 
 export const EntityList = z.object({ type: ObjectType, built: z.boolean(), entities: z.array(EntityRow) });
 export type EntityList = z.infer<typeof EntityList>;

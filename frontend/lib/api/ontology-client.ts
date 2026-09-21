@@ -3,6 +3,8 @@ import {
   CounterpartList,
   EntityDetail,
   EntityList,
+  type Lane,
+  LaneList,
   ObjectGraph,
   ObjectRecord,
   type ObjectType,
@@ -22,6 +24,7 @@ export type {
   EntityRow,
   GraphEdge,
   GraphNode,
+  Lane,
   ObjectGraph,
   ObjectLink,
   ObjectRecord,
@@ -49,6 +52,11 @@ export async function listObjectTypes(): Promise<ObjectTypeSummary[]> {
 /** The resolved things of one kind, any of the six, each with its attributes, summary and roles. */
 export async function listEntities(type: EntityKind): Promise<EntityList> {
   return get(EntityList, `/ontology/${type}`);
+}
+
+/** Every lane the shipments state between two ports, busiest first. */
+export async function listLanes(): Promise<Lane[]> {
+  return (await get(LaneList, "/ontology/lanes")).lanes;
 }
 
 export type Beside = "people" | "ports" | "parties";

@@ -43,7 +43,7 @@ export default async function ResultsPage({ params }: PageProps<"/runs/[id]/resu
 
   return (
     <>
-      <NavCounts counts={{ review: run.review.open }} />
+      <NavCounts counts={{}} alerts={{ inbox: run.review.open }} />
       <div className="flex min-w-0 grow flex-col">
         <TopBar
           crumbs={[

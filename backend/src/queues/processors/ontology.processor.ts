@@ -10,8 +10,8 @@ import { loadPrompt } from "../../agents/prompts/registry";
 import { assembleShipment, type SettledField, type ShipmentSources } from "../../pipeline/ontology";
 import type { ObjectStore } from "../../storage";
 import type { OntologyJob } from "../names";
+import { commitReading } from "./ontology-commit";
 import { resolveSightings, type ResolveDeps } from "./ontology-resolve";
-import { writeOntology } from "./ontology-write";
 
 const log = childLogger({ module: "ontology.processor" });
 
@@ -51,7 +51,7 @@ function cut(text: string): string {
  * documents differed, which is what keeps a port off a wrong draft bill out of
  * a question about where cargo went.
  */
-async function settledFields(db: Queryable, emailRunId: string): Promise<SettledField[]> {
+export async function settledFields(db: Queryable, emailRunId: string): Promise<SettledField[]> {
   const readings = await extractions.listForEmailRun(db, emailRunId);
   const si = readings.find((reading) => reading.role === "SI") ?? readings[0];
   if (!si) return [];
@@ -114,14 +114,15 @@ export async function processOntology(deps: OntologyDeps, data: OntologyJob): Pr
     log.info({ emailId: data.emailId, stage: "ontology", what: drop.what, reason: drop.reason }, "a value was dropped: its quote is not in the text");
   }
 
-  const resolved = await resolveSightings(deps, { runId: context.runId, emailRunId, emailId: data.emailId }, assembled);
+  const ids = { runId: context.runId, emailRunId, emailId: data.emailId };
+  const resolved = await resolveSightings(deps, ids, assembled);
   // One transaction for the whole reading: a half-written one, with three of
   // five things created and no shipment, is the shape a retry cannot tell from
-  // a finished one.
-  const touched = await deps.tx((tx) => writeOntology(tx, data, assembled, resolved));
+  // a finished one. It commits only what a serial run would have decided.
+  const { touched, rounds, redecided } = await commitReading(deps, data, ids, assembled, resolved);
 
   log.info(
-    { emailId: data.emailId, stage: "ontology", things: touched.length, sightings: resolved.sightings.length, judged: resolved.judged, dropped: assembled.dropped.length },
+    { emailId: data.emailId, stage: "ontology", things: touched.length, sightings: resolved.sightings.length, judged: resolved.judged, rounds, redecided, dropped: assembled.dropped.length },
     "read the shipment",
   );
 }

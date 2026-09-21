@@ -54,7 +54,7 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
   return (
     <>
       <PageContext refs={[{ kind: "run", id: id, title: `run ${id.slice(0, 8)}` }]} />
-      <NavCounts counts={{ inbox: run.totalEmails ?? undefined, review: run.review.open }} />
+      <NavCounts counts={{ inbox: run.totalEmails ?? undefined }} alerts={{ inbox: run.review.open }} />
       <div className="flex min-w-0 grow flex-col">
         <TopBar crumbs={[{ label: "Runs", href: "/runs" }, { label: id.slice(0, 8), mono: true }]}>
           <Search />

@@ -35,8 +35,8 @@
 # It never touches Postgres. Migrations are the API container's job, run on
 # startup by the CMD in backend/Dockerfile.
 #
-# Exercised without the box by deploy/sim/: a Docker-in-Docker replica of this
-# layout. Change this script, run deploy/sim/sim.sh test, then push.
+# There is no local rehearsal of this script any more: what it does is first seen
+# on the box, so a change here is read twice and kept small. See deploy/README.md.
 
 set -uo pipefail
 

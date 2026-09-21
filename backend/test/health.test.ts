@@ -53,15 +53,16 @@ describe("checkHealth", () => {
   it("carries what each dependency says about itself, not just that it answered", async () => {
     const probes = new FakeProbes();
     probes.inboxAnswer = { emails: 104, scoringAvailable: false };
-    probes.docExtractAnswer = { tesseract: "5.3.0" };
 
     const report = await checkHealth(deps({ probes }));
 
     // The inbox's own count. `emails: 0` is a bind mount that came up empty,
     // which from the outside looks exactly like a healthy empty inbox.
     expect(report.checks.inbox).toMatchObject({ emails: 104, scoringAvailable: false });
-    expect(report.checks.docExtract.tesseract).toBe("5.3.0");
     expect(report.checks.llmProxy.models).toBe(4);
+    // doc-extract says only that it is up: there is no recogniser in that image
+    // to name a build of, so being reachable is the whole check.
+    expect(report.checks.docExtract).toEqual({ status: "up", latencyMs: expect.any(Number) });
   });
 
   it("is degraded, not down, when a dependency the api can serve without is away", async () => {

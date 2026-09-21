@@ -5,15 +5,17 @@ import type { JoinedBy, Mention, ResolvedEntity, Sighting, Verdict } from "./res
 /**
  * Turns the values a model read into the things they denote.
  *
- * The only thing that ever merges two spellings is a verdict a model already
- * wrote: the field judge's `same = true` on a pair it compared, or the
- * `entity-resolve` step's `sameAs` on a spelling the field judge never saw.
- * There is no lowercasing, no punctuation stripping, no edit distance and no
- * lookup table, because all four are rules fitted to one sample of one dataset
- * and CLAUDE.md bans them for exactly that reason. Two spellings no judge ever
- * put together stay two things, and that is the correct answer rather than a
- * missing feature: the screen says how each spelling joined, so a reader can
- * see the difference.
+ * The only thing that ever merges two spellings is a verdict: the field
+ * judge's `same = true` on a pair it compared, the `entity-resolve` step's
+ * `sameAs` on a spelling the field judge never saw, or the world's port list
+ * placing two spellings at one UN/LOCODE (`reference-joins.ts`, since the
+ * business-data fix session). There is no lowercasing, no punctuation
+ * stripping, no edit distance and no lookup table fitted to the inbox, because
+ * all four are rules fitted to one sample of one dataset and CLAUDE.md bans
+ * them for exactly that reason. Two spellings nothing ever put together stay
+ * two things, and that is the correct answer rather than a missing feature:
+ * the screen says how each spelling joined, so a reader can see the
+ * difference.
  *
  * Pure. No database, no clock, no io. The caller loads the mentions, the
  * sightings and the verdicts, calls this, and plans what comes back with
@@ -36,6 +38,11 @@ function usable(value: string | null): value is string {
 
 function keyOf(kind: EntityKind, value: string): string {
   return `${kind} ${value}`;
+}
+
+/** Which kind of thing a comparison field denotes, or undefined for the three that denote none. */
+export function kindOfField(field: ComparisonField): EntityKind | undefined {
+  return KIND_OF_FIELD[field];
 }
 
 function kindOf(verdict: Verdict): EntityKind | undefined {
@@ -142,7 +149,7 @@ export function resolveEntities(mentions: Mention[], verdicts: Verdict[], sighti
       names: counted.map((member) => ({
         value: member.own.value,
         seenCount: member.seenCount,
-        joinedBy: member.key === kept.key ? "kept" : "judge",
+        joinedBy: member.key === kept.key ? "kept" : joins.get(member.key)?.step === "reference" ? "reference" : "judge",
         confidence: member.key === kept.key ? null : (joins.get(member.key)?.confidence ?? null),
         joinedStep: member.key === kept.key ? null : (joins.get(member.key)?.step ?? null),
       })),

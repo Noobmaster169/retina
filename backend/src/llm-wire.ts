@@ -36,12 +36,33 @@ export function proxyClient(project: string): Anthropic {
   });
 }
 
+/**
+ * A message as the wire carries it: plain text, or text with images beside it.
+ *
+ * `claude -p` has no image block of its own; the proxy writes each one to a file
+ * and lets the session read it. That is the proxy's business, and this side sends
+ * an ordinary Anthropic image block either way.
+ */
+function wireMessage(message: ChatRequest["messages"][number]): Anthropic.MessageParam {
+  if (!message.images || message.images.length === 0) return { role: message.role, content: message.content };
+  return {
+    role: message.role,
+    content: [
+      ...message.images.map((image) => ({
+        type: "image" as const,
+        source: { type: "base64" as const, media_type: image.mediaType as "image/png", data: image.base64 },
+      })),
+      { type: "text" as const, text: message.content },
+    ],
+  };
+}
+
 /** The request body. `temperature` is never sent: Claude 5 rejects it. */
 export function messageParams(req: ChatRequest): Anthropic.MessageCreateParamsNonStreaming {
   const params: Anthropic.MessageCreateParamsNonStreaming = {
     model: req.model,
     max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
-    messages: req.messages,
+    messages: req.messages.map(wireMessage),
   };
   if (req.system) params.system = req.system;
   if (req.outputSchema) params.output_config = { format: { type: "json_schema", schema: req.outputSchema } };

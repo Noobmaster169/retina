@@ -125,7 +125,7 @@ a demo and infra surprises surface early.
   recreated together, and the stack's own copies of `compose.yaml` and the script kept in step
   with the clone.
 - `deploy/bootstrap-wizard.sh`: the one box step, and the last one.
-- `deploy/sim/`: the deploy scripts exercised against a replica of the box, rollback included.
+- `deploy/sim/`: removed on 2026-09-21. The deploy scripts have no local gate; see `deploy/README.md`.
 - Vercel project on this repo: `BACKEND_URL`, `API_SHARED_SECRET`, `SITE_PASSWORD`. There is no
   `SESSION_SECRET`: the gate's cookie is an HMAC of `SITE_PASSWORD`.
 - Spend attribution on proxy calls is already there: `llm.ts` sends `retina-<project>` as the

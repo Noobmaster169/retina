@@ -3,7 +3,7 @@ import type { Probes } from "../health-probes";
 /** What each HTTP dependency answers, without one running. A probe set to an Error throws it, which reads as down. */
 export class FakeProbes implements Probes {
   inboxAnswer: { emails?: number; scoringAvailable?: boolean } | Error = { emails: 520, scoringAvailable: true };
-  docExtractAnswer: { tesseract?: string | null } | Error = { tesseract: "5.5.0" };
+  docExtractAnswer: Record<string, never> | Error = {};
   llmProxyAnswer: { models?: number } | Error = { models: 4 };
 
   async inbox() {

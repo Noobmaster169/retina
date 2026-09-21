@@ -27,7 +27,7 @@ export async function writeOntology(tx: Queryable, job: OntologyJob, assembled: 
       ids.set(key, await entityResolution.insertFromSighting(tx, decision.kind, decision.surface, new Date()));
       continue;
     }
-    await entityResolution.addJudgedName(tx, decision.entityId, decision.surface, decision.confidence);
+    await entityResolution.addJudgedName(tx, decision.entityId, decision.surface, decision.confidence, decision.step);
     ids.set(key, decision.entityId);
   }
 

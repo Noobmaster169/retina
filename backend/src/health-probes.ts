@@ -21,7 +21,7 @@ import { z } from "zod";
 /** The three checks that are an HTTP call. One interface, one real implementation, one fake per test. */
 export interface Probes {
   inbox(): Promise<{ emails?: number; scoringAvailable?: boolean }>;
-  docExtract(): Promise<{ tesseract?: string | null }>;
+  docExtract(): Promise<Record<string, never>>;
   llmProxy(): Promise<{ models?: number }>;
 }
 
@@ -57,12 +57,10 @@ export async function probeInbox(baseUrl: string, timeoutMs: number): Promise<{ 
   return { emails: body.data.emails, scoringAvailable: body.data.scoring_available };
 }
 
-const DocExtractHealth = z.object({ tesseract: z.string().nullable().optional() });
-
-/** The parser. A null tesseract is an image built without it, which fails every scan and nothing else. */
-export async function probeDocExtract(baseUrl: string, timeoutMs: number): Promise<{ tesseract?: string | null }> {
-  const body = DocExtractHealth.safeParse(await readJson(`${trimmed(baseUrl)}/healthz`, timeoutMs, "doc-extract /healthz"));
-  return body.success ? { tesseract: body.data.tesseract } : {};
+/** The parser. It answers `{ ok: true }` and nothing else, so reaching it at all is the check. */
+export async function probeDocExtract(baseUrl: string, timeoutMs: number): Promise<Record<string, never>> {
+  await readJson(`${trimmed(baseUrl)}/healthz`, timeoutMs, "doc-extract /healthz");
+  return {};
 }
 
 const ProxyHealth = z.object({ models: z.array(z.string()).optional() });
