@@ -37,8 +37,8 @@ describe("POST /runs, choosing what and how", () => {
       "classify-verify": { version: "v3", model: "sonnet" },
       triage: { version: "v1", model: "sonnet" },
       "doc-type": { version: "v1", model: "sonnet" },
-      extract: { version: "v1", model: "sonnet" },
-      "extract-verify": { version: "v1", model: "sonnet" },
+      extract: { version: "v2", model: "sonnet" },
+      "extract-verify": { version: "v2", model: "sonnet" },
       "field-judge": { version: "v1", model: "sonnet" },
       "vision-read": { version: "v1", model: "sonnet" },
     });
@@ -55,8 +55,8 @@ describe("POST /runs, choosing what and how", () => {
       "classify-verify": { version: "v3", model: "haiku" },
       triage: { version: "v1", model: "sonnet" },
       "doc-type": { version: "v1", model: "sonnet" },
-      extract: { version: "v1", model: "sonnet" },
-      "extract-verify": { version: "v1", model: "sonnet" },
+      extract: { version: "v2", model: "sonnet" },
+      "extract-verify": { version: "v2", model: "sonnet" },
       "field-judge": { version: "v1", model: "sonnet" },
       "vision-read": { version: "v1", model: "sonnet" },
     });

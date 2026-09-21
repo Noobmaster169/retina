@@ -180,7 +180,15 @@ describe("the prompts that ship", () => {
     loadPrompt("classify", "v5"),
     loadPrompt("classify-verify", "v2"),
   ];
-  const readers = [loadPrompt("extract", "v1"), loadPrompt("extract-verify", "v1"), loadPrompt("field-judge", "v1")];
+  // Both versions of each reader ship: migration 027 made v2 active, and a run created before it
+  // pinned v1 and still replays on it. Every one of them is held to the rules below.
+  const extractors = [
+    loadPrompt("extract", "v1"),
+    loadPrompt("extract", "v2"),
+    loadPrompt("extract-verify", "v1"),
+    loadPrompt("extract-verify", "v2"),
+  ];
+  const readers = [...extractors, loadPrompt("field-judge", "v1")];
   const shipped = [
     ...classifiers,
     loadPrompt("triage", "v1"),
@@ -195,7 +203,7 @@ describe("the prompts that ship", () => {
     loadPrompt("concept-judge", "v1"),
   ];
 
-  it.each(readers.slice(0, 2))("$step $version names all seven of the organisers' fields", (prompt) => {
+  it.each(extractors)("$step $version names all seven of the organisers' fields", (prompt) => {
     for (const field of ["shipper", "consignee", "notify_party", "port_of_loading", "port_of_discharge", "container_count", "gross_weight_kg"]) {
       expect(prompt.text).toContain(`- ${field}:`);
     }
