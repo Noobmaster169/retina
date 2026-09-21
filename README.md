@@ -104,7 +104,11 @@ docker compose -f compose.local.yaml up -d inbox    # unset: back to the organis
 
 Nothing else moves. The api picks the new count up on its next health check without a
 restart, ingest lists what the server lists, and `POST /runs/:id/submit` scores against
-whichever answer key that set mounted.
+whichever answer key that set mounted. The new-run form on `/runs` reads that same count,
+so it offers "The whole inbox, 5,000" and counts up into the thousands, and it names what
+a run of that size costs before it starts one. The `dev` and `holdout` subsets are offered
+only against the organisers' 520, because the split under `eval/` names that set's ids and
+no other's.
 
 `emails/data_5k` is a 5,000-email set built in the same shape as the organisers' kit,
 one year of threaded mail over 1,398 shipments, with 414 mismatches and 104 cases for a

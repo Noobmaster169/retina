@@ -1,17 +1,22 @@
 "use client";
 
 import { useState } from "react";
+import useSWR from "swr";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 
 import { Button } from "@/components/ui/button";
+import { HealthReport } from "@/lib/api/queues-schemas";
+import { parsedFetcher } from "@/lib/poll";
 import { Icon } from "@/components/ui/icons";
 import { z } from "zod";
 
 import type { PromptStep } from "@/lib/api/runs-schemas";
 import { panel } from "@/lib/motion";
 
-import { type Choice, Field } from "./labelled-select";
+import { countsFor, grouped, ORGANISERS, priceOf, scopesFor } from "./inbox-scope";
+import { PACES, STEPS } from "./new-run-choices";
+import { Field } from "./labelled-select";
 import { DEFAULT, useRunOptions } from "./use-run-options";
 
 /**
@@ -22,38 +27,16 @@ import { DEFAULT, useRunOptions } from "./use-run-options";
  * true, and none of them is what someone starting a run is deciding.
  */
 
+/**
+ * Past this many, a run is worth confirming. Under it the wait and the cost
+ * are both small enough that a dialogue is the more annoying of the two.
+ */
+const WARN_ABOVE = 200;
+
 /** The only part of the new run's summary this form reads: where to send you. */
 const Created = z.object({ id: z.string() });
 
 type Scope = "dev" | "holdout" | "all" | "first";
-
-const SCOPES: Choice[] = [
-  { value: "dev", label: "Dev sample, 30 emails" },
-  { value: "holdout", label: "Holdout, 104 emails" },
-  { value: "all", label: "The whole inbox, 520" },
-  { value: "first", label: "The first N" },
-];
-
-const COUNTS: Choice[] = [5, 10, 20, 30, 50, 100].map((n) => ({ value: String(n), label: `${n} emails` }));
-
-const PACES: Choice[] = [
-  { value: "0", label: "All at once", hint: "Every email is queued immediately; the queues' own concurrency sets the pace" },
-  { value: "0.5", label: "One every 2 seconds" },
-  { value: "1", label: "One a second" },
-  { value: "2", label: "Two a second" },
-  { value: "5", label: "Five a second" },
-];
-
-/** One dropdown per model step, in the order the pipeline runs them. */
-const STEPS: { step: PromptStep; label: string }[] = [
-  { step: "classify", label: "Classify" },
-  { step: "classify-verify", label: "Verifier" },
-  { step: "triage", label: "Triage" },
-  { step: "doc-type", label: "Document type" },
-  { step: "extract", label: "Extractor" },
-  { step: "extract-verify", label: "Extraction verifier" },
-  { step: "field-judge", label: "Field judge" },
-];
 
 /**
  * `onCreated` still refreshes the list behind the redirect, so coming back to
@@ -62,7 +45,18 @@ const STEPS: { step: PromptStep; label: string }[] = [
 export function NewRunForm({ onCreated }: { onCreated: () => void }) {
   const router = useRouter();
   const options = useRunOptions();
-  const [scope, setScope] = useState<Scope>("dev");
+  // How many emails the inbox actually serves. Read once, never polled: it
+  // changes when somebody remounts the email server with another dataset, not
+  // while a form is open. Null until it answers, and then the form says "the
+  // whole inbox" without a number rather than a number that may be wrong.
+  const { data: health } = useSWR("/api/health", parsedFetcher(HealthReport), {
+    revalidateOnFocus: false,
+    keepPreviousData: true,
+  });
+  const inbox = health?.checks.inbox.emails ?? null;
+  const scopes = scopesFor(inbox);
+  const counts = countsFor(inbox);
+  const [scope, setScope] = useState<Scope>("first");
   const [count, setCount] = useState("20");
   const [pace, setPace] = useState("0");
   const [prompts, setPrompts] = useState<Partial<Record<PromptStep, string>>>({});
@@ -88,7 +82,10 @@ export function NewRunForm({ onCreated }: { onCreated: () => void }) {
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (scope === "all" && !window.confirm("Run all 520 emails? That is about 800 to 900 model calls.")) return;
+    // What a big run costs, said before it starts and in the numbers of the
+    // inbox in front of them. It used to name 520 whatever was being served.
+    const asked = scope === "all" ? (inbox ?? ORGANISERS) : scope === "first" ? Number(count) : 0;
+    if (asked >= WARN_ABOVE && !window.confirm(`Run ${grouped(asked)} emails? That is ${priceOf(asked)}.`)) return;
     setPending(true);
     setError(null);
     try {
@@ -125,8 +122,8 @@ export function NewRunForm({ onCreated }: { onCreated: () => void }) {
   return (
     <form onSubmit={submit} className="border-y border-hairline py-4">
       <div className="flex flex-wrap items-end gap-3">
-        <Field name="scope" label="Emails" choices={SCOPES} value={scope} onChange={(v) => setScope(v as Scope)} />
-        {scope === "first" ? <Field name="count" label="How many" choices={COUNTS} value={count} onChange={setCount} /> : null}
+        <Field name="scope" label="Emails" choices={scopes} value={scope} onChange={(v) => setScope(v as Scope)} />
+        {scope === "first" ? <Field name="count" label="How many" choices={counts} value={count} onChange={setCount} /> : null}
         <Field name="pace" label="Pace" choices={PACES} value={pace} onChange={setPace} />
         <Button type="submit" variant="primary" disabled={pending} className="h-9">
           {pending ? "Starting" : "New run"}
