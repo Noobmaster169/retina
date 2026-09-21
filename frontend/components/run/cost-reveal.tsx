@@ -1,114 +1,92 @@
 "use client";
 
-import { motion, useReducedMotion } from "motion/react";
-import { useState } from "react";
+import { useReducedMotion } from "motion/react";
+import { useEffect, useState } from "react";
 
 import { cents, money, type PlanCost } from "./plan-cost";
+import { framesFor, scrambleLike } from "./scramble";
 
 /**
- * What the run cost, which is the one number on this panel worth arguing with.
+ * What the run cost.
  *
- * The API price comes first because it is the number a reader expects and the
- * one every comparison is made against. It is struck through, and the stroke
- * draws itself again every few seconds, because a price crossed out is a
- * question and this one has an answer worth opening: the work ran on a flat
- * subscription, so what it really took is a share of a month rather than a
- * charge.
+ * It used to lead with what the same tokens would have cost on the API, struck
+ * through, and open onto the real figure beside the arithmetic that produced
+ * it. Every part of that was for a reader who already knows what an API price
+ * is, what a subscription is, and why one would be a fraction of the other.
+ * Nobody else was being told anything: `21x cheaper` and `15% x 15% of $50 a
+ * week` are the workings of an argument they had not been given.
  *
- * Four lines at most, and none of them wraps. The first draft explained itself
- * in sentences, and a tile this narrow turned each one into two lines of
- * caption under a number that is two words long. `On the API` and `On our
- * plan` do the same work in three words, because the two sit one above the
- * other and the comparison needs no announcing.
+ * So it says the number. The run cost this much; here it is in both
+ * currencies, and here is what that is per email, which is the only form of it
+ * anyone repeats out loud. What it would have cost otherwise is in the title
+ * for whoever wants it, and `plan-cost.ts` still carries and tests the
+ * arithmetic.
  *
- * A reader who does not want motion gets the line already drawn, and a reader
- * who never opens it still sees an honest headline.
+ * The digits roll when a reader points at them, because a figure this small is
+ * worth a second look and a moment of movement is how you ask for one without
+ * a word of explanation.
  */
 export function CostReveal({ cost }: { cost: PlanCost }) {
-  const [open, setOpen] = useState(false);
-  const still = useReducedMotion() ?? false;
+  // Counts hovers rather than holding a boolean, so it can key the numbers: a
+  // second look starts the roll from the beginning instead of joining one
+  // already half settled.
+  const [roll, setRoll] = useState(0);
 
   return (
-    <button
-      type="button"
-      onClick={() => setOpen((was) => !was)}
-      aria-expanded={open}
-      title={open ? `${money(cost.apiUsd)} on the API. ${cost.working}.` : undefined}
-      className="flex grow flex-col justify-center gap-1 rounded-lg border border-hairline bg-canvas px-3.5 py-3 text-left transition-colors duration-150 hover:border-hairline-strong hover:bg-surface"
+    <div
+      onMouseEnter={() => setRoll((at) => at + 1)}
+      title={`${money(cost.apiUsd)} on the API. ${cost.working}.`}
+      className="flex grow flex-col justify-center gap-1 rounded-lg border border-hairline bg-canvas px-3.5 py-3"
     >
-      <span className="flex items-baseline gap-2">
-        <span className="text-caption text-ink-tertiary">{open ? "On our plan" : "On the API"}</span>
-        <span className="grow" />
-        {/* The counterfactual keeps its place, small, once the real one has the floor. */}
-        {open ? <Struck amount={money(cost.apiUsd)} still animate={false} /> : null}
+      <span className="text-caption text-ink-tertiary">Cost</span>
+      <span className="flex items-baseline gap-2.5">
+        <Rolling key={`usd-${roll}`} value={money(cost.planUsd)} run={roll > 0} className="font-mono text-[22px] font-semibold tabular-nums text-match" />
+        <Rolling
+          key={`myr-${roll}`}
+          value={`RM ${cost.planMyr.toFixed(2)}`}
+          run={roll > 0}
+          className="font-mono text-mono-sm tabular-nums text-ink-secondary"
+        />
       </span>
-
-      {open ? (
-        <>
-          <span className="flex items-baseline gap-2.5">
-            <motion.span
-              initial={{ opacity: 0, y: still ? 0 : 3 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="font-mono text-[22px] font-semibold tabular-nums text-match"
-            >
-              {money(cost.planUsd)}
-            </motion.span>
-            <span className="font-mono text-mono-sm tabular-nums text-ink-secondary">RM {cost.planMyr.toFixed(2)}</span>
-          </span>
-          <span className="truncate text-caption text-ink-secondary">
-            {cents(cost.perEmailCents)} an email
-            {cost.timesCheaper ? ` · ${cost.timesCheaper.toFixed(0)}x cheaper` : ""}
-          </span>
-          <span className="truncate text-caption text-ink-tertiary">{cost.working}</span>
-        </>
-      ) : (
-        <>
-          <Struck amount={money(cost.apiUsd)} still={still} animate />
-          <span className="truncate text-caption text-ink-tertiary">Nothing was billed. Tap.</span>
-        </>
-      )}
-    </button>
+      <span className="truncate text-caption text-ink-tertiary">{cents(cost.perEmailCents)} an email</span>
+    </div>
   );
 }
 
+/** How long one frame of the roll lasts. Eight of them is a glance, not a wait. */
+const FRAME_MS = 45;
+
 /**
- * A price with a line through it. The line is its own element rather than a
- * text decoration so it can be drawn: a decoration appears all at once, and
- * the point of this one is that it is being crossed out in front of you.
+ * A value that rolls its digits and settles left to right.
  *
- * It draws, holds, then fades. It used to retract the way it came, which is
- * the same movement backwards and read as a mistake being undone rather than
- * as a loop starting again.
+ * It renders the settled value on the server and on the first paint, so a
+ * reader who never points at it, or who has asked for less motion, sees the
+ * number and nothing else. The roll is a browser effect over the top.
  */
-function Struck({ amount, still, animate }: { amount: string; still: boolean; animate: boolean }) {
-  const big = animate;
-  const drawn = still || !animate;
-  return (
-    // `self-start`, or the line runs to the far side of the card. The span is
-    // inline-block and shrinks to its text everywhere except here, where it is
-    // a child of a flex column and a flex child stretches to the width of its
-    // container unless it is told not to.
-    <span className="relative inline-block self-start">
-      <span className={`font-mono tabular-nums text-ink-tertiary ${big ? "text-[22px] font-semibold" : "text-mono-sm"}`}>
-        {amount}
-      </span>
-      {/*
-        Centred on the text box rather than at a measured offset, and moved
-        there through motion's own transform: a `-translate-y-1/2` class would
-        be overwritten by the inline transform this animates.
-      */}
-      <motion.span
-        aria-hidden="true"
-        initial={drawn ? { scaleX: 1, opacity: 1 } : { scaleX: 0, opacity: 1 }}
-        animate={drawn ? { scaleX: 1, opacity: 1 } : { scaleX: [0, 1, 1, 1], opacity: [1, 1, 1, 0] }}
-        transition={
-          drawn
-            ? undefined
-            : { duration: 2.1, times: [0, 0.34, 0.82, 1], repeat: Infinity, repeatDelay: 0.7, ease: [0.2, 0, 0, 1] }
-        }
-        style={{ originX: 0, y: "-50%" }}
-        className={`absolute inset-x-0 top-1/2 ${big ? "h-[2px]" : "h-px"} rounded-full bg-fault`}
-      />
-    </span>
-  );
+function Rolling({ value, run, className }: { value: string; run: boolean; className: string }) {
+  // Set at mount and never from inside the effect: the element is keyed on the
+  // hover that made it, so every roll begins with a fresh one of these.
+  const [locked, setLocked] = useState<number | null>(run ? 0 : null);
+  const still = useReducedMotion() ?? false;
+  const frames = framesFor(value);
+
+  useEffect(() => {
+    if (!run || still) return;
+    let at = 0;
+    const tick = setInterval(() => {
+      at += 1;
+      if (at >= frames) {
+        clearInterval(tick);
+        setLocked(null);
+        return;
+      }
+      setLocked(Math.floor((at / frames) * value.length));
+    }, FRAME_MS);
+    return () => clearInterval(tick);
+  }, [run, still, frames, value.length]);
+
+  // `still` wins at the render rather than by resetting state, so a reader who
+  // asked for less motion never sees a rolled digit even for a frame.
+  const shown = still || locked === null ? value : scrambleLike(value, locked, Math.random);
+  return <span className={className}>{shown}</span>;
 }
