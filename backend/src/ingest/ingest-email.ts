@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { basename } from "node:path/posix";
 
 import type { Pool } from "pg";
 
@@ -9,6 +8,7 @@ import { type ClassifyJob, JOB_NAMES, type JobAdder, jobOptions } from "../queue
 import { computePriority } from "../queues/priority";
 import type { PriorityCache } from "../queues/priority-cache";
 import { keys, type ObjectStore } from "../storage";
+import { storedNames } from "./attachment-names";
 import { parseTonnage, roleFromName, senderDomain } from "./email-facts";
 import type { Source } from "./source";
 
@@ -47,12 +47,15 @@ async function storeAttachments(
   emailId: string,
   paths: string[],
 ): Promise<attachments.NewAttachment[]> {
+  // Distinct within this email before anything is written, so two paths ending in
+  // one name cannot become one object and one row.
+  const names = storedNames(paths);
   // One attachment's download and upload has nothing to do with the next one's,
   // and Promise.all keeps the rows in the order the paths came in.
   return Promise.all(
-    paths.map(async (path) => {
+    [...names.keys()].map(async (path) => {
       const { bytes, contentType } = await deps.source.readAttachment(path);
-      const filename = basename(path);
+      const filename = names.get(path) as string;
       const objectKey = keys.attachment(runId, emailId, filename);
       await deps.store.put(objectKey, bytes, contentType);
       return {
