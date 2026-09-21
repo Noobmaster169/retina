@@ -31,6 +31,7 @@ export function toSummary(run: Run, parts: SummaryParts): RunSummary {
   const end = processingDone ? Date.parse(parts.lastFinishedAt ?? run.finishedAt ?? new Date(parts.now).toISOString()) : parts.now;
   return {
     id: run.id,
+    name: run.name,
     status: run.status,
     ratePerSecond: run.ratePerSecond,
     totalEmails: run.totalEmails,

@@ -1,4 +1,4 @@
-import { isTransient, LlmUnavailableError, TerminalError, UpstreamError } from "../lib/errors";
+import { isTransient, LlmUnavailableError, RunPausedError, TerminalError, UpstreamError } from "../lib/errors";
 import { childLogger } from "../lib/logger";
 import { chat, chatStream } from "../llm";
 import { type LlmSlot, llmSlots } from "./llm-slot";
@@ -37,9 +37,16 @@ export interface LlmResponse {
   latencyMs: number;
 }
 
-/** Every model call in the pipeline goes through this. Tests hand in a fake; nothing in a test reaches the proxy. */
+/**
+ * Every model call in the pipeline goes through this. Tests hand in a fake;
+ * nothing in a test reaches the proxy.
+ *
+ * `signal` abandons the call: the pause gate holds one per job in flight, so
+ * pausing a run cancels the HTTP request, releases the concurrency slot and
+ * leaves through `RunPausedError` rather than looking like a timeout.
+ */
 export interface LlmClient {
-  complete(request: LlmRequest): Promise<LlmResponse>;
+  complete(request: LlmRequest, signal?: AbortSignal): Promise<LlmResponse>;
 }
 
 export interface ProxyClientOptions {
@@ -74,7 +81,7 @@ export function proxyLlmClient(options: ProxyClientOptions = {}): LlmClient {
   const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const random = options.random ?? Math.random;
 
-  async function once(request: LlmRequest): Promise<LlmResponse> {
+  async function once(request: LlmRequest, signal?: AbortSignal): Promise<LlmResponse> {
     const started = Date.now();
     const chatRequest = {
       model: request.model,
@@ -84,8 +91,8 @@ export function proxyLlmClient(options: ProxyClientOptions = {}): LlmClient {
       outputSchema: request.outputSchema,
     };
     const result = request.onText
-      ? await chatStream(request.project, chatRequest, request.onText)
-      : await chat(request.project, chatRequest);
+      ? await chatStream(request.project, chatRequest, request.onText, signal)
+      : await chat(request.project, chatRequest, signal);
     return {
       text: result.text,
       model: result.model,
@@ -97,11 +104,17 @@ export function proxyLlmClient(options: ProxyClientOptions = {}): LlmClient {
   }
 
   return {
-    async complete(request) {
+    async complete(request, signal) {
       for (let retry = 0; ; retry++) {
+        // Before the attempt as well as after it: a pause that lands during a
+        // retry's wait must not buy the model another call.
+        if (signal?.aborted) throw new RunPausedError(`the run was paused before a ${request.model} call for ${request.project}`);
         try {
-          return await slot(() => once(request));
+          return await slot(() => once(request, signal));
         } catch (error) {
+          // The abort is the cause of whatever this is, and it is neither a
+          // timeout nor an outage: the SDK reports a cancelled request as one.
+          if (signal?.aborted) throw new RunPausedError(`the run was paused during a ${request.model} call`, { cause: error });
           if (!(error instanceof UpstreamError)) throw error;
           if (!isTransient(error)) throw new TerminalError(error.message, { cause: error });
           if (retry >= delays.length) throw new LlmUnavailableError(error.message, { cause: error });

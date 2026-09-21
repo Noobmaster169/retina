@@ -14,6 +14,12 @@ export interface StructuredDeps {
   pool: Queryable;
   /** Where a call's answer so far is kept while it streams. Absent, calls do not stream. */
   live?: LiveCalls;
+  /**
+   * Aborts every call of this job. The pause gate holds one per job in flight,
+   * so pausing a run abandons what it was in the middle of saying rather than
+   * paying for an answer nobody will read.
+   */
+  signal?: AbortSignal;
 }
 
 export interface StructuredCall<T> {
@@ -207,7 +213,7 @@ export async function callStructured<T>(deps: StructuredDeps, call: StructuredCa
     let response;
     const started = Date.now();
     try {
-      response = await deps.llm.complete(request);
+      response = await deps.llm.complete(request, deps.signal);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       log.warn(

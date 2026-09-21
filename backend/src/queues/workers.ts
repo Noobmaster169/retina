@@ -12,6 +12,7 @@ import { childLogger } from "../lib/logger";
 import type { LiveCalls } from "../live";
 import { emailRuns, runs } from "../ontology/repositories";
 import { isFinalFailure, type PausedAt, pausingOnOutage, type QueuePauser } from "./failure-policy";
+import { pauseGate } from "./pause-gate";
 import { recordJobFailure } from "./record-failure";
 import { ClassifyJob, CompareJob, DEFAULT_PRIORITY, IngestJob, type JobAdder, JOB_NAMES, OntologyJob, ontologyJobOptions, QUEUES, ReleaseJob } from "./names";
 import { processClassify } from "./processors/classify.processor";
@@ -124,6 +125,9 @@ export interface RunningWorkers {
 
 export function startWorkers(deps: WorkerDeps, connection: Redis): RunningWorkers {
   let stopping = false;
+  // One gate for both email queues: it polls once for every run it is holding
+  // work for, so the cost is one query a second and not one per job.
+  const pauses = pauseGate(deps.pool);
 
   const ingest = new Worker(
     QUEUES.ingest,
@@ -150,16 +154,18 @@ export function startWorkers(deps: WorkerDeps, connection: Redis): RunningWorker
 
   const classify = new Worker(
     QUEUES.classify,
-    (job) => {
+    async (job, token) => {
       const data = parse(ClassifyJob, job);
-      return noRetryOnTerminal(() =>
-        pausingOnOutage(deps.classify, at("classify", job, data), () =>
-          // `job.priority`, not `job.opts.priority`: the options hold what the
-          // job was added with and the aging pass does not touch them, so
-          // reading them would hand the compare job the priority this one had
-          // before it waited, and the compare leg would earn every promotion
-          // again from scratch.
-          processClassify(deps, data, job.priority ?? job.opts.priority ?? DEFAULT_PRIORITY),
+      return pauses.guard(job, token, data.runId, (signal) =>
+        noRetryOnTerminal(() =>
+          pausingOnOutage(deps.classify, at("classify", job, data), () =>
+            // `job.priority`, not `job.opts.priority`: the options hold what the
+            // job was added with and the aging pass does not touch them, so
+            // reading them would hand the compare job the priority this one had
+            // before it waited, and the compare leg would earn every promotion
+            // again from scratch.
+            processClassify({ ...deps, signal }, data, job.priority ?? job.opts.priority ?? DEFAULT_PRIORITY),
+          ),
         ),
       );
     },
@@ -168,9 +174,13 @@ export function startWorkers(deps: WorkerDeps, connection: Redis): RunningWorker
 
   const compare = new Worker(
     QUEUES.compare,
-    async (job) => {
+    async (job, token) => {
       const data = parse(CompareJob, job);
-      await noRetryOnTerminal(() => pausingOnOutage(deps.compare, at("compare", job, data), () => processCompare(deps, data)));
+      await pauses.guard(job, token, data.runId, (signal) =>
+        noRetryOnTerminal(() =>
+          pausingOnOutage(deps.compare, at("compare", job, data), () => processCompare({ ...deps, signal }, data)),
+        ),
+      );
       await queueOntology(deps, data);
     },
     { connection, concurrency: config.COMPARE_CONCURRENCY, limiter: NEVER_REACHED_LIMITER, ...EMAIL_LOCK },
@@ -215,6 +225,7 @@ export function startWorkers(deps: WorkerDeps, connection: Redis): RunningWorker
   return {
     async stop() {
       stopping = true;
+      pauses.stop();
       await Promise.all(workers.map((worker) => worker.close()));
     },
   };

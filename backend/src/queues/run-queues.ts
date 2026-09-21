@@ -16,6 +16,11 @@ export interface RunQueues {
   /** Drops the run's jobs that have not started. Returns how many. */
   removeWaiting(runId: string): Promise<number>;
   /**
+   * Wakes the run's deferred jobs, so a resume restarts the queues on the
+   * click rather than on each job's next recheck. Returns how many.
+   */
+  promoteDelayed(runId: string): Promise<number>;
+  /**
    * Sends one email back through a queue after a person corrected it. The
    * options carry the rerun's own job id: the original is kept for a day after
    * it completes and BullMQ refuses a second under the same one.
@@ -55,12 +60,28 @@ async function countsOf(queue: Queue): Promise<QueueCounts> {
   };
 }
 
+async function jobsOfRun(queue: Queue, runId: string, types: Parameters<Queue["getJobs"]>[0]) {
+  const jobs = await queue.getJobs(types);
+  return jobs.filter((job) => job.id !== undefined && runIdOfJob(job.id) === runId);
+}
+
 async function removeRunJobs(queue: Queue, runId: string): Promise<number> {
-  const jobs = await queue.getJobs([...NOT_STARTED]);
-  const mine = jobs.filter((job) => job.id !== undefined && runIdOfJob(job.id) === runId);
+  const mine = await jobsOfRun(queue, runId, [...NOT_STARTED]);
   // A job that went active in between refuses removal. Its processor sees the cancelled run and stops.
   const removals = await Promise.allSettled(mine.map((job) => job.remove()));
   return removals.filter((removal) => removal.status === "fulfilled").length;
+}
+
+/**
+ * Every delayed job of this run back to waiting. A job the pause gate parked
+ * is the point of it; one waiting out a retry backoff is promoted too, which
+ * is the same answer a person clicking Resume would give.
+ */
+async function promoteRunJobs(queue: Queue, runId: string): Promise<number> {
+  const mine = await jobsOfRun(queue, runId, ["delayed"]);
+  // A job whose delay elapsed in between is no longer delayed and refuses promotion. It is already awake.
+  const promotions = await Promise.allSettled(mine.map((job) => job.promote()));
+  return promotions.filter((promotion) => promotion.status === "fulfilled").length;
 }
 
 export function bullRunQueues(): RunQueues {
@@ -95,6 +116,14 @@ export function bullRunQueues(): RunQueues {
         "remove waiting jobs",
       );
       return removed[0] + removed[1];
+    },
+    async promoteDelayed(runId) {
+      const { classify, compare } = getQueues();
+      const promoted = await bounded(
+        () => Promise.all([promoteRunJobs(classify, runId), promoteRunJobs(compare, runId)]),
+        "wake deferred jobs",
+      );
+      return promoted[0] + promoted[1];
     },
   };
 }

@@ -289,10 +289,30 @@ Replay controller (`ingest/replay.ts`), driven by `core.runs`:
   every email and stands down as `superseded` when the epoch has moved on, so an older job that
   was still waiting, or asleep between two emails, never ingests alongside the new one. If the
   resume job cannot be queued the run goes back to `paused`.
+- Pause commits `paused`, and that word reaches the two queues as well as the ingest loop.
+  `queues/pause-gate.ts` holds both halves. A job that arrives during a pause never starts. A job
+  the pause catches mid-call has that call aborted where it stands: the gate keeps an
+  `AbortController` per job in flight, polls `runs.pausedAmong` once a second for the runs it is
+  holding work for, and the signal reaches the HTTP request through `LlmClient.complete(request,
+  signal)`, so the connection closes, the proxy kills the `claude -p` session behind it and the
+  concurrency slot is handed back. The client reports that as `RunPausedError` and not as the
+  timeout the SDK sees, because the difference decides whether the queue retries the email or
+  parks the job.
+  Either way the job goes back to `delayed` for a minute with its attempts, its priority
+  and its place untouched, and still counts as waiting on the run page. A resume promotes the
+  run's delayed jobs, so both queues restart on the click rather than on each job's next
+  recheck; a failed promotion is logged and the jobs wake on their own.
+  The work a pause abandons is paid for and lost. That is the price of the button meaning what
+  it says, and it is bounded: `classify` reuses a generator answer already in the ledger, so what
+  is lost is the call in flight and nothing behind it.
 - Cancel commits `cancelled`, then removes the run's jobs that have not started. A failed
   removal is logged, not returned. The classify and compare processors return at once for a
   cancelled run, which covers a job that was already active or added a moment later. The run's
   emails stay at the stage they had reached.
+- Pause and cancel both also act from `completed`, because `completed` is the ingest's word and
+  not the pipeline's: a run reads it the moment its last email is enqueued, with both queues
+  still full. A run whose emails have all settled is refused either way, with
+  `a finished run cannot become <status>`.
 - Per email: copy attachments to MinIO under the run prefix, then in one short transaction
   insert `core.emails` (upsert on `email_id`; content is identical across runs),
   `core.attachments` and `core.email_runs`, then enqueue `classify`. Downloads and uploads
@@ -831,6 +851,7 @@ Two schemas. `core` is normalised and written by the pipeline. `analytics` is de
 
 ```sql
 runs               (id uuid pk, source text, rate_per_second numeric, status text,
+                    name text null,              -- what a person called it; null means named by when it started
                     ingest_epoch int default 0,   -- which ingest job owns the run; every resume raises it
                     prompt_set jsonb, started_at, finished_at, created_by text)
 clients            (domain text pk, name text, tier smallint default 3, kind text check (kind in ('customer','internal','forwarder','spam')), updated_at)
@@ -1127,7 +1148,8 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 | `GET /clients`, `PUT /clients/:domain` | every sender domain seen, full-outer-joined to `core.clients`, with its tier, kind, email count and mismatch count, and `known: false` for one nobody has ranked. The `PUT` upserts `{ name?, tier?, kind? }`, writes the `client:priority` hash after Postgres, and changes no category: `kind` is a label a person sets and nothing in the pipeline reads it |
 | `POST /runs` | start a run `{ source, ratePerSecond, limit?, emailIds?, subset?: dev \| holdout, promptSet?: { step: vN }, models?: { step: alias } }`. `subset` reads the id lists in `backend/eval/` (ids only). 400 for an unknown prompt version or a model that is not a proxy alias, before anything is queued |
 | `GET /runs`, `GET /runs/:id` | list, detail with stage counts, `finishedEmails` (done, failed and review), `processingDone`, `elapsedMs` (start to the last email finishing, or to now), queue depth, `promptSet`, `llm` usage with `verifierShare`, `review: { open, byReason }`, `outcomes: { ok, mismatch, byField }` over the compared pairs, score (`lastSubmission.scores` carries the scorer's own `weights`, so a page never assumes them). The list also carries `concurrency: { classify, llm }` from the env. `queues` is `null` when Redis cannot be reached; the rest comes from Postgres and is still served |
-| `POST /runs/:id/pause`, `/resume`, `/cancel` | control the replay |
+| `POST /runs/:id/pause`, `/resume`, `/cancel` | control the replay and both queues |
+| `POST /runs/:id/rename` | `{ name }`, up to 80 characters → the run summary. An empty name clears `core.runs.name` and the run is named by when it started again. Allowed in any status |
 | `POST /runs/:id/submit?force=false` | build submission, post to averis, store scoreboard. 409 when the run holds fewer rows than `totalEmails` (still ingesting) or holds unfinished emails, both overridden by `?force=true`; 409 while another submission for the same run is being scored. The `core.submissions` row is written before the scorer is called and updated with the scoreboard after, so a scorer failure leaves an unscored row (null `scoreboard`, null `final_score`) pointing at the stored payload rather than an orphan payload. Only scored rows count as a run's last submission |
 | `GET /runs/:id/submission.json` | download the payload |
 | `GET /runs/:id/emails?stage=&category=&decidedBy=&outcome=&q=` | paginated list with `category`, `decidedBy`, `confidence`, `verifierCategory`, `outcome` (`not_comparable`, `OK`, `MISMATCH` or a review reason), `defectFields`, `error` |

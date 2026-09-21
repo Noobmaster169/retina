@@ -19,6 +19,16 @@ export const REQUEST_TIMEOUT_MS = 600_000;
  */
 const DEFAULT_MAX_TOKENS = 8000;
 
+/**
+ * The deadline one call runs under: the request timeout, and the caller's own
+ * signal where it has one. A pause aborts through the second while the first
+ * still bounds a call nobody is watching.
+ */
+export function deadline(signal?: AbortSignal): AbortSignal {
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  return signal ? AbortSignal.any([timeout, signal]) : timeout;
+}
+
 export function baseUrl(): string {
   return config.LLM_PROXY_URL.replace(/\/+$/, "");
 }

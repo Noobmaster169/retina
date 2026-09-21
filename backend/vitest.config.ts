@@ -17,6 +17,10 @@ export const TEST_ENV = {
   PG_RO_PASSWORD: "localdev",
   DATABASE_RO_URL: "postgres://retina_ro:localdev@127.0.0.1:5433/retina_test",
   EMAIL_SERVER_URL: "http://127.0.0.1:8080",
+  // Database 1 of the same Redis, so a test that drives real BullMQ workers
+  // cannot hand its jobs to a development worker running on 0, or take one of
+  // that worker's. Nothing else in the project uses a database other than 0.
+  REDIS_URL: "redis://127.0.0.1:6379/1",
   API_SHARED_SECRET: "test-frontend-key",
   TEAM_API_KEY: "test-team-key",
   LOG_LEVEL: "silent",

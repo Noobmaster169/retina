@@ -27,6 +27,8 @@ export interface CompareDeps {
   store: ObjectStore;
   /** Where each call's answer so far is kept while it streams, for the run page. */
   live?: LiveCalls;
+  /** Aborts this job's model calls when its run is paused. Set per job by the pause gate. */
+  signal?: AbortSignal;
 }
 
 const TEXT_CUT = "\n[the text was cut here for length]";
