@@ -1,7 +1,11 @@
 "use client";
 
 import { FilterBar } from "@/components/business/filter-bar";
+import { LIST_COPY } from "@/components/business/list-copy";
 import { ListPage } from "@/components/business/list-page";
+import { MoreBelow } from "@/components/business/more-below";
+import { CARD_STEP, TABLE_STEP } from "@/components/business/soft-page";
+import { useSoftPage } from "@/components/business/use-soft-page";
 import { ShipmentTable } from "@/components/business/shipment-table";
 import { useView } from "@/components/business/use-view";
 import { ViewToggle } from "@/components/business/view-toggle";
@@ -13,11 +17,12 @@ const VIEWS = ["table", "cards"] as const;
 
 export function ShipmentList({ rows, total }: { rows: ShipmentRow[]; total: number }) {
   const [view, setView] = useView("shipment", VIEWS);
+  // The filtering here is the backend's, so the rows that arrive are already
+  // the answer; this only decides how much of the answer is drawn at once.
+  const page = useSoftPage(rows, view === "cards" ? CARD_STEP : TABLE_STEP, view);
   return (
     <ListPage
-      crumb="Shipments"
-      title="Shipments"
-      lede="One shipment per email, as the mail states it: the references, the parties, the lane and the cargo, with the fields the two documents disagreed on."
+      {...LIST_COPY.shipment}
       toolbar={
         <>
           <FilterBar
@@ -47,10 +52,10 @@ export function ShipmentList({ rows, total }: { rows: ShipmentRow[]; total: numb
       }
     >
       {view === "table" ? (
-        <ShipmentTable rows={rows} />
+        <ShipmentTable rows={page.shown} />
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {rows.map((row) => (
+          {page.shown.map((row) => (
             <ShipmentCard key={row.emailId} row={row} />
           ))}
           {rows.length === 0 ? (
@@ -58,6 +63,7 @@ export function ShipmentList({ rows, total }: { rows: ShipmentRow[]; total: numb
           ) : null}
         </div>
       )}
+      <MoreBelow rest={page.rest} sentinel={page.sentinel} />
     </ListPage>
   );
 }

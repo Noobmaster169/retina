@@ -1,5 +1,8 @@
 "use client";
 
+import { MoreBelow } from "@/components/business/more-below";
+import { TABLE_STEP } from "@/components/business/soft-page";
+import { useSoftPage } from "@/components/business/use-soft-page";
 import useSWR from "swr";
 
 import { ClientList } from "@/lib/api/clients-schemas";
@@ -31,6 +34,7 @@ export function ClientsTable({ initialList, initialError }: Props) {
   });
   const clients = data?.clients ?? [];
   const message = error instanceof Error ? error.message : !data ? initialError : null;
+  const page = useSoftPage(clients, TABLE_STEP, "");
 
   return (
     <>
@@ -52,11 +56,12 @@ export function ClientsTable({ initialList, initialError }: Props) {
           </tr>
         </thead>
         <tbody>
-          {clients.map((client) => (
+          {page.shown.map((client) => (
             <ClientRow key={client.domain} client={client} onSaved={() => void mutate()} />
           ))}
         </tbody>
       </table>
+      <MoreBelow rest={page.rest} sentinel={page.sentinel} />
 
       {clients.length === 0 && !message ? (
         <p className="py-10 text-center text-small text-ink-tertiary">
