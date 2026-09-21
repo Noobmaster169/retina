@@ -16,6 +16,7 @@ import { ToastHost } from "@/components/ui/toast";
 import { activeFor, runIdFrom } from "./nav";
 import { NavCountsProvider, useNavCounts } from "./nav-counts";
 import { Rail } from "./rail";
+import { SwrDefaults } from "./swr-defaults";
 
 /**
  * Every screen is this: a rail, then panes a hairline apart, then the dock.
@@ -30,7 +31,17 @@ import { Rail } from "./rail";
  * application as everything else.
  */
 
-const RUNS_MS = 5000;
+/**
+ * The rail's run switcher, on every page whatever it shows.
+ *
+ * It was five seconds, which is twelve requests a minute on a screen that may
+ * have nothing to do with runs, for a list whose rows appear when somebody
+ * creates a run and change state a handful of times an hour. Thirty seconds is
+ * two a minute. Nothing live is served from here: a page that shows a run's
+ * progress polls that run itself, at its own rate, and the runs table polls
+ * this same key faster while it is the thing being read.
+ */
+const RUNS_MS = 30_000;
 
 /**
  * The chat store is outside the frame on purpose. The dock and the Ask Retina
@@ -40,13 +51,15 @@ const RUNS_MS = 5000;
  */
 export function AppShell({ children }: { children: ReactNode }) {
   return (
-    <NavCountsProvider>
-      <ChatStoreProvider>
-        <DockProvider>
-          <Frame>{children}</Frame>
-        </DockProvider>
-      </ChatStoreProvider>
-    </NavCountsProvider>
+    <SwrDefaults>
+      <NavCountsProvider>
+        <ChatStoreProvider>
+          <DockProvider>
+            <Frame>{children}</Frame>
+          </DockProvider>
+        </ChatStoreProvider>
+      </NavCountsProvider>
+    </SwrDefaults>
   );
 }
 

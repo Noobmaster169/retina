@@ -27,20 +27,35 @@ import { useRunActions } from "./use-run-actions";
  * whole argument of the trouble and finished boards.
  */
 
-/** A live run is polled at the rate the phase 7 spec sets; a finished one is not polled at all. */
-const LIVE_MS = 2000;
-const HEALTH_MS = 10_000;
+/**
+ * A live run is polled; a finished one is not polled at all.
+ *
+ * Two polls, at two rates, because they are not worth the same. `SUMMARY_MS`
+ * carries the numbers a person is actually reading: how many are sorted,
+ * checked, differing, waiting for somebody. `SLOTS_MS` carries which email is
+ * in which slot, which is the part that moves fastest and the part nobody is
+ * reading a value off. Both were two seconds, which is sixty requests a minute
+ * from one open tab across the tunnel, for a board whose counts move a few
+ * times a second at most.
+ *
+ * Health is a dependency banner. It was ten seconds; nothing it reports
+ * changes on that scale, and a tunnel or a proxy that has gone away is still
+ * named within half a minute.
+ */
+const SUMMARY_MS = 3000;
+const SLOTS_MS = 4000;
+const HEALTH_MS = 30_000;
 
 export function RunPage({ initialRun }: { initialRun: RunSummary }) {
   const id = initialRun.id;
   const { data: run = initialRun, mutate } = useSWR(`/api/runs/${id}`, parsedFetcher(RunSummary), {
     fallbackData: initialRun,
-    refreshInterval: initialRun.processingDone ? 0 : LIVE_MS,
+    refreshInterval: initialRun.processingDone ? 0 : SUMMARY_MS,
     keepPreviousData: true,
   });
   const live = !run.processingDone;
   const { data: queues } = useSWR(`/api/runs/${id}/queues`, parsedFetcher(RunQueuesView), {
-    refreshInterval: live ? LIVE_MS : 0,
+    refreshInterval: live ? SLOTS_MS : 0,
     keepPreviousData: true,
   });
   const { data: health = null } = useSWR("/api/health", parsedFetcher(HealthReport), {

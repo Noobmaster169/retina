@@ -17,7 +17,8 @@ import { SenderRow } from "./sender-row";
  */
 
 const fetchSenders = parsedFetcher(GateSenderList);
-const EVERY_MS = 5000;
+/** A sender's standing and policy, which a person changes by hand. */
+const EVERY_MS = 15_000;
 
 interface Props {
   initial: GateSenderList | null;

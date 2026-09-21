@@ -15,7 +15,8 @@ import { RunRow } from "./run-row";
  * lives in that page's `What it took` panel, per `05-design.md` section 11.
  */
 
-const POLL_MS = 3000;
+/** The same key the rail reads, so the deduping interval collapses the two into one request. */
+const POLL_MS = 5000;
 const fetchRuns = parsedFetcher(RunList);
 
 interface Props {

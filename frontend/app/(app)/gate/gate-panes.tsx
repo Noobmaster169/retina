@@ -20,7 +20,8 @@ import { SendersTable } from "./senders-table";
  */
 
 const fetchOverview = parsedFetcher(GateOverview);
-const EVERY_MS = 5000;
+/** The spend and the buckets, which move with traffic. */
+const EVERY_MS = 8000;
 
 interface Props {
   overview: GateOverview | null;

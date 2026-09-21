@@ -25,7 +25,8 @@ import { type InboxRow, mergeRows } from "./inbox-rows";
 
 /** The api's own ceiling. A run of 520 is three requests, made at once. */
 const PAGE_SIZE = 200;
-const LIVE_MS = 4000;
+/** Two polls fire together at this rate, so it buys twice what it says. */
+const LIVE_MS = 6000;
 const IDLE_MS = 30000;
 
 interface RunInbox {
