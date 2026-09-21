@@ -1,9 +1,5 @@
-import { DetailSkeleton, PageSkeleton } from "@/components/shell/page-skeleton";
+import { DetailTemplate } from "@/components/business/card-template";
 
 export default function Loading() {
-  return (
-    <PageSkeleton crumbs={["Shipments"]}>
-      <DetailSkeleton />
-    </PageSkeleton>
-  );
+  return <DetailTemplate type="shipment" />;
 }

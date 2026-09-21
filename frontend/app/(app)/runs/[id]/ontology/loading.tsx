@@ -1,11 +1,10 @@
-import { Bar, PageSkeleton } from "@/components/shell/page-skeleton";
+import { Bar, PageFrame, PageHeading } from "@/components/shell/page-skeleton";
 
 export default function Loading() {
   return (
-    <PageSkeleton crumbs={["Runs", "Ontology"]}>
-      <div className="py-5">
-        <Bar className="h-[520px] w-full rounded-xl" />
-      </div>
-    </PageSkeleton>
+    <PageFrame crumbs={["Runs", "Ontology"]}>
+      <PageHeading title="Ontology" />
+      <Bar className="h-[520px] w-full rounded-xl" />
+    </PageFrame>
   );
 }

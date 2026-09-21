@@ -1,9 +1,11 @@
-import { CardGridSkeleton, PageSkeleton } from "@/components/shell/page-skeleton";
+import { CardGridTemplate } from "@/components/business/card-template";
+import { LIST_COPY } from "@/components/business/list-copy";
+import { ListTemplate } from "@/components/shell/page-skeleton";
 
 export default function Loading() {
   return (
-    <PageSkeleton crumbs={["Companies"]}>
-      <CardGridSkeleton />
-    </PageSkeleton>
+    <ListTemplate copy={LIST_COPY.company}>
+      <CardGridTemplate type="party" />
+    </ListTemplate>
   );
 }
