@@ -35,6 +35,7 @@ export function WorldMap({
   lanes = [],
   focus,
   initial,
+  wheel = true,
   visible,
   className = "",
 }: {
@@ -43,13 +44,15 @@ export function WorldMap({
   focus?: string;
   /** The pin picked when the map opens. */
   initial?: string;
+  /** False lets the wheel scroll the page; the buttons and a drag still move the map. */
+  wheel?: boolean;
   /** Ids of the pins the page's filter kept. Undefined keeps every pin. */
   visible?: string[];
   className?: string;
 }) {
   const svg = useRef<SVGSVGElement>(null);
   const box = useRef<HTMLDivElement>(null);
-  const view = useMapView(svg);
+  const view = useMapView(svg, wheel);
   const [hoverPin, setHoverPin] = useState<PlacedPin | null>(null);
   const [hoverLane, setHoverLane] = useState<PlacedLane | null>(null);
   const [selected, setSelected] = useState<string | null>(initial ?? null);

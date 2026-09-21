@@ -62,7 +62,7 @@ export function PortSections({
           <h2 className="mb-2 text-heading font-medium">
             Where it ships <span className="font-mono text-mono-sm text-ink-tertiary">{map.lanes.length} lanes</span>
           </h2>
-          <WorldMap pins={map.pins} lanes={map.lanes} focus={detail.row.id} />
+          <WorldMap pins={map.pins} lanes={map.lanes} focus={detail.row.id} wheel={false} />
           <p className="mt-1 text-caption text-ink-tertiary">
             {detail.row.attributes.lat}, {detail.row.attributes.lon}
             {placedBy}
