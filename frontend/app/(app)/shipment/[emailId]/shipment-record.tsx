@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 import { ShipmentLane } from "@/components/business/shipment-lane";
 import { Chip, toneOf } from "@/components/ui/chip";
@@ -6,8 +7,8 @@ import type { ShipmentDetail } from "@/lib/api/shipments-schemas";
 
 import { none, Row, Section, Thing } from "./record-parts";
 
-/** The whole record, in sections: who, where, what, on what terms, and the email it came from. */
-export function ShipmentRecord({ shipment: s }: { shipment: ShipmentDetail }) {
+/** The whole record, in sections: who, where, what, on what terms, and the email it came from. `route` sits under the cargo, a picture of the lane after the facts. */
+export function ShipmentRecord({ shipment: s, route }: { shipment: ShipmentDetail; route?: ReactNode }) {
   const extras = Object.entries(s.attributes);
   return (
     <div className="grid grid-cols-1 gap-8 px-7 py-6 xl:grid-cols-2">
@@ -29,6 +30,7 @@ export function ShipmentRecord({ shipment: s }: { shipment: ShipmentDetail }) {
           <Row label="Containers">{s.containerCount !== null ? `${s.containerCount} x ${s.containerType ?? "container"}` : none}</Row>
           <Row label="Gross weight">{s.grossWeightKg !== null ? `${s.grossWeightKg.toLocaleString()} kg` : none}</Row>
         </Section>
+        {route}
       </div>
       <div className="space-y-8">
         <Section title="References and terms">

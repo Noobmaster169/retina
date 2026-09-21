@@ -46,13 +46,8 @@ export default async function Page({ params }: PageProps<"/shipment/[emailId]">)
       />
       <TopBar crumbs={[{ label: "Shipments", href: "/shipment" }, { label: reference, mono: true }]} />
       <main className="min-h-0 grow overflow-y-auto">
-        <DetailHeader
-          type="shipment"
-          name={reference}
-          chips={chips}
-          aside={<ShipmentRoute pol={routePort(shipment.pol)} pod={routePort(shipment.pod)} />}
-        />
-        <ShipmentRecord shipment={shipment} />
+        <DetailHeader type="shipment" name={reference} chips={chips} />
+        <ShipmentRecord shipment={shipment} route={<ShipmentRoute pol={routePort(shipment.pol)} pod={routePort(shipment.pod)} />} />
       </main>
     </div>
   );
