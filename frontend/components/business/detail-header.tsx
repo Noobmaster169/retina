@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 
 import { Icon } from "@/components/ui/icons";
-import { flagOf } from "@/lib/flag";
+import { Flag } from "@/components/ui/flag";
+import { flagSrc } from "@/lib/flag";
 
 import { HUE_CLASSES, kindOf } from "./kind";
 
@@ -21,12 +22,12 @@ export function DetailHeader({
 }) {
   const kind = kindOf(type);
   const hue = HUE_CLASSES[kind.hue];
-  const flag = flagOf(countryCode);
+  const flag = flagSrc(countryCode);
   return (
     <div className={`border-b border-hairline px-7 py-5 ${hue.tint}`}>
       <div className="flex items-start gap-4">
         <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-canvas ${hue.text}`} title={countryCode ?? undefined}>
-          {flag ? <span className="text-[26px] leading-none">{flag}</span> : <Icon name={kind.icon} size={20} />}
+          {flag ? <Flag code={countryCode} height={22} /> : <Icon name={kind.icon} size={20} />}
         </span>
         <div className="min-w-0 grow">
           <div className="text-caption text-ink-tertiary">{kind.label}</div>

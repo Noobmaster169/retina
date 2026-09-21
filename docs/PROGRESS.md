@@ -118,8 +118,8 @@ LLM `port-locate` step is gone, with its prompt, its call in the profile pass an
 web alias. In its place `backend/reference/` ships 12,608 ports and 249 countries, and a port is
 placed by the words of its name the moment the resolver creates it, the bracketed code breaking
 ties only. `pnpm ontology:locate` placed all 66 live ports on the first run, 0 missed, and gave
-the 5 profiled companies their country code. The pages draw each thing's flag from its code as
-the main symbol. A person may edit a thing's attributes (source `human`, never overwritten),
+the 5 profiled companies their country code. The pages draw each thing's flag as the main symbol, as an SVG served by the app (265 flags
+from country-flag-icons, MIT), because Windows draws no flag emoji and shows two letters instead. A person may edit a thing's attributes (source `human`, never overwritten),
 rename it (kept by every pass as `human_name`) or fold it into another (recorded as their join
 of every spelling, so the pass keeps them together and the survivor's name). Checked in a
 browser: a city set through the form shows in the header after a reload; GDANSK_POLAND folded

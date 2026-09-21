@@ -1,6 +1,6 @@
 import type { Column } from "@/components/business/data-table";
 import type { EntityRow } from "@/lib/api/ontology-schemas";
-import { flagOf } from "@/lib/flag";
+import { Flag } from "@/components/ui/flag";
 import { formatWhenShort } from "@/lib/when";
 
 const unknown = <span className="text-ink-faint">unknown</span>;
@@ -14,7 +14,13 @@ export function roleCounts(row: EntityRow): { label: string; value: number }[] {
 }
 
 export const COMPANY_COLUMNS: Column<EntityRow>[] = [
-  { key: "name", label: "Company", sort: (r) => r.name, cell: (r) => <span className="font-medium text-kind-company">{flagOf(r.attributes.countryCode) ? `${flagOf(r.attributes.countryCode)} ` : ""}{r.name}</span> },
+  { key: "name", label: "Company", sort: (r) => r.name, cell: (r) => (
+      <span className="inline-flex items-center gap-2 font-medium text-kind-company">
+        <Flag code={r.attributes.countryCode} height={12} />
+        {r.name}
+      </span>
+    ),
+  },
   { key: "kind", label: "Kind", width: "140px", sort: (r) => r.attributes.kind ?? "", cell: (r) => r.attributes.kind ?? unknown },
   {
     key: "where",

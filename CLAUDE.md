@@ -132,7 +132,7 @@ needed.
   its own `retryable` verdict. Never swallow an error; never `catch {}`.
 - Comments say why, never what. No banner comments, no commented-out code, no TODO without a
   `PROGRESS.md` entry.
-- No emoji in code, logs, or docs. A country flag drawn from an ISO code at render time (`lib/flag.ts`) is data, not an emoji in code.
+- No emoji in code, logs, or docs. A country flag is an SVG file under `frontend/public/flags/`, drawn by `components/ui/flag.tsx` from an ISO code; never a flag emoji, which Windows cannot draw.
 - Logging: pino, one logger per module, always include `runId`, `emailId`, `stage` when known.
 - Config only from `config.ts`. No `process.env` anywhere else.
 - Async everywhere; no `.then` chains; no fire-and-forget promises.

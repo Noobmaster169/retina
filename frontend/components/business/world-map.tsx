@@ -7,6 +7,8 @@ import { feature } from "topojson-client";
 import type { GeometryCollection, Topology } from "topojson-specification";
 import world from "world-atlas/countries-110m.json";
 
+import { Flag } from "@/components/ui/flag";
+
 import { radiusFor } from "./map-scale";
 
 /**
@@ -25,7 +27,7 @@ export interface MapPin {
   href: string;
   loading: number;
   discharge: number;
-  flag?: string | null;
+  countryCode?: string | null;
 }
 
 const WIDTH = 960;
@@ -67,7 +69,10 @@ export function WorldMap({ pins, focus }: { pins: MapPin[]; focus?: string }) {
       </svg>
       {hover ? (
         <div className="pointer-events-none absolute left-3 top-3 rounded-md border border-hairline bg-canvas px-3 py-2 text-small shadow-overlay">
-          <span className="block font-medium text-kind-port">{hover.flag ? `${hover.flag} ` : ""}{hover.name}</span>
+          <span className="flex items-center gap-2 font-medium text-kind-port">
+            <Flag code={hover.countryCode} height={12} />
+            {hover.name}
+          </span>
           <span className="block text-caption text-ink-tertiary">
             {hover.loading} loading, {hover.discharge} discharge
           </span>
