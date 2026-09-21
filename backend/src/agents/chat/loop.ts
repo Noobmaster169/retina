@@ -95,7 +95,7 @@ export async function runTurn(deps: LoopDeps, input: TurnInput): Promise<TurnRes
 
   for (let step = 1; step <= MAX_STEPS; step++) {
     const { injected, bodies: skillBodies } = skillsForStep({
-      scope: input.scope,
+      scope: { ...input.scope, contextKinds: input.scope.context.map((item) => item.ref.kind) },
       guardRefused: calls.some((call) => call.guardRefused),
       cameUpEmpty: calls.some((call) => call.cameUpEmpty),
       ambiguous: calls.some((call) => call.ambiguous),
