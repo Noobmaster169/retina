@@ -2,9 +2,9 @@ import { Router } from "express";
 import type { Pool } from "pg";
 import { z } from "zod";
 
-import { type EntityDetail, type EntityList, ObjectType } from "../contracts";
+import { type CounterpartList, type EntityDetail, EntityKind, type EntityList, ObjectType } from "../contracts";
 import { emailGraph, isBuilt, listTypes, objectRecord } from "../ontology/objects";
-import { entityDetail, entityProfile, entityValues, entities } from "../ontology/repositories";
+import { entityAround, entityDetail, entityProfile, entityValues, entities } from "../ontology/repositories";
 
 /**
  * The model as a model: what types exist, what one object holds, what links
@@ -42,7 +42,8 @@ export function ontologyRouter(deps: OntologyRouteDeps): Router {
       res.status(400).json({ error: "no such object type" });
       return;
     }
-    if (type.data !== "port" && type.data !== "party") {
+    const kind = EntityKind.safeParse(type.data);
+    if (!kind.success) {
       res.status(404).json({
         error: `${type.data} is a table, not a resolved thing: read it through /database/tables`,
         built: isBuilt(type.data),
@@ -52,7 +53,7 @@ export function ontologyRouter(deps: OntologyRouteDeps): Router {
     const body: EntityList = {
       type: type.data,
       built: true,
-      entities: await entities.listByKind(pool, type.data),
+      entities: await entities.listByKind(pool, kind.data),
     };
     res.json(body);
   });
@@ -82,8 +83,8 @@ export function ontologyRouter(deps: OntologyRouteDeps): Router {
    */
   router.get("/:type/:id/detail", async (req, res) => {
     const type = TypeParam.safeParse(req.params.type);
-    if (!type.success || (type.data !== "port" && type.data !== "party")) {
-      res.status(404).json({ error: "only a port or a party is a resolved thing" });
+    if (!type.success || !EntityKind.safeParse(type.data).success) {
+      res.status(404).json({ error: "only a resolved thing has a detail" });
       return;
     }
     const row = await entities.find(pool, req.params.id);
@@ -130,6 +131,28 @@ export function ontologyRouter(deps: OntologyRouteDeps): Router {
       return;
     }
     res.json(graph);
+  });
+
+  /** The things seen beside one thing: a company's ports and people, a port's companies. */
+  router.get("/:type/:id/:beside", async (req, res) => {
+    const { type, id, beside } = req.params;
+    const readers: Record<string, ((db: Pool, id: string) => Promise<CounterpartList["counterparts"]>) | undefined> = {
+      "party/people": entityAround.people,
+      "party/ports": entityAround.ports,
+      "port/parties": entityAround.parties,
+    };
+    const reader = readers[`${type}/${beside}`];
+    if (!reader) {
+      res.status(404).json({ error: `nothing is listed beside a ${type} as ${beside}` });
+      return;
+    }
+    const row = await entities.find(pool, id);
+    if (!row || row.type !== type) {
+      res.status(404).json({ error: "no such thing" });
+      return;
+    }
+    const body: CounterpartList = { counterparts: await reader(pool, id) };
+    res.json(body);
   });
 
   return router;

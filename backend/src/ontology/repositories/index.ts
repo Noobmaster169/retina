@@ -20,6 +20,7 @@ export * as entityInputs from "./entities.inputs";
 export * as entityResolution from "./entities.resolution";
 export * as entityOverview from "./entities.overview";
 export * as entitySearch from "./entities.search";
+export * as entityAround from "./entities.around";
 export * as entityDetail from "./entities.detail";
 export * as entityValues from "./entities.values";
 export * as entityDossier from "./entities.dossier";
