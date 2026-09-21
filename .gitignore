@@ -38,3 +38,8 @@ backend/eval/reports/
 # the clone dirty on the box, and auto-deploy.sh refuses to touch a dirty tree.
 *.egg-info/
 proxy/uv.lock
+
+# Dropped-in datasets. The 5,000-email set is 15 MB zipped and 148 MB open, and
+# it carries an answer key of its own: it is mounted, never committed.
+*.zip
+emails/data_5k/

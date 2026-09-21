@@ -66,13 +66,25 @@ services:
   # The Averis kit from ../emails: the inbox and the scorer. The answer key is
   # mounted here and nowhere else. Same service `docker compose up` in emails/
   # starts, so run one or the other, not both (they share port 8080).
+  #
+  # `INBOX_DATA` is which set it serves. Unset it is the organisers' 520, which
+  # is what every number in docs/ was measured against and what the committed
+  # eval split names. Point it at another bundle of the same shape and the whole
+  # stack reads that instead, with no code change anywhere: the server takes the
+  # directory as configuration, and the api only ever sees it over HTTP.
+  #
+  #   INBOX_DATA=../emails/data_5k docker compose -f compose.local.yaml up -d inbox
+  #
+  # A set that lives outside git (data_5k is 145 MB and carries an answer key of
+  # its own) is a path on this machine, so it is a variable and not a second
+  # compose file. README.md, "Run a different inbox", has the rest.
   inbox:
     build: ../emails/server
     ports:
       - "127.0.0.1:8080:8000"
     volumes:
-      - ../emails/data_v2:/data:ro
-      - ../emails/data_v2/ground_truth.json:/secrets/ground_truth.json:ro
+      - ${INBOX_DATA:-../emails/data_v2}:/data:ro
+      - ${INBOX_DATA:-../emails/data_v2}/ground_truth.json:/secrets/ground_truth.json:ro
     environment:
       DATA_DIR: /data
       GROUND_TRUTH: /secrets/ground_truth.json
