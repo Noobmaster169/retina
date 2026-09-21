@@ -95,7 +95,7 @@ settled is refused either way. A pause also aborts the model calls already in fl
 holds an AbortController per job, the signal reaches the HTTP request, and the proxy kills the
 `claude -p` session behind it, so the concurrency slot comes back rather than being held for the
 rest of a ten minute generation. That call's tokens are lost, which is the price of the button
-meaning what it says. Migration `027_run_name.sql` adds `core.runs.name` and
+meaning what it says. Migration `028_run_name.sql` adds `core.runs.name` and
 `POST /runs/:id/rename`; the run page's title is edited in place and saved on blur. The shell's
 search field is gone: it had been inert since phase 7.
 
