@@ -3,6 +3,7 @@ import {
   CounterpartList,
   EntityDetail,
   EntityList,
+  EntityRow,
   type Lane,
   LaneList,
   ObjectGraph,
@@ -89,6 +90,16 @@ export async function getObjectRecord(
 /** The four parts a resolved thing opens into. */
 export async function getEntityDetail(type: EntityKind, id: string): Promise<EntityDetail | null> {
   return orNull(get(EntityDetail, `/ontology/${type}/${encodeURIComponent(id)}/detail`));
+}
+
+/**
+ * One resolved thing, small, for the card a chat mention opens on hover.
+ *
+ * By id alone: a link in an answer carries the id the agent was shown, and the
+ * kind comes back on the row rather than having to be known to ask.
+ */
+export async function getEntityPreview(id: string): Promise<EntityRow | null> {
+  return orNull(get(EntityRow, `/ontology/entity/${encodeURIComponent(id)}/preview`));
 }
 
 /** One email, one or two hops out, as nodes and named edges. Carries no coordinates: the layout is ours. */
