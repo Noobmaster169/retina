@@ -1,9 +1,11 @@
 # Progress
 
-Current phase: **10f, merged to `main`.** 10a to 10f are all on it. Phase 7's two `[~]` items are
-still under "Deferred" below.
+Current phase: **13, on `phase-13-business-data`.** 10a to 10f are merged to `main`.
 
-**Start at `docs/phases/phase-10f-semantic-layer.md`**, whose header now carries the list of every
+**Start at `docs/phases/phase-13-business-data.md`.** Phase 7's two `[~]` items are still under
+"Deferred" below.
+
+For the state 10f left, read `docs/phases/phase-10f-semantic-layer.md`, whose header now carries the list of every
 place the repo and that spec disagreed and what the bench found. Then
 `docs/phases/phase-10f-handover.md` for what 10e left and the traps, which all still apply.
 

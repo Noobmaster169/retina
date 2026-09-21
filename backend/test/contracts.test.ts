@@ -4,7 +4,8 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { Category, ComparisonField, ComparisonStatus, ReviewReason, SubmissionRow } from "../src/contracts";
+import { profileSchema } from "../src/agents";
+import { AttributeSource, Category, ComparisonField, ComparisonStatus, LOCATED_KEYS, PortAttributes, ReviewReason, SubmissionRow } from "../src/contracts";
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const scoringPy = readFileSync(join(repo, "emails", "server", "scoring.py"), "utf8");
@@ -70,5 +71,28 @@ describe("SubmissionRow", () => {
     ["a field that is not one of the seven", { defect_fields: ["vessel"] }],
   ])("refuses %s", (_name, change) => {
     expect(SubmissionRow.safeParse({ ...row, ...change }).success).toBe(false);
+  });
+});
+
+describe("a port's coordinates", () => {
+  it("are two attributes the profile step never writes", () => {
+    expect(
+      PortAttributes.parse({ country: null, region: null, subregion: null, locode: null, coast: null, lat: "1.2644", lon: "103.8200" }).lat,
+    ).toBe("1.2644");
+    expect(LOCATED_KEYS).toEqual(["lat", "lon"]);
+    const shape = profileSchema("port").safeParse({
+      summary: "s",
+      observed: "o",
+      general: null,
+      generalConfidence: null,
+      attributes: { country: null, region: null, subregion: null, locode: null, coast: null },
+      attributeBasis: {},
+      unknowns: [],
+    });
+    expect(shape.success).toBe(true);
+  });
+
+  it("may come from a search", () => {
+    expect(AttributeSource.parse({ source: "search", confidence: 0.9 }).source).toBe("search");
   });
 });

@@ -479,6 +479,15 @@ feedback without being able to ship them unchecked.
 - [ ] Demo runs end to end twice in a row from a cold start.
 - [ ] Rollback via `auto-deploy.sh` tested once on purpose.
 
+## Phase 13: Business data pages and the chat dock
+
+**Goal.** Companies, ports and shipments get pages of their own, with card, table and map
+views, and the chat becomes a dock that survives navigation and carries the open page as context.
+
+**Build.** See `docs/phases/phase-13-business-data.md`.
+
+**Exit checklist.** As the phase doc lists it.
+
 ## PROGRESS.md template
 
 ```markdown
