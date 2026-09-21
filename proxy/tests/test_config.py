@@ -61,20 +61,10 @@ def test_the_shipped_config_still_refuses_an_exposed_bind_nobody_chose(monkeypat
 def test_the_shipped_config_offers_the_claude_aliases_and_the_mock_only(monkeypatch):
     monkeypatch.delenv("LLM_PROXY_HOST", raising=False)
     aliases = {entry.model_name for entry in load(SHIPPED).model_list}
-    assert aliases == {"sonnet", "opus", "haiku", "sonnet-web", "test"}
+    assert aliases == {"sonnet", "opus", "haiku", "test"}
 
 
 def test_the_shipped_config_gives_claude_no_tools(monkeypatch):
     monkeypatch.delenv("LLM_PROXY_HOST", raising=False)
     assert load(SHIPPED).providers["claudecli"].tools == []
 
-
-def test_the_web_rail_has_exactly_web_search_and_only_port_locate_names_it(monkeypatch):
-    # Phase 13: `sonnet-web` exists for the port-locate step, whose input is a
-    # port's own attributes. The plain rail stays without tools, so a crafted
-    # email still has nothing to steer.
-    monkeypatch.delenv("LLM_PROXY_HOST", raising=False)
-    config = load(SHIPPED)
-    assert config.providers["claudecli_web"].tools == ["WebSearch"]
-    web = next(entry for entry in config.model_list if entry.model_name == "sonnet-web")
-    assert web.params.model == "claudecli_web/sonnet"

@@ -20,6 +20,7 @@ import { requestLog } from "./routes/request-log";
 import { emailsRouter } from "./routes/emails.routes";
 import { evalRouter } from "./routes/eval.routes";
 import { filesRouter } from "./routes/files.routes";
+import { ontologyEditRouter } from "./routes/ontology.edit.routes";
 import { ontologyRouter } from "./routes/ontology.routes";
 import { shipmentsRouter } from "./routes/shipments.routes";
 import { reviewRouter } from "./routes/review.routes";
@@ -84,6 +85,7 @@ export function createApp(deps: AppDeps): express.Express {
   app.use("/clients", clientsRouter({ pool: deps.pool, priority: deps.priority }));
   app.use("/emails", emailsRouter());
   app.use("/ontology", ontologyRouter({ pool: deps.pool }));
+  app.use("/ontology", ontologyEditRouter({ pool: deps.pool }));
   app.use("/shipments", shipmentsRouter({ pool: deps.pool }));
   app.use("/database", databaseRouter({ pool: deps.pool }));
   app.use("/runs", runsRouter(deps));

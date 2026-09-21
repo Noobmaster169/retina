@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { profileSchema } from "../src/agents";
-import { AttributeSource, Category, ComparisonField, ComparisonStatus, LOCATED_KEYS, PortAttributes, ReviewReason, SubmissionRow } from "../src/contracts";
+import { AttributeSource, Category, ComparisonField, ComparisonStatus, PortAttributes, REFERENCE_PORT_KEYS, ReviewReason, SubmissionRow } from "../src/contracts";
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const scoringPy = readFileSync(join(repo, "emails", "server", "scoring.py"), "utf8");
@@ -75,11 +75,11 @@ describe("SubmissionRow", () => {
 });
 
 describe("a port's coordinates", () => {
-  it("are two attributes the profile step never writes", () => {
+  it("are attributes the profile step never writes", () => {
     expect(
-      PortAttributes.parse({ country: null, region: null, subregion: null, locode: null, coast: null, lat: "1.2644", lon: "103.8200" }).lat,
+      PortAttributes.parse({ country: null, region: null, subregion: null, locode: null, coast: null, countryCode: "SG", lat: "1.2644", lon: "103.8200" }).lat,
     ).toBe("1.2644");
-    expect(LOCATED_KEYS).toEqual(["lat", "lon"]);
+    expect(REFERENCE_PORT_KEYS).toEqual(["countryCode", "lat", "lon"]);
     const shape = profileSchema("port").safeParse({
       summary: "s",
       observed: "o",
@@ -92,7 +92,8 @@ describe("a port's coordinates", () => {
     expect(shape.success).toBe(true);
   });
 
-  it("may come from a search", () => {
-    expect(AttributeSource.parse({ source: "search", confidence: 0.9 }).source).toBe("search");
+  it("may come from the reference list or a person", () => {
+    expect(AttributeSource.parse({ source: "reference" }).source).toBe("reference");
+    expect(AttributeSource.parse({ source: "human" }).source).toBe("human");
   });
 });

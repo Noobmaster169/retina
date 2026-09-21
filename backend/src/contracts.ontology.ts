@@ -241,3 +241,19 @@ export const EntityDetail = z.object({
   appearanceCount: z.number().int(),
 });
 export type EntityDetail = z.infer<typeof EntityDetail>;
+
+/** What a person may send from a company's or a port's page. Every write names who made it, as review actions do. */
+const Actor = z.string().min(1).max(120);
+
+export const EditAttributesBody = z.object({
+  actor: Actor,
+  /** A subset of that kind's attributes. Keys are checked against the kind's schema at the route; null clears one. */
+  attributes: z.record(z.string(), z.string().max(200).nullable()).refine((a) => Object.keys(a).length > 0, "nothing to change"),
+});
+export type EditAttributesBody = z.infer<typeof EditAttributesBody>;
+
+export const RenameBody = z.object({ actor: Actor, name: z.string().trim().min(1).max(200) });
+export type RenameBody = z.infer<typeof RenameBody>;
+
+export const MergeBody = z.object({ actor: Actor, into: z.string().regex(/^\d+$/) });
+export type MergeBody = z.infer<typeof MergeBody>;

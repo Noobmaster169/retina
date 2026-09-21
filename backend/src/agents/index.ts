@@ -13,7 +13,6 @@ export { type EntityResolveInput, EntityResolveOutput, type ResolveCandidate, re
 export { type EntityProfileInput, type ProfileOutput, profileSchema, writeProfile } from "./entity-profile";
 export { judgeFields, type JudgeOutput, judgeSchema } from "./field-judge";
 export { type LlmClient, type LlmRequest, type LlmResponse, proxyLlmClient } from "./llm-client";
-export { locatePort, type PortLocateInput, PortLocateOutput } from "./port-locate";
 export { completePromptSet, envModel, pinPromptSet, promptFor } from "./prompts/prompt-set";
 export type { Prompt } from "./prompts/registry";
 export type { StructuredDeps } from "./structured";

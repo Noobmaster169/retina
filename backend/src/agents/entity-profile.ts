@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { ATTRIBUTES, type EntityKind, EntityProfile, PortAttributes } from "../contracts";
+import { ATTRIBUTES, type EntityKind, EntityProfile, PartyAttributes, PortAttributes } from "../contracts";
 import type { Dossier } from "../pipeline/ontology";
 import { WORKER_PROJECT } from "./classify";
 import type { Prompt } from "./prompts/registry";
@@ -23,9 +23,11 @@ import { callStructured, type StructuredDeps, type StructuredResult } from "./st
  * top-level union is refused by the provider, and a schema that allowed every
  * kind's attributes would let a port answer with an HS chapter.
  */
-/** A port's profile leaves the located keys to the locate step; guessing a coordinate is worse than a missing pin. */
+/** The keys the reference list owns are never the model's to guess: a coordinate or a country code a model made up is worse than none. */
 function attributesFor(kind: EntityKind): z.ZodType {
-  return kind === "port" ? PortAttributes.omit({ lat: true, lon: true }) : ATTRIBUTES[kind];
+  if (kind === "port") return PortAttributes.omit({ countryCode: true, lat: true, lon: true });
+  if (kind === "party") return PartyAttributes.omit({ countryCode: true });
+  return ATTRIBUTES[kind];
 }
 
 export function profileSchema(kind: EntityKind): z.ZodType<ProfileOutput> {
