@@ -48,7 +48,7 @@ export interface Destination {
 export const DESTINATIONS: Destination[] = [
   { key: "overview", label: "Overview", icon: "home", path: "", cluster: "operations" },
   { key: "inbox", label: "Inbox", icon: "mail", path: "/inbox", cluster: "operations" },
-  { key: "database", label: "Database", icon: "table", path: "/database", cluster: "operations" },
+  { key: "database", label: "Database", icon: "table", path: "/database", cluster: "operations", hidden: true },
   { key: "ontology", label: "Ontology", icon: "graph", path: "/ontology", cluster: "operations" },
   { key: "chat", label: "Ask Retina", icon: "chat", path: "/chat", cluster: "operations" },
   { key: "company", label: "Companies", icon: "party", path: "/company", cluster: "business", global: true },

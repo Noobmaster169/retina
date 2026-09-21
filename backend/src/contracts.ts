@@ -82,8 +82,14 @@ export const LlmUsage = z.object({
 });
 export type LlmUsage = z.infer<typeof LlmUsage>;
 
+/** What a person renamed a run to. Empty takes the name back and the run is named by its clock again. */
+export const RenameRunBody = z.object({ name: z.string().trim().max(80) });
+export type RenameRunBody = z.infer<typeof RenameRunBody>;
+
 export const RunSummary = z.object({
   id: z.string(),
+  /** What a person called this run. Null when nobody has, and the client names it by when it started. */
+  name: z.string().nullable(),
   /** `completed` means ingestion finished, not processing; `processingDone` says that. */
   status: RunStatus,
   ratePerSecond: z.number(),

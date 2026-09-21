@@ -14,6 +14,182 @@ See "Design decisions (classify stage invariant)" below for what was wrong and w
 measured against. **The holdout and the full 520 have not been rerun under the new prompts** and
 are the two numbers that decide whether E2E moves off 0.97.
 
+**2026-09-22: the run page's controls, and pause reaching the queues.** Pausing a run used to
+stop only the ingest loop, so a run paused with four hundred emails already enqueued went on
+spending model calls until both queues drained. Every classify and compare job now reads the
+run's status first and a paused run's job goes back to `delayed` for a minute
+(`queues/pause-gate.ts`), spending no attempt; a resume promotes them so the queues restart on
+the click. Pause and cancel also act from `completed`, which is the ingest's word and not the
+pipeline's: the two buttons used to vanish the moment the last email was enqueued, with both
+queues still full, which is most of why they read as not working. A run whose emails have all
+settled is refused either way. A pause also aborts the model calls already in flight: the gate
+holds an AbortController per job, the signal reaches the HTTP request, and the proxy kills the
+`claude -p` session behind it, so the concurrency slot comes back rather than being held for the
+rest of a ten minute generation. That call's tokens are lost, which is the price of the button
+meaning what it says. Migration `027_run_name.sql` adds `core.runs.name` and
+`POST /runs/:id/rename`; the run page's title is edited in place and saved on blur. The shell's
+search field is gone: it had been inert since phase 7.
+
+`test/queues/pause-resume.integration.test.ts` is the first test in the repo to drive real
+BullMQ workers. `TEST_ENV.REDIS_URL` now points at **database 1** of the same Redis so it cannot
+take a development worker's jobs or lose its own; nothing else in the project uses a database
+other than 0. It covers the state the run page is in for most of a replay, which is also the one
+that was hardest to reason about: ingest finished, the run reading `completed`, a model call in
+flight. Pause abandons the call, parks the job with nothing failed, leaves the email at
+`classifying`, and the resume has the model asked again.
+
+**The run overview speaks English now**, and it is the only screen that does. `not_comparable`,
+`MISMATCH` and `wrong_doc_type` are precise and they are not words a business owner knows, and
+this is the screen they open first. Every outcome carries both names in
+`components/run/outcomes.ts`: the enum is still the key, still what the scorer speaks and still
+what the tooltip shows, and the label is what the pie, the bars and the lane-end chips say.
+`docs/05-design.md` principle 4 was amended in the same commit to name the exception and its
+edge. Nothing on a working screen translates and nothing stored or submitted changed.
+
+The finished run's board is now the outcomes chart and the machinery panel only. The score panel
+is gone and the one primary button is `Score run`, which submits and lands on
+`/runs/:id/results`, or `Go to review` once it has been submitted. `docs/05-design.md` section
+4.8 was corrected in the same commit: the outcomes chart is the one chart the product has.
+
+**2026-09-22: four readability fixes on the email pane and the dock.** The message card renders
+the body `whitespace-pre-wrap`: emails arrive with their own line breaks and a signature block
+that is a stack of short lines, and collapsing them ran the whole email into one paragraph. The
+seam's label is `Retina's reading` rather than the sentence *Below this line is Retina, not the
+sender*, which spent a sentence on a boundary the bordered card above already draws. The `Links
+to` strip is gone from the email pane: its three counts were the tab counts again, and none of
+its chips was a destination. In the dock the starter questions moved out of the composer into
+`components/chat/suggestions.tsx` and now sit above the `Reading` strip, so a starter is read
+before what would be sent with it; one consequence is that a starter no longer carries a skill
+picked in the composer. `03-infra-deep.md` section 13, `05-design.md` sections 7 and 8 and
+`design/screen-blueprints.md` section 5 were corrected in the same commit. The `Links to` strip
+stays in phase 7's build list in `04-phases.md`, which records what that phase built.
+
+**2026-09-22: the inbox sits under one bar, like every other screen.** The list used to start at
+the top of the window under its own `Inbox` heading, with the breadcrumb rendered by whichever
+pane was beside it, so the shell's header stopped halfway across and there was no bar at all over
+the list. `InboxPage` now owns a single `TopBar` spanning both columns, carrying the open email as
+its last crumb, the phone's way back to the list, and `DockToggle`. `NothingOpen` no longer draws
+a bar, `InboxList` no longer repeats the word `Inbox` above a filter bar that already counts the
+run, and `EmailPane` no longer carries a back button or a dock toggle of its own. That last one
+supersedes the fix earlier today that gave `EmailPane` its own `DockToggle`: the control is back
+where `dock-toggle.tsx` says it lives, on a top bar.
+
+**2026-09-22: three more on the email pane, and the filter chips.** An attachment chip on the
+message card opens the document sheet the `Both documents` tab already opened, so a file is
+readable from the message that carried it; `MessageCard` takes `documents` now instead of a
+`sizes` map, and a chip with nothing read from it yet is still drawn, as a chip that does not
+press. The `Model calls` tab is gone from the pane; `CallsTab` stays, because the results page
+reads it, so the run's calls are still on screen somewhere. The inbox's filter chips are drawn at
+one of three weights by what they hold rather than all in one grey: `emphasisOf` in
+`inbox-filters.ts` is the rule, table-driven test beside it. `03-infra-deep.md` section 13,
+`05-design.md` section 8 and `design/screen-blueprints.md` section 5 were corrected in the same
+commit.
+
+**2026-09-22: the email pane's four tabs, and which of them appear.** `Both documents` was a table
+about the two documents; it is the two documents now, embedded side by side under one reading
+control, and the table it used to be is `Report`. The readings they share (`As it arrived`, `As
+the parser read it`) moved out of `document-sheet.tsx` into `document-reading.tsx`, which both
+draw from. `Model calls` is back, as a timeline rather than the raw JSON that made it worth
+opening for nobody: a dot per call on one rule, and per step a sentence read out of the
+structured answer by `call-reading.ts`, which narrows each step's shape with a schema of its own
+and invents nothing for a shape it does not know. Table-driven test beside it, fixtures copied
+from a real run's `llm_calls`.
+
+Only `The check` is always drawn. `Report` needs judged fields, `Both documents` needs documents,
+`Model calls` needs a call, and most of this inbox is a mail with no pair at all. The tab being
+read still belongs to the screen; an email that does not offer it falls back to `The check`
+without forgetting it, so the next one that does offer it opens there again.
+
+**2026-09-22: a mismatch's recommendation drafts a real reply.** `Recommend action`'s answer now
+carries a structured `EmailDraft` (`contracts.chat-agent.ts`) beside its prose: `to`, `subject`,
+`body`, rendered by a new `EmailDraftCard` in the dock with an `Open in Gmail` button and a `Copy
+the message` fallback. `recommend-action` is `v2`: it now calls `get_email` for the sender's
+address (the tool did not carry one; `from` and `subject` are added to its summary alongside
+`stage`, `category`, and the rest), and puts the message in `email_draft` on its final step instead
+of writing the whole thing twice, once in prose and once in the card.
+
+The card opened as a `mailto:` link first, and moved to Gmail's own compose URL after testing found
+it dead: a dev machine commonly has no mail client registered with the OS, so the browser hands the
+`mailto:` off and nothing is there to catch it, silently. Gmail's link is an ordinary `https://` URL
+and needs no OS handler, so it is the one button rather than a `mailto:` primary with a Gmail
+fallback beside it, which is what shipped in between.
+
+The address is not taken on trust. `draftIsReal` (`agents/chat/draft.ts`) checks `to` against
+`grounds`, the same way `next-moves.ts` checks an alternative's number, and `assemble()` in
+`loop.result.ts` drops the draft, silently, if the check fails: a draft nobody could verify is
+worse than none. Table-driven test alongside it, five cases including a domain the model could
+plausibly compose and a substring match that is not the same address.
+
+The chat prompt moved to `v7`: a fifth field beside `outcome`/`checked`/`next`/`clarify`, and one
+rule that the prose must not restate a drafted message since the card is where it is read.
+`03-infra-deep.md` section 5.7 and `05-design.md` section 7 were written in the same commit.
+
+Checked end to end on `email_097` (roxcel.at) and `email_043` (fujitogrp.com): the agent called
+`explain_decision`, `get_email` and two `run_sql` reads, recommended a named action per field, and
+the card opened with `to` exactly as `get_email` returned it and a subject naming both fields. The
+`mailto:` version's link was confirmed spec-correct (RFC 6068, CRLF between paragraphs, `%20` for
+spaces) and still failed to open in testing, because the machine had no mail client registered with
+Windows (`HKLM\SOFTWARE\Clients\Mail` defaulted to a browser); the Gmail link that replaced it
+opened correctly on the same machine.
+
+Also found while testing this: two duplicate `pnpm dev` / `pnpm dev:worker` stacks were running
+from earlier sessions, one of them a non-watching `start` process quietly serving 8091 with stale
+code while its watching sibling sat idle. Stopped the older stack and forced the surviving watcher
+to respawn. Worth a `Get-Process node` check whenever a change does not seem to land.
+
+**2026-09-22: two things that were pushing the verdict off the screen.** The message card folds
+its body at fourteen lines, under a control naming how many are hidden, measured rather than
+counted because the body wraps. The fold is applied first and the overflow read back from it: a
+fold conditional on the overflow never clamps, never overflows and never offers itself, which is
+the bug the first version had. The attachment chips sit outside the fold. And the model calls
+timeline folds every entry to one line (step, clock, what it decided, latency), with the facts,
+the reasoning, the tokens and the raw answer behind the press; a failed call says its reason on
+the folded line. Seven calls went from about a thousand pixels to 264.
+
+**2026-09-22: `Export` on the report tab.** `/report/{runId}/{emailId}` is the check as a
+document, outside the `(app)` group so no rail, dock or tab strip has to be hidden for print.
+`?print=1` opens the print dialog on arrival and the browser's own print to PDF is the export:
+real type, selectable text in the saved file, and no PDF library added to draw it. The page
+title is the filename the browser offers. `report-figures.ts` is the pure part, table-driven test
+beside it, and it counts the tallies and the spend from the rows and the calls rather than
+reading any field that claims a total. The document has no timeline in it. `report-tab.tsx`
+crossed the 200 line rule with the control, so the verdict bar moved to `report-verdict.tsx`.
+
+Worth knowing before somebody sends the URL: the page is behind the site gate like every other,
+so a link reaches only someone with `SITE_PASSWORD`. The PDF is the thing to send.
+
+**2026-09-22: a mismatch has a next step.** A MISMATCH had no write path at all (`ReviewActionKind`
+only exists on an open case), so the report tab ended at naming the field. `Recommend action` on
+the footer opens the dock with the email attached and the new `recommend-action` skill picked.
+The skill makes the agent read `explain_decision` first, refuse to recommend chasing a supplier
+over a field whose quote was never found, look the sender and the field up in
+`analytics.agg_client_run` and `analytics.fact_field_diff`, then answer in a fixed shape with one
+action per field from a named set of five (`amend_the_draft`, `confirm_with_shipper`,
+`hold_and_escalate`, `check_retinas_reading`, `no_action`) and a draft reply to copy. The names
+are ours, they live in the conversation, and nothing writes them: adding to the organisers' enums
+is what the rules forbid.
+
+The dock grew one channel for this: `ask(question, skills)` on `DockState`, taken once by a
+`PendingAsk` component in the thread. A page can now put a question on someone's behalf without
+owning a chat.
+
+Checked end to end on `email_097` (roxcel.at, container_count and gross_weight_kg): the agent ran
+`explain_decision`, two SQL reads and `get_email`, recommended `hold_and_escalate` on the weight
+and `confirm_with_shipper` on the count, wrote a usable reply, and marked its one inference as
+its own rather than as something the data states.
+
+Also gone: the sixty pixel bar saying "Both documents were read and judged. Nothing here is
+waiting for a person." on every email with no case. `ActionBar` returns null there now.
+
+**Open, and worth a look before the demo: the queue holds.** Every pipeline call streams (the
+run page's live preview sets `onText`), and the proxy's `claude_cli` provider only runs its
+30/90/300/900s backoff ladder in `_complete`, the non-streaming path. A streamed call that hits
+a rate limit yields `retryable: true` straight through, the backend retries twice at about one
+and three seconds, and then the queue is held for thirty seconds. So the pipeline gets four
+seconds of patience where the proxy was built to give it twenty minutes. The held chip and the
+dependency chip that showed this were removed from the run page as noise; the hold itself is
+real and still in the logs and in the queue panel's own sentence.
+
 **2026-09-21: phase 14, the ingest gate, is built** (migration `025_ingest_gate.sql`, which
 shares its number with the classify one above; both are applied and neither may be renamed now).
 An email cannot cost a model call until deterministic arithmetic over counts, sizes and timestamps

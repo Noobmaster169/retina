@@ -13,6 +13,7 @@ import { NothingOpen } from "@/components/inbox/nothing-open";
 import { type InboxParams, useInboxView } from "@/components/inbox/use-inbox-view";
 import { useRunInbox } from "@/components/inbox/use-run-inbox";
 import { NavCounts } from "@/components/shell/nav-counts";
+import { TopBar } from "@/components/shell/top-bar";
 import type { RunEmailsPage } from "@/lib/api/trace-schemas";
 
 /**
@@ -82,39 +83,54 @@ export function InboxPage({ runId, initialList, params }: InboxPageProps) {
         }
       />
 
-      <InboxList
-        rows={shown}
-        total={total}
-        selectedId={selected}
-        onSelect={select}
-        view={view}
-        onView={setView}
-        counts={counts}
-        loading={loading}
-        className={open ? "hidden md:flex" : "flex"}
-      />
+      {/* One bar over both columns, as every other screen has. The list used to
+          start at the top of the window with the breadcrumb beginning only
+          where the email did, so the shell's header stopped halfway across. */}
+      <div className="flex min-w-0 grow flex-col">
+        <TopBar
+          crumbs={[
+            { label: "Runs", href: "/runs" },
+            { label: runId.slice(0, 8), href: `/runs/${runId}`, mono: true },
+            { label: "Inbox" },
+            ...(selected ? [{ label: selected, mono: true }] : []),
+          ]}
+          onBack={open ? () => select(null) : undefined}
+        />
 
-      {trace && message ? (
-        <EmailPane
-          key={selected}
-          trace={trace}
-          message={message}
-          subject={detail.subject}
-          tab={tab}
-          onTab={setTab}
-          onChanged={detail.reread}
-          onBack={() => select(null)}
-        />
-      ) : (
-        <NothingOpen
-          runId={runId}
-          chosen={open}
-          loading={detail.loading}
-          waiting={waiting}
-          onBack={() => select(null)}
-          className={open ? "flex" : "hidden md:flex"}
-        />
-      )}
+        <div className="flex min-h-0 grow">
+          <InboxList
+            rows={shown}
+            total={total}
+            selectedId={selected}
+            onSelect={select}
+            view={view}
+            onView={setView}
+            counts={counts}
+            loading={loading}
+            className={open ? "hidden md:flex" : "flex"}
+          />
+
+          {trace && message ? (
+            <EmailPane
+              key={selected}
+              runId={runId}
+              trace={trace}
+              message={message}
+              subject={detail.subject}
+              tab={tab}
+              onTab={setTab}
+              onChanged={detail.reread}
+            />
+          ) : (
+            <NothingOpen
+              chosen={open}
+              loading={detail.loading}
+              waiting={waiting}
+              className={open ? "flex" : "hidden md:flex"}
+            />
+          )}
+        </div>
+      </div>
     </>
   );
 }

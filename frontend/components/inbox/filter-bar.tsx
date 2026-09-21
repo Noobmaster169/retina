@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 import { Icon } from "@/components/ui/icons";
 import type { Tone } from "@/components/ui/chip";
 
-import { FILTERS, type FilterKey, type InboxView, SORTS, SortKey } from "./inbox-filters";
+import { type Emphasis, emphasisOf, FILTERS, type FilterKey, type InboxView, SORTS, SortKey } from "./inbox-filters";
 
 /**
  * How the list is narrowed: a search, a row of chips, and one ordering.
@@ -21,8 +21,12 @@ import { FILTERS, type FilterKey, type InboxView, SORTS, SortKey } from "./inbox
  * chosen. The status chips in a row carry a tint and no border because they
  * are labels and nothing happens when you press them; these look pressable
  * because they are, and the border is the whole difference.
+ *
+ * Three ways one is drawn, by `emphasisOf`: chosen, asking for a person,
+ * holding rows, or empty. Tailwind cannot build a class name out of a tone, so
+ * each is a table of literals.
  */
-const ON: Record<Tone, string> = {
+const CHOSEN: Record<Tone, string> = {
   neutral: "border-hairline-strong bg-active text-ink",
   match: "border-match-line bg-match-tint text-match",
   differ: "border-differ-line bg-differ-tint text-differ",
@@ -32,7 +36,36 @@ const ON: Record<Tone, string> = {
   accent: "border-accent-line bg-accent-tint text-accent",
 };
 
-const OFF = "border-hairline text-ink-secondary hover:border-hairline-strong hover:bg-sunken";
+/** Its hue in the border and the words, never a fill: a fill is what chosen means. */
+const ASKING: Record<Tone, string> = {
+  neutral: "border-hairline text-ink-secondary hover:bg-sunken",
+  match: "border-match-line text-match hover:bg-match-tint",
+  differ: "border-differ-line text-differ hover:bg-differ-tint",
+  review: "border-review-line text-review hover:bg-review-tint",
+  fault: "border-fault-line text-fault hover:bg-fault-tint",
+  signal: "border-signal-line text-signal hover:bg-signal-tint",
+  accent: "border-accent-line text-accent hover:bg-accent-tint",
+};
+
+/** Its hue in the words only. */
+const HOLDING: Record<Tone, string> = {
+  neutral: "border-hairline text-ink-secondary hover:border-hairline-strong hover:bg-sunken",
+  match: "border-hairline text-match hover:border-match-line hover:bg-match-tint",
+  differ: "border-hairline text-differ hover:border-differ-line hover:bg-differ-tint",
+  review: "border-hairline text-review hover:border-review-line hover:bg-review-tint",
+  fault: "border-hairline text-fault hover:border-fault-line hover:bg-fault-tint",
+  signal: "border-hairline text-signal hover:border-signal-line hover:bg-signal-tint",
+  accent: "border-hairline text-accent hover:border-accent-line hover:bg-accent-tint",
+};
+
+const EMPTY = "border-hairline text-ink-tertiary hover:border-hairline-strong hover:bg-sunken";
+
+function chipClass(tone: Tone, emphasis: Emphasis): string {
+  if (emphasis === "chosen") return `font-medium ${CHOSEN[tone]}`;
+  if (emphasis === "asking") return `font-medium ${ASKING[tone]}`;
+  if (emphasis === "holding") return HOLDING[tone];
+  return EMPTY;
+}
 
 interface FilterBarProps {
   view: InboxView;
@@ -62,7 +95,7 @@ export function FilterBar({ view, onView, counts, shown }: FilterBarProps) {
   const chips = FILTERS.filter((filter) => filter.steady || counts[filter.key] > 0 || filter.key === view.filter);
 
   return (
-    <div className="shrink-0 border-b border-hairline px-[18px] pb-2.5">
+    <div className="shrink-0 border-b border-hairline px-[18px] pb-2.5 pt-3">
       <div className="relative">
         <Icon name="search" size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint" />
         <input
@@ -96,18 +129,22 @@ export function FilterBar({ view, onView, counts, shown }: FilterBarProps) {
       <div className="mt-2 flex flex-wrap gap-1.5">
         {chips.map((filter) => {
           const here = filter.key === view.filter;
+          const emphasis = emphasisOf(filter.tone, counts[filter.key], here);
           return (
             <button
               key={filter.key}
               type="button"
               onClick={() => onView({ filter: filter.key })}
               aria-pressed={here}
-              className={`inline-flex h-[25px] shrink-0 items-center gap-1.5 rounded-sm border px-2 text-caption transition-colors duration-150 ${
-                here ? `font-medium ${ON[filter.tone]}` : OFF
-              }`}
+              className={`inline-flex h-[25px] shrink-0 items-center gap-1.5 rounded-sm border px-2 text-caption transition-colors duration-150 ${chipClass(
+                filter.tone,
+                emphasis,
+              )}`}
             >
               {filter.label}
-              <span className={`font-mono text-mono-xs tabular-nums ${here ? "" : "text-ink-faint"}`}>{counts[filter.key]}</span>
+              <span className={`font-mono text-mono-xs tabular-nums ${emphasis === "empty" ? "text-ink-faint" : ""}`}>
+                {counts[filter.key]}
+              </span>
             </button>
           );
         })}

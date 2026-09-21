@@ -31,7 +31,7 @@ const log = childLogger({ module: "chat.loop" });
 
 /** Two or three steps answer most questions; the rest is room to recover from a refusal. Never tuned upward without a measurement. */
 const MAX_STEPS = 8;
-const CHAT_PROMPT = "v6";
+const CHAT_PROMPT = "v7";
 
 export interface TurnInput {
   question: string;
@@ -90,7 +90,7 @@ export async function runTurn(deps: LoopDeps, input: TurnInput): Promise<TurnRes
   const result = (final: Partial<FinalStep> & { answer: string }): TurnResult =>
     assemble(
       { question: input.question, calls, used, reading },
-      { sqlUsed: [], outcome: "answered", checked: [], next: [], clarify: null, exhausted: false, ...final },
+      { sqlUsed: [], outcome: "answered", checked: [], next: [], clarify: null, emailDraft: null, exhausted: false, ...final },
     );
 
   for (let step = 1; step <= MAX_STEPS; step++) {
@@ -152,6 +152,7 @@ export async function runTurn(deps: LoopDeps, input: TurnInput): Promise<TurnRes
         checked: value.checked,
         next: value.next,
         clarify: value.clarify,
+        emailDraft: value.email_draft,
       });
     }
 

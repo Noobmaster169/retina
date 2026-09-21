@@ -143,6 +143,66 @@ describe("run control", () => {
     expect(runQueues.removedFor).toEqual([id]);
   });
 
+  it("wakes the run's deferred jobs on resume, so the queues restart on the click", async () => {
+    const id = await created();
+    await request(app()).post(`/runs/${id}/pause`).set(TEAM).expect(200);
+    await request(app()).post(`/runs/${id}/resume`).set(TEAM).expect(200);
+    expect(runQueues.promotedFor).toEqual([id]);
+  });
+
+  /**
+   * `completed` is the ingest's word: a run reads it the moment its last email
+   * is enqueued, with both queues still full. The controls have to reach that
+   * run, and must not reach one whose emails have all settled.
+   */
+  it("pauses and cancels a run whose ingest finished ahead of its queues", async () => {
+    const pool = getPool();
+    const id = await created();
+    const emailId = uniqueEmailId();
+    await runs.markStarted(pool, id, 1);
+    await runs.setStatus(pool, id, "completed", ["running"]);
+    await emails.upsert(pool, {
+      emailId,
+      from: "docs@algurg.ae",
+      senderDomain: "algurg.ae",
+      subject: "TO CONFIRM DOCS",
+      body: "Please compare.",
+      attachmentPaths: [],
+      tonnageMt: null,
+      raw: {},
+    });
+    await emailRuns.insert(pool, { runId: id, emailId, stage: "ingested", priority: 600 });
+
+    expect((await request(app()).post(`/runs/${id}/pause`).set(TEAM)).body.status).toBe("paused");
+    await request(app()).post(`/runs/${id}/resume`).set(TEAM).expect(200);
+    await runs.setStatus(pool, id, "completed", ["running"]);
+    expect((await request(app()).post(`/runs/${id}/cancel`).set(TEAM)).body.status).toBe("cancelled");
+  });
+
+  it("refuses to pause a run whose emails have all settled", async () => {
+    const pool = getPool();
+    const id = await created();
+    const emailId = uniqueEmailId();
+    await runs.markStarted(pool, id, 1);
+    await emails.upsert(pool, {
+      emailId,
+      from: "docs@algurg.ae",
+      senderDomain: "algurg.ae",
+      subject: "TO CONFIRM DOCS",
+      body: "Please compare.",
+      attachmentPaths: [],
+      tonnageMt: null,
+      raw: {},
+    });
+    await emailRuns.insert(pool, { runId: id, emailId, stage: "ingested", priority: 600 });
+    await emailRuns.setStage(pool, id, emailId, "done", { outcome: "OK", finished: true });
+    await runs.setStatus(pool, id, "completed", ["running"]);
+
+    const refused = await request(app()).post(`/runs/${id}/pause`).set(TEAM);
+    expect(refused.status).toBe(409);
+    expect(refused.body.error).toBe("a finished run cannot become paused");
+  });
+
   it("raises the epoch on every resume, so each one gets its own job", async () => {
     const id = await created();
     for (let round = 0; round < 2; round++) {
@@ -163,6 +223,32 @@ describe("run control", () => {
     expect((await request(app()).get(`/runs/${randomUUID()}`).set(TEAM)).status).toBe(404);
     expect((await request(app()).post(`/runs/${randomUUID()}/pause`).set(TEAM)).status).toBe(404);
     expect((await request(app()).get("/runs/not-a-uuid").set(TEAM)).status).toBe(400);
+  });
+});
+
+describe("POST /runs/:id/rename", () => {
+  async function created(): Promise<string> {
+    return (await request(app()).post("/runs").set(TEAM).send({})).body.id;
+  }
+
+  it("keeps what a person called the run, and hands the name back with the summary", async () => {
+    const id = await created();
+    const named = await request(app()).post(`/runs/${id}/rename`).set(TEAM).send({ name: "  Holdout   sweep " });
+    expect(named.status).toBe(200);
+    expect(named.body.name).toBe("Holdout   sweep");
+    expect((await request(app()).get(`/runs/${id}`).set(TEAM)).body.name).toBe("Holdout   sweep");
+  });
+
+  it("takes the name back on an empty one, so the run is named by its clock again", async () => {
+    const id = await created();
+    await request(app()).post(`/runs/${id}/rename`).set(TEAM).send({ name: "Holdout sweep" }).expect(200);
+    expect((await request(app()).post(`/runs/${id}/rename`).set(TEAM).send({ name: "" })).body.name).toBeNull();
+  });
+
+  it("refuses a name longer than the column is meant to hold, and an unknown run", async () => {
+    const id = await created();
+    expect((await request(app()).post(`/runs/${id}/rename`).set(TEAM).send({ name: "x".repeat(81) })).status).toBe(400);
+    expect((await request(app()).post(`/runs/${randomUUID()}/rename`).set(TEAM).send({ name: "x" })).status).toBe(404);
   });
 });
 

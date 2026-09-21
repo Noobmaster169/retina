@@ -1,6 +1,7 @@
 import { RunQueuesView } from "@/lib/api/queues-schemas";
 import { RunSummary } from "@/lib/api/runs-schemas";
 import type { IconName } from "@/components/ui/icons";
+import type { FilterKey } from "@/components/inbox/inbox-filters";
 
 /**
  * The six cards of "How the work moves", from numbers the API already
@@ -33,20 +34,32 @@ export interface LaneMap {
   crossing: number;
   /** What stopped at the first queue, drawn on a drop rule under `Sorted`. */
   notComparable: number;
-  /** Where the checked pairs came out, drawn on a drop rule under `Checked`. */
-  ends: { key: string; count: number; tone: "match" | "differ" | "review" | "fault" }[];
+  /**
+   * Where the checked pairs came out, drawn on a drop rule under `Checked`.
+   * Each carries the inbox filter that shows exactly what it counted, so the
+   * number and the list a click opens can never mean two different things.
+   *
+   * Named in plain English like the outcomes panel beside it: one screen, one
+   * vocabulary. outcomes.ts says why, and why the enum is not lost.
+   */
+  ends: { label: string; count: number; tone: "match" | "differ" | "review" | "fault"; filter: FilterKey }[];
 }
 
 function pct(part: number, whole: number): number {
   return whole > 0 ? Math.round((part / whole) * 100) : 0;
 }
 
-function slots(active: number, concurrency: number, held: boolean): Pick<StageCard, "value" | "pct" | "state"> {
+/**
+ * A paused run is never live, whatever a slot still holds. The last jobs of a
+ * pause finish the model call they were in the middle of, and a card that went
+ * on sweeping through that was telling a person the button had not worked.
+ */
+function slots(active: number, concurrency: number, held: boolean, paused: boolean): Pick<StageCard, "value" | "pct" | "state"> {
   if (held) return { value: `0 / ${concurrency}`, pct: 0, state: "held" };
   return {
     value: `${active} / ${concurrency}`,
     pct: pct(active, concurrency),
-    state: active > 0 ? "live" : "idle",
+    state: active > 0 && !paused ? "live" : "idle",
   };
 }
 
@@ -59,16 +72,17 @@ export function laneMap(run: RunSummary, queues: RunQueuesView): LaneMap {
   const checked = run.outcomes.ok + run.outcomes.mismatch + run.review.open;
   const compareHeld = queues.compare.heldUntil !== null;
   const classifyHeld = queues.classify.heldUntil !== null;
+  const paused = run.status === "paused";
 
   return {
     crossing: needCheck,
     notComparable: queues.handoff.notComparable,
     ends: [
-      { key: "OK", count: run.outcomes.ok, tone: "match" },
-      { key: "MISMATCH", count: run.outcomes.mismatch, tone: "differ" },
+      { label: "Documents agree", count: run.outcomes.ok, tone: "match", filter: "agreed" },
+      { label: "Documents differ", count: run.outcomes.mismatch, tone: "differ", filter: "differences" },
       ...(run.stageCounts.failed > 0
-        ? ([{ key: "failed", count: run.stageCounts.failed, tone: "fault" }] as const)
-        : ([{ key: "needs a person", count: run.review.open, tone: "review" }] as const)),
+        ? ([{ label: "Stopped", count: run.stageCounts.failed, tone: "fault", filter: "failed" }] as const)
+        : ([{ label: "Needs a person", count: run.review.open, tone: "review", filter: "needs-you" }] as const)),
     ],
     cards: [
       {
@@ -76,16 +90,16 @@ export function laneMap(run: RunSummary, queues: RunQueuesView): LaneMap {
         label: "Arriving",
         icon: "inbox",
         value: String(left),
-        unit: left === 0 ? "all in" : "to ingest",
+        unit: left === 0 ? "all in" : paused ? "held back" : "to ingest",
         pct: 100,
-        state: left === 0 ? "done" : "live",
+        state: left === 0 ? "done" : paused ? "idle" : "live",
       },
       {
         key: "classifying",
         label: "Classifying",
         icon: "eye",
-        unit: classifyHeld ? "held" : "slots busy",
-        ...slots(queues.classify.active, queues.classify.concurrency, classifyHeld),
+        unit: paused ? "paused" : classifyHeld ? "held" : "slots busy",
+        ...slots(queues.classify.active, queues.classify.concurrency, classifyHeld, paused),
       },
       {
         key: "sorted",
@@ -109,8 +123,8 @@ export function laneMap(run: RunSummary, queues: RunQueuesView): LaneMap {
         key: "checking",
         label: "Checking",
         icon: "scale",
-        unit: compareHeld ? "held" : "pairs open",
-        ...slots(queues.compare.active, queues.compare.concurrency, compareHeld),
+        unit: paused ? "paused" : compareHeld ? "held" : "pairs open",
+        ...slots(queues.compare.active, queues.compare.concurrency, compareHeld, paused),
       },
       {
         key: "checked",
@@ -122,33 +136,5 @@ export function laneMap(run: RunSummary, queues: RunQueuesView): LaneMap {
         state: "done",
       },
     ],
-  };
-}
-
-/** Where the run's compared pairs ended up, in the organisers' own words and order. */
-export interface OutcomeRow {
-  key: string;
-  count: number;
-  pct: number;
-  tone: "match" | "differ" | "review" | "fault" | "muted";
-  indent?: boolean;
-}
-
-export function outcomeRows(run: RunSummary, notComparable: number): { finished: OutcomeRow[]; parked: OutcomeRow[] } {
-  const compared = Math.max(run.outcomes.ok + run.outcomes.mismatch, 1);
-  const parkedTotal = Math.max(run.review.open, 1);
-  return {
-    finished: [
-      { key: "not_comparable", count: notComparable, pct: 100, tone: "muted" },
-      { key: "OK", count: run.outcomes.ok, pct: (run.outcomes.ok / compared) * 100, tone: "match" },
-      { key: "MISMATCH", count: run.outcomes.mismatch, pct: (run.outcomes.mismatch / compared) * 100, tone: "differ" },
-    ],
-    parked: Object.entries(run.review.byReason).map(([key, count]) => ({
-      key,
-      count,
-      pct: (count / parkedTotal) * 100,
-      tone: "review" as const,
-      indent: true,
-    })),
   };
 }

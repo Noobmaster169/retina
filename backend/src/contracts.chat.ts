@@ -7,6 +7,7 @@ import {
   ChatSkillUse,
   ChatToolCall,
   ClarifyingQuestion,
+  EmailDraft,
   ProposedAction,
 } from "./contracts.chat-agent";
 import { SemanticReading } from "./contracts.semantic";
@@ -37,6 +38,8 @@ export const ChatTurn = z.object({
   sqlUsed: z.array(z.string()),
   graph: ChatGraph.nullable(),
   proposal: ProposedAction.nullable(),
+  /** A reply to the sender, ready to open in a mail client. Set only where a skill drafted one. */
+  emailDraft: EmailDraft.nullable().default(null),
   /** One sentence on how the agent read the question. Empty on a person's turn and on turns from before the harness. */
   reading: z.string().default(""),
   skillsUsed: z.array(ChatSkillUse).default([]),

@@ -5,6 +5,7 @@ import { useEffect, useRef } from "react";
 
 import { Composer } from "@/components/chat/composer";
 import { LiveSteps } from "@/components/chat/live-steps";
+import { Suggestions } from "@/components/chat/suggestions";
 import { Turn } from "@/components/chat/turn";
 import { openConversation, useChat } from "@/components/chat/use-chat";
 
@@ -106,13 +107,13 @@ export function ChatPage({ runId, conversations, thread }: ChatPageProps) {
         </div>
 
         {thread ? (
-          <Composer
-            onAsk={chat.ask}
-            onStop={chat.stop}
-            pending={chat.pending}
-            suggestions={chat.turns.length === 0 ? SUGGESTIONS : []}
-            placeholder="Ask about this inbox"
-          />
+          <>
+            <Suggestions
+              items={chat.turns.length === 0 && !chat.pending ? SUGGESTIONS : []}
+              onAsk={chat.ask}
+            />
+            <Composer onAsk={chat.ask} onStop={chat.stop} pending={chat.pending} placeholder="Ask about this inbox" />
+          </>
         ) : null}
       </div>
     </>

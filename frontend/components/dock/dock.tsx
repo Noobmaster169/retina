@@ -1,20 +1,20 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import useSWR from "swr";
 import { z } from "zod";
 
 import { Composer } from "@/components/chat/composer";
 import { LiveSteps } from "@/components/chat/live-steps";
+import { Suggestions } from "@/components/chat/suggestions";
 import { Turn } from "@/components/chat/turn";
 import { useChat } from "@/components/chat/use-chat";
-import { Icon, type IconName } from "@/components/ui/icons";
 import type { ChatTurn } from "@/lib/api/chat-agent-schemas";
 import { ChatThread } from "@/lib/api/chat-thread-schemas";
 import { parsedFetcher } from "@/lib/poll";
 
 import { ContextStrip } from "./context-strip";
+import { DockHeader, type DockView } from "./dock-header";
 import { DockHistory } from "./dock-history";
 import { useDock } from "./dock-state";
 import { attached } from "./page-context";
@@ -30,25 +30,6 @@ import { attached } from "./page-context";
 
 /** There are no accounts in this build; a reviewer types their name once. This is the dock's. */
 const ACTOR = "the reviewer";
-
-const ICON_BUTTON =
-  "flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-ink-secondary transition-colors duration-150 hover:bg-active hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent";
-
-function IconButton({ name, label, on = false, onClick, disabled = false }: { name: IconName; label: string; on?: boolean; onClick(): void; disabled?: boolean }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={label}
-      aria-label={label}
-      aria-pressed={on}
-      disabled={disabled}
-      className={`${ICON_BUTTON} ${on ? "bg-accent-tint text-accent" : ""}`}
-    >
-      <Icon name={name} size={13} />
-    </button>
-  );
-}
 
 const Held = z.object({ thread: ChatThread.nullable() });
 
@@ -103,7 +84,7 @@ function DockSeed({ runId }: { runId: string | null }) {
 
 function DockThread({ initial, title, runId }: { initial: ChatTurn[]; title: string | null; runId: string | null }) {
   const dock = useDock();
-  const [view, setView] = useState<"thread" | "history">("thread");
+  const [view, setView] = useState<DockView>("thread");
   const chat = useChat({
     conversationId: dock.conversationId,
     openWith: { actor: ACTOR, runId: runId ?? undefined },
@@ -117,43 +98,24 @@ function DockThread({ initial, title, runId }: { initial: ChatTurn[]; title: str
   }, [chat.turns.length]);
 
   const refs = attached(dock.page, dock.pinned, dock.off).map(({ kind, id }) => ({ kind, id }));
+
   const wide = runId ? `/runs/${runId}/chat${dock.conversationId ? `?c=${dock.conversationId}` : ""}` : null;
 
   return (
     <>
-      <header className="shrink-0 border-b border-hairline">
-        <div className="flex h-14 items-center gap-2.5 px-[18px]">
-          <Icon name="chat" size={15} className="text-accent" />
-          <h2 className="text-[14px] font-semibold tracking-[-0.01em]">Ask Retina</h2>
-          <span className="grow" />
-          <button
-            type="button"
-            onClick={() => dock.setOpen(false)}
-            aria-label="Close the dock"
-            className="flex h-6 w-6 items-center justify-center rounded-sm text-ink-faint hover:bg-active hover:text-ink-secondary"
-          >
-            <Icon name="panel" size={14} />
-          </button>
-        </div>
-        {/* The conversation's own line: its title, and the three things one can do with it. */}
-        <div className="flex h-9 items-center gap-1 px-[18px] pb-1.5">
-          <span className="min-w-0 grow truncate text-caption text-ink-tertiary">
-            {view === "history" ? "Every conversation" : (title ?? chat.turns[0]?.content ?? "A new question")}
-          </span>
-          <IconButton
-            name="clock"
-            label={view === "history" ? "Back to the conversation" : "History"}
-            on={view === "history"}
-            onClick={() => setView((was) => (was === "history" ? "thread" : "history"))}
-          />
-          <IconButton name="plus" label="New conversation" onClick={dock.startNew} disabled={chat.turns.length === 0 && !dock.conversationId} />
-          {wide ? (
-            <Link href={wide} title="Open wide" aria-label="Open wide" className={ICON_BUTTON}>
-              <Icon name="expand" size={13} />
-            </Link>
-          ) : null}
-        </div>
-      </header>
+      <PendingAsk
+        onAsk={(question, skills) => {
+          setView("thread");
+          chat.ask(question, skills, refs);
+        }}
+      />
+      <DockHeader
+        title={title ?? chat.turns[0]?.content ?? "A new question"}
+        view={view}
+        onView={setView}
+        canStartNew={chat.turns.length > 0 || dock.conversationId !== null}
+        wide={wide}
+      />
 
       {view === "history" ? (
         <DockHistory onOpen={() => setView("thread")} />
@@ -182,15 +144,41 @@ function DockThread({ initial, title, runId }: { initial: ChatTurn[]; title: str
       </div>
       )}
 
+      {/* Offered, then what goes with it, then the box you type in. */}
+      <Suggestions
+        items={chat.turns.length === 0 && !chat.pending ? dock.suggestions : []}
+        onAsk={(question) => chat.ask(question, [], refs)}
+        dense
+      />
       <ContextStrip />
       <Composer
         onAsk={(question, skills) => chat.ask(question, skills, refs)}
         onStop={chat.stop}
         pending={chat.pending}
-        suggestions={chat.turns.length === 0 ? dock.suggestions : []}
         placeholder={refs.length ? "Ask about what you are looking at" : "Ask about the inbox"}
         dense
       />
     </>
   );
+}
+
+/**
+ * Puts a question a page asked on someone's behalf, once.
+ *
+ * A component and not an effect in the thread, because taking the ask has to
+ * happen on whichever render first has both a question and a thread to put it
+ * in, and an id it has already taken is the only thing that tells a new
+ * question from another render of the same one.
+ */
+function PendingAsk({ onAsk }: { onAsk(question: string, skills: string[]): void }) {
+  const dock = useDock();
+  const asked = dock.asked;
+  const taken = useRef(0);
+  useEffect(() => {
+    if (!asked || taken.current === asked.id) return;
+    taken.current = asked.id;
+    dock.takeAsked();
+    onAsk(asked.question, asked.skills);
+  }, [asked, dock, onAsk]);
+  return null;
 }

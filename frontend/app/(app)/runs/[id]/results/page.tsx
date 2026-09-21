@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import { Search, TopBar } from "@/components/shell/top-bar";
+import { TopBar } from "@/components/shell/top-bar";
 import { NavCounts } from "@/components/shell/nav-counts";
 import { type EvalReport, getEvalReport, getRun, listSubmissions, type SubmissionList } from "@/lib/api-client";
 
@@ -52,7 +52,6 @@ export default async function ResultsPage({ params }: PageProps<"/runs/[id]/resu
             { label: "Results" },
           ]}
         >
-          <Search />
         </TopBar>
         <main className="min-h-0 grow overflow-y-auto px-7 pb-8">
         {failed && <p role="alert" className="mt-5 border-l-2 border-fault pl-3 text-small text-fault">{failed}</p>}

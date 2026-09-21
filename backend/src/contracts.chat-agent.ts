@@ -120,6 +120,25 @@ export const ProposedAction = z.object({
 export type ProposedAction = z.infer<typeof ProposedAction>;
 
 /**
+ * A reply to the sender, drafted from what the turn found, for a person to
+ * send from their own mail client.
+ *
+ * Nothing here sends anything: there is no outbound mail in this build, and
+ * won't be, since the inbox itself is a synthetic fixture the organisers
+ * serve (`emails/`), not a real mailbox behind a real address. The card opens
+ * a `mailto:` link, which hands the draft to whatever mail client the person
+ * already has open and lets it take the send. `to` is read off `core.emails`
+ * by `get_email`, never composed by the model, so a draft can only ever be
+ * addressed to a sender this database actually has.
+ */
+export const EmailDraft = z.object({
+  to: z.string().min(1).max(320),
+  subject: z.string().min(1).max(200),
+  body: z.string().min(1).max(4000),
+});
+export type EmailDraft = z.infer<typeof EmailDraft>;
+
+/**
  * How an answer ended: it answered, it found nothing, it found part of it, or
  * it needs the person to choose between readings.
  *

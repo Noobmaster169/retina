@@ -3,6 +3,8 @@ import type { Queryable } from "../../db";
 
 export interface Run {
   id: string;
+  /** What a person called it. Null until one does; the page names an unnamed run by when it started. */
+  name: string | null;
   source: string;
   ratePerSecond: number;
   emailLimit: number | null;
@@ -31,6 +33,7 @@ export interface NewRun {
 
 interface RunRow {
   id: string;
+  name: string | null;
   source: string;
   rate_per_second: string;
   email_limit: number | null;
@@ -45,12 +48,13 @@ interface RunRow {
   finished_at: Date | null;
 }
 
-const COLUMNS = `id, source, rate_per_second, email_limit, email_ids, status, total_emails,
+const COLUMNS = `id, name, source, rate_per_second, email_limit, email_ids, status, total_emails,
   ingest_epoch, prompt_set, created_by, created_at, started_at, finished_at`;
 
 function toRun(row: RunRow): Run {
   return {
     id: row.id,
+    name: row.name,
     source: row.source,
     ratePerSecond: Number(row.rate_per_second),
     emailLimit: row.email_limit,
@@ -99,6 +103,20 @@ export async function status(db: Queryable, id: string): Promise<RunStatus | nul
   return rows[0]?.status ?? null;
 }
 
+/**
+ * Which of these runs are paused, in one read. The pause gate asks about every
+ * run it is holding work for, once a second, so this has to be one query and
+ * not one per job in flight.
+ */
+export async function pausedAmong(db: Queryable, ids: string[]): Promise<Set<string>> {
+  if (ids.length === 0) return new Set();
+  const { rows } = await db.query<{ id: string }>(
+    "select id from core.runs where id = any($1) and status = 'paused'",
+    [ids],
+  );
+  return new Set(rows.map((row) => row.id));
+}
+
 export interface IngestState {
   status: RunStatus;
   ingestEpoch: number;
@@ -145,6 +163,18 @@ export async function markStarted(db: Queryable, id: string, totalEmails: number
     [id, totalEmails],
   );
   return rows[0]?.status ?? null;
+}
+
+/**
+ * What a person calls this run. An empty name is how they take one back, and
+ * the run is shown by when it started again. Null when there is no such run.
+ */
+export async function rename(db: Queryable, id: string, name: string): Promise<Run | null> {
+  const { rows } = await db.query<RunRow>(
+    `update core.runs set name = $2 where id = $1 returning ${COLUMNS}`,
+    [id, name.length > 0 ? name : null],
+  );
+  return rows[0] ? toRun(rows[0]) : null;
 }
 
 /** Moves a run to `to` only from one of `from`. False when it was somewhere else. */

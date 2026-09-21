@@ -7,6 +7,7 @@ import { toSummary } from "../../src/routes/run-summary";
 function run(status: RunStatus, totalEmails: number | null, startedAt: string | null = null): Run {
   return {
     id: "00000000-0000-0000-0000-000000000000",
+    name: null,
     source: "averis",
     ratePerSecond: 0,
     emailLimit: null,

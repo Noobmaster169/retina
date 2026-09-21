@@ -1,6 +1,6 @@
 "use client";
 
-import { Panel, PanelFoot, PanelHead } from "@/components/ui/panel";
+import { Panel, PanelHead } from "@/components/ui/panel";
 import { RunSummary } from "@/lib/api/runs-schemas";
 import { formatDuration } from "@/lib/duration";
 
@@ -14,7 +14,9 @@ import { formatDuration } from "@/lib/duration";
  * It stands where the canvas drew the memory panel. Lessons are phase 11 and
  * the table does not exist, and the handover is explicit that a lesson must
  * not be faked; a panel of real machinery is the honest tenant of that
- * rectangle until then.
+ * rectangle until then. It says so in the phase docs and not along its own
+ * foot: a sentence about an unbuilt phase is not what a person opens a
+ * finished run to read.
  */
 
 interface MachineryPanelProps {
@@ -51,12 +53,6 @@ export function MachineryPanel({ run, className = "" }: MachineryPanelProps) {
         ))}
       </div>
       <span className="grow" />
-      <PanelFoot>
-        <p className="text-small leading-[18px] text-ink-tertiary">
-          Every call is stored with its prompt version, its tokens and what it answered. What this run taught arrives
-          with lessons, in phase 11.
-        </p>
-      </PanelFoot>
     </Panel>
   );
 }

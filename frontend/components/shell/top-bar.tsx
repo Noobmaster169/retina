@@ -61,22 +61,3 @@ function Crumbed({ crumb, last }: { crumb: Crumb; last: boolean }) {
     </Link>
   );
 }
-
-/** The search field. Inert in phase 7: the command palette it opens is phase 10. */
-export function Search() {
-  return (
-    <>
-      <label htmlFor="retina-search" className="sr-only">
-        Search
-      </label>
-      <input
-        id="retina-search"
-        type="search"
-        placeholder="Search"
-        disabled
-        title="Search arrives with the chat, in phase 10"
-        className="h-8 w-[200px] rounded-md border border-hairline bg-sunken px-2.5 text-strong text-ink-secondary placeholder:text-ink-faint disabled:cursor-not-allowed"
-      />
-    </>
-  );
-}

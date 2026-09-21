@@ -95,6 +95,8 @@ export type PromptSet = z.infer<typeof PromptSet>;
 
 export const RunSummary = z.object({
   id: z.string(),
+  /** What a person called this run. Null when nobody has, and `runName` names it by when it started. */
+  name: z.string().nullable(),
   /** `completed` means ingestion finished. Processing is finished when done + failed + review = totalEmails. */
   status: RunStatus,
   ratePerSecond: z.number(),

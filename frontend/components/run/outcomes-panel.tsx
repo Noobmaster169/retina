@@ -1,30 +1,33 @@
 "use client";
 
 import Link from "next/link";
-import { motion } from "motion/react";
+import { useState } from "react";
 
 import { Icon } from "@/components/ui/icons";
-import { Bar, Panel, PanelFoot, PanelHead } from "@/components/ui/panel";
+import { Panel, PanelFoot, PanelHead } from "@/components/ui/panel";
 import { RunSummary } from "@/lib/api/runs-schemas";
-import { stagger } from "@/lib/motion";
 
-import { outcomeRows, type OutcomeRow } from "./progress";
+import { outcomeBreakdown } from "./outcomes";
+import { OutcomesBars } from "./outcomes-bars";
+import { OutcomesLegend } from "./outcomes-legend";
+import { OutcomesPie } from "./outcomes-pie";
 
 /**
- * Where the run's emails end up, in the organisers' own words. The keys are
- * their enums verbatim and nothing here prettifies one into sentence case: the
- * values are fixed by the scorer and the product speaks the domain's language.
+ * Where the run's emails end up. Every outcome is named in plain English here
+ * and by the organisers' own enum in its tooltip: see outcomes.ts.
  *
- * A count is a number and a share is a bar. Section 4.8 retired every chart.
+ * Two readings of one set of numbers. The circle answers "what mostly
+ * happened" in a glance and the rows answer "how many of each", and which one
+ * a person wants depends on whether they are presenting the run or reading
+ * it, so the panel offers both and remembers neither.
+ *
+ * The body is a container, not a viewport reader. The chat dock takes about
+ * four hundred pixels off this panel without the window changing size at all,
+ * so a viewport breakpoint would have laid the wide version out inside the
+ * narrow panel and squeezed the legend down to a column of bare percentages.
  */
 
-const TONES: Record<OutcomeRow["tone"], { key: string; bar: string; count: string }> = {
-  match: { key: "text-match", bar: "var(--verdict-match)", count: "text-ink" },
-  differ: { key: "text-differ", bar: "var(--verdict-differ)", count: "text-ink" },
-  review: { key: "text-review", bar: "var(--verdict-review)", count: "text-ink" },
-  fault: { key: "text-fault", bar: "var(--verdict-fault)", count: "text-ink" },
-  muted: { key: "text-ink-tertiary", bar: "var(--ink-faint)", count: "text-ink-tertiary" },
-};
+type View = "pie" | "bars";
 
 interface OutcomesPanelProps {
   run: RunSummary;
@@ -33,8 +36,9 @@ interface OutcomesPanelProps {
 }
 
 export function OutcomesPanel({ run, notComparable, className = "" }: OutcomesPanelProps) {
-  const { finished, parked } = outcomeRows(run, notComparable);
-  const total = run.totalEmails ?? run.finishedEmails;
+  const [view, setView] = useState<View>("pie");
+  const [lit, setLit] = useState<string | null>(null);
+  const { slices, total } = outcomeBreakdown(run, notComparable);
   const open = run.review.open;
 
   return (
@@ -42,58 +46,65 @@ export function OutcomesPanel({ run, notComparable, className = "" }: OutcomesPa
       <PanelHead
         title="Where they end up"
         aside={
-          <span className="text-small text-ink-tertiary">
-            {run.processingDone ? `all ${total} finished` : `${run.finishedEmails} of ${total} finished`}
+          <span className="flex items-center gap-2.5">
+            <span className="text-small text-ink-tertiary">
+              {run.processingDone ? `all ${total} finished` : `${run.finishedEmails} of ${run.totalEmails ?? total} finished`}
+            </span>
+            <ViewToggle view={view} onView={setView} />
           </span>
         }
       />
-      <div className="px-4">
-        <Group label="Finished with no person" />
-        {finished.map((row, index) => (
-          <Row key={row.key} row={row} index={index} />
-        ))}
-        {parked.length > 0 ? <Group label="Parked for a person" /> : null}
-        {parked.map((row, index) => (
-          <Row key={row.key} row={row} index={finished.length + index} />
-        ))}
+      <div className="@container min-h-0 grow overflow-y-auto px-4 pt-1">
+        {view === "pie" ? (
+          // Stacked while it is narrow, side by side once there is room, and
+          // centred either way: a 184px ring alone at the top of a panel a
+          // thousand pixels wide reads as a page that failed to load.
+          <div className="flex flex-col items-center justify-center gap-4 @[560px]:h-full @[560px]:flex-row @[560px]:gap-8">
+            <OutcomesPie slices={slices} total={total} lit={lit} onLight={setLit} />
+            <OutcomesLegend slices={slices} lit={lit} onLight={setLit} />
+          </div>
+        ) : (
+          <OutcomesBars slices={slices} lit={lit} onLight={setLit} />
+        )}
       </div>
-      <span className="grow" />
-      <PanelFoot className="py-3">
-        <Link
-          href={`/runs/${run.id}/emails?filter=review`}
-          className={`flex h-[34px] items-center gap-2 rounded-md px-3 transition-opacity duration-150 hover:opacity-80 ${
-            open > 0 ? "bg-review-tint" : "bg-sunken"
-          }`}
-        >
-          <span className={`text-strong font-medium ${open > 0 ? "text-review" : "text-ink-tertiary"}`}>
-            {open === 0 ? "Nobody is needed" : `${open} ${open === 1 ? "needs" : "need"} a person`}
-          </span>
-          <span className="grow" />
-          <Icon name="chevron" size={12} className={open > 0 ? "text-review" : "text-ink-faint"} />
-        </Link>
-      </PanelFoot>
+      {open > 0 ? (
+        // Only when somebody is needed. "Nobody is needed" was a control that
+        // led to an empty list, on the one screen whose whole job is to say
+        // what is left to do.
+        <PanelFoot className="py-3">
+          <Link
+            href={`/runs/${run.id}/inbox?filter=needs-you`}
+            className="flex h-[34px] items-center gap-2 rounded-md bg-review-tint px-3 transition-opacity duration-150 hover:opacity-80"
+          >
+            <span className="text-strong font-medium text-review">
+              {open} {open === 1 ? "email needs" : "emails need"} a person
+            </span>
+            <span className="grow" />
+            <Icon name="chevron" size={12} className="text-review" />
+          </Link>
+        </PanelFoot>
+      ) : null}
     </Panel>
   );
 }
 
-function Group({ label }: { label: string }) {
-  return <div className="flex h-[26px] items-center text-caption font-medium text-ink-tertiary">{label}</div>;
-}
-
-function Row({ row, index }: { row: OutcomeRow; index: number }) {
-  const tone = TONES[row.tone];
+/** Two words in a sunken strip. Not a chart-type menu: there are two readings and both fit on screen. */
+function ViewToggle({ view, onView }: { view: View; onView: (next: View) => void }) {
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={stagger(index)}
-      className={`flex h-[31px] items-center gap-2.5 ${row.indent ? "pl-3" : ""}`}
-    >
-      <span className={`w-[118px] shrink-0 font-mono text-micro ${tone.key}`}>{row.key}</span>
-      <Bar pct={row.pct} tone={tone.bar} />
-      <span className={`w-[30px] shrink-0 text-right text-small font-medium tabular-nums ${tone.count}`}>
-        {row.count}
-      </span>
-    </motion.div>
+    <span className="flex h-[26px] items-center gap-0.5 rounded-md bg-sunken p-0.5">
+      {(["pie", "bars"] as const).map((option) => (
+        <button
+          key={option}
+          type="button"
+          aria-pressed={view === option}
+          onClick={() => onView(option)}
+          className={`h-[22px] rounded-[5px] px-2 text-caption font-medium capitalize transition-colors duration-150 ${
+            view === option ? "bg-canvas text-ink shadow-[0_0_0_1px_var(--hairline)]" : "text-ink-tertiary hover:text-ink-secondary"
+          }`}
+        >
+          {option}
+        </button>
+      ))}
+    </span>
   );
 }

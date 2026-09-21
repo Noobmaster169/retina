@@ -85,6 +85,19 @@ export const ProposedAction = z.object({
 export type ProposedAction = z.infer<typeof ProposedAction>;
 
 /**
+ * A reply to the sender, drafted from what the turn found. `to` is read off
+ * `core.emails` by a tool, never composed by the model: the card opens a
+ * `mailto:` link against it, and there is no outbound mail behind this build
+ * to send it any other way.
+ */
+export const EmailDraft = z.object({
+  to: z.string(),
+  subject: z.string(),
+  body: z.string(),
+});
+export type EmailDraft = z.infer<typeof EmailDraft>;
+
+/**
  * How an answer ended. Not an error state: `none_found` is a correct answer to
  * a question about something that is not in the data, and the page draws it in
  * the same tone as any other.
@@ -137,6 +150,8 @@ export const ChatTurn = z.object({
   sqlUsed: z.array(z.string()),
   graph: ChatGraph.nullable(),
   proposal: ProposedAction.nullable(),
+  /** A reply to the sender, ready to open in a mail client. Set only where a skill drafted one. */
+  emailDraft: EmailDraft.nullable().default(null),
   /** One sentence on how the agent read the question. Empty on a person's turn and on older turns. */
   reading: z.string().default(""),
   skillsUsed: z.array(ChatSkillUse).default([]),

@@ -6,6 +6,7 @@ import {
   type ChatToolCall,
   type ChatToolName,
   ClarifyingQuestion,
+  EmailDraft,
   type GroundedThing,
   type SemanticReading,
 } from "../../contracts";
@@ -70,6 +71,12 @@ export const Step = z.object({
    */
   next: z.array(ChatNextMove).max(MAX_MOVES).default([]),
   clarify: ClarifyingQuestion.nullable().default(null),
+  /**
+   * On a final step that drafts a reply to the sender. `to` must be the
+   * `from:` address a `get_email` call returned on this turn, never composed:
+   * the card that renders this opens a real mail client against it.
+   */
+  email_draft: EmailDraft.nullable().default(null),
 });
 export type Step = z.infer<typeof Step>;
 

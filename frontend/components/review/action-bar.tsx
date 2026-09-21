@@ -50,15 +50,10 @@ export function ActionBar({ review, actions, onCorrect, actor, onName }: ActionB
   const [armed, setArmed] = useState<Armed>(null);
   const [more, setMore] = useState(false);
 
-  if (!review) {
-    return (
-      <div className="flex h-[60px] shrink-0 items-center border-t border-hairline px-6">
-        <span className="text-small text-ink-tertiary">
-          Both documents were read and judged. Nothing here is waiting for a person.
-        </span>
-      </div>
-    );
-  }
+  // An email with no case has nothing for anyone to do, so the bar is not
+  // drawn at all. It used to say so in a sentence, which spent sixty pixels of
+  // every ordinary email restating what the absence of a case already says.
+  if (!review) return null;
 
   const open = review.status === "open";
   const failure = review.kind === "failure";

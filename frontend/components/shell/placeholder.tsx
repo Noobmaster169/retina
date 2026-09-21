@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 import { Icon, type IconName } from "@/components/ui/icons";
 
-import { Search, TopBar } from "./top-bar";
+import { TopBar } from "./top-bar";
 
 /**
  * A destination the rail offers that this phase does not build. It is the same
@@ -32,7 +32,6 @@ export function Placeholder({ title, crumbs, blurb, holds, phase, icon, children
     <>
       <div className="flex min-w-0 grow flex-col">
         <TopBar crumbs={crumbs.map((label, index) => ({ label, href: index === 0 ? "/runs" : undefined, mono: index === 1 }))}>
-          <Search />
           <span className="inline-flex h-[30px] items-center rounded-md bg-sunken px-3 text-small font-medium text-ink-tertiary">
             {phase}
           </span>

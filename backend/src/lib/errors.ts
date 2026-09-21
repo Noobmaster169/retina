@@ -47,6 +47,22 @@ export class LlmTimeoutError extends RetryableError {
   }
 }
 
+/**
+ * The run was paused while this job was working, so its model call was
+ * abandoned mid-flight. Not a failure and not an outage: the job goes back to
+ * the queue with its attempts untouched and starts again on the resume.
+ *
+ * Deliberately not a RetryableError. Retrying is exactly what must not happen
+ * here, because the thing that stopped it will still be true on the next
+ * attempt; the queue has to park the job instead. See queues/pause-gate.ts.
+ */
+export class RunPausedError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "RunPausedError";
+  }
+}
+
 /** Will fail the same way every time: bad input, a 404, a schema that does not parse. */
 export class TerminalError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {

@@ -4,6 +4,7 @@ import type { ChatTurn } from "@/lib/api/chat-agent-schemas";
 
 import { ActionCard } from "./action-card";
 import { Clarify } from "./clarify";
+import { EmailDraftCard } from "./email-draft-card";
 import { NextMoves } from "./next-moves";
 import { OutcomeLine } from "./outcome-line";
 import { Markdown } from "./markdown";
@@ -16,9 +17,10 @@ import { ToolsUsed } from "./tools-used";
  * One turn.
  *
  * An answer is artefacts in a fixed order: what it touched, how it read the
- * question, what it said, where it looked, what it ran, what came back, and
- * what to ask next. The prose is the shortest of them on purpose. A reader can
- * check the others, and the sentence is only there to say what they mean.
+ * question, what it said, the reply it drafted from that, where it looked,
+ * what it ran, what came back, and what to ask next. The prose is the
+ * shortest of them on purpose. A reader can check the others, and the
+ * sentence is only there to say what they mean.
  */
 
 export function Turn({
@@ -55,6 +57,8 @@ export function Turn({
       <Reading turn={turn} />
 
       <Markdown text={turn.content} />
+
+      {turn.emailDraft ? <EmailDraftCard draft={turn.emailDraft} /> : null}
 
       <OutcomeLine turn={turn} />
 

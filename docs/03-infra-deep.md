@@ -287,10 +287,30 @@ Replay controller (`ingest/replay.ts`), driven by `core.runs`:
   every email and stands down as `superseded` when the epoch has moved on, so an older job that
   was still waiting, or asleep between two emails, never ingests alongside the new one. If the
   resume job cannot be queued the run goes back to `paused`.
+- Pause commits `paused`, and that word reaches the two queues as well as the ingest loop.
+  `queues/pause-gate.ts` holds both halves. A job that arrives during a pause never starts. A job
+  the pause catches mid-call has that call aborted where it stands: the gate keeps an
+  `AbortController` per job in flight, polls `runs.pausedAmong` once a second for the runs it is
+  holding work for, and the signal reaches the HTTP request through `LlmClient.complete(request,
+  signal)`, so the connection closes, the proxy kills the `claude -p` session behind it and the
+  concurrency slot is handed back. The client reports that as `RunPausedError` and not as the
+  timeout the SDK sees, because the difference decides whether the queue retries the email or
+  parks the job.
+  Either way the job goes back to `delayed` for a minute with its attempts, its priority
+  and its place untouched, and still counts as waiting on the run page. A resume promotes the
+  run's delayed jobs, so both queues restart on the click rather than on each job's next
+  recheck; a failed promotion is logged and the jobs wake on their own.
+  The work a pause abandons is paid for and lost. That is the price of the button meaning what
+  it says, and it is bounded: `classify` reuses a generator answer already in the ledger, so what
+  is lost is the call in flight and nothing behind it.
 - Cancel commits `cancelled`, then removes the run's jobs that have not started. A failed
   removal is logged, not returned. The classify and compare processors return at once for a
   cancelled run, which covers a job that was already active or added a moment later. The run's
   emails stay at the stage they had reached.
+- Pause and cancel both also act from `completed`, because `completed` is the ingest's word and
+  not the pipeline's: a run reads it the moment its last email is enqueued, with both queues
+  still full. A run whose emails have all settled is refused either way, with
+  `a finished run cannot become <status>`.
 - Per email: copy attachments to MinIO under the run prefix, then in one short transaction
   insert `core.emails` (upsert on `email_id`; content is identical across runs),
   `core.attachments` and `core.email_runs`, then enqueue `classify`. Downloads and uploads
@@ -655,6 +675,40 @@ email; `Apply and remember` fixes this email and asks for the prompt to be chang
 ships if the holdout score does not get worse. Phase 11 adds that column in the same commit as the
 drafter that reads it.
 
+### 5.7 What a chat turn may draft
+
+`EmailDraft` in `contracts.chat-agent.ts`, on the assistant turn as `emailDraft`, nullable. Built
+for `recommend-action` (`agents/chat/skills/recommend-action/`), the skill that answers "what
+should I do about this mismatch" with a named action per differing field and a reply to send.
+
+**The model writes `to`, `subject` and `body`, and code decides whether `to` is real.**
+`draftIsReal` (`agents/chat/draft.ts`) checks `to` against `grounds`, the concatenated text of
+every tool result on the turn, the same way `next-moves.ts` checks an alternative's `thing` and
+`count`. `get_email` is the only tool that emits an address (`from: ...`, added alongside
+`subject: ...` to its summary lines), so a draft survives only when the turn actually called it
+for this email. A draft that fails the check is dropped in `loop.result.ts`'s `assemble`, silently:
+the prose still stands, and no empty card is drawn under it.
+
+There is no write and no send behind this. The card opens Gmail's own compose URL, built from the
+three fields as an ordinary `https://` link; the tab that opens is the person's own, signed in as
+they already are, and they send it or not. This was a `mailto:` link first, and it needs a mail
+client the operating system has registered; a desk with none configured opens nothing and says
+nothing, because the browser handed off to the OS and the OS had nowhere to hand it. Gmail's link
+needs none of that. Nothing under `EmailDraft` is stored anywhere but the turn, and nothing applies
+it.
+
+| Field | Meaning |
+|---|---|
+| `to` | A header value a `get_email` call returned on this turn, exactly. May carry a display name |
+| `subject` | The reply's subject line |
+| `body` | The message, addressed to the sender, in the reader's language of the thread |
+
+The chat prompt is `v7` for this (`agents/prompts/chat/v7.md`): a fifth field beside `outcome`,
+`checked`, `next` and `clarify`, and one rule in "How to write the answer" that the prose must not
+restate a drafted message, because the card is where it is read.
+
+## 6. doc-extract service
+
 ## 6. doc-extract service
 
 `services/doc-extract`, Python 3.12 on uv, FastAPI. Reads bytes from MinIO by key so large
@@ -829,6 +883,7 @@ Two schemas. `core` is normalised and written by the pipeline. `analytics` is de
 
 ```sql
 runs               (id uuid pk, source text, rate_per_second numeric, status text,
+                    name text null,              -- what a person called it; null means named by when it started
                     ingest_epoch int default 0,   -- which ingest job owns the run; every resume raises it
                     prompt_set jsonb, started_at, finished_at, created_by text)
 clients            (domain text pk, name text, tier smallint default 3, kind text check (kind in ('customer','internal','forwarder','spam')), updated_at)
@@ -1125,7 +1180,8 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 | `GET /clients`, `PUT /clients/:domain` | every sender domain seen, full-outer-joined to `core.clients`, with its tier, kind, email count and mismatch count, and `known: false` for one nobody has ranked. The `PUT` upserts `{ name?, tier?, kind? }`, writes the `client:priority` hash after Postgres, and changes no category: `kind` is a label a person sets and nothing in the pipeline reads it |
 | `POST /runs` | start a run `{ source, ratePerSecond, limit?, emailIds?, subset?: dev \| holdout, promptSet?: { step: vN }, models?: { step: alias } }`. `subset` reads the id lists in `backend/eval/` (ids only). 400 for an unknown prompt version or a model that is not a proxy alias, before anything is queued |
 | `GET /runs`, `GET /runs/:id` | list, detail with stage counts, `finishedEmails` (done, failed and review), `processingDone`, `elapsedMs` (start to the last email finishing, or to now), queue depth, `promptSet`, `llm` usage with `verifierShare`, `review: { open, byReason }`, `outcomes: { ok, mismatch, byField }` over the compared pairs, score (`lastSubmission.scores` carries the scorer's own `weights`, so a page never assumes them). The list also carries `concurrency: { classify, llm }` from the env. `queues` is `null` when Redis cannot be reached; the rest comes from Postgres and is still served |
-| `POST /runs/:id/pause`, `/resume`, `/cancel` | control the replay |
+| `POST /runs/:id/pause`, `/resume`, `/cancel` | control the replay and both queues |
+| `POST /runs/:id/rename` | `{ name }`, up to 80 characters → the run summary. An empty name clears `core.runs.name` and the run is named by when it started again. Allowed in any status |
 | `POST /runs/:id/submit?force=false` | build submission, post to averis, store scoreboard. 409 when the run holds fewer rows than `totalEmails` (still ingesting) or holds unfinished emails, both overridden by `?force=true`; 409 while another submission for the same run is being scored. The `core.submissions` row is written before the scorer is called and updated with the scoreboard after, so a scorer failure leaves an unscored row (null `scoreboard`, null `final_score`) pointing at the stored payload rather than an orphan payload. Only scored rows count as a run's last submission |
 | `GET /runs/:id/submission.json` | download the payload |
 | `GET /runs/:id/emails?stage=&category=&decidedBy=&outcome=&q=` | paginated list with `category`, `decidedBy`, `confidence`, `verifierCategory`, `outcome` (`not_comparable`, `OK`, `MISMATCH` or a review reason), `defectFields`, `error` |
@@ -1368,7 +1424,8 @@ Pages (all behind the `proxy.ts` password gate; the cookie is an HMAC of `SITE_P
 | `/login` | password form | |
 | `/runs` | table of runs with score, the env concurrency, start-run form (dev sample, holdout, all 520 or first N; rate; optional prompt version and model) | 3 s |
 | `/runs/[id]` | the two queues left to right, one panel per queue with a row per email holding a slot, and where they end up. Replaces its panels rather than emptying them: a held queue says what is holding it and when it retries, a finished run shows outcomes, what it took and the score | 2 s while live, not at all once `processingDone` |
-| `/runs/[id]/inbox` | the one screen over a run's emails: the 300px list with a search, filter chips (`All`, `Needs you`, `Differences`, `Agreed`, `No check`, and `Settled` and `Still moving` where either has rows) and one ordering; the open email in the middle as a bordered message card, the seam, then the check, with tabs for `The check` (or `The case`), `Both documents` and `Model calls`, the `Links to` strip and the action bar; the 340px chat column on the right. Every row of the run is loaded, so narrowing costs no request. Which email is open lives in React, echoes to the URL through `history.replaceState`, and is remembered in the `retina_inbox` cookie so another destination and back lands where it left. Below 768px the list and the email take turns | emails 4 s while anything is moving, 30 s once nothing is; the open email 2.5 s while it moves, 8 s while its case is open, not at all once settled |
+| `/runs/[id]/inbox` | the one screen over a run's emails: one breadcrumb bar over both columns, carrying the open email as its last segment; under it the 300px list with a search, filter chips (`All`, `Needs you`, `Differences`, `Agreed`, `No check`, and `Settled` and `Still moving` where either has rows) and one ordering; the open email in the middle as a bordered message card, the seam, then the check, with tabs for `The check` (or `The case`), `Report`, `Both documents` and `Model calls`, and the action bar. Only `The check` is always drawn: `Report` needs judged fields, `Both documents` needs documents, `Model calls` needs a call. An attachment chip on the message card opens the document sheet; the 340px chat column on the right. Every row of the run is loaded, so narrowing costs no request. Which email is open lives in React, echoes to the URL through `history.replaceState`, and is remembered in the `retina_inbox` cookie so another destination and back lands where it left. Below 768px the list and the email take turns | emails 4 s while anything is moving, 30 s once nothing is; the open email 2.5 s while it moves, 8 s while its case is open, not at all once settled |
+| `/report/[runId]/[emailId]` | one email's check as a document, outside the shell: the verdict in a sentence, the differing fields with the judge's own reasoning, the seven field table, the documents, and a closing block of what it cost and which prompt decided it. No timeline. `?print=1` opens the browser's print dialog on arrival, which is the export; the same URL without it is a page somebody can be sent, though the password gate still stands in front of it | none |
 | `/runs/[id]/emails/[emailId]` | redirects to `/runs/[id]/inbox?email=...`. The route stays because the ontology, the chat, the queue panel and the results table all link an email by it | |
 | `/runs/[id]/review` | redirects to `/runs/[id]/inbox?filter=needs-you`, carrying `?email=` through. `Needs a person` was a page of its own until phase 15: it listed the same emails from a second component set with a second idea of what was selected, and its count is an alert beside `Inbox` in the rail now | |
 | `/chat` | conversations, messages, SQL shown in a collapsible block, result tables | on send |

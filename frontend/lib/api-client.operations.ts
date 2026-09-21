@@ -76,6 +76,7 @@ export {
   type PromptSet,
   type PromptStep,
   type QueueCounts,
+  renameRun,
   resumeRun,
   type RunAction,
   type RunList,

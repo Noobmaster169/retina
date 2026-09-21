@@ -41,12 +41,6 @@ interface InboxListProps {
 export function InboxList({ rows, total, selectedId, onSelect, view, onView, counts, loading, className = "" }: InboxListProps) {
   return (
     <div className={`w-full shrink-0 flex-col border-r border-hairline md:w-[300px] ${className}`}>
-      <div className="flex h-14 shrink-0 items-center px-[18px]">
-        <h2 className="text-[16px] font-semibold tracking-[-0.015em]">Inbox</h2>
-        <span className="grow" />
-        <span className="font-mono text-mono-sm text-ink-tertiary tabular-nums">{total}</span>
-      </div>
-
       <FilterBar view={view} onView={onView} counts={counts} shown={rows.length} />
 
       <div className="min-h-0 grow overflow-y-auto">

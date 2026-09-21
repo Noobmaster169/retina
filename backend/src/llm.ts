@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { UpstreamError } from "./lib/errors";
 import type { ChatRequest, ChatResult, ModelInfo } from "./llm-contract";
-import { asLlmError, baseUrl, messageParams, proxyClient, upstreamVerdict } from "./llm-wire";
+import { asLlmError, baseUrl, deadline, messageParams, proxyClient, upstreamVerdict } from "./llm-wire";
 
 export type { ChatMessage, ChatRequest, ChatResult, ModelInfo } from "./llm-contract";
 export { chatStream } from "./llm-stream";
@@ -30,12 +30,14 @@ const ModelListBody = z.object({
     .default([]),
 });
 
-/** One non-streaming call, billed to `project` in the proxy. */
-export async function chat(project: string, req: ChatRequest): Promise<ChatResult> {
+/** One non-streaming call, billed to `project` in the proxy. `signal` abandons it where it stands. */
+export async function chat(project: string, req: ChatRequest, signal?: AbortSignal): Promise<ChatResult> {
   let data: Anthropic.Message;
   let response: Response;
   try {
-    ({ data, response } = await proxyClient(project).messages.create(messageParams(req)).withResponse());
+    ({ data, response } = await proxyClient(project)
+      .messages.create(messageParams(req), { signal: deadline(signal) })
+      .withResponse());
   } catch (error) {
     throw asLlmError(error);
   }

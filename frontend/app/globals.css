@@ -331,3 +331,20 @@ body {
 .react-flow__pane.dragging {
   cursor: grabbing;
 }
+
+/*
+ * The report route prints. A4 with a generous margin, no background to burn
+ * through a cartridge, and the app's own colours left alone: the report is
+ * drawn in ink and hairlines already, so nothing here has to override it.
+ */
+@media print {
+  @page {
+    size: A4;
+    margin: 16mm;
+  }
+
+  html,
+  body {
+    background: #fff;
+  }
+}
