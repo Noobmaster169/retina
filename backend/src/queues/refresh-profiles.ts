@@ -6,10 +6,12 @@ import { type Config, config } from "../config";
 import { childLogger } from "../lib/logger";
 import { entityDossier, entityProfile, type ProfileWrite } from "../ontology/repositories";
 import { renderProfile, type RenderedProfile } from "../pipeline/ontology";
+import { locatePortIfNeeded } from "./locate-ports";
 
 const log = childLogger({ module: "refresh-profiles" });
 
 const PROFILE_PROMPT = "v1";
+const LOCATE_PROMPT = "v1";
 
 /**
  * Rewrites the profiles of the things this round of mail touched.
@@ -38,6 +40,7 @@ export async function refreshProfiles(deps: RefreshProfilesDeps): Promise<number
   if (ids.length === 0) return 0;
 
   const prompt = loadPrompt("entity-profile", PROFILE_PROMPT, config.LLM_MODEL_ENTITY_PROFILE);
+  const locate = loadPrompt("port-locate", LOCATE_PROMPT, config.LLM_MODEL_PORT_LOCATE);
   const until = Date.now() + config.MAINTENANCE_BUDGET_MS;
   let written = 0;
   for (const id of ids) {
@@ -56,6 +59,8 @@ export async function refreshProfiles(deps: RefreshProfilesDeps): Promise<number
       const rendered = renderProfile(dossier.kind, dossier.canonical, dossier.spellings, value, value.attributes);
       await entityProfile.write(deps.pool, id, profileWrite(rendered, value));
       written += 1;
+      // A search is the same failure class as a profile: logged below, never the tick.
+      if (dossier.kind === "port") await locatePortIfNeeded(deps, locate, id);
     } catch (error) {
       // One thing's profile is never worth failing the tick over: the next one
       // picks it up, and every other thing in this batch still gets written.
