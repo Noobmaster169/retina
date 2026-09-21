@@ -1,17 +1,22 @@
-// pnpm ontology:locate
+// pnpm ontology:locate [--all]
 //
 // Places every live port the reference list knows and gives every company
 // with a country its code, then runs one resolution pass so that two ports
 // placed at one code fold into one. Idempotent: a thing already placed is
 // skipped, and a pass over folded data changes nothing. Free: no model call
 // anywhere in it.
+//
+// `--all` places the ports already placed again, which is how a fix to the
+// reference lookup reaches the things an earlier pass got wrong. It writes
+// every key of a placement afresh, except the ones a person settled.
 
 import { closePool, getPool, withTx } from "../src/db";
 import { resolveAll } from "../src/ontology/derived";
 import { entityLocate, entityProfile } from "../src/ontology/repositories";
 
+const again = process.argv.includes("--all");
 const pool = getPool();
-const rows = await entityLocate.unlocated(pool);
+const rows = await entityLocate.unlocated(pool, again);
 let ports = 0;
 let parties = 0;
 const missed: string[] = [];

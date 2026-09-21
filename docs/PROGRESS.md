@@ -79,6 +79,43 @@ place the repo and that spec disagreed and what the bench found. Then
 The shell contract and the traps in `docs/phases/phase-08-handover.md` sections 6 and 10 all still
 apply, as do phase 9's in `phase-09-handover.md` section 7.
 
+**2026-09-22: the port ontology on the box, and why it read dirty.** A raw
+`select * from core.entities` on prod answers 64 ports; 31 of them are tombstones
+(`merged_into is not null`), kept so a stored verdict can follow a merge, and every query in the
+repo already filters them, as does `agents/chat/schema-docs.md`. Live, prod holds 33 ports and so
+does local. Three things were actually wrong.
+
+- **`pnpm ontology:locate` has never been run on the box.** Thirty of the 33 live ports carry no
+  `lat`, no `lon` and no `countryCode`, and their `locode` has `"source": "mail"`: the profile
+  model read the bracketed code off the email, the stale ones included. Local has all 33 placed
+  from the reference list.
+- **A port answered to another port's alias.** The world's list gives Los Angeles the alias
+  `Long Beach` and gives Long Beach the alias `Los Angeles`; `matches` in `src/reference/ports.ts`
+  scored an exact hit on an alias the same as one on the name, so the tie fell to the order of
+  `ports.json`, which holds Los Angeles first. Every Long Beach spelling whose bracketed code was
+  not a US one placed at USLAX, `referenceJoins` saw two codes, and prod carries two Long Beaches.
+  An exact name now outranks an exact alias. A sweep of all 89 port spellings prod holds moves
+  exactly that pair into one code and changes nothing else.
+- **`locate` could not reach a port it had already placed.** `unlocated()` skips anything with
+  coordinates, which pins a port to the answer the lookup gave the day it was first seen. It now
+  takes `--all`. Making that reachable turned up `locateEntity` overwriting an attribute a person
+  had settled, which `entities.edit.ts` documents it must not; it now leaves `human` keys alone.
+
+Canonical spellings that carry the dataset's stale codes (`TUTICORIN, INDIA (ILASH)`,
+`LONG BEACH, US (TRMER)`) are left as they are: canonical is the most-seen spelling, and
+preferring the one whose bracket agrees with the reference list would be a rule fitted to this
+dataset. Rename by hand if a demo needs it, since `human_name` outranks the pass.
+
+`backend/Dockerfile` now copies `scripts/`, so a pass over the box's data is the reviewed script
+rather than a file pasted into a running container.
+
+**Left for the user, because this sandbox cannot reach github.com:22 to push and the box deploys
+by pulling `main`:** push, wait for auto-deploy, then
+`docker exec retina-api-1 node --import tsx scripts/ontology-locate.ts --all`. It costs no model
+call. A backup of the four entity tables is at `~/retina/backups/entities-before-locate-*.sql`.
+Rehearsed on local: 33 ports placed, 125 things resolved, nothing merged or dropped, and the port
+rows byte-identical afterwards.
+
 Phase 6 is built and tested; left for the user there: the holdout run and the full 520 run that
 decide its exit checklist's score lines (`pnpm eval:score --run <id> --holdout`), and phase 5's
 open items (the box check of doc-extract, the classify `v5` holdout). Phase 4's open items (the
