@@ -7,6 +7,15 @@ and merged into 13 afterwards.
 **Start at `docs/phases/phase-13-business-data.md`.** Phase 7's two `[~]` items are still under
 "Deferred" below.
 
+**2026-09-21: phase 15, the streaming chat, is open on `phase-15-streaming-chat`.** The chat
+answers nothing visibly until the whole turn is done: `POST /chat/:id/messages` holds, there is
+no SSE in the repository, and `structured.ts` switches streaming off for the chat because the
+loop passes `runId: null`. Measured on the local stack, the simplest question in the system
+("how many emails are in this run?", no tool calls, a seven word answer) took 8.5 s, and chat
+calls run 8 s to 24 s with latency tracking output tokens at roughly 100 a second. The alias is
+not the cost: a four token reply is 3.25 s on opus and 2.80 s on haiku, which is `claude -p`
+starting a session per call. `docs/phases/phase-15-streaming-chat.md` is the spec.
+
 **2026-09-21: classify is on `v6` and the verifier on `v3`** (migration 025). The single
 classification the pipeline had never got right, `email_504`, was a gap in the prompts' own
 definitions rather than a hard email, and the verifier was making it worse rather than better.
