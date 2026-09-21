@@ -63,7 +63,11 @@ describe("the formatting a fraction of a cent needs", () => {
   }
 
   it("keeps a fraction of a cent legible", () => {
-    expect(cents(0.216)).toBe("0.22c");
-    expect(cents(4.5)).toBe("4.5c");
+    expect(cents(0.216)).toBe("0.22 cents");
+    expect(cents(4.5)).toBe("4.5 cents");
+  });
+
+  it("says the arithmetic in one line, because two wrapped", () => {
+    expect(planCost(1000, 1, 10).working).toBe("15% x 15% of $50 a week");
   });
 });

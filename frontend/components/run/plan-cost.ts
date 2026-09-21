@@ -49,8 +49,16 @@ export interface PlanCost {
   perEmailCents: number;
   /** How many times cheaper than the API price. Null where there is nothing to compare. */
   timesCheaper: number | null;
-  /** The working, so a number this surprising can be checked rather than believed. */
-  working: string[];
+  /**
+   * The working, in one short line, so a number this surprising can be checked
+   * rather than believed.
+   *
+   * Three clauses joined by dots wrapped onto a second line in a tile this
+   * narrow, and a wrapped explanation of a two-word number is clutter. The
+   * weekly figure is the same arithmetic said once: $200 a month over four
+   * weeks is $50 a week, and the run took 15% of 15% of one.
+   */
+  working: string;
 }
 
 export function planCost(tokens: number, apiUsd: number, emails: number): PlanCost {
@@ -61,11 +69,7 @@ export function planCost(tokens: number, apiUsd: number, emails: number): PlanCo
     planMyr: planUsd * MYR_PER_USD,
     perEmailCents: emails > 0 ? (planUsd / emails) * 100 : 0,
     timesCheaper: planUsd > 0 && apiUsd > 0 ? apiUsd / planUsd : null,
-    working: [
-      `${(SESSION_SHARE * 100).toFixed(0)}% of a session`,
-      `${(WEEK_SHARE * 100).toFixed(0)}% of a week`,
-      `$${MONTH_USD} a month over ${WEEKS_IN_MONTH} weeks`,
-    ],
+    working: `${(SESSION_SHARE * 100).toFixed(0)}% x ${(WEEK_SHARE * 100).toFixed(0)}% of $${MONTH_USD / WEEKS_IN_MONTH} a week`,
   };
 }
 
@@ -75,7 +79,7 @@ export function money(usd: number): string {
   return `$${usd.toFixed(3)}`;
 }
 
-/** `0.2c`, at the one decimal that keeps a fraction of a cent legible. */
+/** A fraction of a cent, at the one decimal that keeps it legible. */
 export function cents(value: number): string {
-  return `${value < 1 ? value.toFixed(2) : value.toFixed(1)}c`;
+  return `${value < 1 ? value.toFixed(2) : value.toFixed(1)} cents`;
 }
