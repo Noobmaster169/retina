@@ -25,6 +25,19 @@ export interface StructuredCall<T> {
   /** Null for a call that belongs to no run: the chat agent's loop is the only one. */
   runId: string | null;
   emailRunId?: string;
+  /**
+   * Called with the answer so far, for a caller holding the connection the
+   * answer is going back over.
+   *
+   * With a schema that text is the JSON being written, not prose, so a caller
+   * that wants a field out of it reads one with `chat/partial.ts`. It restarts
+   * from empty when an attempt is retried, so a consumer must take a shorter
+   * string than last time as a correction rather than an error.
+   *
+   * A run's own live store wins where there is one: that path already streams
+   * to the run page, and two writers of one preview would fight.
+   */
+  onPreview?(soFar: string): Promise<void> | void;
 }
 
 export interface StructuredResult<T> {
@@ -153,8 +166,11 @@ export async function callStructured<T>(deps: StructuredDeps, call: StructuredCa
       attempt,
     };
 
-    // Streamed only where someone can watch it: an email's call of a run, with
-    // a live store. A call that belongs to no run has no run page to stream to.
+    // Streamed where someone can watch it, which is two different people. An
+    // email's call of a run is watched through the live store, by anyone on the
+    // run page. A call that belongs to no run has no run page, but its caller
+    // may be holding the connection the answer goes back over, and that is what
+    // `onPreview` is. A call nobody is watching is not streamed at all.
     const preview =
       deps.live && call.emailRunId && call.runId
         ? livePreview(deps.live, {
@@ -166,7 +182,8 @@ export async function callStructured<T>(deps: StructuredDeps, call: StructuredCa
             attempt,
           })
         : null;
-    if (preview) request.onText = (soFar) => preview.onText(soFar);
+    const onText = preview ? (soFar: string) => preview.onText(soFar) : call.onPreview;
+    if (onText) request.onText = onText;
 
     let response;
     const started = Date.now();
