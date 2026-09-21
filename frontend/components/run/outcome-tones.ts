@@ -12,5 +12,10 @@ export const SLICE_TONE: Record<SliceTone, { key: string; bar: string }> = {
   differ: { key: "text-differ", bar: "var(--verdict-differ)" },
   review: { key: "text-review", bar: "var(--verdict-review)" },
   fault: { key: "text-fault", bar: "var(--verdict-fault)" },
-  muted: { key: "text-ink-tertiary", bar: "var(--ink-faint)" },
+  // Two neutrals, because there are two outcomes that carry no verdict and
+  // they are opposite facts. The heavier one is the one still owed something.
+  waiting: { key: "text-ink-secondary", bar: "var(--ink-secondary)" },
+  // Was `--ink-faint`, which section 4.3 says may never carry a fact. A band
+  // three hundred emails thick is nothing but a fact.
+  muted: { key: "text-ink-tertiary", bar: "var(--ink-tertiary)" },
 };

@@ -6,7 +6,7 @@ import { stagger } from "@/lib/motion";
 
 import type { OutcomeSlice } from "./outcomes";
 import { SLICE_TONE } from "./outcome-tones";
-import { SliceTip } from "./outcomes-legend";
+import { SliceTip } from "./slice-tip";
 
 /**
  * The same shares, along rows. The pie says the proportions at a glance and

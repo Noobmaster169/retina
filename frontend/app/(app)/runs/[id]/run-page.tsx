@@ -3,8 +3,10 @@
 import useSWR from "swr";
 
 import { TopBar } from "@/components/shell/top-bar";
-import { FlowPanel } from "@/components/run/flow-panel";
+import { LaneMapPanel } from "@/components/run/lane-map";
 import { MachineryPanel } from "@/components/run/machinery-panel";
+import { OutcomesPanel } from "@/components/run/outcomes-panel";
+import { laneMap } from "@/components/run/progress";
 import { QueuePanel } from "@/components/run/queue-panel";
 import { RunHeader, statusWord } from "@/components/run/run-header";
 import { PageContext } from "@/components/dock/page-context-announcer";
@@ -65,39 +67,66 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
         <RunHeader run={run} summary={runSummaryLine(run, queues ?? null)} actions={actions} />
 
         <div className="flex min-h-0 grow flex-col gap-4 px-6 pb-6">
-          {/*
-            One picture of the journey, full width, above everything that
-            details a part of it. The dots run only while there is work to
-            move, and a paused run has none: every moving thing on this page is
-            a claim that something is happening.
-          */}
-          <div className="flex min-h-0 gap-4">
-            <FlowPanel run={run} queues={queues ?? null} live={live} paused={paused} className="min-w-0 grow" />
-            <MachineryPanel run={run} className="w-[372px] shrink-0" />
-          </div>
-
-          {live && queues ? (
-            <div className="flex min-h-0 grow gap-4">
-              <QueuePanel
-                title="Sorting now"
-                queue={queues.classify}
-                runId={id}
-                paused={paused}
-                drained="Every email has been read. Only a comparison request crossed into the second queue, and that queue is still working."
-                className="min-w-0 grow"
-              />
-              <QueuePanel
-                title="Checking now"
-                queue={queues.compare}
-                runId={id}
-                paused={paused}
-                drained="Nothing is waiting for a check. Every pair that crossed has been judged; the rest of the inbox never needed one."
-                className="min-w-0 grow"
-              />
-            </div>
+          {queues ? (
+            <LaneMapPanel
+              map={laneMap(run, queues)}
+              runId={id}
+              note={laneNote(live, paused, queues.compare.heldUntil !== null)}
+              slots={{ classify: queues.classify.concurrency, compare: queues.compare.concurrency }}
+            />
           ) : null}
+
+          <div className="flex min-h-0 grow gap-4">
+            {live && queues ? (
+              <>
+                <QueuePanel
+                  title="Sorting now"
+                  queue={queues.classify}
+                  runId={id}
+                  paused={paused}
+                  drained="Every email has been read. Only a comparison request crossed into the second queue, and that queue is still working."
+                  className="w-[372px] shrink-0"
+                />
+                <QueuePanel
+                  title="Checking now"
+                  queue={queues.compare}
+                  runId={id}
+                  paused={paused}
+                  drained="Nothing is waiting for a check. Every pair that crossed has been judged; the rest of the inbox never needed one."
+                  className="w-[372px] shrink-0"
+                />
+                <OutcomesPanel
+                  run={run}
+                  notComparable={queues.handoff.notComparable}
+                  awaitingDraft={queues.handoff.awaitingDraft}
+                  live={live}
+                  paused={paused}
+                  className="min-w-0 grow"
+                />
+              </>
+            ) : (
+              <>
+                <OutcomesPanel
+                  run={run}
+                  notComparable={queues?.handoff.notComparable ?? 0}
+                  awaitingDraft={queues?.handoff.awaitingDraft ?? 0}
+                  live={live}
+                  paused={paused}
+                  className="min-w-0 grow"
+                />
+                <MachineryPanel run={run} className="w-[372px] shrink-0" />
+              </>
+            )}
+          </div>
         </div>
       </div>
     </>
   );
+}
+
+function laneNote(live: boolean, paused: boolean, held: boolean): string {
+  if (paused) return "Paused. Both queues keep what they were given and start nothing new.";
+  if (held) return "Sorting is unaffected. Checking is held, so the emails between them pile up.";
+  if (!live) return "Both queues drained.";
+  return "Two queues, running side by side. Only a document check crosses from one to the other.";
 }

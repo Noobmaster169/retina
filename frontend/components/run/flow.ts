@@ -31,6 +31,18 @@ export interface FlowNode {
   tone: SliceTone;
   /** The column it sits in, left to right. */
   depth: 0 | 1 | 2;
+  /**
+   * Where it sits in its column, top to bottom.
+   *
+   * Stated rather than left to the layout. Given a free hand the library put
+   * `No check needed` in the middle of the last column and `Needs a person` at
+   * the foot of it, which made the one band a reader has to act on the longest
+   * and faintest thing on the page: twenty emails swooping under three hundred
+   * to reach the bottom corner. The four outcomes of a check now sit together
+   * under the queue they came from, and the band that never entered that queue
+   * runs flat along the bottom without crossing anything.
+   */
+  order: number;
   /** What it means, for the tooltip. Empty where the label already says it. */
   says: string;
 }
@@ -71,7 +83,7 @@ export function runFlow(run: Pick<RunSummary, "outcomes" | "review">, notCompara
   const needCheck = crossed.reduce((sum, slice) => sum + slice.count, 0);
 
   const nodes: FlowNode[] = [
-    { id: "arriving", label: "Arriving", count: total, tone: "muted", depth: 0, says: "Every email this run was given." },
+    { id: "arriving", label: "Arriving", count: total, tone: "muted", depth: 0, order: 0, says: "Every email this run was given." },
   ];
   const links: FlowLink[] = [];
 
@@ -82,6 +94,7 @@ export function runFlow(run: Pick<RunSummary, "outcomes" | "review">, notCompara
       count: needCheck,
       tone: "muted",
       depth: 1,
+      order: 0,
       says: "Sorted into a category that asks for the two documents to be compared.",
     });
     links.push({ from: "arriving", to: "needs-check", count: needCheck, tone: "muted" });
@@ -93,12 +106,12 @@ export function runFlow(run: Pick<RunSummary, "outcomes" | "review">, notCompara
   const parked = ends.filter((slice) => slice.group === "parked");
   const parkedCount = parked.reduce((sum, slice) => sum + slice.count, 0);
 
-  for (const key of AFTER_CHECK) {
+  AFTER_CHECK.forEach((key, at) => {
     const slice = ends.find((one) => one.key === key);
-    if (!slice) continue;
-    nodes.push({ id: slice.key, label: slice.label, count: slice.count, tone: slice.tone, depth: 2, says: slice.says });
+    if (!slice) return;
+    nodes.push({ id: slice.key, label: slice.label, count: slice.count, tone: slice.tone, depth: 2, order: at, says: slice.says });
     links.push({ from: "needs-check", to: slice.key, count: slice.count, tone: slice.tone });
-  }
+  });
 
   if (parkedCount > 0) {
     nodes.push({
@@ -107,6 +120,9 @@ export function runFlow(run: Pick<RunSummary, "outcomes" | "review">, notCompara
       count: parkedCount,
       tone: "review",
       depth: 2,
+      // Directly under the three it shares a queue with, and above the band
+      // that never entered one.
+      order: AFTER_CHECK.length,
       says: "Crossed into the second queue and could not be compared confidently, so it is waiting for a person.",
     });
     links.push({ from: "needs-check", to: "needs-person", count: parkedCount, tone: "review" });
@@ -116,7 +132,7 @@ export function runFlow(run: Pick<RunSummary, "outcomes" | "review">, notCompara
   if (noCheck) {
     // Straight from the first node to the last column: it never entered the
     // second queue, and a middle node for it would draw a step it never took.
-    nodes.push({ id: noCheck.key, label: noCheck.label, count: noCheck.count, tone: noCheck.tone, depth: 2, says: noCheck.says });
+    nodes.push({ id: noCheck.key, label: noCheck.label, count: noCheck.count, tone: noCheck.tone, depth: 2, order: 99, says: noCheck.says });
     links.push({ from: "arriving", to: noCheck.key, count: noCheck.count, tone: "muted" });
   }
 
@@ -131,5 +147,5 @@ export function parkedReasons(
 ): FlowNode[] {
   return outcomeBreakdown(run, notComparable, awaitingDraft)
     .slices.filter((slice) => slice.group === "parked" && slice.count > 0)
-    .map((slice) => ({ id: slice.key, label: slice.label, count: slice.count, tone: slice.tone, depth: 2, says: slice.says }));
+    .map((slice, at) => ({ id: slice.key, label: slice.label, count: slice.count, tone: slice.tone, depth: 2, order: at, says: slice.says }));
 }

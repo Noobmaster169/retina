@@ -21,7 +21,7 @@ import { RunSummary } from "@/lib/api/runs-schemas";
  * changes what is stored or submitted.
  */
 
-export type SliceTone = "match" | "differ" | "review" | "fault" | "muted";
+export type SliceTone = "match" | "differ" | "review" | "fault" | "waiting" | "muted";
 
 export interface OutcomeSlice {
   /** The organisers' own word for this outcome, as the scorer and the tooltip say it. */
@@ -61,7 +61,15 @@ const WORDS: Record<string, { label: string; says: string }> = {
   missing_value: { label: "Detail missing", says: "A field the comparison needs was absent from a document." },
 };
 
-const TONES: Record<string, SliceTone> = { not_comparable: "muted", awaiting_draft: "muted", OK: "match", MISMATCH: "differ" };
+/**
+ * `awaiting_draft` is its own neutral and not the same one as
+ * `not_comparable`. Both are outcomes without a verdict, so neither takes a
+ * verdict hue, but they are opposite facts: one never needed a check and the
+ * other needed one and could not have it yet. Drawn in the same grey they
+ * were two bands of the same colour, and the picture said the run had one
+ * large neutral outcome when it has two that mean different things.
+ */
+const TONES: Record<string, SliceTone> = { not_comparable: "muted", awaiting_draft: "waiting", OK: "match", MISMATCH: "differ" };
 
 /**
  * `notComparable` and `awaitingDraft` come from the handoff rather than from

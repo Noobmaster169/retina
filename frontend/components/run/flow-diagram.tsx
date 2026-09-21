@@ -25,7 +25,9 @@ const HEIGHT = 250;
 const NODE_WIDTH = 10;
 const NODE_PADDING = 16;
 /** Room for the labels, which sit outside the plot on both sides. */
-const PAD = { top: 6, right: 168, bottom: 6, left: 92 };
+// The bottom is deeper than the top because every label is two lines, and the
+// second one of the lowest node sits below the node's own box.
+const PAD = { top: 8, right: 168, bottom: 20, left: 92 };
 
 type Laid = FlowNode & { x0: number; x1: number; y0: number; y1: number };
 type LaidLink = { source: Laid; target: Laid; width: number; count: number; tone: FlowLink["tone"] };
@@ -44,6 +46,8 @@ export function useFlowLayout(flow: RunFlow): FlowLayout {
       .nodeWidth(NODE_WIDTH)
       .nodePadding(NODE_PADDING)
       .nodeAlign(sankeyJustify)
+      // Our order, not the library's: see the note on FlowNode.order.
+      .nodeSort((a, b) => a.order - b.order)
       .extent([
         [PAD.left, PAD.top],
         [WIDTH - PAD.right, HEIGHT - PAD.bottom],

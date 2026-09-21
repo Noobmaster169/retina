@@ -80,7 +80,9 @@ describe("outcomeBreakdown", () => {
    */
   it("holds the comparison requests that had no draft, so the whole is every email and not only the compared ones", () => {
     const withDraft = breakdown.slices.find((slice) => slice.key === "awaiting_draft");
-    expect(withDraft).toMatchObject({ count: 91, group: "finished", tone: "muted" });
+    // Its own neutral, never the one `not_comparable` takes: the two are
+    // opposite facts and one grey for both hid that.
+    expect(withDraft).toMatchObject({ count: 91, group: "finished", tone: "waiting" });
     expect(breakdown.total).toBe(300 + 91 + 62 + 46 + 20);
   });
 
