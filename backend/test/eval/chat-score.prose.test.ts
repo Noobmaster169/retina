@@ -6,7 +6,8 @@ describe("sentenceCount", () => {
   it.each([
     ["Two sentences. Here is one more.", 2],
     ["email_334 differs on 0.45 of fields.", 1],
-    ["A list:\n- one thing? really\n- two\n- three", 4],
+    ["A list:\n- one thing? really\n- two\n- three", 2],
+    ["Two lists:\n- a\n- b\n\nThen.\n\n1. c\n2. d", 4],
     ["## Parts\nOne. Two.", 2],
     ["", 0],
   ])("%j is %i", (text, n) => {

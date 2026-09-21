@@ -17,18 +17,22 @@ const SCHEMA_NAME = /\b(?:core|analytics)\.[a-z_]+/i;
 const OFFER = /\b(?:let me know|feel free|would you like|happy to|i can (?:pull|run|dig|look|help|show you)|i'd be happy)\b/i;
 const GREETING = /^\s*(?:hello|hi|hey)\b/i;
 
-/** At most this many sentences, a bullet line counting as one whatever its punctuation and a heading as none. */
+/** At most this many sentences, a whole list counting as one however many items it has and a heading as none. */
 export const MAX_SENTENCES = 8;
 
 export function sentenceCount(answer: string): number {
   let count = 0;
+  let inList = false;
   for (const raw of answer.split("\n")) {
     const line = raw.trim();
     if (line === "" || /^#{1,3}\s/.test(line)) continue;
+    // A list is one sentence so that naming five ports costs what running them together in a sentence costs.
     if (/^(?:[-*]|\d+[.)])\s/.test(line)) {
-      count += 1;
+      if (!inList) count += 1;
+      inList = true;
       continue;
     }
+    inList = false;
     const ends = line.match(/[.!?](?=\s|$)/g)?.length ?? 0;
     count += Math.max(1, ends);
   }
