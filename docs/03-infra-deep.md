@@ -300,13 +300,18 @@ Nothing is stripped, reordered or normalised. A prompt whose frontmatter says
 `reads_attachments: true` (`classify/v5.md`, `classify-verify/v2.md`) also gets an
 "attachment contents" section (`classify/attachments.ts`): each file's name and the text
 doc-extract recovered, cut at `CLASSIFY_ATTACHMENT_CHARS`, an unreadable file named with the
-parser's reason. The input shape follows the pinned prompt, so `v3` runs exactly as before.
+parser's reason. The input shape follows the pinned prompt, so `v6` runs exactly as `v3` did.
 
-**Generator** (`prompts/classify/v3.md`, the active version; v1 and v2 are kept for comparison). Defines the five categories in the organisers' words
+**Generator** (`prompts/classify/v6.md`, the active version; v1 to v5 are kept for comparison). Defines the five categories in the organisers' words
 (the brief and `emails/data_v2/README.md`), says that a body may carry a forwarded thread, a
 signature and a warning banner and that the category follows what the sender is asking for now.
-It names no sender, domain, subject code or phrase from the dataset. Zero-shot. `v4` is `v3` plus
-ten train examples and is not active: it ships only if a holdout run shows it helps. Output (JSON
+It names no sender, domain, subject code or phrase from the dataset. Zero-shot. `v6` is `v3` plus
+the stage invariant: what the sender asks for decides the stage, and what actually arrived does
+not, so a request to check a draft is still stage 3 when the draft is missing, unreadable or a
+different document from the one its name claims. That follows from the organisers' own
+definitions, where all four `review_reason` values are BL_COMPARISON cases that end in
+NEEDS_REVIEW. `v4` is `v3` plus ten train examples and is not active: it ships only if a holdout
+run shows it helps. Output (JSON
 schema enforced, category restricted to the enum, rationale first because a schema-bound answer
 has no room for reasoning before it):
 
@@ -318,9 +323,12 @@ has no room for reasoning before it):
 on the train split (24 of 401 train emails below it under v2; every recorded miss at 0.70 or
 lower). The model's own confidence is the only input; there is no branch on email content.
 
-**Verifier** (`prompts/classify-verify/v1.md`) receives the same input plus the generator's
+**Verifier** (`prompts/classify-verify/v3.md`) receives the same input plus the generator's
 proposal and is told to make the strongest case for every other category before deciding. The
-case comes first in the schema, for the same reason as the generator's rationale. Output:
+case comes first in the schema, for the same reason as the generator's rationale. `v3` is `v1`
+plus the same stage invariant and one bound on the exercise: a counter-case has to rest on what
+the sender asks for, because under `v1` the absence of a usable document was itself argued as a
+case for an earlier stage, and that argument only ever moved right answers to wrong ones. Output:
 
 ```json
 { "counter_cases": "...", "rationale": "...", "category": "GENERAL", "agrees": false, "confidence": 0.88 }

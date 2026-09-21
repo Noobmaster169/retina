@@ -285,8 +285,10 @@ describe("classify processor", () => {
       await processClassify({ ...parsers(), pool: tx, llm, compare: new RecordingAdder<CompareJob>() }, { runId, emailId }, 600);
 
       const [call] = await llmCalls.listForEmail(tx, runId, emailId);
-      // Migration 004 makes v3 active; v4, the unvalidated few-shot experiment, is newer on disk.
-      expect(call.promptVersion).toBe("v3");
+      // Migration 025 makes v6 active. It is also the newest file today, so this
+      // reads as a tautology until the next experiment lands above it; what it
+      // pins is that the active row decides, never `latestVersion`.
+      expect(call.promptVersion).toBe("v6");
     });
   });
 

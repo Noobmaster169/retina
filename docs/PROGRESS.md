@@ -4,6 +4,13 @@ Current phase: **10g, on `main`, and 11's first slice with it.** 10a to 10f are 
 page's failure view, which is phase 11's first item. Phase 7's two `[~]` items are still under
 "Deferred" below.
 
+**2026-09-21: classify is on `v6` and the verifier on `v3`** (migration 025). The single
+classification the pipeline had never got right, `email_504`, was a gap in the prompts' own
+definitions rather than a hard email, and the verifier was making it worse rather than better.
+See "Design decisions (classify stage invariant)" below for what was wrong and what it was
+measured against. **The holdout and the full 520 have not been rerun under the new prompts** and
+are the two numbers that decide whether E2E moves off 0.97.
+
 **Start at `docs/phases/phase-10f-semantic-layer.md`**, whose header now carries the list of every
 place the repo and that spec disagreed and what the bench found. Then
 `docs/phases/phase-10f-handover.md` for what 10e left and the traps, which all still apply.
@@ -948,6 +955,7 @@ without a rule about what an answer looks like, so it is left. It did not recur 
 | 4, v3 + verifier, full inbox | 0.2996 | 0.2996 (scorer) | 0.9938 holdout, 0.9987 full | 0 | 0 | Run `69ee1e42`, started by the user, 520 emails at 8 in parallel in 7 min 46 s. 595 calls, 0 failed, verifier on 14.4%. One wrong category: `email_504`, SI_REQUEST for BL_COMPARISON |
 | 4, v3 + verifier, dev sample | not run | not run | 1.0000 dev (30 of 30) | 0 | 0 | Run `0d09d887`, 30 train emails, 37 calls, 0 failed, verifier on 7 (23.3%), agreed every time. Not a holdout number |
 | 5, structural escalations | not run | not run | n/a | 0 | 0 | Run `cd96e1c0`, 24 emails (the 20 edge cases and one pair per format): 14 escalated with the right reason, 0 failed. Not a scored number; the holdout is the user's to run |
+| classify v6 + verify v3, the 20 edge cases | not run | not run | 1.0000 (20 of 20) | n/a | n/a | Run `9e8efb9c`, 79 calls, 0 failed, verifier on 2 of 20. Category, status, `review_reason` and `has_defect` all match the truth for every one, `email_504` included: the miss that stood from phase 2 to phase 4 is gone. Not a holdout number; the holdout and the full 520 are the user's |
 | 6, extraction and judge, 24 train pairs | not run | not run | 1.0000 accuracy (all 24 BL_COMPARISON) | 1.0000 over 18 | 1.0000, 8 of 8 | Run `0011eb39`, 24 train ids (12 txt pairs, 6 binary-format pairs, 2 scanned, 4 missing_value): 8 MISMATCH with the exact field sets, 10 OK, 4 missing_value, 2 unreadable with provisional; escalation recall and precision 1.0. 146 calls, 0 failed, verifier on 1 of 48 documents. Macro-F1 reads 0.2 only because four categories are absent from the run. Not a holdout number |
 
 Stage 1 carries 0.30 of the final score, so 0.3000 is exactly what a perfect classifier with no
@@ -1519,6 +1527,49 @@ the same branch. The behaviour changes are the first three.
   A bad file is never an outage: the service answers 200 with `unreadable: true`.
 - 2026-09-20, **`v5` and `classify-verify v2` are seeded inactive.** The eval harness, not the
   dev sample, decides a prompt switch; the runs page can pin them meanwhile.
+
+## Design decisions (classify stage invariant, 2026-09-21)
+`classify v6` and `classify-verify v3`, active by migration 025. The one classification the
+pipeline has never got right is fixed, and the reason it was wrong was a gap in the definitions,
+not a hard email.
+
+- **What was actually wrong.** Both prompts define BL_COMPARISON as checking a draft BL, and
+  define stage 1 by "at this stage no Bill of Lading exists ... there is nothing to check".
+  Neither said which of the two governs when a check request arrives and its draft is missing,
+  will not open, or is some other document. So the model inferred the stage backwards, from the
+  documents to the request: no usable draft, therefore nothing to check, therefore stage 1,
+  therefore SI_REQUEST. The organisers say the opposite, and say it plainly: all four
+  `review_reason` values in `emails/data_v2/README.md` (`wrong_doc_type`, `missing_attachment`,
+  `unreadable`, `missing_value`) are BL_COMPARISON cases that end in NEEDS_REVIEW. A fault in the
+  paperwork is a reason for review, never a different category. `v6` and `v3` say that, in two
+  bullets, and change nothing else.
+- **The verifier was the larger half of it.** `classify-verify v1` is told to build the strongest
+  case for every other category, and the absence of a usable draft is exactly the material that
+  exercise reaches for. Over everything measured, the verifier changed 8 answers and every one of
+  them went from right to wrong: 2 in the two 520-email runs in the local database, 4 on the
+  fresh-seed probe below, 2 on the holdout edge cases. It has never once fixed a generator miss
+  in any run on record. The score table already showed it: v3 alone scored 1.0000 stage-1 on the
+  holdout in phase 2, and v3 plus the verifier scored 0.9938 in phase 4, with `email_504` named
+  as the email it lost. `v3` adds the bound that a counter-case has to rest on what the sender
+  asks for, and after it the verifier flipped nothing in any arm.
+- **Measured on inboxes that did not exist when the prompts were written.** Tuning on the four
+  shipped `wrong_doc_type` emails would have been fitting to four samples, so
+  `emails/data_v2/generate.py` was run at eight fresh seeds and the probe built from those:
+  16 check requests whose draft was missing, unreadable or the wrong document, and whose subject
+  also reads like a stage-1 request, which is the shape that breaks. Two passes each.
+  **26/32 to 32/32**, and the generator alone 30/32 to 32/32. Stated confidence on these rose
+  from 0.62-0.75 to 0.85-0.95, so most no longer reach the verifier at all.
+- **The other direction was checked before the fix shipped.** A 56-email regression from the same
+  eight seeds, weighted at the boundary that a fix like this would break: 20 SI_REQUEST, 20
+  BL_COMPARISON (10 carrying attachments, 10 of the "please send the draft BL" kind), 6
+  INVOICE_QUERY, 6 GENERAL, 4 SPAM. **56/56 before and 56/56 after.** The 26-email train sample
+  is 52/52 over two passes both ways. Nothing moved from SI_REQUEST to BL_COMPARISON.
+- **Why this is not the dataset in a prompt.** The two bullets name no sender, subject code or
+  phrase, and turn on what is being asked, not on what is attached: a request to *produce* a
+  draft is stage 1 and a request to *check* one is stage 3, whatever arrived with it. Every
+  clause traces to the stage model already in the prompt or to the organisers' README table.
+- **Still the user's to run:** `pnpm eval:score --holdout` and the full 520, which is what the
+  Scores table wants and what decides whether E2E moves off 0.97.
 
 ## Deferred
 - Shipment is the one entity type in the design's vocabulary that is still never `built`.
