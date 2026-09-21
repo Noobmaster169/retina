@@ -142,7 +142,7 @@ export const DocumentView = z.object({
   docTypeRationale: z.string().nullable(),
   /** What the compare stage makes of that reading. Shown as given; never recomputed here. */
   typeVerdict: TypeVerdict,
-  format: z.enum(["txt", "pdf", "docx", "xlsx", "unknown"]),
+  format: z.enum(["txt", "pdf", "docx", "xlsx", "image", "unknown"]),
   pages: z.number(),
   scanned: z.boolean(),
   unreadable: z.boolean(),
