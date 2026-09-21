@@ -1,7 +1,4 @@
-"use client";
-
-import { Icon } from "@/components/ui/icons";
-
+import { fieldLabel } from "./field-label";
 import type { FieldRowData } from "./field-row";
 
 /**
@@ -27,18 +24,12 @@ const TINT = {
   differ: "bg-differ-tint text-differ",
 } as const;
 
-export function ReportVerdict({ chosen, runId, emailId }: {
-  chosen: FieldRowData | undefined;
-  runId: string;
-  emailId: string;
-}) {
+export function ReportVerdict({ chosen }: { chosen: FieldRowData | undefined }) {
   if (!chosen) {
     return (
-      <footer className="flex shrink-0 items-center gap-2 border-t border-hairline bg-surface px-4 py-3">
-        <p className="text-small text-ink-tertiary">Choose a row to read what the judge made of it.</p>
-        <span className="grow" />
-        <ExportLink runId={runId} emailId={emailId} />
-      </footer>
+      <section className="shrink-0 border-b border-hairline bg-surface px-4 py-3">
+        <p className="text-small text-ink-tertiary">Select a field below to see how Retina reached its reading.</p>
+      </section>
     );
   }
 
@@ -47,45 +38,22 @@ export function ReportVerdict({ chosen, runId, emailId }: {
   const unquoted = !chosen.si?.evidenceOk || !chosen.bl?.evidenceOk;
 
   return (
-    <footer className="shrink-0 border-t border-hairline bg-surface px-4 py-3">
-      <div className="flex items-center gap-2">
-        <span className={`inline-flex h-[21px] shrink-0 items-center rounded-sm px-2 font-mono text-mono-xs ${TINT[kind]}`}>
-          {judgement.missing ? "nothing to compare" : judgement.same ? "the same" : "different"}
+    <section className="shrink-0 border-b border-hairline bg-surface px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`inline-flex h-[22px] shrink-0 items-center rounded-sm px-2 text-caption font-medium ${TINT[kind]}`}>
+          {judgement.missing ? "Could not compare" : judgement.same ? "Matches" : "Different"}
         </span>
-        <span className="min-w-0 truncate font-mono text-mono-xs text-ink-secondary">{judgement.field}</span>
+        <h2 className="text-strong font-medium text-ink">{fieldLabel(judgement.field)}</h2>
         {judgement.confidence === null ? null : (
-          <span className="shrink-0 text-caption text-ink-tertiary">{judgement.confidence.toFixed(2)} sure</span>
+          <span className="shrink-0 text-caption text-ink-tertiary">{Math.round(judgement.confidence * 100)}% confidence</span>
         )}
         {unquoted ? (
-          <span className="shrink-0 text-caption text-review">a quote could not be found in its document</span>
+          <span className="text-caption text-review">Source text was unavailable for one document.</span>
         ) : null}
-        <span className="grow" />
-        <ExportLink runId={runId} emailId={emailId} />
       </div>
       <p className="mt-2 max-w-[92ch] text-strong leading-5 text-ink">
-        {judgement.rationale ?? "The judge recorded no reasoning for this field."}
+        {judgement.rationale ?? "No explanation was recorded for this field."}
       </p>
-    </footer>
-  );
-}
-
-/**
- * The way out of the product: this check as a document, in its own tab, which
- * opens the browser's print dialog on arrival. The export is a print to PDF
- * and not a file drawn in JavaScript, so the type is real and the text in the
- * saved file can still be searched and copied.
- */
-function ExportLink({ runId, emailId }: { runId: string; emailId: string }) {
-  return (
-    <a
-      href={`/report/${runId}/${emailId}?print=1`}
-      target="_blank"
-      rel="noreferrer"
-      title="The diff and what the judge made of it, as one page to print or send"
-      className="inline-flex h-[26px] shrink-0 items-center gap-1.5 rounded-sm border border-hairline-strong px-2.5 text-caption text-ink-secondary transition-colors duration-150 hover:border-ink-faint hover:text-ink"
-    >
-      <Icon name="doc" size={11} />
-      Export
-    </a>
+    </section>
   );
 }

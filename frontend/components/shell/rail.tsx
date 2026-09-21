@@ -41,7 +41,7 @@ export function Rail({ open, onToggle, active, counts, alerts, current, runId, c
       initial={false}
       animate={{ width: open ? 232 : 56 }}
       transition={spring}
-      className="flex shrink-0 flex-col overflow-hidden border-r border-hairline bg-surface"
+      className="flex shrink-0 flex-col overflow-hidden border-r border-hairline bg-shell"
       aria-label="Retina"
     >
       <div className={`flex h-14 shrink-0 items-center gap-2.5 ${open ? "px-[18px]" : "justify-center px-0"}`}>

@@ -28,13 +28,12 @@ export type { MapLane, MapPin } from "./types";
  * the far end of a lit port's lane, and then only as a ghost, so a filter on
  * one region still shows where that region's ports ship. `focus` opens with
  * that port lit, its lanes framed and no panel, because the page it sits on
- * is that port's panel already. `initial` opens with that port picked.
+ * is that port's panel already.
  */
 export function WorldMap({
   pins,
   lanes = [],
   focus,
-  initial,
   wheel = true,
   visible,
   className = "",
@@ -42,8 +41,6 @@ export function WorldMap({
   pins: MapPin[];
   lanes?: MapLane[];
   focus?: string;
-  /** The pin picked when the map opens. */
-  initial?: string;
   /** False lets the wheel scroll the page; the buttons and a drag still move the map. */
   wheel?: boolean;
   /** Ids of the pins the page's filter kept. Undefined keeps every pin. */
@@ -55,7 +52,7 @@ export function WorldMap({
   const view = useMapView(svg, wheel);
   const [hoverPin, setHoverPin] = useState<PlacedPin | null>(null);
   const [hoverLane, setHoverLane] = useState<PlacedLane | null>(null);
-  const [selected, setSelected] = useState<string | null>(initial ?? null);
+  const [selected, setSelected] = useState<string | null>(null);
   // Where the pointer is over the box, and whether that is far enough right
   // for the tooltip to sit on its left. Measured on the move, never in render.
   const [pointer, setPointer] = useState({ x: 0, y: 0, flip: false });

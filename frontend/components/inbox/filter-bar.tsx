@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { ArrowUpDown } from "lucide-react";
+import { DropdownMenu } from "radix-ui";
 
 import { Icon } from "@/components/ui/icons";
 import type { Tone } from "@/components/ui/chip";
@@ -71,11 +73,9 @@ interface FilterBarProps {
   view: InboxView;
   onView: (next: Partial<InboxView>) => void;
   counts: Record<FilterKey, number>;
-  /** How many rows the list is drawing, which the search makes different from the run's total. */
-  shown: number;
 }
 
-export function FilterBar({ view, onView, counts, shown }: FilterBarProps) {
+export function FilterBar({ view, onView, counts }: FilterBarProps) {
   const field = useRef<HTMLInputElement>(null);
 
   // A list this long is searched far more often than it is scrolled, so the
@@ -96,37 +96,7 @@ export function FilterBar({ view, onView, counts, shown }: FilterBarProps) {
 
   return (
     <div className="shrink-0 border-b border-hairline px-[18px] pb-2.5 pt-3">
-      <div className="relative">
-        <Icon name="search" size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint" />
-        <input
-          ref={field}
-          type="text"
-          value={view.query}
-          onChange={(event) => onView({ query: event.target.value })}
-          onKeyDown={(event) => {
-            if (event.key !== "Escape") return;
-            onView({ query: "" });
-            event.currentTarget.blur();
-          }}
-          placeholder="Search id, sender, subject"
-          aria-label="Search this run's emails"
-          className="h-8 w-full rounded-md border border-hairline bg-sunken pl-[30px] pr-7 text-strong text-ink transition-colors duration-150 placeholder:text-ink-faint focus:border-hairline-strong focus:bg-canvas focus:outline-none"
-        />
-        {view.query ? (
-          <button
-            type="button"
-            onClick={() => onView({ query: "" })}
-            aria-label="Clear the search"
-            className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-sm text-ink-faint transition-colors duration-150 hover:bg-active hover:text-ink-secondary"
-          >
-            <Icon name="close" size={10} />
-          </button>
-        ) : (
-          <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 font-mono text-micro text-ink-faint">/</span>
-        )}
-      </div>
-
-      <div className="mt-2 flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap gap-1.5">
         {chips.map((filter) => {
           const here = filter.key === view.filter;
           const emphasis = emphasisOf(filter.tone, counts[filter.key], here);
@@ -150,27 +120,74 @@ export function FilterBar({ view, onView, counts, shown }: FilterBarProps) {
         })}
       </div>
 
-      <div className="mt-2 flex items-center gap-2">
-        <span className="text-caption text-ink-tertiary tabular-nums">{shown} shown</span>
-        <span className="grow" />
-        <label className="flex items-center gap-1.5">
-          <span className="text-caption text-ink-tertiary">Sort</span>
-          <select
-            value={view.sort}
-            onChange={(event) => {
-              const next = SortKey.safeParse(event.target.value);
-              if (next.success) onView({ sort: next.data });
+      <div className="mt-2 flex items-center justify-end gap-1.5">
+        <div className="relative min-w-0 grow">
+          <Icon name="search" size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint" />
+          <input
+            ref={field}
+            type="text"
+            value={view.query}
+            onChange={(event) => onView({ query: event.target.value })}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") return;
+              onView({ query: "" });
             }}
-            aria-label="Order the list"
-            className="h-6 rounded-sm border border-hairline bg-canvas pl-1.5 pr-1 text-caption text-ink-secondary transition-colors duration-150 hover:border-hairline-strong"
+            placeholder="Sender or subject"
+            aria-label="Search this run's emails"
+            className="h-8 w-full rounded-md border border-hairline bg-sunken pl-[30px] pr-7 text-strong text-ink transition-colors duration-150 placeholder:text-ink-faint focus:border-accent-line focus:bg-canvas focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              onView({ query: "" });
+              field.current?.focus();
+            }}
+            aria-label="Clear the search"
+            className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-sm text-ink-faint transition-colors duration-150 hover:bg-active hover:text-ink-secondary"
           >
-            {SORTS.map((sort) => (
-              <option key={sort.key} value={sort.key}>
-                {sort.label}
-              </option>
-            ))}
-          </select>
-        </label>
+            <Icon name="close" size={10} />
+          </button>
+        </div>
+
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger
+            aria-label={`Sort emails. Current order: ${SORTS.find((sort) => sort.key === view.sort)?.label ?? "Email id"}`}
+            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border transition-colors duration-150 ${
+              view.sort === "id"
+                ? "border-hairline text-ink-secondary hover:border-hairline-strong hover:bg-sunken"
+                : "border-accent-line bg-accent-tint text-accent"
+            }`}
+          >
+            <ArrowUpDown size={14} strokeWidth={1.6} />
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content
+              align="end"
+              sideOffset={6}
+              className="z-50 min-w-[180px] overflow-hidden rounded-lg border border-hairline bg-canvas py-1 shadow-overlay"
+            >
+              <div className="px-3 py-1.5 text-caption text-ink-tertiary">Sort emails</div>
+              <DropdownMenu.RadioGroup
+                value={view.sort}
+                onValueChange={(value) => {
+                  const next = SortKey.safeParse(value);
+                  if (next.success) onView({ sort: next.data });
+                }}
+              >
+                {SORTS.map((sort) => (
+                  <DropdownMenu.RadioItem
+                    key={sort.key}
+                    value={sort.key}
+                    className="flex cursor-pointer items-center gap-3 px-3 py-2 text-small text-ink-secondary outline-none transition-colors duration-150 data-[highlighted]:bg-sunken data-[state=checked]:text-ink"
+                  >
+                    <span className="grow">{sort.label}</span>
+                    {view.sort === sort.key ? <Icon name="check" size={12} className="text-accent" /> : null}
+                  </DropdownMenu.RadioItem>
+                ))}
+              </DropdownMenu.RadioGroup>
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
       </div>
     </div>
   );

@@ -9,12 +9,8 @@ import { DocumentSheet } from "./document-sheet";
 import { senderAddress, senderInitials, senderName } from "./sender";
 
 /**
- * The email, walled off. This is the only bordered card in the product, and
- * the border is not decoration: the whole design problem on this page was that
- * a reader could not tell where the sender stopped and Retina started. A border
- * that means "this is not ours" earns its place.
- *
- * docs/05-design.md section 6, and the seam in seam.tsx directly under it.
+ * The email as an email, not as an application card. Spacing and the labelled
+ * seam below it keep the sender's words distinct from Retina's reading.
  */
 
 export interface Message {
@@ -56,10 +52,13 @@ export function MessageCard({
   message,
   documents = [],
   to = "ops@aprilasia.com",
+  foldBody = true,
 }: {
   message: Message;
   documents?: DocumentView[];
   to?: string;
+  /** Keep long mail compact only when the page has analysis below it. */
+  foldBody?: boolean;
 }) {
   const [opened, setOpened] = useState<DocumentView | null>(null);
   const [whole, setWhole] = useState(false);
@@ -73,31 +72,33 @@ export function MessageCard({
   // never overflow, and never offer itself.
   useEffect(() => {
     const held = body.current;
-    if (!held || whole) return;
+    if (!held || whole || !foldBody) return;
     setHidden(Math.round((held.scrollHeight - held.clientHeight) / BODY_LINE));
-  }, [message.body, whole]);
+  }, [foldBody, message.body, whole]);
 
   return (
-    <article className="overflow-hidden rounded-lg border border-hairline-strong">
-      <header className="flex items-center gap-2.5 border-b border-hairline bg-surface px-3.5 py-2.5">
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-hairline bg-canvas text-[10.5px] font-semibold text-ink-secondary">
+    <article className="pb-5">
+      <header className="flex items-start gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-tint text-[11px] font-semibold text-accent">
           {senderInitials(message.from)}
         </span>
-        <span className="min-w-0">
+        <span className="min-w-0 pt-0.5">
           <span className="block truncate text-strong font-medium">{senderName(message.from)}</span>
-          <span className="block text-caption text-ink-tertiary">
-            {senderAddress(message.from)} to {to}
-          </span>
+          <span className="block truncate text-caption text-ink-tertiary">{senderAddress(message.from)}</span>
         </span>
       </header>
-      <div className="px-3.5 py-3.5">
+      <div className="mt-3 flex items-baseline gap-2 text-small">
+        <span className="shrink-0 font-medium text-ink-tertiary">To</span>
+        <span className="truncate text-ink-secondary">{to}</span>
+      </div>
+      <div className="mt-5">
         {/* `whitespace-pre-wrap`: the body arrives with its own line breaks and a
             signature block that is a stack of short lines. Collapsing them ran the
             whole email into one paragraph, which is not how it was written. */}
-        <div ref={body} className="overflow-hidden" style={whole ? undefined : { maxHeight: FOLD_LINES * BODY_LINE }}>
+        <div ref={body} className="overflow-hidden" style={!foldBody || whole ? undefined : { maxHeight: FOLD_LINES * BODY_LINE }}>
           <p className="max-w-[68ch] whitespace-pre-wrap break-words text-body text-ink-secondary">{message.body.trim()}</p>
         </div>
-        {hidden > 0 ? (
+        {foldBody && hidden > 0 ? (
           <button
             type="button"
             onClick={() => setWhole(!whole)}
@@ -108,7 +109,7 @@ export function MessageCard({
           </button>
         ) : null}
         {message.attachments.length > 0 ? (
-          <div className="mt-3 flex gap-2">
+          <div className="mt-5 grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2">
             {message.attachments.map((path) => (
               <Attachment
                 key={path}
@@ -125,26 +126,26 @@ export function MessageCard({
   );
 }
 
-const CHIP = "flex min-w-0 shrink grow basis-0 items-center gap-2 rounded-md border border-hairline px-2.5 py-2 text-left";
+const LINK = "flex w-full min-w-0 items-start gap-2.5 text-left";
 
 /** One file the email carried. It opens the same sheet the documents tab opens, over the page. */
 function Attachment({ name, document: doc, onOpen }: { name: string; document: DocumentView | null; onOpen: (document: DocumentView) => void }) {
   const lines = (
     <>
-      <Icon name="doc" size={14} className="shrink-0 text-ink-faint" />
+      <Icon name="doc" size={18} className="mt-0.5 shrink-0 text-accent" />
       <span className="min-w-0">
-        <span className="block truncate font-mono text-micro">{name}</span>
+        <span className="block truncate text-small font-medium text-accent underline underline-offset-2">{name}</span>
         {doc ? <span className="block text-micro text-ink-tertiary">{size(doc.bytes)}</span> : null}
       </span>
     </>
   );
-  if (!doc) return <span className={CHIP}>{lines}</span>;
+  if (!doc) return <span className={LINK}>{lines}</span>;
   return (
     <button
       type="button"
       onClick={() => onOpen(doc)}
       title={`Open ${name}`}
-      className={`${CHIP} transition-colors duration-150 hover:border-hairline-strong hover:bg-sunken`}
+      className={`${LINK} cursor-pointer rounded-sm transition-opacity duration-150 hover:opacity-75`}
     >
       {lines}
     </button>
