@@ -671,7 +671,7 @@ PNG for the worker's `vision-read` step to look at.
 
 | Route | Body | Returns |
 |---|---|---|
-| `GET /healthz` | | `{ ok, tesseract: version, langs }` |
+| `GET /healthz` | | `{ ok }`. Nothing else: there is no recogniser in this image to name a build of |
 | `POST /extract` | `{ key, filename, content_type? }` | see below |
 | `POST /render` | `{ key, filename, out_prefix, dpi? }` | `{ pages: [{ index, key: "<out_prefix>/1.png", width, height }] }`; `[]` for a non-PDF or a file that will not open |
 
@@ -843,7 +843,7 @@ attachments        (id bigserial pk, email_id fk, run_id fk, filename text, role
 documents          (id bigserial pk, email_run_id fk, attachment_id fk, role text, doc_type text,
                     doc_type_confidence numeric, doc_type_rationale text, format text, text_object_key text,
                     pages int, scanned bool, unreadable bool, warnings jsonb,
-                    page_confidence numeric[],   -- mean OCR word confidence per page, 0 to 100, tesseract's own scale
+                    page_confidence numeric[],   -- always empty now; it held OCR confidence per page and there is no recogniser
                     unique(email_run_id, attachment_id))
 classifications    (id bigserial pk, email_run_id fk unique,
                     gen_category text, gen_confidence numeric, ver_category text, ver_confidence numeric,
@@ -1117,7 +1117,7 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 
 | Method, path | Purpose |
 |---|---|
-| `GET /health` | `{ status: ok \| degraded \| down, checks, version, queues }`, 2 s per check, unauthenticated. A check is an object: `{ status, latencyMs }` plus whatever that dependency says about itself, which comes free from its own health payload (`inbox` its email count and whether scoring is available, `docExtract` its tesseract build, `llmProxy` its alias count, `worker` its last heartbeat). `worker` is not a probe but the mark the worker leaves in Redis every 10 s, read back; null when none stands. `down` and 503 only for postgres or redis, which is the signal auto-deploy rolls back on: everything else, a stale heartbeat included, is `degraded` and still 200. `llmProxy` is read through its `/healthz`, which lists aliases and starts no session, so a cold model never reads as an outage. `version` is `GIT_SHA` from the build arg, `dev` outside an image. `queues` is null when Redis cannot be reached |
+| `GET /health` | `{ status: ok \| degraded \| down, checks, version, queues }`, 2 s per check, unauthenticated. A check is an object: `{ status, latencyMs }` plus whatever that dependency says about itself, which comes free from its own health payload (`inbox` its email count and whether scoring is available, `llmProxy` its alias count, `worker` its last heartbeat; `docExtract` carries none, because being up is the whole of what it can say). `worker` is not a probe but the mark the worker leaves in Redis every 10 s, read back; null when none stands. `down` and 503 only for postgres or redis, which is the signal auto-deploy rolls back on: everything else, a stale heartbeat included, is `degraded` and still 200. `llmProxy` is read through its `/healthz`, which lists aliases and starts no session, so a cold model never reads as an outage. `version` is `GIT_SHA` from the build arg, `dev` outside an image. `queues` is null when Redis cannot be reached |
 | `GET /gate` | what the gate is doing: `mode`, `budget` (today's spend, the day's budget, the two thresholds), the `global` bucket read from Postgres rather than the meter so the page stays readable exactly when Redis is what went wrong, and `decisionsToday`, `heldToday`, `waiting` |
 | `GET /gate/senders?limit=`, `PUT /gate/senders/:principal` | every principal seen or decided about, busiest today first, `limit` 500 by default and 100000 at most, with its standing, the two numbers that earned it, today's units against its clamped cap, and how many of its emails were held. The caps come from the same pure functions the enqueue path calls, so the page and the gate cannot quote different numbers. The `PUT` takes `{ scope: address \| domain, policy: auto \| allow \| block, note? }`; `auto` deletes the row rather than storing a third value. It decides no category |
 | `GET /gate/held`, `GET /gate/decisions` | the holding pen, and the whole log. The pen lists only holds that were enforced, are unreleased, and belong to a run: a hold with no run cannot be released, so listing one would put a button on the page that could only refuse |

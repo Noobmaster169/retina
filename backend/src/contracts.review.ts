@@ -47,11 +47,11 @@ export const DocumentView = z.object({
   unreadable: z.boolean(),
   warnings: z.array(z.string()),
   /**
-   * Mean OCR word confidence per page, 0 to 100, in page order: tesseract's
-   * own scale, as doc-extract reports it, and the same one the 40 percent
-   * floor is written on. Empty for a document with a text layer, which is most
-   * of them. The review case shows which page failed and how badly, and one
-   * number for the whole file could not say that.
+   * Always empty. It held the mean OCR word confidence of each page, on the
+   * character recogniser's own scale, and there is no recogniser now: a page
+   * with no text layer is read by looking at it, which either works or is
+   * reported as illegible. Kept on the contract, and stored, so a row written
+   * before that still reads back; nothing populates it.
    */
   pageConfidence: z.array(z.number()),
   /** The file's size, which the message card states beside its name. */
