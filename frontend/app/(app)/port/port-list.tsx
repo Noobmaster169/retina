@@ -8,6 +8,9 @@ import { FilterBar } from "@/components/business/filter-bar";
 import { hrefFor } from "@/components/business/kind";
 import { ListPage } from "@/components/business/list-page";
 import { located } from "@/components/business/map-scale";
+import { CountryGroups } from "@/components/business/country-groups";
+import { sortKeyOf, sortRows } from "@/components/business/sort";
+import { SortSelect } from "@/components/business/sort-select";
 import { useView } from "@/components/business/use-view";
 import { ViewToggle } from "@/components/business/view-toggle";
 import { type MapPin, WorldMap } from "@/components/business/world-map";
@@ -25,21 +28,42 @@ function pinOf(row: EntityRow, lat: number, lon: number): MapPin {
 
 export function PortList({ rows }: { rows: EntityRow[] }) {
   const params = useSearchParams();
+  const sort = sortKeyOf(params.get("sort"));
   const [view, setView] = useView("port", VIEWS);
   const q = (params.get("q") ?? "").toLowerCase();
   const region = params.get("region") ?? "";
   const role = params.get("role") ?? "";
-  const shown = rows.filter(
+  const shown = sortRows(
+    rows.filter(
     (row) =>
       (!q || row.name.toLowerCase().includes(q) || (row.attributes.locode ?? "").toLowerCase().includes(q)) &&
       (!region || row.attributes.region === region) &&
       (!role || (row.roles[role] ?? 0) > 0),
+    ),
+    sort,
   );
   const pins = located(shown).map((item) => pinOf(item.row, item.lat, item.lon));
   const unplaced = shown.filter((row) => !pins.some((pin) => pin.id === row.id));
   const regions = [...new Set(rows.map((row) => row.attributes.region).filter((value): value is string => !!value))]
     .sort()
     .map((value) => ({ value, label: value }));
+
+  const card = (row: EntityRow) => (
+      <EntityCard
+        key={row.id}
+        type="port"
+        href={hrefFor("port", row.id) ?? "#"}
+        name={row.name}
+        summary={row.summary}
+        chips={[row.attributes.locode, row.attributes.country, row.attributes.subregion].filter((value): value is string => !!value)}
+        counts={[
+          { label: "loading", value: row.roles.port_of_loading ?? 0 },
+          { label: "discharge", value: row.roles.port_of_discharge ?? 0 },
+        ]}
+        lastSeen={row.lastSeen}
+        countryCode={row.attributes.countryCode}
+      />
+  );
 
   return (
     <ListPage
@@ -64,6 +88,7 @@ export function PortList({ rows }: { rows: EntityRow[] }) {
             shown={shown.length}
             total={rows.length}
           />
+          <SortSelect current={sort} />
           <ViewToggle
             views={[
               { key: "map", label: "Map", icon: "map" },
@@ -87,25 +112,13 @@ export function PortList({ rows }: { rows: EntityRow[] }) {
           ) : null}
         </div>
       ) : view === "cards" ? (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {shown.map((row) => (
-            <EntityCard
-              key={row.id}
-              type="port"
-              href={hrefFor("port", row.id) ?? "#"}
-              name={row.name}
-              summary={row.summary}
-              chips={[row.attributes.locode, row.attributes.country, row.attributes.subregion].filter((value): value is string => !!value)}
-              counts={[
-                { label: "loading", value: row.roles.port_of_loading ?? 0 },
-                { label: "discharge", value: row.roles.port_of_discharge ?? 0 },
-              ]}
-              lastSeen={row.lastSeen}
-              countryCode={row.attributes.countryCode}
-            />
-          ))}
-          {shown.length === 0 ? <p className="col-span-full py-10 text-center text-body text-ink-tertiary">No port matches.</p> : null}
-        </div>
+        shown.length === 0 ? (
+          <p className="py-10 text-center text-body text-ink-tertiary">No port matches.</p>
+        ) : sort === "country" ? (
+          <CountryGroups rows={shown} card={card} />
+        ) : (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">{shown.map(card)}</div>
+        )
       ) : (
         <DataTable columns={PORT_COLUMNS} rows={shown} keyOf={(r) => r.id} hrefOf={(r) => hrefFor("port", r.id)} empty="No port matches." />
       )}
