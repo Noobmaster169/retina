@@ -3,20 +3,19 @@
 import { useRef, useState } from "react";
 
 import { type ChatTurn, type ContextRef } from "@/lib/api/chat-agent-schemas";
-import { ChatAnswer, ChatConversation } from "@/lib/api/chat-thread-schemas";
+import { ChatAnswer, ChatConversation, ChatProgress } from "@/lib/api/chat-thread-schemas";
 
 import { optimistic, whatLanded } from "./pending-turn";
-import { useLiveSteps, type Watched } from "./use-live-steps";
+import { eventFrames } from "./sse";
 
 /**
- * Asking a question, watching the steps, and holding what came back.
+ * Asking a question, watching it being answered, and holding what came back.
  *
- * The answered turns are kept here rather than refetched, because a turn costs
- * real model calls and a refetch after every answer would be a second read of
- * something the answer already contained. What is refetched is the turn in
- * flight: while the POST is open the hook polls for rows newer than the
- * question, which is how the steps appear one by one. Those rows are dropped
- * when the answer lands, which carries the same calls in full.
+ * The POST is a stream. What used to be a wait with a poll beside it is now one
+ * connection carrying both: `progress` frames while the turn runs, then one
+ * `answer` frame with the same body the blocking form returns. The answered
+ * turns are kept here rather than refetched, because a turn costs real model
+ * calls and the answer already contained everything a refetch would ask for.
  *
  * A failed turn becomes a message beside the question rather than a thrown
  * error: a conversation somebody is in the middle of must not be lost to one
@@ -40,9 +39,9 @@ export interface ChatState {
   ask(question: string, skills?: string[], context?: ContextRef[]): void;
   stop(): void;
   pending: boolean;
-  /** The finished steps of the turn in flight, oldest first. Empty when nothing is pending. */
-  steps: ChatTurn[];
-  /** When the turn in flight was asked, for the clock on the running step. */
+  /** Where the turn in flight has got to. Null when nothing is pending, and before its first frame. */
+  progress: ChatProgress | null;
+  /** When the turn in flight was asked, for the clock beside the status. */
   since: number;
   error: string | null;
   /** True when the last answer ran out of its step budget, which the turn also says on itself. */
@@ -53,6 +52,15 @@ async function refusal(response: Response): Promise<string> {
   const body: unknown = await response.json().catch(() => null);
   const message = typeof body === "object" && body !== null ? (body as { error?: unknown }).error : undefined;
   return typeof message === "string" ? message : `The answer failed with ${response.status}.`;
+}
+
+/** A frame's body. A frame that is not JSON is a broken stream, not a failed turn, and is skipped. */
+function payload(data: string): unknown {
+  try {
+    return JSON.parse(data) as unknown;
+  } catch {
+    return null;
+  }
 }
 
 /** Opens a conversation and returns it, or the reason it could not be opened. */
@@ -84,14 +92,11 @@ export function useChat(options: {
   const [since, setSince] = useState(() => Date.now());
   const [error, setError] = useState<string | null>(null);
   const [exhausted, setExhausted] = useState(false);
+  const [progress, setProgress] = useState<ChatProgress | null>(null);
   // Held in refs and not state: the id this hook opened and the request to
   // abort are what the next action needs, not what the page renders.
   const opened = useRef<string | null>(null);
   const inFlight = useRef<AbortController | null>(null);
-  // State and not a ref: it is what the poll is keyed on, so setting it is what
-  // starts the poll and changing it is what retires the previous turn's steps.
-  const [watching, setWatching] = useState<Watched | null>(null);
-  const steps = useLiveSteps(watching);
 
   function stop(): void {
     inFlight.current?.abort();
@@ -102,6 +107,7 @@ export function useChat(options: {
     setError(null);
     setPending(true);
     setExhausted(false);
+    setProgress(null);
     setSince(Date.now());
     // The question goes up immediately. The backend stores it before it asks
     // the model for exactly the same reason: a person's own words must not
@@ -113,7 +119,7 @@ export function useChat(options: {
       inFlight.current = control;
       // Held here and not read off the state below, because the catch needs it
       // and the state set inside this call is not visible to this closure.
-      let watched: Watched | null = null;
+      let asked: { id: string; after: number } | null = null;
       try {
         let id = conversationId ?? opened.current;
         if (!id) {
@@ -131,16 +137,13 @@ export function useChat(options: {
           onOpened?.(id);
         }
 
-        // The last stored turn is the question just asked, so the steps of this
-        // turn are everything after it. Before the first answer there is
-        // nothing stored, and 0 is every row of a new conversation.
-        const last = turns.filter((turn) => turn.id > 0).at(-1);
-        watched = { conversationId: id, after: last?.id ?? 0 };
-        setWatching(watched);
+        // The last stored turn is the question just asked, so anything this turn
+        // writes is after it. Only the stop path reads this now.
+        asked = { id, after: turns.filter((turn) => turn.id > 0).at(-1)?.id ?? 0 };
 
         const response = await fetch(`/api/chat/${id}/messages`, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "application/json", accept: "text/event-stream" },
           body: JSON.stringify({ content: question, actor, skills, context }),
           signal: control.signal,
         });
@@ -148,14 +151,45 @@ export function useChat(options: {
           setError(await refusal(response));
           return;
         }
-        const answer = ChatAnswer.parse(await response.json());
-        setTurns((was) => [...was, answer.turn]);
-        setExhausted(answer.exhausted);
+        if (!response.body) {
+          setError("The answer came back with no body.");
+          return;
+        }
+
+        let ended = false;
+        for await (const frame of eventFrames(response.body)) {
+          if (frame.event === "progress") {
+            const parsed = ChatProgress.safeParse(payload(frame.data));
+            if (parsed.success) setProgress(parsed.data);
+            continue;
+          }
+          if (frame.event === "answer") {
+            const parsed = ChatAnswer.safeParse(payload(frame.data));
+            if (!parsed.success) {
+              setError("The answer arrived outside the contract. Reopen the conversation to read what was stored.");
+              ended = true;
+              continue;
+            }
+            setTurns((was) => [...was, parsed.data.turn]);
+            setExhausted(parsed.data.exhausted);
+            ended = true;
+            continue;
+          }
+          if (frame.event === "failure") {
+            const said = payload(frame.data) as { error?: unknown } | null;
+            setError(typeof said?.error === "string" ? said.error : "The answer did not arrive.");
+            ended = true;
+          }
+        }
+        // The stream closed without saying how it ended, which is the connection
+        // going away mid-turn rather than the turn failing. The backend stores
+        // what it had either way.
+        if (!ended) setError("The answer stopped arriving. Reopen the conversation to see what was stored.");
       } catch (cause) {
         // An abort is the person pressing Stop, not a failure. The backend has
         // stored what the turn found; the next read of the thread shows it.
         if (cause instanceof DOMException && cause.name === "AbortError") {
-          const landed = watched ? await whatLanded(watched.conversationId, watched.after) : [];
+          const landed = asked ? await whatLanded(asked.id, asked.after) : [];
           if (landed.length > 0) setTurns((was) => [...was, ...landed]);
           else setError("Stopped. Anything it had found is kept with the conversation; reopen it to see.");
           return;
@@ -163,11 +197,11 @@ export function useChat(options: {
         setError(cause instanceof Error ? cause.message : "The answer did not arrive.");
       } finally {
         inFlight.current = null;
-        setWatching(null);
+        setProgress(null);
         setPending(false);
       }
     })();
   }
 
-  return { turns, ask, stop, pending, steps, since, error, exhausted };
+  return { turns, ask, stop, pending, progress, since, error, exhausted };
 }

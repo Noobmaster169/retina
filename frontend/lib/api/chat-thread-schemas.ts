@@ -60,3 +60,26 @@ export const ChatAnswer = z.object({
   exhausted: z.boolean(),
 });
 export type ChatAnswer = z.infer<typeof ChatAnswer>;
+
+/** Mirrors ChatPhase in backend/src/contracts.chat.ts. */
+export const ChatPhase = z.enum(["reading", "looking", "writing"]);
+export type ChatPhase = z.infer<typeof ChatPhase>;
+
+/**
+ * One `progress` frame of a streamed turn. Mirrors ChatProgress in
+ * backend/src/contracts.chat.ts.
+ *
+ * Every field is what is known so far rather than what changed, so the page
+ * replaces its state with each frame and never appends to it. `answer` can come
+ * back shorter than the frame before: the CLI validates its own structured
+ * output and rewrites the whole object when it fails, which a reader sees as
+ * the answer starting again.
+ */
+export const ChatProgress = z.object({
+  step: z.number().int().min(1),
+  phase: ChatPhase,
+  reading: z.string().default(""),
+  answer: z.string().default(""),
+  tools: z.array(z.string()).default([]),
+});
+export type ChatProgress = z.infer<typeof ChatProgress>;

@@ -41,6 +41,7 @@ export {
   listSkills,
   type ProposedAction,
   type SqlResult,
+  streamQuestion,
   turnsAfter,
 } from "./api/chat-agent-client";
 export { type ChatMessage, type ChatOutcome, type ChatRequest, type ChatResult, chat, listModels, type ModelInfo } from "./api/chat-client";

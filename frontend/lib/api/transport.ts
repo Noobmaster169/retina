@@ -16,7 +16,7 @@ function config(): { baseUrl: string; secret: string } {
 
 export async function request(path: string, init: RequestInit & { timeoutMs?: number } = {}): Promise<Response> {
   const { baseUrl, secret } = config();
-  const { timeoutMs = 15_000, headers, ...rest } = init;
+  const { timeoutMs = 15_000, headers, signal, ...rest } = init;
   const base: Record<string, string> = {
     authorization: `Bearer ${secret}`,
     "content-type": "application/json",
@@ -32,7 +32,11 @@ export async function request(path: string, init: RequestInit & { timeoutMs?: nu
   return fetch(`${baseUrl}${path}`, {
     ...rest,
     headers: { ...base, ...(headers as Record<string, string> | undefined) },
-    signal: AbortSignal.timeout(timeoutMs),
+    // A caller's own signal is kept rather than replaced by the timeout. The
+    // streamed turn needs both: the timeout is the ceiling, and the caller's
+    // signal is the person pressing Stop, which has to reach the backend for it
+    // to notice the close and end the turn between steps.
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs),
     cache: "no-store",
   });
 }
