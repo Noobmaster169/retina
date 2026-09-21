@@ -24,7 +24,7 @@ export default async function Page({ params }: PageProps<"/shipment/[emailId]">)
     if (!ref) return null;
     const row = ports.find((port) => port.id === ref.id);
     const at = row ? located([row])[0] : undefined;
-    return { ref, lat: at?.lat ?? null, lon: at?.lon ?? null, countryCode: row?.attributes.countryCode ?? null };
+    return { ref, lat: at?.lat ?? null, lon: at?.lon ?? null };
   };
   const reference = shipment.ocNo ?? shipment.blNo ?? shipment.bookingRef ?? emailId;
   const chips = [
@@ -46,14 +46,12 @@ export default async function Page({ params }: PageProps<"/shipment/[emailId]">)
       />
       <TopBar crumbs={[{ label: "Shipments", href: "/shipment" }, { label: reference, mono: true }]} />
       <main className="min-h-0 grow overflow-y-auto">
-        <DetailHeader type="shipment" name={reference} chips={chips} />
-        <div className="px-7 pt-6">
-          <ShipmentRoute
-            pol={routePort(shipment.pol)}
-            pod={routePort(shipment.pod)}
-            vessel={shipment.vessel ? `${shipment.vessel.name}${shipment.voyage ? ` ${shipment.voyage}` : ""}` : null}
-          />
-        </div>
+        <DetailHeader
+          type="shipment"
+          name={reference}
+          chips={chips}
+          aside={<ShipmentRoute pol={routePort(shipment.pol)} pod={routePort(shipment.pod)} />}
+        />
         <ShipmentRecord shipment={shipment} />
       </main>
     </div>

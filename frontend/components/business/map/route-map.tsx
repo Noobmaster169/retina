@@ -5,11 +5,11 @@ import world from "world-atlas/countries-110m.json";
 
 import { lane, SPHERE } from "./geometry";
 
-const WIDTH = 640;
-const HEIGHT = 240;
-const PAD = 36;
+const WIDTH = 300;
+const HEIGHT = 120;
+const PAD = 14;
 /** Closest the view gets, so two ports on one coast still show the coast they share. */
-const MAX_SCALE = 900;
+const MAX_SCALE = 420;
 
 export interface RouteEnd {
   name: string;
@@ -24,9 +24,10 @@ const land = feature(topology, topology.objects.countries);
  * One shipment's lane on a small map: the port of loading, the port of
  * discharge and the great circle between them, framed to the two and
  * turned so the lane's middle is the map's middle, which keeps a Pacific
- * crossing whole instead of cut at the edge. Nothing moves the view: it is a
- * picture of where the cargo goes, not a place to explore. The full map is
- * on the ports page.
+ * crossing whole instead of cut at the edge. A thumbnail, not a place to
+ * explore: no labels, nothing moves, and the ports are named in the record
+ * beside it. The loading end is hollow, the discharge end filled. The full
+ * map is on the ports page.
  */
 export function RouteMap({ from, to }: { from: RouteEnd; to: RouteEnd }) {
   const a: [number, number] = [from.lon, from.lat];
@@ -52,40 +53,23 @@ export function RouteMap({ from, to }: { from: RouteEnd; to: RouteEnd }) {
     }
   }
   const path = geoPath(projection);
-  const ends = [
-    { key: "pol", label: "Loading", at: projection(a) },
-    { key: "pod", label: "Discharge", at: projection(b) },
-  ];
+  const pol = projection(a);
+  const pod = projection(b);
   return (
     <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="block h-auto w-full" role="img" aria-label={`${from.name} to ${to.name}`}>
       <rect width={WIDTH} height={HEIGHT} className="fill-kind-port-tint" />
       <path d={path(SPHERE) ?? ""} className="fill-kind-port-tint" />
-      <path d={path(land) ?? ""} className="fill-canvas stroke-hairline-strong" strokeWidth={0.6} />
-      <path d={path(arc) ?? ""} className="fill-none stroke-kind-port opacity-25" strokeWidth={4} strokeLinecap="round" />
+      <path d={path(land) ?? ""} className="fill-canvas stroke-hairline-strong" strokeWidth={0.4} />
+      <path d={path(arc) ?? ""} className="fill-none stroke-kind-port opacity-25" strokeWidth={3} strokeLinecap="round" />
       <path
         d={path(arc) ?? ""}
         className="lane-flow fill-none stroke-kind-port"
-        strokeWidth={1.8}
+        strokeWidth={1.4}
         strokeLinecap="round"
-        style={{ strokeDasharray: "6 6", "--lane-period": "12px" } as React.CSSProperties}
+        style={{ strokeDasharray: "4 4", "--lane-period": "8px" } as React.CSSProperties}
       />
-      {ends.map(({ key, label, at }) =>
-        at ? (
-          <g key={key}>
-            <circle cx={at[0]} cy={at[1]} r={key === "pol" ? 5 : 6} className={key === "pol" ? "fill-canvas stroke-kind-port" : "fill-kind-port stroke-canvas"} strokeWidth={2} />
-            <text
-              x={at[0]}
-              y={at[1] - 11}
-              textAnchor="middle"
-              className="fill-ink-secondary stroke-canvas font-sans text-[11px] font-medium"
-              strokeWidth={3}
-              paintOrder="stroke"
-            >
-              {label}
-            </text>
-          </g>
-        ) : null,
-      )}
+      {pol ? <circle cx={pol[0]} cy={pol[1]} r={3.5} className="fill-canvas stroke-kind-port" strokeWidth={1.8} /> : null}
+      {pod ? <circle cx={pod[0]} cy={pod[1]} r={4} className="fill-kind-port stroke-canvas" strokeWidth={1.2} /> : null}
     </svg>
   );
 }
