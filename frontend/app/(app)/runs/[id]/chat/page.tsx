@@ -21,7 +21,9 @@ export default async function Page({ params, searchParams }: PageProps<"/runs/[i
   const asked = await searchParams;
   const wanted = typeof asked.c === "string" ? asked.c : null;
 
-  const conversations = await listConversations(id);
+  // Every conversation, not this run's: the dock and this page are one history, and a question
+  // asked on a company page belongs to no run.
+  const conversations = await listConversations();
   // Falling back to the newest conversation of this run means a person who
   // comes back to the page lands where they left off, and the New button is
   // the way to start again.

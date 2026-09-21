@@ -28,10 +28,12 @@ interface RailProps {
   current: RunSummary | null;
   /** The run named by the URL, which is known before the run list has loaded. */
   runId: string | null;
+  /** The conversation the dock is in, so Ask Retina opens it wide rather than something else. */
+  conversationId: string | null;
   runs: RunSummary[];
 }
 
-export function Rail({ open, onToggle, active, counts, current, runId, runs }: RailProps) {
+export function Rail({ open, onToggle, active, counts, current, runId, conversationId, runs }: RailProps) {
   return (
     <motion.nav
       initial={false}
@@ -77,7 +79,7 @@ export function Rail({ open, onToggle, active, counts, current, runId, runs }: R
             return (
               <Link
                 key={destination.key}
-                href={hrefFor(destination, current?.id ?? runId)}
+                href={`${hrefFor(destination, current?.id ?? runId)}${destination.key === "chat" && conversationId ? `?c=${conversationId}` : ""}`}
                 aria-label={open ? undefined : destination.label}
                 aria-current={here ? "page" : undefined}
                 title={open ? undefined : destination.label}

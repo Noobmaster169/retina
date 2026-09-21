@@ -5,11 +5,12 @@ import type { ChatConversation } from "@/lib/api/chat-thread-schemas";
 import { formatWhenShort } from "@/lib/when";
 
 /**
- * Every conversation about this run, and the one that is open.
+ * Every conversation, newest first, and the one that is open.
  *
- * Split out of chat-page.tsx, which is the thread itself. Per-email threads
- * from the rail land in this list too, so after a demo it is mostly those:
- * grouping them is on the phase's own list of what is left.
+ * Split out of chat-page.tsx, which is the thread itself. Not scoped to a run
+ * since phase 13: the dock's history is this same list, and a conversation
+ * opened on a company page belongs to no run. Each row says which run it was
+ * opened on, where it was.
  */
 
 export function ConversationRail({
@@ -46,15 +47,19 @@ export function ConversationRail({
               className={`block rounded-md px-2.5 py-2 ${conversation.id === openId ? "bg-active" : "hover:bg-sunken"}`}
             >
               <span className="block truncate text-small text-ink">{conversation.title ?? "A new question"}</span>
-              <span className="mt-0.5 block text-caption text-ink-faint">
-                {formatWhenShort(conversation.updatedAt)} · {conversation.turnCount}{" "}
-                {conversation.turnCount === 1 ? "turn" : "turns"}
+              <span className="mt-0.5 flex items-center gap-1.5 text-caption text-ink-faint">
+                {formatWhenShort(conversation.updatedAt)} · {conversation.turnCount} {conversation.turnCount === 1 ? "turn" : "turns"}
+                {conversation.scope.chips.slice(0, 1).map((chip) => (
+                  <span key={chip.label} className="rounded-xs bg-sunken px-1 font-mono text-mono-xs text-ink-tertiary">
+                    {chip.label}
+                  </span>
+                ))}
               </span>
             </Link>
           </li>
         ))}
         {conversations.length === 0 ? (
-          <li className="px-2.5 py-3 text-caption text-ink-faint">Nothing asked about this run yet.</li>
+          <li className="px-2.5 py-3 text-caption text-ink-faint">Nothing asked yet.</li>
         ) : null}
       </ul>
     </nav>
