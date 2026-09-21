@@ -26,6 +26,7 @@ export * as entityDossier from "./entities.dossier";
 export * as entityProfile from "./entities.profile";
 export * as emails from "./emails.repo";
 export * as emailShipments from "./email-shipments.repo";
+export * as shipmentRead from "./email-shipments.read";
 export * as sightings from "./sightings.repo";
 export * as extractions from "./extractions.repo";
 export * as fieldDiffs from "./field-diffs.repo";
