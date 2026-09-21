@@ -115,6 +115,7 @@ describe("countsOf", () => {
       "no-check": 1,
       settled: 1,
       moving: 1,
+      failed: 1,
     });
   });
 
@@ -133,6 +134,7 @@ describe("narrow", () => {
     { name: "no check holds what was never compared", filter: "no-check", sort: "id", expect: ["email_600"] },
     { name: "settled holds a reason that was answered", filter: "settled", sort: "id", expect: ["email_519"] },
     { name: "still moving excludes a job that stopped", filter: "moving", sort: "id", expect: ["email_700"] },
+    { name: "failed holds only the job that stopped, which needs you counts too", filter: "failed", sort: "id", expect: ["email_800"] },
   ];
 
   for (const one of cases) {

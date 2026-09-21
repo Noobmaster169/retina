@@ -2,21 +2,20 @@
 
 import useSWR from "swr";
 
-import { Search, TopBar } from "@/components/shell/top-bar";
+import { TopBar } from "@/components/shell/top-bar";
 import { LaneMapPanel } from "@/components/run/lane-map";
 import { MachineryPanel } from "@/components/run/machinery-panel";
 import { OutcomesPanel } from "@/components/run/outcomes-panel";
 import { laneMap } from "@/components/run/progress";
 import { QueuePanel } from "@/components/run/queue-panel";
 import { RunHeader, statusWord } from "@/components/run/run-header";
-import { ScorePanel } from "@/components/run/score-panel";
 import { PageContext } from "@/components/dock/page-context-announcer";
 import { NavCounts } from "@/components/shell/nav-counts";
 import { HealthReport, RunQueuesView } from "@/lib/api/queues-schemas";
 import { RunSummary } from "@/lib/api/runs-schemas";
 import { parsedFetcher } from "@/lib/poll";
 
-import { runSummaryLine, troubleOf } from "./reading";
+import { degraded, runSummaryLine } from "./reading";
 import { useRunActions } from "./use-run-actions";
 
 /**
@@ -48,8 +47,11 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
   });
 
   const actions = useRunActions(id, () => void mutate());
-  const trouble = troubleOf(health, queues ?? null);
-  const status = statusWord(run, trouble !== null);
+  const status = statusWord(run, degraded(health, queues ?? null));
+  // A paused run is still polled, because someone else may resume it, but
+  // nothing on it may go on moving: every sweep and every lit card is a claim
+  // that work is happening, and after a pause none is.
+  const paused = run.status === "paused";
 
   return (
     <>
@@ -57,19 +59,19 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
       <NavCounts counts={{ inbox: run.totalEmails ?? undefined }} alerts={{ inbox: run.review.open }} />
       <div className="flex min-w-0 grow flex-col">
         <TopBar crumbs={[{ label: "Runs", href: "/runs" }, { label: id.slice(0, 8), mono: true }]}>
-          <Search />
           <span className={`inline-flex h-[30px] items-center rounded-md px-3 text-small font-medium ${status.tint}`}>
             {status.word}
           </span>
         </TopBar>
 
-        <RunHeader run={run} trouble={trouble} summary={runSummaryLine(run, queues ?? null)} actions={actions} />
+        <RunHeader run={run} summary={runSummaryLine(run, queues ?? null)} actions={actions} />
 
         <div className="flex min-h-0 grow flex-col gap-4 px-6 pb-6">
           {queues ? (
             <LaneMapPanel
               map={laneMap(run, queues)}
-              note={laneNote(live, queues.compare.heldUntil !== null)}
+              runId={id}
+              note={laneNote(live, paused, queues.compare.heldUntil !== null)}
               slots={{ classify: queues.classify.concurrency, compare: queues.compare.concurrency }}
             />
           ) : null}
@@ -81,18 +83,16 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
                   title="Sorting now"
                   queue={queues.classify}
                   runId={id}
-                  standing={{ label: "Not yet read", count: run.stageCounts.ingested }}
+                  paused={paused}
                   drained="Every email has been read. Only a comparison request crossed into the second queue, and that queue is still working."
-                  note="Every email is read by a model. Only a comparison request crosses into the second queue."
                   className="w-[372px] shrink-0"
                 />
                 <QueuePanel
                   title="Checking now"
                   queue={queues.compare}
                   runId={id}
-                  standing={{ label: "Waiting for a slot", count: queues.compare.waiting }}
+                  paused={paused}
                   drained="Nothing is waiting for a check. Every pair that crossed has been judged; the rest of the inbox never needed one."
-                  note="Both queues draw on the same model slots, so a busy sort slows a check."
                   className="w-[372px] shrink-0"
                 />
                 <OutcomesPanel
@@ -103,13 +103,8 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
               </>
             ) : (
               <>
-                <OutcomesPanel
-                  run={run}
-                  notComparable={queues?.handoff.notComparable ?? 0}
-                  className="w-[372px] shrink-0"
-                />
+                <OutcomesPanel run={run} notComparable={queues?.handoff.notComparable ?? 0} className="min-w-0 grow" />
                 <MachineryPanel run={run} className="w-[372px] shrink-0" />
-                <ScorePanel run={run} actions={actions} className="min-w-0 grow" />
               </>
             )}
           </div>
@@ -119,7 +114,8 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
   );
 }
 
-function laneNote(live: boolean, held: boolean): string {
+function laneNote(live: boolean, paused: boolean, held: boolean): string {
+  if (paused) return "Paused. Both queues keep what they were given and start nothing new.";
   if (held) return "Sorting is unaffected. Checking is held, so the emails between them pile up.";
   if (!live) return "Both queues drained.";
   return "Two queues, running side by side. Only a document check crosses from one to the other.";

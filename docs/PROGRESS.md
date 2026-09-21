@@ -83,6 +83,52 @@ See "Design decisions (classify stage invariant)" below for what was wrong and w
 measured against. **The holdout and the full 520 have not been rerun under the new prompts** and
 are the two numbers that decide whether E2E moves off 0.97.
 
+**2026-09-22: the run page's controls, and pause reaching the queues.** Pausing a run used to
+stop only the ingest loop, so a run paused with four hundred emails already enqueued went on
+spending model calls until both queues drained. Every classify and compare job now reads the
+run's status first and a paused run's job goes back to `delayed` for a minute
+(`queues/pause-gate.ts`), spending no attempt; a resume promotes them so the queues restart on
+the click. Pause and cancel also act from `completed`, which is the ingest's word and not the
+pipeline's: the two buttons used to vanish the moment the last email was enqueued, with both
+queues still full, which is most of why they read as not working. A run whose emails have all
+settled is refused either way. A pause also aborts the model calls already in flight: the gate
+holds an AbortController per job, the signal reaches the HTTP request, and the proxy kills the
+`claude -p` session behind it, so the concurrency slot comes back rather than being held for the
+rest of a ten minute generation. That call's tokens are lost, which is the price of the button
+meaning what it says. Migration `027_run_name.sql` adds `core.runs.name` and
+`POST /runs/:id/rename`; the run page's title is edited in place and saved on blur. The shell's
+search field is gone: it had been inert since phase 7.
+
+`test/queues/pause-resume.integration.test.ts` is the first test in the repo to drive real
+BullMQ workers. `TEST_ENV.REDIS_URL` now points at **database 1** of the same Redis so it cannot
+take a development worker's jobs or lose its own; nothing else in the project uses a database
+other than 0. It covers the state the run page is in for most of a replay, which is also the one
+that was hardest to reason about: ingest finished, the run reading `completed`, a model call in
+flight. Pause abandons the call, parks the job with nothing failed, leaves the email at
+`classifying`, and the resume has the model asked again.
+
+**The run overview speaks English now**, and it is the only screen that does. `not_comparable`,
+`MISMATCH` and `wrong_doc_type` are precise and they are not words a business owner knows, and
+this is the screen they open first. Every outcome carries both names in
+`components/run/outcomes.ts`: the enum is still the key, still what the scorer speaks and still
+what the tooltip shows, and the label is what the pie, the bars and the lane-end chips say.
+`docs/05-design.md` principle 4 was amended in the same commit to name the exception and its
+edge. Nothing on a working screen translates and nothing stored or submitted changed.
+
+The finished run's board is now the outcomes chart and the machinery panel only. The score panel
+is gone and the one primary button is `Score run`, which submits and lands on
+`/runs/:id/results`, or `Go to review` once it has been submitted. `docs/05-design.md` section
+4.8 was corrected in the same commit: the outcomes chart is the one chart the product has.
+
+**Open, and worth a look before the demo: the queue holds.** Every pipeline call streams (the
+run page's live preview sets `onText`), and the proxy's `claude_cli` provider only runs its
+30/90/300/900s backoff ladder in `_complete`, the non-streaming path. A streamed call that hits
+a rate limit yields `retryable: true` straight through, the backend retries twice at about one
+and three seconds, and then the queue is held for thirty seconds. So the pipeline gets four
+seconds of patience where the proxy was built to give it twenty minutes. The held chip and the
+dependency chip that showed this were removed from the run page as noise; the hold itself is
+real and still in the logs and in the queue panel's own sentence.
+
 **2026-09-21: phase 14, the ingest gate, is built** (migration `025_ingest_gate.sql`, which
 shares its number with the classify one above; both are applied and neither may be renamed now).
 An email cannot cost a model call until deterministic arithmetic over counts, sizes and timestamps

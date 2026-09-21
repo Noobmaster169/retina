@@ -3,13 +3,13 @@ import { describe, expect, it } from "vitest";
 import type { RunQueuesView, QueueView } from "@/lib/api/queues-schemas";
 import type { RunSummary } from "@/lib/api/runs-schemas";
 
-import { laneMap, outcomeRows } from "./progress";
+import { laneMap } from "./progress";
 
 /**
- * The six cards of "How the work moves" and the outcomes list. What is under
- * test is arrangement, so the cases are the four run shapes the design was
- * drawn against: running, a dependency down, finished, and a run that has not
- * ingested yet.
+ * The six cards of "How the work moves". What is under test is arrangement,
+ * so the cases are the run shapes the design was drawn against: running, a
+ * dependency down, paused, finished, and one that has not ingested yet. Where
+ * the emails end up is outcomes.test.ts.
  */
 
 function queue(over: Partial<QueueView> = {}): QueueView {
@@ -29,6 +29,7 @@ function queues(over: Partial<RunQueuesView> = {}): RunQueuesView {
 function run(over: Partial<RunSummary> = {}): RunSummary {
   return {
     id: "044367f9-109f-4766-9c65-df4a30b2bc11",
+    name: null,
     status: "running",
     ratePerSecond: 2,
     totalEmails: 520,
@@ -147,32 +148,29 @@ describe("laneMap, before ingest has finished", () => {
   });
 });
 
-describe("outcomeRows", () => {
-  const rows = outcomeRows(run(), 300);
+describe("laneMap, a paused run", () => {
+  const busy = queues({ classify: queue({ active: 8 }), compare: queue({ name: "compare", concurrency: 4, active: 4, waiting: 45 }) });
+  const map = laneMap(run({ status: "paused" }), busy);
 
-  it("keeps the organisers' enums verbatim, never prettified", () => {
-    expect(rows.finished.map((row) => row.key)).toEqual(["not_comparable", "OK", "MISMATCH"]);
-    expect(rows.parked.map((row) => row.key)).toEqual(["wrong_doc_type", "missing_attachment", "unreadable", "missing_value"]);
+  it("lights no card, because a paused run is not working whatever a slot still holds", () => {
+    expect(map.cards.every((one) => one.state !== "live")).toBe(true);
   });
 
-  it("gives every parked reason a violet, because each is an uncertainty and not a fault", () => {
-    expect(rows.parked.every((row) => row.tone === "review")).toBe(true);
+  it("says paused where a running card says how many slots are busy", () => {
+    expect(card(map, "classifying")).toMatchObject({ value: "8 / 8", state: "idle", unit: "paused" });
+    expect(card(map, "checking")).toMatchObject({ value: "4 / 4", state: "idle", unit: "paused" });
   });
 
-  it("keeps a difference and an uncertainty in different hues", () => {
-    const mismatch = rows.finished.find((row) => row.key === "MISMATCH");
-    expect(mismatch?.tone).toBe("differ");
-    expect(rows.parked.some((row) => row.tone === "differ")).toBe(false);
+  it("holds the arrivals back rather than claiming they are still coming in", () => {
+    const partway = laneMap(
+      run({ status: "paused", stageCounts: { ingested: 10, classifying: 2, classified: 0, comparing: 0, review: 0, done: 0, failed: 0 } }),
+      busy,
+    );
+    expect(card(partway, "arriving")).toMatchObject({ value: "508", unit: "held back", state: "idle" });
   });
 
-  it("takes a share of what was compared, not of the whole inbox", () => {
-    const ok = rows.finished.find((row) => row.key === "OK");
-    expect(ok?.pct).toBeCloseTo((105 / 133) * 100, 5);
-  });
-
-  it("does not divide by zero before anything has been compared", () => {
-    const empty = outcomeRows(run({ outcomes: { ...run().outcomes, ok: 0, mismatch: 0 }, review: { open: 0, byReason: { wrong_doc_type: 0, missing_attachment: 0, unreadable: 0, missing_value: 0 } } }), 0);
-    expect(empty.finished.every((row) => Number.isFinite(row.pct))).toBe(true);
-    expect(empty.parked.every((row) => Number.isFinite(row.pct))).toBe(true);
+  it("still counts everything a held queue would, because the numbers did not stop being true", () => {
+    expect(card(map, "waiting").value).toBe("45");
+    expect(map.crossing).toBe(220);
   });
 });

@@ -42,8 +42,8 @@ export function PanelFoot({ children, className = "" }: PanelProps) {
 }
 
 /**
- * A proportion along a row. Section 4.8 retired every chart in the product; a
- * count is a number and a share is one of these.
+ * A proportion along a row. Section 4.8 leaves one chart standing, the run's
+ * outcomes; everywhere else a count is a number and a share is one of these.
  */
 export function Bar({ pct, tone = "ink", height = 5 }: { pct: number; tone?: string; height?: number }) {
   return (

@@ -70,6 +70,12 @@ export async function cancelRun(id: string): Promise<RunOutcome> {
   return controlRun(id, "cancel");
 }
 
+/** What a person calls this run. An empty name takes it back to being named by its clock. */
+export async function renameRun(id: string, name: string): Promise<RunOutcome> {
+  const path = `/runs/${encodeURIComponent(id)}/rename`;
+  return runOutcome(await request(path, { method: "POST", body: JSON.stringify({ name }) }), `POST ${path}`);
+}
+
 /**
  * Drops a run and everything it produced. A running run is refused with a
  * message rather than stopped from under its workers, so the caller can offer

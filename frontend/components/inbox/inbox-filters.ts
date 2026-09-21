@@ -16,7 +16,7 @@ import { type InboxRow, needsYou } from "./inbox-rows";
  * what its label promises.
  */
 
-export const FilterKey = z.enum(["all", "needs-you", "differences", "agreed", "no-check", "settled", "moving"]);
+export const FilterKey = z.enum(["all", "needs-you", "differences", "agreed", "no-check", "settled", "moving", "failed"]);
 export type FilterKey = z.infer<typeof FilterKey>;
 
 export const SortKey = z.enum(["id", "attention", "differences", "sender"]);
@@ -57,6 +57,10 @@ export const FILTERS: FilterDef[] = [
     matches: (row) => row.openCase === null && row.outcome !== null && REVIEW_REASONS.includes(row.outcome),
   },
   { key: "moving", label: "Still moving", tone: "signal", steady: false, matches: (row) => row.outcome === null && row.stage !== "failed" },
+  // A job that stopped, which is a failure and never one of the organisers'
+  // reasons. `Needs you` holds these too; this is the chip the run page's own
+  // `failed` count links to, so the two agree on what it counted.
+  { key: "failed", label: "Failed", tone: "fault", steady: false, matches: (row) => row.stage === "failed" },
 ];
 
 export const SORTS: { key: SortKey; label: string }[] = [
