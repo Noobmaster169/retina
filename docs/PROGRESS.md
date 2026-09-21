@@ -199,12 +199,13 @@ dataset. Rename by hand if a demo needs it, since `human_name` outranks the pass
 `backend/Dockerfile` now copies `scripts/`, so a pass over the box's data is the reviewed script
 rather than a file pasted into a running container.
 
-**Left for the user, because this sandbox cannot reach github.com:22 to push and the box deploys
-by pulling `main`:** push, wait for auto-deploy, then
-`docker exec retina-api-1 node --import tsx scripts/ontology-locate.ts --all`. It costs no model
-call. A backup of the four entity tables is at `~/retina/backups/entities-before-locate-*.sql`.
-Rehearsed on local: 33 ports placed, 125 things resolved, nothing merged or dropped, and the port
-rows byte-identical afterwards.
+**Run on the box after `fa7641f` deployed:**
+`docker exec retina-api-1 node --import tsx scripts/ontology-locate.ts --all`. 33 ports placed, 12
+companies given a country code, 119 things resolved with one merge: `LONG BEACH, US (TRMER)` into
+`LONG BEACH, US (USLGB)`, joined by `reference`. Live ports 33 to 32, every one with coordinates,
+a country code and its own UN/LOCODE (32 distinct). No model call. A backup of the four entity
+tables from before the pass is at `~/retina/backups/entities-before-locate-20260922-0108.sql`.
+Rehearsed on local first: nothing merged or dropped, and the port rows byte-identical afterwards.
 
 Phase 6 is built and tested; left for the user there: the holdout run and the full 520 run that
 decide its exit checklist's score lines (`pnpm eval:score --run <id> --holdout`), and phase 5's
