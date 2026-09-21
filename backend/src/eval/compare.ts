@@ -1,4 +1,5 @@
-import type { EmailVerdict, SubmissionRow, TruthRow } from "../contracts";
+import type { ClassifyChain, EmailVerdict, SubmissionRow, TruthRow } from "../contracts";
+import { verifierEffect } from "./verifier-effect";
 
 type Answer = Omit<SubmissionRow, "decided_by">;
 
@@ -15,7 +16,13 @@ function sameFields(a: string[], b: string[]): boolean {
  * this email: the document checks only for a true BL_COMPARISON, and end to end
  * only where a defect was planted.
  */
-export function compareEmail(emailId: string, truth: TruthRow, row: Answer | undefined, inHoldout: boolean): EmailVerdict {
+export function compareEmail(
+  emailId: string,
+  truth: TruthRow,
+  row: Answer | undefined,
+  inHoldout: boolean,
+  chain: ClassifyChain | undefined,
+): EmailVerdict {
   const given = row ?? MISSING;
   const answer: Answer = {
     category: given.category,
@@ -47,5 +54,6 @@ export function compareEmail(emailId: string, truth: TruthRow, row: Answer | und
       defectFields: comparison && truth.has_defect ? routed && sameFields(answer.defect_fields, truth.defect_fields) : null,
       endToEnd: truth.has_defect ? routed && answer.has_defect && sameFields(answer.defect_fields, truth.defect_fields) : null,
     },
+    classify: chain ? { ...chain, effect: verifierEffect(chain.genCategory, chain.verCategory, truth.category) } : null,
   };
 }
