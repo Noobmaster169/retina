@@ -171,15 +171,22 @@ headlessly at 1440px: 32 ports, 79 lanes, hover, pick, frame, open; the tooltip 
 right edge and the panel lists 11 lanes for Buatan. Nothing loops: the view glides on 320ms and
 every other change is 120ms, per `05-design.md` section 9.
 
-**Numbers.** 1,088 backend tests, 144 frontend.
+*Map, second pass (same day).* Pins are a third the size, so a coast reads as a coast. No lane is
+drawn at rest: hovering or picking a port draws its lanes as dashes flowing from the port of
+loading to the port of discharge (`lane-flow` in `globals.css`, still under reduced motion), which
+is direction and not decoration. A region filter keeps every located port on the map but shows
+only the filtered ones; picking a port draws its far ends as ghosts, so the Americas filter still
+says where New York's cargo comes from. The sea is the port hue's tint. `LE HAVRE` is placed:
+a spelling with no country word is looked up by its exact name across the world and taken only
+when one country holds it (`NEWCASTLE` stays unplaced, tested); every live port is on the map.
+
+**Numbers.** 1,092 backend tests, 144 frontend.
 
 **On the box.** After deploy: `pnpm db:migrate`, then `pnpm ontology:locate` (folds the
 duplicates) and `pnpm ontology:relink` (fills the party links) once each, both free.
 
 **Deferred.**
 
-- `LE HAVRE` is the one port the list does not place, because the mail spells it without a
-  country. A person can set its country and coordinates from its page.
 - A merged thing cannot be unmerged from the interface. The tombstone keeps its row, so a route
   to split it again is possible; nobody has asked yet.
 - `weight-total` in `eval/chat-questions.json` expects the answer to say a weight cannot be

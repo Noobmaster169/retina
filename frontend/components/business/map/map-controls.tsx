@@ -43,9 +43,9 @@ export function MapLegend({ ports, lanes }: { ports: number; lanes: number }) {
       </span>
       <span className="hidden items-center gap-1.5 @3xl:flex">
         <svg width="18" height="12" aria-hidden>
-          <path d="M1 9 Q9 0 17 9" className="fill-none stroke-kind-port opacity-70" strokeWidth="2" />
+          <path d="M1 9 Q9 0 17 9" className="fill-none stroke-kind-port opacity-90" strokeWidth="2" strokeDasharray="3 3" />
         </svg>
-        lane width is shipments
+        pick a port for its lanes
       </span>
     </div>
   );

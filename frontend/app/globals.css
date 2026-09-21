@@ -245,6 +245,25 @@ body {
   animation: wash 600ms ease-out;
 }
 
+/*
+ * A lit lane on the port map flows from the port of loading to the port of
+ * discharge: the dashes travel the path's own direction, so the motion is the
+ * direction of the cargo, which is the one thing a still line cannot say.
+ * The period is set per lane in viewBox units, because the drawing is scaled.
+ */
+@keyframes lane-flow {
+  from {
+    stroke-dashoffset: var(--lane-period);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.lane-flow {
+  animation: lane-flow 900ms linear infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

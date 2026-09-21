@@ -26,6 +26,8 @@ export interface MapLane {
 export interface PlacedPin extends MapPin {
   x: number;
   y: number;
+  /** False for a port outside the page's filter, drawn only as the far end of a lit port's lane. */
+  visible: boolean;
 }
 
 export interface PlacedLane extends MapLane {

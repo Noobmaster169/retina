@@ -22,11 +22,28 @@ export type { MapLane, MapPin } from "./types";
  * every browser.
  *
  * Wheel zooms about the pointer, drag pans, a pin picks a port into a panel
- * beside the drawing, and hovering anything lights its lanes and dims the
- * rest. `focus` opens with that port lit, its lanes framed and no panel,
- * because the page it sits on is that port's panel already.
+ * beside the drawing. At rest only the pins are drawn; hovering or picking a
+ * port draws its lanes, flowing from loading to discharge, and dims the rest.
+ * `visible` is the page's filter: a port outside it is not drawn until it is
+ * the far end of a lit port's lane, and then only as a ghost, so a filter on
+ * one region still shows where that region's ports ship. `focus` opens with
+ * that port lit, its lanes framed and no panel, because the page it sits on
+ * is that port's panel already.
  */
-export function WorldMap({ pins, lanes = [], focus, className = "" }: { pins: MapPin[]; lanes?: MapLane[]; focus?: string; className?: string }) {
+export function WorldMap({
+  pins,
+  lanes = [],
+  focus,
+  visible,
+  className = "",
+}: {
+  pins: MapPin[];
+  lanes?: MapLane[];
+  focus?: string;
+  /** Ids of the pins the page's filter kept. Undefined keeps every pin. */
+  visible?: string[];
+  className?: string;
+}) {
   const svg = useRef<SVGSVGElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const view = useMapView(svg);
@@ -48,10 +65,11 @@ export function WorldMap({ pins, lanes = [], focus, className = "" }: { pins: Ma
 
   const placed = useMemo(() => {
     const projection = projectionFor();
+    const kept = visible ? new Set(visible) : null;
     const byId = new Map<string, PlacedPin>();
     for (const pin of pins) {
       const at = projection([pin.lon, pin.lat]);
-      if (at) byId.set(pin.id, { ...pin, x: at[0], y: at[1] });
+      if (at) byId.set(pin.id, { ...pin, x: at[0], y: at[1], visible: kept === null || kept.has(pin.id) });
     }
     const drawn: PlacedLane[] = [];
     for (const one of lanes) {
@@ -62,12 +80,15 @@ export function WorldMap({ pins, lanes = [], focus, className = "" }: { pins: Ma
       if (d) drawn.push({ ...one, pol, pod, d });
     }
     return { pins: [...byId.values()], lanes: drawn };
-  }, [pins, lanes, path]);
+  }, [pins, lanes, path, visible]);
 
   const maxCount = Math.max(1, ...placed.pins.map((pin) => pin.count));
   const maxLane = Math.max(1, ...placed.lanes.map((one) => one.count));
   const picked = selected ? (placed.pins.find((pin) => pin.id === selected) ?? null) : null;
   const lit = hoverPin?.id ?? picked?.id ?? focus ?? null;
+  const litLanes = lit ? placed.lanes.filter((one) => one.polId === lit || one.podId === lit) : [];
+  const litEnds = new Set(litLanes.flatMap((one) => [one.polId, one.podId]));
+  const drawnPins = placed.pins.filter((pin) => pin.visible || litEnds.has(pin.id));
   const pickedLanes = picked ? placed.lanes.filter((one) => one.polId === picked.id || one.podId === picked.id) : [];
 
   const frameAround = useCallback(
@@ -137,9 +158,9 @@ export function WorldMap({ pins, lanes = [], focus, className = "" }: { pins: Ma
           style={{ transition: view.dragging ? "none" : "transform 320ms cubic-bezier(0.2, 0, 0, 1)" }}
         >
           <Land path={path} land={land} k={k} />
-          <path d={path(graticule) ?? ""} className="fill-none stroke-hairline" strokeWidth={0.4 / k} />
-          <Lanes lanes={placed.lanes} max={maxLane} lit={lit} k={k} onHover={setHoverLane} />
-          <Pins pins={placed.pins} max={maxCount} lit={lit} selected={picked?.id ?? focus ?? null} k={k} onHover={setHoverPin} onPick={pick} />
+          <path d={path(graticule) ?? ""} className="fill-none stroke-kind-port opacity-[0.08]" strokeWidth={0.5 / k} />
+          <Lanes lanes={litLanes} max={maxLane} k={k} onHover={setHoverLane} />
+          <Pins pins={drawnPins} max={maxCount} lit={lit} selected={picked?.id ?? focus ?? null} k={k} onHover={setHoverPin} onPick={pick} />
         </g>
       </svg>
       {!view.dragging ? (
@@ -147,7 +168,7 @@ export function WorldMap({ pins, lanes = [], focus, className = "" }: { pins: Ma
       ) : null}
       {picked ? <MapPanel pin={picked} lanes={pickedLanes} onPick={(pin) => setSelected(pin.id)} onFrame={() => frameAround(picked)} onClose={() => setSelected(null)} /> : null}
       <MapControls onIn={view.zoomIn} onOut={view.zoomOut} onReset={view.reset} />
-      <MapLegend ports={placed.pins.length} lanes={placed.lanes.length} />
+      <MapLegend ports={drawnPins.filter((pin) => pin.visible).length} lanes={placed.lanes.length} />
     </div>
   );
 }

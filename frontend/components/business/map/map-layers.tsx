@@ -15,44 +15,33 @@ import type { PlacedLane, PlacedPin } from "./types";
 export function Land({ path, land, k }: { path: GeoPath; land: GeoJSON.FeatureCollection | GeoJSON.Feature; k: number }) {
   return (
     <>
-      <path d={path(SPHERE) ?? ""} className="fill-sunken" />
-      <path d={path(land) ?? ""} className="fill-canvas stroke-hairline-strong" strokeWidth={0.6 / k} vectorEffect="non-scaling-stroke" />
+      <path d={path(SPHERE) ?? ""} className="fill-kind-port-tint stroke-hairline-strong" strokeWidth={0.8 / k} />
+      <path d={path(land) ?? ""} className="fill-canvas stroke-hairline-strong" strokeWidth={0.5 / k} />
     </>
   );
 }
 
-export function Lanes({
-  lanes,
-  max,
-  lit,
-  k,
-  onHover,
-}: {
-  lanes: PlacedLane[];
-  max: number;
-  /** The id of the pin whose lanes are lit; null lights every lane. */
-  lit: string | null;
-  k: number;
-  onHover(lane: PlacedLane | null): void;
-}) {
+/**
+ * Only the lit port's lanes are drawn, and each one flows from the port of
+ * loading to the port of discharge: the dashes travel the path's own
+ * direction, so the motion is the direction of the cargo and not decoration.
+ * `lane-flow` is in globals.css and stops under reduced motion.
+ */
+export function Lanes({ lanes, max, k, onHover }: { lanes: PlacedLane[]; max: number; k: number; onHover(lane: PlacedLane | null): void }) {
   return (
     <g className="fill-none">
-      {lanes.map((lane) => {
-        // At rest every lane is faint so the pins read first; a lit lane is
-        // the one thing on the map at full strength, and the rest step back.
-        const tone = lit === null ? "opacity-35" : lane.polId === lit || lane.podId === lit ? "opacity-90" : "opacity-[0.06]";
-        return (
-          <path
-            key={`${lane.polId}-${lane.podId}`}
-            d={lane.d}
-            strokeWidth={laneWidth(lane.count, max) / k}
-            strokeLinecap="round"
-            className={`stroke-kind-port transition-opacity duration-[120ms] ease-out ${tone}`}
-            onPointerEnter={() => onHover(lane)}
-            onPointerLeave={() => onHover(null)}
-          />
-        );
-      })}
+      {lanes.map((lane) => (
+        <path
+          key={`${lane.polId}-${lane.podId}`}
+          d={lane.d}
+          strokeWidth={laneWidth(lane.count, max) / k}
+          strokeLinecap="round"
+          className="lane-flow stroke-kind-port opacity-90"
+          style={{ strokeDasharray: `${5 / k} ${7 / k}`, "--lane-period": `${12 / k}px` } as React.CSSProperties}
+          onPointerEnter={() => onHover(lane)}
+          onPointerLeave={() => onHover(null)}
+        />
+      ))}
     </g>
   );
 }
@@ -79,15 +68,18 @@ export function Pins({
       {pins.map((pin) => {
         const r = radiusFor(pin.count, max) / k;
         const both = pin.loading > 0 && pin.discharge > 0;
-        const on = lit === null || lit === pin.id;
         const here = selected === pin.id;
+        // A pin outside the filter is a ghost: drawn faint as the far end of
+        // a lit lane and not otherwise. Everything else dims when one is lit.
+        const on = pin.visible ? lit === null || lit === pin.id : false;
+        const tone = pin.visible ? (on ? "opacity-100" : "opacity-40") : "opacity-45";
         return (
           <g
             key={pin.id}
             role="button"
             tabIndex={0}
             aria-label={`${pin.name}: ${pin.loading} loading, ${pin.discharge} discharge`}
-            className={`cursor-pointer outline-none transition-opacity duration-[120ms] ease-out ${on ? "opacity-100" : "opacity-40"}`}
+            className={`cursor-pointer outline-none transition-opacity duration-[120ms] ease-out ${tone}`}
             onPointerEnter={() => onHover(pin)}
             onPointerLeave={() => onHover(null)}
             onKeyDown={(event) => {
