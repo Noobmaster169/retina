@@ -71,12 +71,24 @@ chip switched off sends `context: []`. Two bugs the live check found and the tes
 frontend's `AttributeSource.confidence` refused the null a `mail` basis stores, and keying the
 dock's thread on the conversation id remounted it the moment the first question opened one.
 
+**One conversation at two widths (follow-up, same day).** The dock remembers its conversation
+in local storage and seeds its turns from `GET /api/chat/:id` on mount, after hydration. Its
+History lists every conversation (not one run's) and opens any of them in place. The rail's Ask
+Retina link and the dock's Open wide carry the conversation to the page, and `DockSync` on that
+page sends the page's choice back, so leaving the page finds the dock in the same conversation.
+The page's own rail lists every conversation too, each with the run it was opened on. Checked in
+a browser: seven in the history, four turns resumed after a reload, the rail link ending in the
+remembered id, the page opening it wide, and a pick on the page followed by the dock.
+
 **Deferred.**
 
 - The ontology's Shipments type stays unbuilt there: its things tab lists resolved kinds only,
   and a shipment is one row per email with nothing yet grouping them into a booking. The rail's
   blurb points at `/shipment`.
 - The dock's top-bar toggle shows no unread mark when an answer lands while the dock is closed.
+- Empty conversations: a person who opens the Ask Retina page and presses New leaves a conversation
+  with no turns behind, and the history lists it. The dock never does this (it opens on the first
+  question); the page could do the same.
 - The port list filters in the browser and reads at most 200 things; a list past that wants the
   backend's paging.
 

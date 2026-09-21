@@ -8,7 +8,7 @@ import { RunList, type RunSummary } from "@/lib/api/runs-schemas";
 import { parsedFetcher } from "@/lib/poll";
 
 import { Dock } from "@/components/dock/dock";
-import { DockProvider } from "@/components/dock/dock-state";
+import { DockProvider, useDock } from "@/components/dock/dock-state";
 import { ToastHost } from "@/components/ui/toast";
 
 import { activeFor, runIdFrom } from "./nav";
@@ -44,6 +44,7 @@ function Frame({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const runId = runIdFrom(pathname);
   const counts = useNavCounts();
+  const dock = useDock();
   // The chat page is the conversation, wide; a dock beside it would be the same thread twice.
   const onChatPage = activeFor(pathname) === "chat";
   const { data: list } = useSWR("/api/runs", parsedFetcher(RunList), {
@@ -67,6 +68,7 @@ function Frame({ children }: { children: ReactNode }) {
           counts={counts}
           current={current}
           runId={runId}
+          conversationId={dock.conversationId}
           runs={runs}
         />
         {children}

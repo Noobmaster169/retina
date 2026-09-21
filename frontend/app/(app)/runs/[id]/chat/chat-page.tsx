@@ -8,17 +8,20 @@ import { LiveSteps } from "@/components/chat/live-steps";
 import { Turn } from "@/components/chat/turn";
 import { openConversation, useChat } from "@/components/chat/use-chat";
 
+import { DockSync } from "@/components/dock/dock-sync";
+
 import { ConversationRail } from "./conversation-rail";
 import { TopBar } from "@/components/shell/top-bar";
 import type { ChatTurn } from "@/lib/api/chat-agent-schemas";
 import type { ChatConversation, ChatThread } from "@/lib/api/chat-thread-schemas";
 
 /**
- * A question about the whole inbox rather than one email.
+ * The conversation, wide.
  *
- * The rail on the email page is where most questions are asked, because the
- * question a person has is usually about the thing in front of them. This is
- * the other kind.
+ * The dock is where most questions are asked, because the question a person
+ * has is usually about the thing in front of them. This page is the same
+ * conversation with room to read a long answer, and every other conversation
+ * beside it. `DockSync` keeps the dock in the one opened here.
  */
 
 /** There are no accounts in this build; a reviewer types their name once. This is the chat's. */
@@ -56,6 +59,7 @@ export function ChatPage({ runId, conversations, thread }: ChatPageProps) {
 
   return (
     <>
+      <DockSync conversationId={thread?.conversation.id ?? null} />
       <ConversationRail conversations={conversations} runId={runId} openId={thread?.conversation.id ?? null} onNew={start} />
 
       <div className="flex min-w-0 grow flex-col">
