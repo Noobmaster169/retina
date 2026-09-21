@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import useSWR from "swr";
 
 import { CallsTab } from "@/components/email/calls-tab";
@@ -40,10 +40,13 @@ export function VerdictDetail({ runId, verdict }: { runId: string; verdict: Emai
   const effect = verdict.classify ? EFFECTS[verdict.classify.effect] : null;
 
   return (
-    <div className="border-l-2 border-hairline-strong bg-surface px-4 py-3">
+    // Sticky to the left of the scroll box: the table is wider than the
+    // viewport, and a pane that took the table's width would put the
+    // verifier's case off the right edge.
+    <div className="sticky left-0 w-[min(100%,72rem)] border-l-2 border-hairline-strong bg-surface px-4 py-3">
       {effect ? <p className="mb-3 max-w-[68ch] text-small text-ink-secondary">{effect.sentence}</p> : null}
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="flex flex-col gap-4">
         <Block title="The generator" aside={classification ? <Chip mono>{classification.generator.category}</Chip> : null}>
           {classification ? (
             <EvidenceWell quote={classification.generator.rationale || "It gave no reasoning."} />
@@ -108,9 +111,9 @@ export function VerdictDetail({ runId, verdict }: { runId: string; verdict: Emai
   );
 }
 
-function Block({ title, aside, children }: { title: string; aside: React.ReactNode; children: React.ReactNode }) {
+function Block({ title, aside, children }: { title: string; aside: ReactNode; children: ReactNode }) {
   return (
-    <section className="min-w-0">
+    <section className="min-w-0 max-w-[80ch]">
       <div className="mb-1.5 flex items-center gap-2">
         <h3 className="text-caption font-medium text-ink-secondary">{title}</h3>
         {aside}
