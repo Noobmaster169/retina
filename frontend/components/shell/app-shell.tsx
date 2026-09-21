@@ -8,6 +8,7 @@ import { RunList, type RunSummary } from "@/lib/api/runs-schemas";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { parsedFetcher } from "@/lib/poll";
 
+import { ChatStoreProvider } from "@/components/chat/chat-store";
 import { Dock } from "@/components/dock/dock";
 import { DockProvider, useDock } from "@/components/dock/dock-state";
 import { ToastHost } from "@/components/ui/toast";
@@ -31,12 +32,20 @@ import { Rail } from "./rail";
 
 const RUNS_MS = 5000;
 
+/**
+ * The chat store is outside the frame on purpose. The dock and the Ask Retina
+ * page are the same conversation at two widths and the frame swaps one for the
+ * other, so a thread held inside either of them was being unmounted mid-answer
+ * every time somebody navigated. Held here, it outlives both.
+ */
 export function AppShell({ children }: { children: ReactNode }) {
   return (
     <NavCountsProvider>
-      <DockProvider>
-        <Frame>{children}</Frame>
-      </DockProvider>
+      <ChatStoreProvider>
+        <DockProvider>
+          <Frame>{children}</Frame>
+        </DockProvider>
+      </ChatStoreProvider>
     </NavCountsProvider>
   );
 }

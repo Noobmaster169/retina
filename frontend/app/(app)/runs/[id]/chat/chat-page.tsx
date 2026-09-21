@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "motion/react";
 
 import { Composer } from "@/components/chat/composer";
@@ -13,6 +13,7 @@ import { DockSync } from "@/components/dock/dock-sync";
 
 import { ConversationRail } from "./conversation-rail";
 import { Opening } from "./opening";
+import { Seed } from "./seed";
 import { Empty, Pending } from "./thread-parts";
 import { TopBar } from "@/components/shell/top-bar";
 import type { ChatConversation, ChatThread } from "@/lib/api/chat-thread-schemas";
@@ -29,6 +30,9 @@ import type { ChatConversation, ChatThread } from "@/lib/api/chat-thread-schemas
 /** There are no accounts in this build; a reviewer types their name once. This is the chat's. */
 const ACTOR = "the analyst";
 
+/** The store is where a thread's turns live, so nothing is seeded from a prop. Stable, or the effect that hands it over never settles. */
+const NO_TURNS: never[] = [];
+
 /**
  * How the question box travels from the middle of the page to its foot. Long
  * enough to read as one movement and not a jump, short enough that it is over
@@ -37,30 +41,47 @@ const ACTOR = "the analyst";
  */
 const SETTLE = { duration: 0.42, ease: [0.22, 1, 0.36, 1] } as const;
 
+/**
+ * Three, and short. They are an offer and not a menu: a fourth row of them
+ * pushed the question box off the middle of the page, and a person reading
+ * four long sentences is choosing between them rather than asking their own.
+ */
 const SUGGESTIONS = [
-  "Which client had the most mismatches in the latest run, and on which field?",
+  "Which client had the most mismatches?",
   "Which of the seven fields differs most often?",
   "How many emails needed a person, by reason?",
-  "Which spellings were judged to be the same port?",
 ];
 
 interface ChatPageProps {
   runId: string;
   conversations: ChatConversation[];
-  thread: ChatThread | null;
+  /** Which conversation the address names, or the newest there is. */
+  openId: string | null;
+  /**
+   * The server's copy of that thread, still arriving. Never awaited before the
+   * page draws: the turns come from the store, which already has them for any
+   * conversation this session has read, and this merges in behind.
+   */
+  thread: Promise<ChatThread | null> | null;
 }
 
-export function ChatPage({ runId, conversations, thread }: ChatPageProps) {
+export function ChatPage({ runId, conversations, openId, thread }: ChatPageProps) {
   const router = useRouter();
-  const chat = useChat({ conversationId: thread?.conversation.id ?? null, actor: ACTOR, initial: thread?.turns ?? [] });
+  const conversation = conversations.find((one) => one.id === openId) ?? null;
+  const chat = useChat({ conversationId: openId, actor: ACTOR, initial: NO_TURNS });
   const foot = useRef<HTMLDivElement>(null);
 
-  // Nothing has been asked here yet. `turns` holds the person's own question
-  // the moment they send it, before any answer, so this turns false on the
-  // keystroke that sends rather than when the model comes back: the box starts
-  // travelling while they are still looking at what they typed.
-  const opening = chat.turns.length === 0 && !chat.pending;
-  const scopeWords = thread?.conversation.scope.chips.map((chip) => chip.label).join(" and ") ?? "every run";
+  // Nothing has ever been asked here, so the box sits in the middle. `turns`
+  // holds the person's own question the moment they send it, so this turns
+  // false on the keystroke that sends rather than when the model comes back:
+  // the box starts travelling while they are still looking at what they typed.
+  //
+  // The turn count comes from the list and
+  // not from the turns, which arrive after the page draws: without it a
+  // conversation with a thread showed the centred opening for the moment
+  // before its turns landed, and the box travelled down as they did.
+  const opening = chat.turns.length === 0 && !chat.pending && (conversation?.turnCount ?? 0) === 0;
+  const scopeWords = conversation?.scope.chips.map((chip) => chip.label).join(" and ") ?? "every run";
 
   // A conversation is named from its first question, by the server, and the
   // rail is drawn from a server render: until this, the one conversation a
@@ -71,7 +92,7 @@ export function ChatPage({ runId, conversations, thread }: ChatPageProps) {
   // Twice, deliberately. The name is written before the model is called, so
   // the first of these usually has it; the second is for when that race goes
   // the other way, and both stop the moment a name exists.
-  const naming = thread !== null && thread.conversation.title === null && chat.turns.length > 0;
+  const naming = conversation !== null && conversation.title === null && chat.turns.length > 0;
   useEffect(() => {
     if (naming) router.refresh();
   }, [naming, chat.pending, router]);
@@ -90,20 +111,25 @@ export function ChatPage({ runId, conversations, thread }: ChatPageProps) {
 
   return (
     <>
-      <DockSync conversationId={thread?.conversation.id ?? null} />
+      <DockSync conversationId={openId} />
+      {thread ? (
+        <Suspense fallback={null}>
+          <Seed id={openId} thread={thread} />
+        </Suspense>
+      ) : null}
       <ConversationRail
         conversations={conversations}
         runId={runId}
-        openId={thread?.conversation.id ?? null}
-        namingId={naming ? (thread?.conversation.id ?? null) : null}
+        openId={openId}
+        namingId={naming ? openId : null}
         onNew={start}
       />
 
       <div className="flex min-w-0 grow flex-col">
-        <TopBar crumbs={[{ label: "Ask Retina" }, { label: thread?.conversation.title ?? "A new question" }]}>
-          {thread ? (
+        <TopBar crumbs={[{ label: "Ask Retina" }, { label: conversation?.title ?? "A new question" }]}>
+          {conversation ? (
             <span className="flex h-[26px] items-center gap-1.5">
-              {thread.conversation.scope.chips.map((chip) => (
+              {conversation.scope.chips.map((chip) => (
                 <span
                   key={chip.label}
                   className={`inline-flex h-[21px] items-center rounded-sm border border-hairline bg-canvas px-2 font-mono text-mono-xs ${
@@ -118,7 +144,7 @@ export function ChatPage({ runId, conversations, thread }: ChatPageProps) {
         </TopBar>
 
         <div className="min-h-0 grow overflow-y-auto px-6 py-5">
-          {thread === null ? (
+          {conversation === null ? (
             <Empty onNew={start} />
           ) : (
             <div className="mx-auto max-w-[900px] space-y-6">
@@ -151,11 +177,11 @@ export function ChatPage({ runId, conversations, thread }: ChatPageProps) {
          * box disappearing while another appears. The spacer under it is what
          * centres it, and its going is what sends the box down.
          */}
-        {thread ? (
+        {conversation ? (
           <>
             <AnimatePresence>{opening ? <Opening key="opening" scope={scopeWords} /> : null}</AnimatePresence>
             <motion.div layout transition={SETTLE} className="shrink-0">
-              <Suggestions items={opening ? SUGGESTIONS : []} onAsk={chat.ask} />
+              <Suggestions items={opening ? SUGGESTIONS : []} onAsk={chat.ask} centred={opening} />
               <Composer
                 onAsk={chat.ask}
                 onStop={chat.stop}

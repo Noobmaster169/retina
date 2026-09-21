@@ -13,15 +13,22 @@ export function Suggestions({
   items,
   onAsk,
   dense = false,
+  centred = false,
 }: {
   items: string[];
   onAsk(question: string): void;
   /** The dock's narrower gutter. */
   dense?: boolean;
+  /** Under the question box in the middle of an empty page, where they belong to it and should sit the way it does. */
+  centred?: boolean;
 }) {
   if (items.length === 0) return null;
   return (
-    <ul className={`flex flex-wrap gap-1.5 pb-2.5 pt-1 ${dense ? "px-[18px]" : "px-6"}`}>
+    <ul
+      className={`flex flex-wrap gap-1.5 pb-2.5 pt-1 ${dense ? "px-[18px]" : "px-6"} ${
+        centred ? "mx-auto w-full max-w-[720px] justify-center" : ""
+      }`}
+    >
       {items.map((item) => (
         <li key={item}>
           <button
