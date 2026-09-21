@@ -20,7 +20,7 @@ export interface Crumb {
 /** `onBack` is only drawn where the list it goes back to is off screen, which is a phone. */
 export function TopBar({ crumbs, children, onBack }: { crumbs: Crumb[]; children?: ReactNode; onBack?: () => void }) {
   return (
-    <header className="flex h-14 shrink-0 items-center gap-2.5 border-b border-hairline px-4 md:px-6">
+    <header className="flex h-14 shrink-0 items-center gap-2.5 border-b border-hairline bg-shell px-4 md:px-6">
       {onBack ? (
         <button
           type="button"

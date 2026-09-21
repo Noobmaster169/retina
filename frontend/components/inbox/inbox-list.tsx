@@ -4,7 +4,9 @@ import type { MouseEvent } from "react";
 
 import { MoreBelow } from "@/components/business/more-below";
 import { useSoftPage } from "@/components/business/use-soft-page";
-import { senderInitials, senderName } from "@/components/email/sender";
+import { ClassificationChip } from "@/components/email/classification-chip";
+import { displayLabel } from "@/components/email/display-label";
+import { senderName } from "@/components/email/sender";
 import { Chip, toneOf } from "@/components/ui/chip";
 
 import { FilterBar } from "./filter-bar";
@@ -12,10 +14,8 @@ import type { FilterKey, InboxView } from "./inbox-filters";
 import type { InboxRow } from "./inbox-rows";
 
 /**
- * Every email of the run, one row at 86px. That is the one list in the product
- * drawn at this height: a mail row carries a sender, a subject, an id and two
- * chips, and forty of those at 36px would be unreadable even though density is
- * the courtesy everywhere else.
+ * Every email of the run, in two lines: sender and classification, then subject
+ * and the result of a document check when one exists.
  *
  * A row is a link that usually does not navigate. Plain click chooses the
  * email in place, which is what keeps one pane on screen instead of a new one
@@ -40,7 +40,7 @@ interface InboxListProps {
   className?: string;
 }
 
-/** Rows at 86px, so a screenful is a dozen and a step is three screenfuls. */
+/** Compact rows, so a step remains several screenfuls. */
 const STEP = 40;
 
 export function InboxList({ rows, total, selectedId, onSelect, view, onView, counts, loading, className = "" }: InboxListProps) {
@@ -54,7 +54,7 @@ export function InboxList({ rows, total, selectedId, onSelect, view, onView, cou
   );
   return (
     <div className={`w-full shrink-0 flex-col border-r border-hairline md:w-[300px] ${className}`}>
-      <FilterBar view={view} onView={onView} counts={counts} shown={rows.length} />
+      <FilterBar view={view} onView={onView} counts={counts} />
 
       <div className="min-h-0 grow overflow-y-auto">
         {rows.length === 0 ? (
@@ -74,6 +74,7 @@ export function InboxList({ rows, total, selectedId, onSelect, view, onView, cou
 
 function Row({ row, selected, onSelect }: { row: InboxRow; selected: boolean; onSelect: (emailId: string) => void }) {
   const status = row.openCase ? (row.openCase.reason ?? "failed") : (row.outcome ?? row.stage);
+  const showStatus = status !== "not_comparable" && status !== "done";
 
   function choose(event: MouseEvent<HTMLAnchorElement>) {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -86,28 +87,20 @@ function Row({ row, selected, onSelect }: { row: InboxRow; selected: boolean; on
       href={`?email=${row.emailId}`}
       onClick={choose}
       aria-current={selected ? "page" : undefined}
-      className={`block h-[86px] border-b border-hairline-faint px-[18px] py-3 transition-colors duration-150 hover:bg-sunken ${
+      className={`block h-[66px] border-b border-hairline-faint px-[18px] py-2.5 transition-colors duration-150 hover:bg-sunken ${
         selected ? "bg-active shadow-[inset_2px_0_0_0_var(--ink)]" : ""
       }`}
     >
       <span className="flex items-center gap-2">
-        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-active text-[10px] font-semibold text-ink-secondary">
-          {senderInitials(row.from)}
-        </span>
         <span className="min-w-0 grow truncate text-strong font-medium">{senderName(row.from)}</span>
         {row.openCase ? <Waiting openCase={row.openCase} /> : null}
+        {row.category ? <ClassificationChip category={row.category} className="h-5 px-1.5" /> : null}
       </span>
-      <span className="mt-1.5 flex items-baseline gap-1.5">
-        <span className="shrink-0 font-mono text-mono-sm text-ink-faint">{row.emailId}</span>
-        <span className="min-w-0 truncate text-small text-ink-secondary">{row.subject}</span>
-      </span>
-      <span className="mt-2 flex items-center gap-1.5">
-        <Chip tone={toneOf(status)} mono className="h-[19px] rounded-xs px-1.5">
-          {status}
-        </Chip>
-        {row.category ? (
-          <Chip mono className="h-[19px] min-w-0 rounded-xs px-1.5">
-            <span className="truncate">{row.category}</span>
+      <span className="mt-1.5 flex items-center gap-2">
+        <span className="min-w-0 grow truncate text-small text-ink-secondary">{row.subject}</span>
+        {showStatus ? (
+          <Chip tone={toneOf(status)} className="h-[19px] rounded-xs px-1.5">
+            {displayLabel(status)}
           </Chip>
         ) : null}
       </span>

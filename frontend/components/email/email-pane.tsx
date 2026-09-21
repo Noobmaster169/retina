@@ -5,11 +5,12 @@ import { useState } from "react";
 import { ActionBar } from "@/components/review/action-bar";
 import { useReviewer } from "@/components/review/reviewer";
 import { useCaseActions } from "@/components/review/use-case-actions";
-import { EnumChip } from "@/components/ui/chip";
+import { Chip } from "@/components/ui/chip";
 import { TabList, TabPanel, Tabs } from "@/components/ui/tabs";
 import type { EmailTrace } from "@/lib/api/trace-schemas";
 
 import { CaseTab } from "./case-tab";
+import { ClassificationChip, classificationLabel } from "./classification-chip";
 import { firstCorrectable } from "./case-fields";
 import { CallsTab } from "./calls-tab";
 import { CheckTab, rowsOf } from "./check-tab";
@@ -59,6 +60,8 @@ export function EmailPane({ runId, trace, message, subject, tab, onTab, onChange
 
   const rows = rowsOf(trace);
   const status = statusOf(trace);
+  const classification = trace.classification?.humanCategory ?? trace.classification?.finalCategory ?? null;
+  const showStatus = classification === null || status.value !== classificationLabel(classification);
   const tabs = [
     { value: "check", label: review ? "The case" : "The check", count: review ? 1 : rows.length },
     ...(rows.length > 0 ? [{ value: "report", label: "Report", count: rows.length }] : []),
@@ -85,13 +88,10 @@ export function EmailPane({ runId, trace, message, subject, tab, onTab, onChange
       {/* The email's own title block, under the page's breadcrumb. The way back
           to the list and the way back to the chat are on that bar, which spans
           both columns; this one names what is open and nothing else. */}
-      <header className="flex h-16 shrink-0 items-center gap-2.5 border-b border-hairline px-4 md:px-6">
-        <div className="min-w-0">
-          <h1 className="truncate text-title font-semibold tracking-[-0.015em]">{subject}</h1>
-          <p className="mt-0.5 font-mono text-mono-sm text-ink-tertiary">{trace.emailId}</p>
-        </div>
-        <span className="grow" />
-        <EnumChip value={status.value} tone={status.tone} />
+      <header className="flex h-14 shrink-0 items-center gap-2.5 border-b border-hairline px-4 md:px-6">
+        <h1 className="min-w-0 grow truncate text-title font-semibold tracking-[-0.015em]">{subject}</h1>
+        {classification ? <ClassificationChip category={classification} className="max-w-[180px]" /> : null}
+        {showStatus ? <Chip tone={status.tone}>{status.value}</Chip> : null}
       </header>
 
       <div className="flex h-[42px] shrink-0 items-stretch gap-5 border-b border-hairline px-4 md:px-6">

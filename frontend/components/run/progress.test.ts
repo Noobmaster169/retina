@@ -14,7 +14,7 @@ describe("laneMap, a run in flight", () => {
   const map = laneMap(run(), queues({ classify: queue({ active: 8 }), compare: queue({ name: "compare", concurrency: 4, active: 4, waiting: 45 }) }));
 
   it("reads a busy queue as live, against its own concurrency", () => {
-    expect(card(map, "classifying")).toMatchObject({ value: "8 / 8", state: "live", unit: "slots busy" });
+    expect(card(map, "classifying")).toMatchObject({ value: "8 / 8", state: "live", unit: null });
     expect(card(map, "checking")).toMatchObject({ value: "4 / 4", state: "live" });
   });
 
@@ -74,12 +74,12 @@ describe("laneMap, a finished run", () => {
   it("says every queue is empty rather than showing an idle slot count as live", () => {
     expect(card(map, "classifying").state).toBe("idle");
     expect(card(map, "checking").state).toBe("idle");
-    expect(card(map, "waiting").unit).toBe("none queued");
+    expect(card(map, "waiting").unit).toBeNull();
   });
 
   it("says all of them when everything crossed and was checked", () => {
-    expect(card(map, "sorted").unit).toBe("all of them");
-    expect(card(map, "checked")).toMatchObject({ value: "220", unit: "all of them" });
+    expect(card(map, "sorted").unit).toBeNull();
+    expect(card(map, "checked")).toMatchObject({ value: "220", unit: null });
   });
 });
 

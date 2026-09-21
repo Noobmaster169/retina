@@ -22,8 +22,9 @@ import type { IconName } from "@/components/ui/icons";
  * page is below it.
  *
  * `hidden` keeps a destination built and reachable by its URL while taking it
- * out of the rail. None is hidden today: the database page is offered again,
- * because `As rows` is the page that proves the ontology is not a mock-up.
+ * out of the rail. Database remains available to direct links, while the
+ * Senders table moved onto the run overview; both pages still answer on their
+ * own URLs without being offered as primary destinations.
  *
  * `Needs a person` was a destination of its own until it stopped earning one.
  * It listed the same emails the inbox lists, from a second component set, with
@@ -73,13 +74,17 @@ export const DESTINATIONS: Destination[] = [
   // asks about a sender, the first being its tier on `Senders`, which is why
   // the two read as a pair from either side.
   { key: "gate", label: "Traffic", icon: "scale", path: "/gate", cluster: "operations", global: true, preload: true },
-  { key: "database", label: "Database", icon: "table", path: "/database", cluster: "operations", preload: true },
+  { key: "database", label: "Database", icon: "table", path: "/database", cluster: "operations", preload: true, hidden: true },
   { key: "ontology", label: "Ontology", icon: "graph", path: "/ontology", cluster: "operations", preload: true },
   { key: "chat", label: "Ask Retina", icon: "chat", path: "/chat", cluster: "operations", preload: true },
   { key: "company", label: "Companies", icon: "party", path: "/company", cluster: "business", global: true, preload: true },
   { key: "port", label: "Ports", icon: "port", path: "/port", cluster: "business", global: true, preload: true },
   { key: "shipment", label: "Shipments", icon: "ship", path: "/shipment", cluster: "business", global: true, preload: true },
-  { key: "clients", label: "Senders", icon: "client", path: "/clients", cluster: "business", global: true, preload: true },
+  // Hidden, not deleted: the page is still the whole table and still opens by
+  // its URL. It left the rail when `Who is served first` moved onto the run
+  // overview, because a sender's tier is a dial on the pipeline and not a
+  // thing the mail resolved, and two doors to one table is how the two drift.
+  { key: "clients", label: "Senders", icon: "client", path: "/clients", cluster: "business", global: true, hidden: true },
 ];
 
 /**

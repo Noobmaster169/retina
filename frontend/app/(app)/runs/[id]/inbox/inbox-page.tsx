@@ -70,7 +70,7 @@ export function InboxPage({ runId, initialList, params }: InboxPageProps) {
       <PageContext
         refs={
           trace && selected
-            ? [{ kind: "email", id: selected, title: selected }, { kind: "run", id: runId, title: `run ${runId.slice(0, 8)}` }]
+            ? [{ kind: "email", id: selected, title: detail.subject }, { kind: "run", id: runId, title: `run ${runId.slice(0, 8)}` }]
             : [{ kind: "run", id: runId, title: `run ${runId.slice(0, 8)}` }]
         }
         note={trace ? openingLine(trace) : null}
@@ -92,7 +92,6 @@ export function InboxPage({ runId, initialList, params }: InboxPageProps) {
             { label: "Runs", href: "/runs" },
             { label: runId.slice(0, 8), href: `/runs/${runId}`, mono: true },
             { label: "Inbox" },
-            ...(selected ? [{ label: selected, mono: true }] : []),
           ]}
           onBack={open ? () => select(null) : undefined}
         />

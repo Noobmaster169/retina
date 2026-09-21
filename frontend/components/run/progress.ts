@@ -1,7 +1,6 @@
 import { RunQueuesView } from "@/lib/api/queues-schemas";
 import { RunSummary } from "@/lib/api/runs-schemas";
 import type { IconName } from "@/components/ui/icons";
-import type { FilterKey } from "@/components/inbox/inbox-filters";
 
 /**
  * The six cards of "How the work moves", from numbers the API already
@@ -22,8 +21,16 @@ export interface StageCard {
   icon: IconName;
   /** The number as it reads: "8 / 8" for a slot count, "520" for a total. */
   value: string;
-  /** What that number counts, in words. */
-  unit: string;
+  /**
+   * What that number counts, in words, and null where the number says it
+   * already.
+   *
+   * `0 / 10` does not need `slots busy` after it, and `520` under a card
+   * headed `Sorted` does not need `all of them`. The unit survives only where
+   * it is news a reader could not get from the number: that a queue is held,
+   * that a run is paused, that there is more still to come in.
+   */
+  unit: string | null;
   pct: number;
   state: CardState;
 }
@@ -32,17 +39,8 @@ export interface LaneMap {
   cards: StageCard[];
   /** How many of the sorted emails cross into the second queue. Drawn on the arrow between the lanes. */
   crossing: number;
-  /** What stopped at the first queue, drawn on a drop rule under `Sorted`. */
+  /** What stopped at the first queue. Not drawn on the strip: the flow below carries it. */
   notComparable: number;
-  /**
-   * Where the checked pairs came out, drawn on a drop rule under `Checked`.
-   * Each carries the inbox filter that shows exactly what it counted, so the
-   * number and the list a click opens can never mean two different things.
-   *
-   * Named in plain English like the outcomes panel beside it: one screen, one
-   * vocabulary. outcomes.ts says why, and why the enum is not lost.
-   */
-  ends: { label: string; count: number; tone: "match" | "differ" | "review" | "fault" | "muted"; filter: FilterKey }[];
 }
 
 function pct(part: number, whole: number): number {
@@ -82,23 +80,13 @@ export function laneMap(run: RunSummary, queues: RunQueuesView): LaneMap {
   return {
     crossing: needCheck,
     notComparable: queues.handoff.notComparable,
-    ends: [
-      ...(awaitingDraft > 0
-        ? ([{ label: "Awaiting a draft", count: awaitingDraft, tone: "muted", filter: "awaiting-draft" }] as const)
-        : []),
-      { label: "Documents agree", count: run.outcomes.ok, tone: "match", filter: "agreed" },
-      { label: "Documents differ", count: run.outcomes.mismatch, tone: "differ", filter: "differences" },
-      ...(run.stageCounts.failed > 0
-        ? ([{ label: "Stopped", count: run.stageCounts.failed, tone: "fault", filter: "failed" }] as const)
-        : ([{ label: "Needs a person", count: run.review.open, tone: "review", filter: "needs-you" }] as const)),
-    ],
     cards: [
       {
         key: "arriving",
         label: "Arriving",
         icon: "inbox",
         value: String(left),
-        unit: left === 0 ? "all in" : paused ? "held back" : "to ingest",
+        unit: left === 0 ? null : paused ? "held back" : "to ingest",
         pct: 100,
         state: left === 0 ? "done" : paused ? "idle" : "live",
       },
@@ -106,7 +94,7 @@ export function laneMap(run: RunSummary, queues: RunQueuesView): LaneMap {
         key: "classifying",
         label: "Classifying",
         icon: "eye",
-        unit: paused ? "paused" : classifyHeld ? "held" : "slots busy",
+        unit: paused ? "paused" : classifyHeld ? "held" : null,
         ...slots(queues.classify.active, queues.classify.concurrency, classifyHeld, paused),
       },
       {
@@ -114,7 +102,7 @@ export function laneMap(run: RunSummary, queues: RunQueuesView): LaneMap {
         label: "Sorted",
         icon: "check",
         value: String(sorted),
-        unit: run.totalEmails && sorted >= run.totalEmails ? "all of them" : `of ${run.totalEmails ?? seen}`,
+        unit: run.totalEmails && sorted >= run.totalEmails ? null : `of ${run.totalEmails ?? seen}`,
         pct: pct(sorted, run.totalEmails ?? seen),
         state: "done",
       },
@@ -123,7 +111,7 @@ export function laneMap(run: RunSummary, queues: RunQueuesView): LaneMap {
         label: "Waiting",
         icon: "clock",
         value: String(queues.compare.waiting),
-        unit: queues.compare.waiting === 0 ? "none queued" : "to check",
+        unit: queues.compare.waiting === 0 ? null : "to check",
         pct: pct(queues.compare.waiting, Math.max(needCheck, 1)),
         state: compareHeld && queues.compare.waiting > 0 ? "warn" : "idle",
       },
@@ -131,7 +119,7 @@ export function laneMap(run: RunSummary, queues: RunQueuesView): LaneMap {
         key: "checking",
         label: "Checking",
         icon: "scale",
-        unit: paused ? "paused" : compareHeld ? "held" : "pairs open",
+        unit: paused ? "paused" : compareHeld ? "held" : null,
         ...slots(queues.compare.active, queues.compare.concurrency, compareHeld, paused),
       },
       {
@@ -139,7 +127,7 @@ export function laneMap(run: RunSummary, queues: RunQueuesView): LaneMap {
         label: "Checked",
         icon: "check",
         value: String(checked),
-        unit: checkable > 0 && checked >= checkable ? "all of them" : `of ${checkable}`,
+        unit: checkable > 0 && checked >= checkable ? null : `of ${checkable}`,
         pct: pct(checked, Math.max(checkable, 1)),
         state: "done",
       },

@@ -4,13 +4,12 @@ import { useState } from "react";
 
 import type { EmailTrace } from "@/lib/api/trace-schemas";
 
-import { agreementNote, anythingInDoubt, groupRows } from "./check-groups";
-import { checkSentence } from "./field-reading";
+import { anythingInDoubt, groupRows } from "./check-groups";
 import { Folded, Group } from "./field-groups";
 import { FieldRow, type FieldRowData } from "./field-row";
 import { MessageCard, type Message } from "./message-card";
 import { RecommendActionButton } from "./recommend-action-button";
-import { Reading, type ReadingFact, Seam } from "./seam";
+import { Seam } from "./seam";
 
 /**
  * The check: the message, the seam, what Retina made of it in plain English,
@@ -37,7 +36,6 @@ export function CheckTab({ trace, message }: CheckTabProps) {
   const rows = rowsOf(trace);
   const groups = groupRows(rows);
   const doubt = anythingInDoubt(groups);
-  const settled = agreementNote(groups);
 
   const [open, setOpen] = useState<string | null>(groups.differing[0]?.judgement.field ?? groups.blank[0]?.judgement.field ?? null);
   const [showAgreed, setShowAgreed] = useState(false);
@@ -50,17 +48,11 @@ export function CheckTab({ trace, message }: CheckTabProps) {
     <div className="flex min-h-0 grow flex-col">
       <div className="min-h-0 grow overflow-y-auto px-6 pb-4">
         <div className="pt-4">
-          <MessageCard message={message} documents={trace.documents} />
+          <MessageCard message={message} documents={trace.documents} foldBody={rows.length > 0} />
         </div>
-        <Seam />
-        <Reading facts={factsOf(trace)}>{readingOf(trace)}</Reading>
-
-        {rows.length === 0 ? (
-          <p className="max-w-[68ch] py-3 text-small text-ink-tertiary">
-            Nothing has been compared yet. A pair is judged once both documents have been read.
-          </p>
-        ) : (
+        {rows.length > 0 ? (
           <>
+            <Seam label="The check" />
             {groups.differing.length > 0 ? (
               <Group title="What differs" count={groups.differing.length} tone="differ">
                 {groups.differing.map(draw)}
@@ -73,19 +65,17 @@ export function CheckTab({ trace, message }: CheckTabProps) {
               </Group>
             ) : null}
 
-            {settled ? <p className="max-w-[68ch] pt-3 text-body text-ink-secondary">{settled}</p> : null}
-
-            {groups.agreed.length > 0 ? (
+            {groups.agreed.length > 0 && !doubt ? (
               <Folded
                 open={showAgreed}
                 onToggle={() => setShowAgreed((was) => !was)}
-                label={doubt ? `The other ${groups.agreed.length} agree` : `Show the ${groups.agreed.length} fields`}
+                label={`All ${groups.agreed.length} fields agree`}
               >
                 {groups.agreed.map(draw)}
               </Folded>
             ) : null}
           </>
-        )}
+        ) : null}
       </div>
 
       {groups.differing.length > 0 ? (
@@ -109,42 +99,4 @@ export function rowsOf(trace: EmailTrace): FieldRowData[] {
     si: si?.fields.find((field) => field.field === judgement.field),
     bl: bl?.fields.find((field) => field.field === judgement.field),
   }));
-}
-
-/** What happened, in words, before any enum. Section 2.2: plain English first, the enum inside it. */
-function readingOf(trace: EmailTrace): string {
-  const opened = trace.documents.length;
-  const named = trace.documents.filter((document) => document.typeVerdict === "ok").length;
-  const opening =
-    opened === 0
-      ? "No attachment has been opened yet."
-      : `${opened === 2 ? "Both files" : `${opened} file${opened === 1 ? "" : "s"}`} opened and ${
-          named === opened ? "were the documents their names claimed" : `${named} of them were the document their name claimed`
-        }.`;
-  const check = trace.comparison ? checkSentence(trace.comparison.fields, trace.comparison.defectFields) : "";
-  return `${opening} ${check}`.trim();
-}
-
-/** The facts beside the reading: the enums, verbatim, each inside its own sentence-case label. */
-function factsOf(trace: EmailTrace): ReadingFact[] {
-  const facts: ReadingFact[] = [];
-  const classification = trace.classification;
-  if (classification) {
-    facts.push({ label: "sorted", value: classification.humanCategory ?? classification.finalCategory });
-    facts.push({
-      label: "sure",
-      value: classification.generator.confidence.toFixed(2),
-      tone: classification.generator.confidence >= 0.8 ? "match" : "neutral",
-    });
-    facts.push({ label: "decided by", value: classification.decidedBy });
-  }
-  const comparison = trace.comparison;
-  if (comparison) {
-    facts.push({
-      label: "fields that differ",
-      value: `${comparison.defectFields.length} of ${comparison.fields.length}`,
-      tone: comparison.defectFields.length > 0 ? "differ" : "match",
-    });
-  }
-  return facts;
 }
