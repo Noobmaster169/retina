@@ -10,7 +10,7 @@ import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { EntityList } from "@/lib/api/ontology-schemas";
 import type { EntityKind } from "@/lib/api/semantic-schemas";
-import { flagOf } from "@/lib/flag";
+import { Flag } from "@/components/ui/flag";
 import { parsedFetcher } from "@/lib/poll";
 
 import { hrefFor } from "./kind";
@@ -80,7 +80,7 @@ export function SameAs({ kind, id, name }: { kind: EntityKind; id: string; name:
                     aria-pressed={here}
                     className={`flex h-9 w-full items-center gap-2 px-3 text-left text-small ${here ? "bg-accent-tint text-accent" : "hover:bg-sunken"}`}
                   >
-                    <span className="w-6 shrink-0">{flagOf(row.attributes.countryCode) ?? ""}</span>
+                    <span className="flex w-6 shrink-0 items-center"><Flag code={row.attributes.countryCode} height={11} /></span>
                     <span className="min-w-0 grow truncate">{row.name}</span>
                     <span className="font-mono text-mono-sm text-ink-tertiary">{row.emails}</span>
                   </button>

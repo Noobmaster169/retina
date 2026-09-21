@@ -12,7 +12,6 @@ import { useView } from "@/components/business/use-view";
 import { ViewToggle } from "@/components/business/view-toggle";
 import { type MapPin, WorldMap } from "@/components/business/world-map";
 import type { EntityRow } from "@/lib/api/ontology-schemas";
-import { flagOf } from "@/lib/flag";
 
 import { PORT_COLUMNS } from "./port-columns";
 
@@ -21,7 +20,7 @@ const VIEWS = ["map", "cards", "table"] as const;
 function pinOf(row: EntityRow, lat: number, lon: number): MapPin {
   const loading = row.roles.port_of_loading ?? 0;
   const discharge = row.roles.port_of_discharge ?? 0;
-  return { id: row.id, name: row.name, lat, lon, count: loading + discharge, href: hrefFor("port", row.id) ?? "#", loading, discharge, flag: flagOf(row.attributes.countryCode) };
+  return { id: row.id, name: row.name, lat, lon, count: loading + discharge, href: hrefFor("port", row.id) ?? "#", loading, discharge, countryCode: row.attributes.countryCode };
 }
 
 export function PortList({ rows }: { rows: EntityRow[] }) {
