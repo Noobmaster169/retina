@@ -62,19 +62,25 @@ Nothing, for the whole of that wait.
    the queries, the rows and the tool list move inside a single collapsed control under the
    answer. Nothing is removed, because an answer nobody can check is worth less than one they
    can.
-5. **The answer is structured by the one call that writes it, never by a second one.**
+5. **The same working is open during the turn and folded after it.** While a turn runs, the
+   calls it has finished are the only thing there is to read, and watching them is how a person
+   decides whether the agent understood the question: each one shows its tool, why it was made,
+   how long it took and the query it ran. The moment the answer lands they are gone, and the
+   same calls are under it inside the folded control. Mid-turn it is the content; afterwards it
+   is the evidence.
+6. **The answer is structured by the one call that writes it, never by a second one.**
    A formatting pass is another `claude -p` session, which measured 2.8 s to 3.2 s before it
    writes a token, and it would re-emit the whole answer only to change its shape. Speed is
    the thing being bought here, so the shape is bought where it is free: in the schema's
    description of `answer` and in the prompt, which already carry the style rule. Where a
    structure is wanted that the prompt does not reliably produce, the fix is a sharper rule on
    the field, not a second call.
-6. **Rows are evidence, not prose.** What a query returned is never written into the answer.
+7. **Rows are evidence, not prose.** What a query returned is never written into the answer.
    It stays with the query, inside the collapsed working, where a reader can check it. The
    answer names the number and says what it means. This is what stops the output reading as a
    dump: the noise was never the prose, it was the result set sitting under it in the same
    column.
-7. **Fields nobody asked for are not generated.** `checked`, `next` and `clarify` earn their
+8. **Fields nobody asked for are not generated.** `checked`, `next` and `clarify` earn their
    tokens only where the outcome uses them. This is the only item here that moves the real
    clock rather than the felt one, and it is measured with the chat eval before and after.
 
@@ -96,17 +102,28 @@ behaviour it has.
 ### 3. The turn as a stream
 
 `runTurn` gains an optional `onProgress(event)` reporting the phase, the step number, and the
-prose so far. `routes/chat.turn.ts` passes it through. `chat.routes.ts` writes SSE when the
-request asks for it: `progress` events while the turn runs, then one `answer` event with the
-`ChatAnswer`, or one `failure` event carrying the message the blocking form would have put in
-its body.
+prose so far. `routes/chat.turn.ts` passes it through, and adds `onCalls`, which fires from the
+existing `onStep` after the rows are written, so what the page is shown has already landed in
+the thread. `chat.routes.ts` writes SSE when the request asks for it: `progress` events while
+the turn runs, a `step` event per finished step, then one `answer` event with the `ChatAnswer`,
+or one `failure` event carrying the message the blocking form would have put in its body.
+
+The preview only ever moves forward. `claude -p` sometimes writes its whole object a second
+time in a second content block, so the value read out of it drops to empty partway through a
+turn; the loop holds the furthest text it has sent and swaps only when the second pass has
+caught up. `FakeLlmClient` gains a scripted `preview` so a test can reproduce it.
 
 ### 4. The client
 
 `use-chat.ts` reads the stream instead of polling when the browser supports it, keeping the
 abort as the stop. `use-live-steps.ts` and its poll are removed once nothing reads them.
 `status-line.tsx` replaces `live-steps.tsx`: a pulsing mark, the phase in words, the elapsed
-clock, and the tool name when there is one.
+clock, and the tool name when there is one. `live-calls.tsx` draws the calls of the turn in
+flight under it, open.
+
+The turn and the end of the wait are set in one render, on the `answer` event and not in the
+`finally` that follows it. Set apart, the finished answer draws under the half written one for
+a frame and the page reads as if it answered twice.
 
 ### 5. What the finished turn shows
 
@@ -138,6 +155,8 @@ changes. Off for every pipeline step, whose numbers were measured against the sc
 - [x] The blocking form of `POST /chat/:id/messages` returns what it returned before: `{ turn, exhausted }`, `application/json`, checked against the live stack.
 - [x] A question that calls no tool shows moving prose before it is finished. First prose at 3.4 s against a turn that ends at 6.5 s to 7.7 s.
 - [x] The finished turn shows the graph, the prose, the outcome and the next moves, and nothing else unopened.
+- [x] The calls are open while the turn runs and gone when it ends. Checked in the browser: `run_recipe` with its reason, its duration and its query, under "Writing the answer".
+- [x] The streamed answer never shrinks and never blanks. Checked against the live stack over a three call turn: 64 progress frames, 0 shorter than the frame before. Covered by a loop test with a scripted second block.
 - [x] An answer never reproduces a result set: the rule is in v7 and beside the field, and the rows are inside `Working`.
 - [x] Output tokens for a short answer, before and after item 7, are in the commit message: 929 to 633 mean.
 - [x] `03-infra-deep.md` carries both shapes of the route.
@@ -145,11 +164,17 @@ changes. Off for every pipeline step, whose numbers were measured against the sc
 
 ## What is left, and what was found on the way
 
-- **The CLI rewrites its own answer about one turn in four.** `claude -p` validates its
-  structured output and, when it fails, writes the whole object again inside the same call. A
-  turn that costs 450 output tokens and 6.5 s costs 1080 and 13.5 s when it happens. It is
-  visible from outside only because the stream shows the answer restarting, and the contract
-  says so. Trimming the schema made it rarer, not gone. Nobody has found what fails validation.
+- **`claude -p` sometimes writes its whole object twice, in two content blocks.** Not a
+  validation failure, which is what `llm-stream.ts` assumed and said in a comment: the restart
+  carries `index: 1`, so it is a second block of the same message, and the discarded text is a
+  complete object that breaks none of the schema's constraints. It costs the answer twice: a
+  turn that is 450 output tokens and 6.5 s becomes 1080 and 13.5 s. It happened on roughly one
+  turn in four of the short questions measured, and on both of two longer ones.
+
+  What it cost the reader is fixed. `llm-stream` still follows the last block, because that is
+  the one `structured_output` corresponds to, and the loop's preview only ever moves forward, so
+  the second pass is invisible. What it costs in tokens is not fixed and nobody knows why the
+  provider does it.
 - **The full chat eval is the user's to run.** Six questions were used here, which is a
   development slice and not a verdict. Every failure in all three runs was `reads_plainly`; no
   correctness, grounding or step-budget check failed in any of them.

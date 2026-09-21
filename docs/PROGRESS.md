@@ -10,9 +10,16 @@ and merged into 13 afterwards.
 **2026-09-21: phase 15, the streaming chat, is built on `phase-15-streaming-chat`.** The chat
 used to answer nothing visibly until the whole turn was done. `POST /chat/:id/messages` now has
 two shapes chosen by `Accept`: the blocking one it always had, and an event stream carrying
-`progress` events and then the same `{ turn, exhausted }`. The page draws the answer as it is
-written, one status line stands for the working, and the working itself (the reading, the
-queries with their rows, every call) is inside one collapsed control under the answer.
+`progress` and `step` events and then the same `{ turn, exhausted }`. The page draws the answer
+as it is written, with a status line and the calls it has finished open above it; when the
+answer lands those calls fold into one collapsed control under it, with the reading and the
+queries and their rows.
+
+**`claude -p` sometimes writes its whole object twice, in two content blocks**, which is not
+what `llm-stream.ts` assumed: the second block carries `index: 1` and the discarded first one is
+a complete object breaking no constraint. It used to reach the page as the answer appearing,
+blanking and being retyped. The loop's preview now only moves forward, so it is invisible. It
+still costs the answer twice in tokens when it happens, and nobody knows why it happens.
 
 The measurements, same question, opus, on the local stack. Before: nothing on screen for 8.5 s
 to 14.7 s, 929 output tokens mean. After: first prose at 3.4 s, 633 output tokens mean, turn
