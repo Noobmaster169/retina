@@ -85,7 +85,6 @@ export function MapPanel({
                     <Flag code={other.countryCode} height={10} />
                     <span className="min-w-0 grow truncate">{other.name}</span>
                     <span className="shrink-0 font-mono text-mono-sm text-ink-tertiary">{lane.count}</span>
-                    {lane.disputed > 0 ? <span className="shrink-0 rounded bg-differ-tint px-1 font-mono text-[10px] text-differ">{lane.disputed} disputed</span> : null}
                   </button>
                 </li>
               );
@@ -158,7 +157,6 @@ export function MapTooltip({ at, flip, pin, lane }: { at: { x: number; y: number
           </span>
           <span className="block text-caption text-ink-tertiary">
             {lane.count} {lane.count === 1 ? "shipment" : "shipments"}
-            {lane.disputed > 0 ? `, ${lane.disputed} disputed at a port` : ""}
           </span>
         </>
       ) : null}
