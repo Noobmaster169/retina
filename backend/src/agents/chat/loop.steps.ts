@@ -40,11 +40,24 @@ export type Call = z.infer<typeof Call>;
 export const Step = z.object({
   action: z.enum(["tool", "final"]),
   /** On the first step: one sentence on how the question was read. Shown to the person above the answer. */
-  reading: z.string().max(400).default(""),
+  reading: z
+    .string()
+    .max(400)
+    .default("")
+    .describe("On the first step only: one plain sentence on how the question was read, which run, which things, what is counted."),
   /** On a tool step: one to four calls, run together. */
   calls: z.array(Call).max(MAX_CALLS).default([]),
-  /** On a final step. */
-  answer: z.string().default(""),
+  /**
+   * On a final step. The description is the style rule the model reads beside
+   * the field, where a constrained output follows it far more reliably than a
+   * paragraph of prose above the schema.
+   */
+  answer: z
+    .string()
+    .default("")
+    .describe(
+      "The answer, in Markdown, for a person who runs a business and not the database, written as a colleague would say it. Lead with the answer. Short: a few sentences, or a list when there are three or more parallel parts, a short heading only when the answer has distinct parts. Bold the one number or name the reader came for. Name things as the data spells them and the run by the first eight characters of its id. No table or column names; say resolved companies, not core.entities. No greeting, no preamble, no offer to do more, no closing question, no dashes as punctuation.",
+    ),
   sql_used: z.array(z.string()).default([]),
   /** How the answer ended. `none_found` obliges `checked`; `needs_input` obliges `clarify`. */
   outcome: ChatOutcome.default("answered"),

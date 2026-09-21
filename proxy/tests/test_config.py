@@ -67,3 +67,4 @@ def test_the_shipped_config_offers_the_claude_aliases_and_the_mock_only(monkeypa
 def test_the_shipped_config_gives_claude_no_tools(monkeypatch):
     monkeypatch.delenv("LLM_PROXY_HOST", raising=False)
     assert load(SHIPPED).providers["claudecli"].tools == []
+

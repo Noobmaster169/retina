@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icons";
 import { Tooltip } from "@/components/ui/tooltip";
 import { RunStatus, RunSummary } from "@/lib/api/runs-schemas";
-import { CONTROLS, type RunActions } from "@/app/runs/[id]/use-run-actions";
+import { CONTROLS, type RunActions } from "@/app/(app)/runs/[id]/use-run-actions";
 import { runName } from "@/components/shell/run-name";
 import { formatDuration } from "@/lib/duration";
 

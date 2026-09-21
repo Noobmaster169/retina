@@ -159,6 +159,7 @@ export * from "./contracts.extraction";
 export * from "./contracts.gate";
 export * from "./contracts.ontology";
 export * from "./contracts.semantic";
+export * from "./contracts.shipments";
 export * from "./contracts.prompts";
 export * from "./contracts.queues";
 export * from "./contracts.review";

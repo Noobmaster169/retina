@@ -1,7 +1,10 @@
 # Progress
 
-Current phase: **10g, on `main`, and 11's first slice with it.** 10a to 10f are all on it, and so is the results
-page's failure view, which is phase 11's first item. Phase 7's two `[~]` items are still under
+Current phase: **13, on `phase-13-business-data`.** 10a to 10f are merged to `main`, and so are
+10g and phase 11's first slice (the results page's failure view), which were built in parallel
+and merged into 13 afterwards.
+
+**Start at `docs/phases/phase-13-business-data.md`.** Phase 7's two `[~]` items are still under
 "Deferred" below.
 
 **2026-09-21: classify is on `v6` and the verifier on `v3`** (migration 025). The single
@@ -32,7 +35,7 @@ second session is using.** Each is already covered by a test; what is missing is
   they are deliberately kept out of the holding pen.
 - The `/gate` page during a burst run, to see the bars fill.
 
-**Start at `docs/phases/phase-10f-semantic-layer.md`**, whose header now carries the list of every
+For the state 10f left, read `docs/phases/phase-10f-semantic-layer.md`, whose header now carries the list of every
 place the repo and that spec disagreed and what the bench found. Then
 `docs/phases/phase-10f-handover.md` for what 10e left and the traps, which all still apply.
 
@@ -55,6 +58,126 @@ Phase 6 is built and tested; left for the user there: the holdout run and the fu
 decide its exit checklist's score lines (`pnpm eval:score --run <id> --holdout`), and phase 5's
 open items (the box check of doc-extract, the classify `v5` holdout). Phase 4's open items (the
 few-shot `v4` holdout, the model comparison) are still the user's.
+
+## Phase 13
+
+The things the ontology resolves have pages a business owner opens, and the chat is a dock that
+outlives the page.
+
+**Built.**
+
+- `port-locate`, the one step on the `sonnet-web` alias (the proxy's `claudecli_web` rail with
+  `WebSearch`, now enabled in `proxy.yaml`). Its input is a port's own name, country and locode,
+  never email text. `PortAttributes` gained `lat` and `lon`, `AttributeSource` gained `search`, and
+  the profile write keeps the located keys so a rewrite never nulls a coordinate. It runs from the
+  profile pass for a port whose coordinates are null.
+- `GET /shipments` and `/shipments/:emailId` over `core.email_shipments`, every party and port a
+  reference to the resolved thing. `GET /ontology/:kind` lists all six kinds and every row carries
+  its attributes, the profile's first sentence and distinct emails per role. Three counterpart
+  readers: a company's ports and people, a port's companies, over `entity_appearances` with
+  disputed appearances left out.
+- Migration `023`: `chat_turns.context`. `NewMessage.context` carries up to five refs to what
+  the person was looking at; `agents/chat/context.ts` resolves each to one line in the scope
+  section, "answer about them unless the question says otherwise". A default, never a filter.
+- The frontend shell moved into `app/(app)/layout.tsx`, so the rail and the dock mount once. The
+  rail has two clusters, Operations and Business data, and reads the active destination and the
+  run off the pathname. Pages report counts through `<NavCounts>` and what they are about
+  through `<PageContext>`.
+- The chat dock: 380px on the right of every page, a sheet below 1280px. The page's refs are
+  chips a person can switch off or pin; the pinned ones survive navigation. The email page's
+  rail is gone; its opening line and suggestions come through the dock.
+- `/company`, `/port`, `/shipment`, each as cards or a table, ports also as an SVG world map
+  (`d3-geo`, `topojson-client`, `world-atlas`, no tile server), with a page per thing.
+- The accent (signal blue) on interactive and active states, and seven kind hues.
+  `docs/05-design.md` sections 4.3 and 4.10.
+
+**Numbers.** 980 backend tests, 97 frontend, 143 proxy.
+
+**What the live check showed.** Singapore located by a web search in 13 s at 0.9 and drawn on
+the map. A question asked in the dock on `/company/1` with the company chip on, then a click to
+`/port` while it ran: the dock stayed pending and the answer landed on the ports page, about
+that company; the user turn stores `[{"kind":"party","id":"1"}]`. The same question with the
+chip switched off sends `context: []`. Two bugs the live check found and the tests had not: the
+frontend's `AttributeSource.confidence` refused the null a `mail` basis stores, and keying the
+dock's thread on the conversation id remounted it the moment the first question opened one.
+
+**One conversation at two widths (follow-up, same day).** The dock remembers its conversation
+in local storage and seeds its turns from `GET /api/chat/:id` on mount, after hydration. Its
+History lists every conversation (not one run's) and opens any of them in place. The rail's Ask
+Retina link and the dock's Open wide carry the conversation to the page, and `DockSync` on that
+page sends the page's choice back, so leaving the page finds the dock in the same conversation.
+The page's own rail lists every conversation too, each with the run it was opened on. Checked in
+a browser: seven in the history, four turns resumed after a reload, the rail link ending in the
+remembered id, the page opening it wide, and a pick on the page followed by the dock.
+
+**The chat prompt, v5 on opus (follow-up, same day).** The answers read for a database user,
+not a business one: of the 8 assistant turns stored before the change, 5 had a dash used as
+punctuation, 2 ended in an offer, 1 opened with a greeting, 1 ended in a question, 1 named a
+table. Three changes: the style rules now sit in the output schema's description of `answer`,
+where constrained output follows them; `chat/v5.md` names the reader as the person running the
+business, forbids table names, offers and closing questions, and says a bare question is about
+what the reader is looking at; the chat step runs `opus`. The scorer gained `reads_plainly`, a
+check on every question (`eval/chat-score.prose.ts`, table-tested). `pnpm eval:chat --limit 20`
+on the first twenty questions, v4 on sonnet against v5 on opus, same day, same data:
+
+| | v4 sonnet | v5 opus |
+|---|---|---|
+| passed | 19 of 20 | 19 of 20 |
+| prose faults | 0 | 0 |
+| median steps | 3 | 2 |
+| recipes alone | 78% | 73% |
+
+Both fail `weight-total` the same way: its expectation predates `core.email_shipments`, which
+stores a numeric weight the answer now sums. The baseline already carried the schema-level rule,
+so the zero faults on both sides say that rule is what fixed the prose; the v5 text and opus buy
+the shorter path. Both reports are under `eval/reports/`, untracked.
+
+**Markdown, and v6 (follow-up, same day).** The answer is rendered as Markdown now
+(`components/chat/markdown.tsx`, react-markdown with GFM, in the product's own type), and v6 asks
+for as much of it as the answer needs: bold on the one figure the reader came for, a list for
+three or more parallel parts, a short heading only when the answer has distinct parts, and the
+tone of a colleague across a desk. The prose check ignores heading lines and allows eight
+sentences, since a five-line list with three sentences around it is structure, not length. Six
+varied questions on v6: 5 of 6 passed, the miss being that cap before it was widened. Asked in
+the dock on a company page for an overview of who they trade with, which ports, and what went
+wrong, v6 answered in three titled parts with a list and eleven bold figures; v5 had answered the
+same question as one paragraph.
+
+**Ports from the world's list, flags, and a person's corrections (follow-up, same day).** The
+LLM `port-locate` step is gone, with its prompt, its call in the profile pass and the proxy's
+web alias. In its place `backend/reference/` ships 12,608 ports and 249 countries, and a port is
+placed by the words of its name the moment the resolver creates it, the bracketed code breaking
+ties only. `pnpm ontology:locate` placed all 66 live ports on the first run, 0 missed, and gave
+the 5 profiled companies their country code. The pages draw each thing's flag as the main symbol, as an SVG served by the app (265 flags
+from country-flag-icons, MIT), because Windows draws no flag emoji and shows two letters instead. A person may edit a thing's attributes (source `human`, never overwritten),
+rename it (kept by every pass as `human_name`) or fold it into another (recorded as their join
+of every spelling, so the pass keeps them together and the survivor's name). Checked in a
+browser: a city set through the form shows in the header after a reload; GDANSK_POLAND folded
+into GDANSK, POLAND (PLGDN) and the list lost the row. Repository tests prove a rename and a
+merge survive a full resolution pass. 1,028 backend tests, 102 frontend.
+
+**Deferred.**
+
+- A merged thing cannot be unmerged from the interface. The tombstone keeps its row, so a route
+  to split it again is possible; nobody has asked yet.
+- `weight-total` in `eval/chat-questions.json` expects the answer to say a weight cannot be
+  summed. It can now, from the shipments table. The expectation wants rewriting.
+- Two readings of a shipment now sit side by side, since phase 10g landed on `main` in parallel:
+  `/shipment` and `GET /shipments` read one row per email (`core.email_shipments`), and the
+  ontology's Shipments type reads the groups in `core.shipments` through `GET /ontology/shipment`.
+  The code calls the grouped one `Consignment*` so the two contracts do not collide. Whether the
+  business pages should list the groups instead is the user's call.
+- Migration numbers `023` and `024` are each used twice (`023_chat_context` and `023_shipments`,
+  `024_human_edits` and `024_shipment_key`), because 13 and 10g were cut from the same `main`.
+  `migrate.mjs` keys on the filename, so all four apply once and in a harmless order. Renaming any
+  would re-apply it on a database that already has it; they stay as they are, and the next one is
+  `025`.
+- The dock's top-bar toggle shows no unread mark when an answer lands while the dock is closed.
+- Empty conversations: a person who opens the Ask Retina page and presses New leaves a conversation
+  with no turns behind, and the history lists it. The dock never does this (it opens on the first
+  question); the page could do the same.
+- The port list filters in the browser and reads at most 200 things; a list past that wants the
+  backend's paging.
 
 ## Phase 10g: what a thing means, on the page
 

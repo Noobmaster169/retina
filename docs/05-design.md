@@ -186,9 +186,11 @@ that do carry one, mostly timestamps and counts beside a row. Those move up to `
 when they are implemented. Treat every `#9CA3AF` on the canvas as a question: if removing that
 text would lose information, it is the wrong token.
 
-**Interactive is ink, not a colour.** Primary buttons are `--ink` filled. Links are `--ink` with a
-1px underline on hover. A selected row is `--surface-active` with a 2px `--ink` left rail. This is
-the decision that frees every hue in the system to mean something.
+**Interactive is the accent.** Since phase 13, primary buttons are `--accent` filled, the active
+rail item sits on `--accent-tint` in `--accent`, links are `--accent`, and the focus ring is
+`--accent`. The accent is signal blue, which already meant "system state"; an active control is
+system state a person can see. A selected row stays `--surface-active` with a 2px `--ink` rail.
+The verdict hues stay reserved for verdicts.
 
 ### 4.4 Verdict hues
 
@@ -214,6 +216,27 @@ Three rules that matter more than the hexes:
 - **Violet does double duty, on purpose.** It marks uncertainty handed to a person, and it marks
   memory: a lesson, a candidate, a correction a person made. Those are the same thing seen twice,
   because every lesson in the system begins as a case a person had to settle.
+
+### 4.10 Kind hues
+
+Seven muted hues, one per business object, added in phase 13 for the Business data pages: the
+glyph and name on a card, the header wash of a detail page, a chip in the chat dock's context
+strip, a pin on the port map.
+
+| Token | Strong | Tint | Kind |
+|---|---|---|---|
+| `--kind-company` | `#0F766E` | `#F0FDFA` | a company: shipper, consignee, notify party |
+| `--kind-port` | `#0E7490` | `#ECFEFF` | a port |
+| `--kind-shipment` | `#4338CA` | `#EEF2FF` | a shipment as one email states it |
+| `--kind-vessel` | `#1E3A8A` | `#EFF6FF` | a vessel |
+| `--kind-carrier` | `#4D7C0F` | `#F7FEE7` | a carrier |
+| `--kind-commodity` | `#9D174D` | `#FDF2F8` | a commodity |
+| `--kind-person` | `#57534E` | `#F5F5F4` | a person |
+
+One rule: **a kind hue says what a thing is and never how it was judged.** It never appears on a
+verdict chip, a verdict never appears in a kind's tint, and a list of shipments is coloured by
+its `disputed` chips (amber) and nothing else. The kind hue is on the name and the glyph, at
+most, so a table stays a table.
 
 ### 4.5 The marked span
 

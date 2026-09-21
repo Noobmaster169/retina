@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 
 import type { ChatAnswer, ChatConversation, NewMessage } from "../contracts";
+import { resolveContext } from "../agents/chat/context";
 import { runTurn } from "../agents/chat/loop";
 import { renderMemory } from "../agents/chat/memory";
 import { orientationFor } from "../agents/chat/orientation";
@@ -48,7 +49,7 @@ export async function answerTurn(
   // must still leave the person's own words on the page, or they retype them.
   // Its id is what this turn's steps are written against, and what the page
   // polls from while the answer is still coming.
-  const asked = await chat.addUserTurn(deps.pool, id, message.content);
+  const asked = await chat.addUserTurn(deps.pool, id, message.content, message.context);
   await chat.titleIfUnnamed(deps.pool, id, message.content);
 
   const previous = await chat.recentTurns(deps.pool, id, HISTORY_TURNS);
@@ -56,7 +57,11 @@ export async function answerTurn(
     .slice(0, -1)
     .flatMap((turn) => (turn.role === "tool" ? [] : [{ role: turn.role, content: turn.content }]));
 
-  const scope = { runId: conversation.scope.runId, emailId: conversation.scope.emailId };
+  const scope = {
+    runId: conversation.scope.runId,
+    emailId: conversation.scope.emailId,
+    context: await resolveContext(deps.pool, message.context),
+  };
   // Read where the agent's own queries run, so the orientation never shows it
   // something it could not reach; without a read-only pool the tools refuse anyway.
   const [orientation, stickySkills, memory] = await Promise.all([
@@ -69,7 +74,7 @@ export async function answerTurn(
     {
       llm: deps.llm,
       pool: deps.pool,
-      tools: { pool: deps.pool, roPool: deps.roPool, llm: deps.llm, ...scope },
+      tools: { pool: deps.pool, roPool: deps.roPool, llm: deps.llm, runId: scope.runId, emailId: scope.emailId },
       onStep: async (calls) => {
         for (const call of calls) await chatLive.addToolTurn(deps.pool, id, asked.id, call);
       },

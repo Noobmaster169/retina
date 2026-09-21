@@ -6,6 +6,7 @@ import { ActionCard } from "./action-card";
 import { Clarify } from "./clarify";
 import { NextMoves } from "./next-moves";
 import { OutcomeLine } from "./outcome-line";
+import { Markdown } from "./markdown";
 import { Reading } from "./reading";
 import { ResultGraph } from "./result-graph";
 import { SqlBlock } from "./sql-block";
@@ -53,7 +54,7 @@ export function Turn({
 
       <Reading turn={turn} />
 
-      <p className="max-w-[72ch] text-body leading-[21px] whitespace-pre-wrap text-ink">{turn.content}</p>
+      <Markdown text={turn.content} />
 
       <OutcomeLine turn={turn} />
 

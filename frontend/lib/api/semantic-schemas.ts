@@ -10,9 +10,10 @@ export type EntityKind = z.infer<typeof EntityKind>;
 
 /** Where one attribute came from. `model` is the model's own knowledge and is drawn as unverified. */
 export const AttributeSource = z.object({
-  source: z.enum(["mail", "model"]),
-  /** Null for a `mail` basis: the value is in the dossier or it is not, and there is no separate number to give. */
-  confidence: z.number().nullable().default(null),
+  /** `reference` is the world's list of ports and countries; `human` is a person's edit, which nothing overwrites. */
+  source: z.enum(["mail", "model", "reference", "human"]),
+  /** The model's own confidence on its knowledge; null for a `mail` basis, where the value is in the dossier or it is not. */
+  confidence: z.number().min(0).max(1).nullable().default(null),
   llmCallId: z.number().int().nullable().default(null),
 });
 export type AttributeSource = z.infer<typeof AttributeSource>;

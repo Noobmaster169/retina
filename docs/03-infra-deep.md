@@ -909,6 +909,24 @@ appearance read twice, and the same email replayed in three runs is still one ap
 sides it was read from as a field. Listing mentions put one subject on screen four times and told
 a reader nothing the sides and the count do not.
 
+### 8.3b Reference data and a person's corrections (phase 13)
+
+`backend/reference/ports.json` (12,608 ports with coordinates, from UN/LOCODE and the sea-ports
+set) and `countries.json` (249 countries with the UN geoscheme region and subregion) ship with
+the backend, built by `scripts/reference-build.ts`. `src/reference/ports.ts` places a port by the
+words of its name inside the country its name carries; a bracketed code only breaks a tie among
+candidates it agrees with, because the dataset writes stale codes. `entities.locate.ts` writes
+country, `countryCode`, `locode`, coordinates, region and subregion with source `reference` the
+moment the resolver creates a port, and `pnpm ontology:locate` walks what exists. A company's
+`countryCode` is the reference list's reading of the country its profile names.
+
+Migration `024` adds `human_name`, `edited_by`, `edited_at`. An attribute a person sets carries
+source `human`; a profile write lays every `reference` or `human` key back over the model's. A
+rename sets `canonical` and `human_name`; `applyResolution` keeps `coalesce(human_name, most
+seen)`. A merge inserts the loser's spellings into the survivor as `human` joins with
+`joined_step`, which `loadResolveJoins` reads back as verdicts, then tombstones the loser as a
+model's merge would, and pins the survivor's name.
+
 ### 8.3a The semantic layer (phase 10f)
 
 Migrations `017` to `021`. Nothing here runs before an email's verdict is written, so nothing here
@@ -1042,8 +1060,11 @@ All under bearer auth except `/health`. Existing `/ai/*` routes remain.
 | `POST /chat/:id/messages` | `{ content, actor, skills? }` runs one turn and answers `{ turn, exhausted }`. `skills` is up to three names the person picked in the composer, refused with 400 when the registry does not know one, and injected exactly as an event-injected skill is. The question is stored before the model is asked, so a turn that fails halfway still leaves the person's words on the page. No streaming; the frontend route handler declares `maxDuration = 300` and the client times out just under it. Aborting the request stops the turn between steps, and what it had is still stored |
 | `GET /chat/:id/turns?after=<id>` | every turn newer than one id, **including the `role: tool` rows** a turn writes as each call finishes. The only read that returns them. The page polls it once a second while its own POST is in flight, which is how the steps appear one by one |
 | `GET /chat/skills` | the skill cards for the composer's `/` menu: `{ name, version, when }`. The bodies are never sent; they are for the agent |
-| `GET /ontology/types` | the five types the rail offers, with live counts and `built`: Emails, Ports, Parties, Shipments, Carriers. The last two are never built, because nothing in the seven fields yields a booking or a vessel, and the rail draws them dashed. The other seven `ObjectType`s are real and are reached through an object rather than browsed; `client` in particular folds into `party`, since a sender domain and a consignee are the same company read two ways |
+| `GET /ontology/types` | the types the rail offers, with live counts and `built`: Emails, then the six resolved kinds, then Shipments, built since phase 10g over `core.shipments` (a group of emails sharing an identifier). A company and a port answer an `openHref` to their business pages since phase 13. The other seven `ObjectType`s are real and are reached through an object rather than browsed; `client` in particular folds into `party`, since a sender domain and a consignee are the same company read two ways |
 | `GET /ontology/:type`, `GET /ontology/:type/:id`, `/:id/detail`, `/:id/graph?hops=1\|2` | the index of a resolved kind; one object in the one shape every type shares; the four parts a resolved thing opens into; and one email's graph as nodes and named edges. The graph carries no coordinates: the layout is one pure function in the frontend with a table-driven test. All six kinds of `EntityKind` list and open; a type that is a table of its own answers 404 naming `/database/tables`. `detail` carries `insight`: the summary, the identity facts with a `verified` flag per attribute, the scale (emails, appearances, spellings, disputed, first and last mail date) and at most three facets of the kind's own trade, built by the pure `pipeline/ontology/insight.ts` from the same `DossierInput` the profile prompt is rendered from |
+| `PATCH /ontology/:kind/:id/attributes`, `POST /ontology/:kind/:id/rename`, `POST /ontology/:kind/:id/merge` | a person correcting a thing from its page (phase 13): attributes with source `human`, which no profile rewrite touches; a chosen name kept as `human_name`, which every resolution pass prefers; and a merge recorded as the person's join of every spelling, so the pass keeps the two together. Each takes `actor` and answers the row |
+| `GET /shipments?partyId&portId&disputed&q&page&pageSize`, `GET /shipments/:emailId` | shipments as the mail states them, each party and port a reference to the resolved thing; one shipment with everything shipment-read wrote (phase 13). One row per email, which is a different grain from `/ontology/shipment` below; the code calls that one a `Consignment` so the two contracts do not collide |
+| `GET /ontology/:kind` for all six kinds; `GET /ontology/party/:id/people`, `/party/:id/ports`, `/port/:id/parties` | a kind's list carries attributes, the profile's first sentence and distinct emails per role; the three counterpart lists count distinct undisputed emails (phase 13) |
 | `GET /ontology/shipment`, `/shipment/:id` | the consignments, newest first, and one opened: its references, the eight things on it in bill-of-lading order with the disputed ones marked, and what each email of the group stated with the line it was read from. A shipment is a group of emails sharing an identifier (`oc_no`, `bl_no`, `booking_ref`, `invoice_no`, `po_no`), grouped by the pure `pipeline/ontology/shipment-group.ts` and regrouped whole every minute by the `regroup-shipments` scheduler. On this inbox every group holds one email: the generator draws fresh references per mail |
 | `GET /database/tables`, `/tables/:schema/:name?limit=&offset=`, `/tables/:schema/:name/rows/:id` | every relation of `core` and `analytics` with an exact count; a page of one with typed columns and the SQL that produced it; one row as fields plus what points at it by foreign key. Identifiers are read out of `pg_catalog` and checked against a pattern before they reach a query; this path composes its own SQL and takes nothing a caller wrote, which is why it does not use the RO pool |
 | `GET /eval/runs/:id` | holdout, full-set and this-run scoreboards computed locally, plus `emails`: each email of the run, its answer beside the truth, check by check on the scorer's definitions (`EmailVerdict`), shown at `/runs/[id]/results`. Each verdict also carries `classify`: the chain that produced it (`gen`/`ver` category and confidence, `decidedBy`, the human's category where there is one, model, prompt version) and `effect`, what the verifier did to the generator's answer judged against the truth (`not_run`, `fixed`, `broke`, `agreed_right`, `agreed_wrong`, `changed_still_wrong`, from the pure `eval/verifier-effect.ts`). Null for an email that was never classified. The rationales are not here: the page fetches one email's trace when a row is opened. Dev only; 404 on the VPS where ground truth is absent |
@@ -1082,6 +1103,13 @@ A turn does not start blind. Besides the question it is given, in this order:
 | Orientation | `agents/chat/orientation.ts`, SQL in `orientation.repo.ts` | what the database holds right now: runs, the scoped or latest run's counts, every port (up to 60) and the top parties with ids, sender domains, what is not there. Computed on a conversation's first turn, kept in `chat_conversations.orientation` with a watermark, recomputed only when a run progressed or the resolver rebuilt |
 | Skills | `agents/chat/skills/<name>/SKILL.md`, versioned | how to do one kind of task here. A two-line card per skill is always shown; a body is injected or loaded |
 | Recipes | `agents/chat/skills/<name>/recipes/<recipe>.sql` | a named, parameterised query with declared parameters and columns. Passes `guardSql` when it loads, runs on `roPool`, tested as `retina_ro` |
+
+**Context on a question (phase 13).** `NewMessage.context` carries up to five refs to what the
+person was looking at, stored on the user turn in `chat_turns.context`. `agents/chat/context.ts`
+resolves each through the same repositories the pages read and the scope section says "The person
+is looking at: ..., answer about them unless the question says otherwise". A ref nothing holds is
+dropped and logged. It is the existing scope rule extended: a default the agent may widen, never a
+filter. An email in the context injects `explain-an-email` as a conversation opened on one does.
 
 **Structure is written, values are computed.** `CHAT.md`, the skills and the recipes name no
 company, port, sender or subject code (`chat-harness.test.ts` holds that); what exists is the

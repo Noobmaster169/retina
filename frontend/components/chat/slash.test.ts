@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { ChatSkillCard } from "@/lib/api/chat-agent-schemas";
+import type { ChatSkillCard } from "@/lib/api/chat-thread-schemas";
 
 import { matchingSkills, slashFilter } from "./slash";
 

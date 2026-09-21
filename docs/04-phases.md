@@ -479,6 +479,15 @@ feedback without being able to ship them unchecked.
 - [ ] Demo runs end to end twice in a row from a cold start.
 - [ ] Rollback via `auto-deploy.sh` tested once on purpose.
 
+## Phase 13: Business data pages and the chat dock
+
+**Goal.** Companies, ports and shipments get pages of their own, with card, table and map
+views, and the chat becomes a dock that survives navigation and carries the open page as context.
+
+**Build.** See `docs/phases/phase-13-business-data.md`.
+
+**Exit checklist.** As the phase doc lists it.
+
 ## Phase 14: the ingest gate
 
 **Goal.** An email cannot cost us a model call until a deterministic function has said it may.
@@ -504,6 +513,7 @@ or mail with a lot in it, and `Source` is already the seam that would carry it.
 a person may block. Nothing here deletes mail, and nothing here decides a category.
 
 **Exit checklist.** In `docs/phases/phase-14-ingest-gate.md`.
+
 
 ## PROGRESS.md template
 

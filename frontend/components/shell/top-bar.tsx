@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { DockToggle } from "@/components/dock/dock-toggle";
+
 /**
  * The 56px top bar. The breadcrumb is the ontology path, not a page path:
  * every segment names a thing in the model, and the last one is the thing
@@ -31,6 +33,7 @@ export function TopBar({ crumbs, children }: { crumbs: Crumb[]; children?: React
       </nav>
       <span className="grow" />
       {children}
+      <DockToggle />
     </header>
   );
 }

@@ -22,7 +22,9 @@ import { emailsRouter } from "./routes/emails.routes";
 import { evalRouter } from "./routes/eval.routes";
 import { filesRouter } from "./routes/files.routes";
 import { gateRouter } from "./routes/gate.routes";
+import { ontologyEditRouter } from "./routes/ontology.edit.routes";
 import { ontologyRouter } from "./routes/ontology.routes";
+import { shipmentsRouter } from "./routes/shipments.routes";
 import { reviewRouter } from "./routes/review.routes";
 import type { LiveCalls } from "./live";
 import { runQueuesRouter } from "./routes/run-queues.routes";
@@ -88,6 +90,8 @@ export function createApp(deps: AppDeps): express.Express {
   app.use("/emails", emailsRouter());
   app.use("/gate", gateRouter({ pool: deps.pool, redis: deps.redis ?? null, queues: deps.runQueues }));
   app.use("/ontology", ontologyRouter({ pool: deps.pool }));
+  app.use("/ontology", ontologyEditRouter({ pool: deps.pool }));
+  app.use("/shipments", shipmentsRouter({ pool: deps.pool }));
   app.use("/database", databaseRouter({ pool: deps.pool }));
   app.use("/runs", runsRouter(deps));
   app.use("/runs", runQueuesRouter(deps));

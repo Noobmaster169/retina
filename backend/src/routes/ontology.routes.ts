@@ -2,10 +2,19 @@ import { Router } from "express";
 import type { Pool } from "pg";
 import { z } from "zod";
 
-import { type EntityDetail, EntityKind, type EntityList, ObjectType } from "../contracts";
+import { type CounterpartList, type EntityDetail, EntityKind, type EntityList, ObjectType } from "../contracts";
 import { emailGraph, isBuilt, listTypes, objectRecord } from "../ontology/objects";
 import { buildInsight } from "../pipeline/ontology";
-import { entityDetail, entityDossier, entityInsight, entityProfile, entityValues, entities, shipmentsRead } from "../ontology/repositories";
+import {
+  entityAround,
+  entityDetail,
+  entityDossier,
+  entityInsight,
+  entityProfile,
+  entityValues,
+  entities,
+  shipmentsRead,
+} from "../ontology/repositories";
 
 /**
  * The model as a model: what types exist, what one object holds, what links
@@ -163,6 +172,28 @@ export function ontologyRouter(deps: OntologyRouteDeps): Router {
       return;
     }
     res.json(graph);
+  });
+
+  /** The things seen beside one thing: a company's ports and people, a port's companies. */
+  router.get("/:type/:id/:beside", async (req, res) => {
+    const { type, id, beside } = req.params;
+    const readers: Record<string, ((db: Pool, id: string) => Promise<CounterpartList["counterparts"]>) | undefined> = {
+      "party/people": entityAround.people,
+      "party/ports": entityAround.ports,
+      "port/parties": entityAround.parties,
+    };
+    const reader = readers[`${type}/${beside}`];
+    if (!reader) {
+      res.status(404).json({ error: `nothing is listed beside a ${type} as ${beside}` });
+      return;
+    }
+    const row = await entities.find(pool, id);
+    if (!row || row.type !== type) {
+      res.status(404).json({ error: "no such thing" });
+      return;
+    }
+    const body: CounterpartList = { counterparts: await reader(pool, id) };
+    res.json(body);
   });
 
   return router;

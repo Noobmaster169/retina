@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { Chip } from "@/components/ui/chip";
-import type { ShipmentDetail, ShipmentStatement } from "@/lib/api/shipment-schemas";
+import type { ConsignmentDetail, ConsignmentStatement } from "@/lib/api/shipment-schemas";
 
 /**
  * One consignment: what it is filed under, the things on it, and what each
@@ -14,7 +14,7 @@ import type { ShipmentDetail, ShipmentStatement } from "@/lib/api/shipment-schem
  * problem rather than a fact.
  */
 
-export function ShipmentRecord({ detail, base }: { detail: ShipmentDetail; base: string }) {
+export function ShipmentRecord({ detail, base }: { detail: ConsignmentDetail; base: string }) {
   const { row, parties, statements } = detail;
   const title = row.refs[0]?.value ?? `Shipment ${row.id}`;
 
@@ -81,7 +81,7 @@ export function ShipmentRecord({ detail, base }: { detail: ShipmentDetail; base:
   );
 }
 
-function Statement({ statement }: { statement: ShipmentStatement }) {
+function Statement({ statement }: { statement: ConsignmentStatement }) {
   const facts: { label: string; value: string }[] = [
     ["voyage", statement.voyage],
     ["HS code", statement.hsCode],

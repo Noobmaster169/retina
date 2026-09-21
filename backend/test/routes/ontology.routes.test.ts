@@ -126,3 +126,29 @@ describe("GET /database/tables/:schema/:name", () => {
     expect((await get("/database/tables/core/emails?limit=5000")).status).toBe(400);
   });
 });
+
+describe("the six kinds and what sits beside them", () => {
+  it("lists every resolved kind", async () => {
+    for (const kind of ["carrier", "vessel", "commodity", "person"]) {
+      const response = await get(`/ontology/${kind}`);
+      expect(response.status).toBe(200);
+      expect(response.body.type).toBe(kind);
+    }
+  });
+
+  it("names what may be listed beside a thing, and refuses the rest", async () => {
+    expect((await get("/ontology/port/1/people")).status).toBe(404);
+    expect((await get("/ontology/party/99999999/ports")).status).toBe(404);
+  });
+});
+
+describe("where a resolved thing opens", () => {
+  it("sends a company and a port to their business pages", async () => {
+    const list = await get("/ontology/party");
+    const first = list.body.entities[0];
+    if (!first) return;
+    const record = await get(`/ontology/party/${first.id}`);
+    expect(record.status).toBe(200);
+    expect(record.body.openHref).toBe(`/company/${first.id}`);
+  });
+});

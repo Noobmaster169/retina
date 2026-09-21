@@ -63,6 +63,12 @@ export async function staleIds(db: Queryable, limit: number, floorHours: number)
   return rows.map((row) => row.id);
 }
 
+/** The entries of a jsonb column whose key the reference list or a person owns, as one object to lay over a rewrite. */
+const KEPT = (column: string): string =>
+  `coalesce((select jsonb_object_agg(kept.key, kept.value)
+               from jsonb_each(${column}) as kept
+              where attributes_source->kept.key->>'source' in ('reference', 'human')), '{}'::jsonb)`;
+
 export interface ProfileWrite {
   markdown: string;
   searchText: string;
@@ -77,14 +83,33 @@ export interface ProfileWrite {
  * makes every verdict about this thing worth taking again, and nothing else's.
  */
 export async function write(tx: Queryable, entityId: string, profile: ProfileWrite): Promise<number> {
+  // A key the reference list or a person wrote is not the profile's to
+  // rewrite: the model's attributes land first, and every held key whose
+  // source is `reference` or `human` is laid back over them.
   const { rows } = await tx.query<{ profile_version: number }>(
     `update core.entities
         set profile_md = $2::text, search_text = $3::text,
-            attributes = $4::jsonb, attributes_source = $5::jsonb,
+            attributes = $4::jsonb || ${KEPT("attributes")},
+            attributes_source = $5::jsonb || ${KEPT("attributes_source")},
             profile_version = profile_version + 1, profile_updated_at = now(), stale = false
       where id = $1::bigint
       returning profile_version`,
     [entityId, profile.markdown, profile.searchText, JSON.stringify(profile.attributes), JSON.stringify(profile.attributeSources)],
   );
   return rows[0]?.profile_version ?? 0;
+}
+
+/** Adds or replaces a few attributes and their sources, leaving the rest as they are. Does not touch the version. */
+export async function mergeAttributes(
+  tx: Queryable,
+  entityId: string,
+  attributes: Record<string, string | null>,
+  sources: Record<string, AttributeSource>,
+): Promise<void> {
+  await tx.query(
+    `update core.entities
+        set attributes = attributes || $2::jsonb, attributes_source = attributes_source || $3::jsonb
+      where id = $1::bigint`,
+    [entityId, JSON.stringify(attributes), JSON.stringify(sources)],
+  );
 }
