@@ -3,6 +3,8 @@ import { feature } from "topojson-client";
 import type { GeometryCollection, Topology } from "topojson-specification";
 import world from "world-atlas/countries-110m.json";
 
+import { Flag } from "@/components/ui/flag";
+
 import { lane, SPHERE } from "./geometry";
 
 const WIDTH = 300;
@@ -15,6 +17,7 @@ export interface RouteEnd {
   name: string;
   lat: number;
   lon: number;
+  countryCode?: string | null;
 }
 
 const topology = world as unknown as Topology<{ countries: GeometryCollection }>;
@@ -59,8 +62,8 @@ export function RouteMap({ from, to }: { from: RouteEnd; to: RouteEnd }) {
   const pol = projection(a);
   const pod = projection(b);
   const ends = [
-    { key: "pol", role: "Loading", name: from.name, at: pol },
-    { key: "pod", role: "Discharge", name: to.name, at: pod },
+    { key: "pol", role: "Loading", end: from, at: pol },
+    { key: "pod", role: "Discharge", end: to, at: pod },
   ];
   return (
     <div className="relative">
@@ -79,13 +82,13 @@ export function RouteMap({ from, to }: { from: RouteEnd; to: RouteEnd }) {
         {pol ? <circle cx={pol[0]} cy={pol[1]} r={3.5} className="fill-canvas stroke-kind-port" strokeWidth={1.8} /> : null}
         {pod ? <circle cx={pod[0]} cy={pod[1]} r={4} className="fill-kind-port stroke-canvas" strokeWidth={1.2} /> : null}
       </svg>
-      {ends.map(({ key, role, name, at }) => (at ? <EndTip key={key} role={role} name={name} x={at[0]} y={at[1]} /> : null))}
+      {ends.map(({ key, role, end, at }) => (at ? <EndTip key={key} role={role} end={end} x={at[0]} y={at[1]} /> : null))}
     </div>
   );
 }
 
 /** A hover target over one end of the lane, and the port it names. Sits below the pin when the pin is near the top edge, and hugs a side edge near one. */
-function EndTip({ role, name, x, y }: { role: string; name: string; x: number; y: number }) {
+function EndTip({ role, end, x, y }: { role: string; end: RouteEnd; x: number; y: number }) {
   const left = (x / WIDTH) * 100;
   const top = (y / HEIGHT) * 100;
   const across = left < 25 ? "left-0" : left > 75 ? "right-0" : "left-1/2 -translate-x-1/2";
@@ -93,7 +96,7 @@ function EndTip({ role, name, x, y }: { role: string; name: string; x: number; y
   return (
     <span
       tabIndex={0}
-      aria-label={`${role}: ${name}`}
+      aria-label={`${role}: ${end.name}`}
       className="group absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 cursor-default rounded-full outline-none"
       style={{ left: `${left}%`, top: `${top}%` }}
     >
@@ -102,7 +105,10 @@ function EndTip({ role, name, x, y }: { role: string; name: string; x: number; y
         className={`pointer-events-none absolute z-10 w-max max-w-[220px] rounded-md border border-hairline bg-canvas px-2 py-1 text-caption opacity-0 shadow-overlay transition-opacity duration-100 group-hover:opacity-100 group-focus:opacity-100 ${across} ${along}`}
       >
         <span className="block text-ink-tertiary">{role}</span>
-        <span className="block font-medium text-kind-port">{name}</span>
+        <span className="flex items-center gap-1.5 font-medium text-kind-port">
+          <Flag code={end.countryCode} height={11} />
+          {end.name}
+        </span>
       </span>
     </span>
   );

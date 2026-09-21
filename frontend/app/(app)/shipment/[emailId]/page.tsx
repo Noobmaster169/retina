@@ -24,7 +24,7 @@ export default async function Page({ params }: PageProps<"/shipment/[emailId]">)
     if (!ref) return null;
     const row = ports.find((port) => port.id === ref.id);
     const at = row ? located([row])[0] : undefined;
-    return { ref, lat: at?.lat ?? null, lon: at?.lon ?? null };
+    return { ref, lat: at?.lat ?? null, lon: at?.lon ?? null, countryCode: row?.attributes.countryCode ?? null };
   };
   const reference = shipment.ocNo ?? shipment.blNo ?? shipment.bookingRef ?? emailId;
   const chips = [

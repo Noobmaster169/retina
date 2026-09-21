@@ -5,10 +5,11 @@ export interface RoutePort {
   ref: ShipmentRef;
   lat: number | null;
   lon: number | null;
+  countryCode: string | null;
 }
 
 const placed = (port: RoutePort | null) =>
-  port && port.lat !== null && port.lon !== null ? { name: port.ref.name, lat: port.lat, lon: port.lon } : null;
+  port && port.lat !== null && port.lon !== null ? { name: port.ref.name, lat: port.lat, lon: port.lon, countryCode: port.countryCode } : null;
 
 /**
  * The lane as a small map at the head of the record: a glance at where the
