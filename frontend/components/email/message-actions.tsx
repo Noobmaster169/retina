@@ -5,16 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icons";
 import type { EmailTrace, ReviewCaseView } from "@/lib/api/trace-schemas";
 
+import { AnswerInvoiceButton } from "./answer-invoice-button";
+import { type EmailActionItem, planEmailActions } from "./email-action-plan";
 import { DraftShipmentButton } from "./draft-shipment-button";
-
-/**
- * What a person can ask about a case, on the right of the sender's name.
- *
- * A file that could not be read, the wrong file, or a missing file is answered
- * by a draft to the sender. A blank value is answered by saying what to do,
- * and a bill can still grow a shipment draft beside that. Nobody uploads a
- * replacement from here.
- */
+import { RecommendActionButton } from "./recommend-action-button";
 
 const BECAUSE: Record<string, string> = {
   missing_value: "a value the check needs is blank",
@@ -23,23 +17,35 @@ const BECAUSE: Record<string, string> = {
   wrong_doc_type: "a file is not the document it claims to be",
 };
 
-/** Reasons a person used to answer by uploading a file. The reply asks the sender instead. */
-const ASKS_SENDER = new Set(["missing_attachment", "unreadable", "wrong_doc_type"]);
+/** What a person can ask about this email, on the right of the sender's name. At most two. */
+export function MessageActions({ trace, review }: { trace: EmailTrace; review?: ReviewCaseView | null }) {
+  const plan = planEmailActions(trace, review);
+  if (plan.length === 0) return null;
 
-export function CaseActions({ trace, review }: { trace: EmailTrace; review: ReviewCaseView }) {
-  if (review.kind === "failure" || review.status !== "open") return null;
-  const category = trace.classification?.humanCategory ?? trace.classification?.finalCategory ?? null;
-  const canDraft = category === "SI_REQUEST" || category === "BL_COMPARISON";
-  const asks = review.reason !== null && ASKS_SENDER.has(review.reason);
   return (
     <>
-      {asks ? <AskSenderButton emailId={trace.emailId} reason={review.reason} /> : null}
-      <SettleCaseButton emailId={trace.emailId} reason={review.reason} variant={asks ? "secondary" : "primary"} />
-      {!asks && canDraft && category ? (
-        <DraftShipmentButton emailId={trace.emailId} category={category} variant="secondary" />
-      ) : null}
+      {plan.map((action) => (
+        <Action key={action.kind} emailId={trace.emailId} action={action} />
+      ))}
     </>
   );
+}
+
+function Action({ emailId, action }: { emailId: string; action: EmailActionItem }) {
+  switch (action.kind) {
+    case "recommend":
+      return <RecommendActionButton emailId={emailId} differing={action.differing ?? []} />;
+    case "answer-invoice":
+      return <AnswerInvoiceButton emailId={emailId} variant={action.variant} />;
+    case "draft":
+      return action.category ? (
+        <DraftShipmentButton emailId={emailId} category={action.category} variant={action.variant} />
+      ) : null;
+    case "ask-sender":
+      return <AskSenderButton emailId={emailId} reason={action.reason ?? null} />;
+    case "settle-case":
+      return <SettleCaseButton emailId={emailId} reason={action.reason ?? null} variant={action.variant} />;
+  }
 }
 
 function AskSenderButton({ emailId, reason }: { emailId: string; reason: string | null }) {

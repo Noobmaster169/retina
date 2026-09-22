@@ -7,7 +7,7 @@ import type { EmailTrace } from "@/lib/api/trace-schemas";
 import { anythingInDoubt, groupRows } from "./check-groups";
 import { Folded, Group } from "./field-groups";
 import { FieldRow, type FieldRowData } from "./field-row";
-import { EmailActions } from "./email-actions";
+import { MessageActions } from "./message-actions";
 import { MessageCard, type Message } from "./message-card";
 import { Seam } from "./seam";
 
@@ -47,7 +47,7 @@ export function CheckTab({ trace, message }: CheckTabProps) {
     <div className="flex min-h-0 grow flex-col">
       <div className="min-h-0 grow overflow-y-auto px-6 pb-4">
         <div className="pt-4">
-          <MessageCard message={message} documents={trace.documents} foldBody={rows.length > 0} actions={<EmailActions trace={trace} />} />
+          <MessageCard message={message} documents={trace.documents} foldBody={rows.length > 0} actions={<MessageActions trace={trace} />} />
         </div>
         {rows.length > 0 ? (
           <>
