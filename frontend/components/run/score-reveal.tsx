@@ -33,22 +33,16 @@ export function ScoreReveal({
     >
       <span className="text-caption text-ink-tertiary">Score</span>
       {scoring ? (
-        <span className="font-mono text-[22px] font-semibold tabular-nums text-ink-secondary">Scoring...</span>
+        <span className="font-mono text-display-lg font-semibold tabular-nums text-ink-secondary">Scoring...</span>
       ) : display ? (
-        <>
-          <Rolling
-            key={`score-${roll}`}
-            value={display}
-            run={roll > 0}
-            className="font-mono text-[22px] font-semibold tabular-nums text-match"
-          />
-          <span className="truncate text-caption text-ink-tertiary">
-            over {submission!.nEmails}
-            {submission!.forced ? ", forced" : ""}
-          </span>
-        </>
+        <Rolling
+          key={`score-${roll}`}
+          value={display}
+          run={roll > 0}
+          className="font-mono text-display-lg font-semibold tabular-nums text-match"
+        />
       ) : (
-        <span className="font-mono text-[22px] font-semibold tabular-nums text-ink-faint">—</span>
+        <span className="font-mono text-display-lg font-semibold tabular-nums text-ink-faint">—</span>
       )}
     </div>
   );
