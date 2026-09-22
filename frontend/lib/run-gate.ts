@@ -16,17 +16,25 @@ export { RUN_PASSWORD_HEADER } from "./run-gate.header";
  * Server-side only, like `site-gate.ts`: it reads the answer and the browser
  * never holds it.
  *
- * `RUN_PASSWORD` overrides the phrase. It has a default rather than being off
- * when unset, which is the opposite of the site gate and on purpose: a gate
- * that exists to stop an expensive accident must not be disabled by forgetting
- * to configure it.
+ * The phrase itself is `RUN_PASSWORD` and lives nowhere in this repository.
+ * It had a default once, on the argument that a guard against an expensive
+ * accident should not be disabled by forgetting to configure it. That argument
+ * was right and the answer was wrong: a default in the source is the password
+ * published to everyone who can read the source, which is a worse failure than
+ * the one it prevented.
+ *
+ * So the gate fails closed instead. Unset, nothing starts a run at all and the
+ * route says why. That keeps what the default was for, which is that this
+ * cannot be quietly switched off, and keeps the phrase out of git.
  */
 
-/** The shared phrase, used where `RUN_PASSWORD` names none. A word the team says out loud, not a secret. */
-const DEFAULT_PHRASE = "clanker";
+function phrase(): string | undefined {
+  return process.env.RUN_PASSWORD || undefined;
+}
 
-function phrase(): string {
-  return process.env.RUN_PASSWORD || DEFAULT_PHRASE;
+/** Whether a password has been configured. False means no run can start, which the route explains rather than blaming the typist. */
+export function runGateConfigured(): boolean {
+  return phrase() !== undefined;
 }
 
 function sameString(a: string, b: string): boolean {
@@ -36,5 +44,7 @@ function sameString(a: string, b: string): boolean {
 }
 
 export function checkRunPassword(candidate: string | null | undefined): boolean {
-  return typeof candidate === "string" && candidate.length > 0 && sameString(candidate, phrase());
+  const expected = phrase();
+  if (expected === undefined) return false;
+  return typeof candidate === "string" && candidate.length > 0 && sameString(candidate, expected);
 }

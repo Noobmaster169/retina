@@ -92,11 +92,15 @@ only need terminal 3.
 
 ### Starting a run needs a password
 
-Every new run asks for one, every time. It is `clanker` unless `RUN_PASSWORD` names another, and
-unlike the site gate it has a default rather than being off when unset: a guard against an
-expensive accident must not be disabled by forgetting to configure it. There is no cookie and no
-session, because the point is that a run of the whole inbox is thousands of model calls and
-starting one should be typed rather than clicked.
+Every new run asks for one, every time. The phrase is `RUN_PASSWORD` and is not written down in
+this repository; ask the team. There is no cookie and no session, because the point is that a run
+of the whole inbox is thousands of model calls and starting one should be typed rather than
+clicked.
+
+The gate fails closed: where `RUN_PASSWORD` is unset nothing starts a run at all, and the route
+says so rather than blaming the typist. So it cannot be quietly switched off by forgetting to
+configure it, which is what a default in the source used to buy at the price of publishing the
+password to everyone who can read the source.
 
 Checked in the route handler (`app/api/runs/route.ts`) and not in the form, so it cannot be
 skipped by sending the request yourself. It gates the browser's door only: a teammate calling the
