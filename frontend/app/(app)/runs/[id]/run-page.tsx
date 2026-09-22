@@ -142,7 +142,7 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
               note={laneNote(live, paused, queues.compare.heldUntil !== null)}
               slots={{ classify: queues.classify.concurrency, compare: queues.compare.concurrency }}
               flowing={live && !paused}
-              peeks={stagePeeks(queues)}
+              peeks={stagePeeks(queues, run.stageCounts)}
               runId={id}
             />
           ) : null}

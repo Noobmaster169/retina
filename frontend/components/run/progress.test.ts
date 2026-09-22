@@ -42,7 +42,15 @@ describe("laneMap, a dependency down", () => {
   const map = laneMap(run(), held);
 
   it("says the checking slots are held and not that they failed", () => {
-    expect(card(map, "checking")).toMatchObject({ value: "0 / 4", state: "held", unit: "held" });
+    expect(card(map, "checking")).toMatchObject({ value: "4 / 4", state: "held", unit: "held" });
+  });
+
+  it("still counts slots that are finishing when a queue is held", () => {
+    const map = laneMap(
+      run({ stageCounts: { ...run().stageCounts, classifying: 5 } }),
+      queues({ classify: queue({ active: 5, heldUntil: new Date(Date.now() + 9000).toISOString() }) }),
+    );
+    expect(card(map, "classifying")).toMatchObject({ state: "held", value: "5 / 8", unit: "held" });
   });
 
   it("leaves the first queue alone, because only one of them is held", () => {
@@ -55,7 +63,15 @@ describe("laneMap, a dependency down", () => {
 
   it("holds the first queue too when that is the one a dependency stopped", () => {
     const map = laneMap(run(), queues({ classify: queue({ active: 0, heldUntil: new Date(Date.now() + 9000).toISOString() }) }));
-    expect(card(map, "classifying")).toMatchObject({ state: "held", value: "0 / 8" });
+    expect(card(map, "classifying")).toMatchObject({ state: "held", value: "8 / 8", unit: "held" });
+  });
+
+  it("reads stage counts when the queues frame has not caught up yet", () => {
+    const map = laneMap(
+      run({ stageCounts: { ...run().stageCounts, classifying: 3 } }),
+      queues({ classify: queue({ active: 0 }) }),
+    );
+    expect(card(map, "classifying")).toMatchObject({ value: "3 / 8", state: "live" });
   });
 });
 
