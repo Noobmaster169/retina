@@ -1,112 +1,135 @@
-# Three questions for the organisers' 520
+# Three hard questions for the organisers' 520
 
-Written the way `emails/data_5k/DEMO_QUESTIONS.md` is, but for the set the judges will actually
-see. Each one needs several tool calls and, more to the point, needs the agent to **decide
-something** rather than translate a sentence into SQL. A question whose answer is one `where`
-clause tests the schema; these test the reading.
+Written the way `emails/data_5k/DEMO_QUESTIONS.md` is, but for the set the judges will see, and
+chosen so that none of them is a sentence translated into SQL.
 
-What makes them hard here is the same thing in all three: **the resolved things are not the
-real things.** `resolve.ts` joins two spellings into one entity only where the field judge saw
-them side by side and called them the same, so one place and one company routinely end up as
-several ids, and one of those ids is sometimes not a name at all.
+The first draft of this file asked three versions of one question: a place resolved as more than
+one thing. That is a real trap and too small a one, because noticing it once teaches you to
+notice it everywhere. These three fail in three different ways instead:
 
-**The numbers below are from the live ontology of the local database**, built from the 520 runs
-already processed (`GET /ontology/port`, `GET /ontology/party`). They are what the agent should
-be able to reach today. A fresh replay under different prompts may resolve slightly differently,
-which is the point: the *shape* of each answer is what is being tested, not the digits.
+1. **The data contains things that are not true.** A fifth of the resolved ports never existed.
+2. **One company is four different kinds of evidence**, and three of them are not party columns.
+3. **The question cannot be answered as asked**, and the work is knowing that and saying so.
 
----
-
-## 1. "How much of our cargo actually goes through Port Klang?"
-
-*Shows:* one place resolved as three things; a UN/LOCODE that is not an identity; and the
-difference between a port a document mentions and a port cargo went through.
-
-*Expected:* Port Klang is **three entities**, and the answer is wrong unless it takes all of them:
-
-| id | as resolved | emails | roles |
-|---|---|---|---|
-| 41 | `PORT KLANG (WESTPORT), MALAYSIA (MYPKG)` | 23 | port_of_loading 23 |
-| 13 | `PORT KLANG (WESTPORT), MALAYSIA` | 9 | port_of_loading 8, port_of_discharge 1 |
-| 57 | `PORT KLANG (WESTPORT), MALAYSIA (SGSIN)` | 1 | — |
-
-The third is the trap. `SGSIN` is **Singapore's** code sitting on a line that names Port Klang,
-which is a draft carrying a stale code and not a different port. `CHAT.md` states the rule the
-answer has to apply: match a port by the words of its name, never by the code alone.
-
-The second half of the question is `actually`. Port Klang is an **origin** here, not a
-destination: of roughly 32 appearances all but one are `port_of_loading`. An answer that reports
-it as somewhere cargo goes has read the count and not the role. And a port that exists only on a
-wrong draft is marked `disputed` in `core.entity_appearances`, so "actually" means filtering
-those out.
-
-*A wrong answer looks like:* "23 emails." One id, taken from the top of the candidate list,
-with the other two never noticed.
+Every figure below was read off the local database, not the brief. The queries are in the
+footnote so any of it can be checked or recomputed after a replay.
 
 ---
 
-## 2. "Who is Vital Solutions to us?"
+## 1. "Give me every destination we ship to, and tell me which ones you are not sure about."
 
-The best question in the set, because the answer is mostly **not in any party column**.
+*Shows:* that a resolved thing is not automatically a fact. Roles, the `disputed` flag, spellings
+merged by name and not by code, and an explicit account of what was thrown away.
 
-*Shows:* one company in two entirely different relationships, resolved as three things, one of
-which is a sentence rather than a name.
+*Expected:* the inbox has **69 resolved ports. 16 of them are not places we ship to at all** —
+they appear only on a draft bill of lading the judge called wrong, which makes them the carrier's
+typo and not a destination:
 
-*Expected:* `VITAL SOLUTIONS PTE LTD` is both a customer and the principal we ship on behalf of,
-and a good answer keeps those apart:
+```
+BUATAN, INDONESIA (INNSA)        NANTONG CHIMA                 BALTIMORE, US (NGAPP)
+PORT KLANG (WESTPORT) (SGSIN)    BUSAN, SOUTH KOREA (AUFRE)    KLAIPEDA, LITHUANIA (USNYC)
+SINGAPORE, SINGAPORE (MYPKG)     BUSAN, SOUTH KOREA (VNSGN)    LONG BEACH, US (TRMER)
+TUTICORIN, INDIA (ILASH)         MOMBASA, KENYA (AUBNE)        HOCHIMINH CITY (GNCKY)
+TUTICORIN, INDIA (KEMBA)         FREMANTLE, AUSTRALIA (CLVAP)  CEBU, PHILIPPINES (MMRGN)
+RUGAO/NANTONG/SHANGHAI (SGSIN)
+```
 
-| as resolved | emails | roles |
+Read them. Fifteen are a real port carrying **another port's UN/LOCODE** — Klaipeda with New
+York's, Long Beach with Mersin's, Port Klang with Singapore's. The sixteenth, `NANTONG CHIMA`, is
+`CHINA` misspelled. Every one of them looks exactly as legitimate as a real row, has a real name,
+and has zero undisputed appearances.
+
+That leaves **53 real ports, 46 of which have ever been a destination.** On top of that, the same
+place is still several ids where no document pair showed two spellings side by side: Port Klang
+is three, and so are Fremantle, Busan, Mombasa, Tuticorin and Ho Chi Minh City.
+
+And half the list are origins, not destinations. Nantong, Port Klang, Singapore, Nhava Sheva and
+Buatan are `port_of_loading`; Singapore is 17 loadings against a single discharge.
+
+A good answer separates loading from discharge, merges spellings by the words of the name,
+excludes the disputed ones, and **names what it excluded and why**. The last part is the whole
+question: "and tell me which ones you are not sure about" is asking for the working, not the list.
+
+*A wrong answer looks like:* 69 ports, or a tidy 46 with no mention that sixteen candidates were
+dropped, or Busan counted three times.
+
+---
+
+## 2. "Give me everything on Vital Solutions, and be exact about what they are to us."
+
+*Shows:* one company reaching the database as four different kinds of evidence, of which only two
+are party columns. `CHAT.md` states the rule: a company can appear as a resolved party, as a
+sender domain, in a subject line and in the body of a mail, they are different evidence, and they
+are reported apart.
+
+*Expected:* all four, kept separate, with the direction of trade right.
+
+| Evidence | What it says | Reach |
 |---|---|---|
-| `VITAL SOLUTIONS PTE. LTD.` | 7 | consignee 6, notify_party 5 |
-| `VITAL SOLUTIONS PTE LTD` | 17 | on_behalf_of 17 |
-| `APRIL FINE PAPER TRADING ON BEHALF OF VITAL SOLUTIONS PTE LTD` | 7 | shipper 3, on_behalf_of 4 |
+| Sender domain `vitalsolutions.sg` | they write to us | **11 emails** |
+| Resolved party, `consignee` | they buy from us | 6 emails |
+| Resolved party, `notify_party` | they are told of arrival | 5 emails |
+| `on_behalf_of` on our shipper line | **we ship as their agent** | 17 emails; the phrase `ON BEHALF OF VITAL SOLUTIONS PTE LTD` is in **56 of the 520's attachments** |
 
-Three ids for one company, separated by a full stop in `PTE. LTD.` and by the third being the
-whole shipper line. **56 of the 520's attachments** carry `ON BEHALF OF VITAL SOLUTIONS PTE LTD`
-inside the shipper field's own value, so the relationship lives in the text of a field and not
-in a column of its own. A query that joins on consignee and notify party finds six and five and
-misses the rest entirely.
+The fourth is the one that is not in a column. It lives inside the *shipper field's own value*:
+the documents read `APRIL FINE PAPER TRADING ON BEHALF OF VITAL SOLUTIONS PTE LTD`. A query that
+joins on consignee and notify party finds six and five and never sees the rest.
 
-The answer worth having says: they buy from us on a handful of shipments, and on many more we
-are the named shipper acting for them. Those are opposite directions of trade and reporting one
-number for both is the failure this question is looking for.
+The company is also resolved as **three entities**, split by a full stop and by that sentence:
+`VITAL SOLUTIONS PTE. LTD.` (7 emails), `VITAL SOLUTIONS PTE LTD` (17, all `on_behalf_of`), and
+`APRIL FINE PAPER TRADING ON BEHALF OF VITAL SOLUTIONS PTE LTD` (7), the last of which has **two
+disputed appearances** and so is partly a carrier's error about our own name.
 
-*A wrong answer looks like:* "A consignee on 6 emails." Or worse, treating
-`APRIL FINE PAPER TRADING ON BEHALF OF VITAL SOLUTIONS PTE LTD` as a fourth company.
+The answer worth having says: on a handful of shipments they are the customer; on many more we
+are the named shipper acting for them; they also write to us directly; and these are opposite
+directions of trade that must not be added together.
 
----
-
-## 3. "What do we ship to Singapore?"
-
-*Shows:* `none_found` answered honestly; a port told apart from a country of registration; and a
-code that appears on two ports it does not belong to.
-
-*Expected:* **almost nothing.** `SINGAPORE (SGSIN)` has 18 emails and 17 of them are
-`port_of_loading`; exactly one is a discharge. Singapore is where our cargo comes **from**.
-
-Everything else the word turns up is a different kind of fact, and each needs saying apart:
-
-- **Companies registered there**, which is an address and not a destination:
-  `ASIA PACIFIC PAPERBOARD TRADING PTE LTD` (our own side, shipper on 21),
-  `KPP-ANTALIS (SINGAPORE) PTE. LTD.` (consignee 12, notify 4),
-  `VITAL SOLUTIONS PTE. LTD.` (consignee 6, notify 5).
-- **`SGSIN` on ports that are not Singapore**: `PORT KLANG (WESTPORT), MALAYSIA (SGSIN)` and
-  `RUGAO/NANTONG/SHANGHAI, CHINA (SGSIN)`. A search on the code finds cargo that has nothing to
-  do with the place.
-
-So the honest answer is: we load at Singapore and we do not ship to it, here is the one
-discharge, here are the Singapore-registered counterparties, and here is why the code is
-misleading. `outcome` should be `none_found` for the question as asked, with `checked` naming
-where it looked.
-
-*A wrong answer looks like:* "18 shipments to Singapore" — every appearance counted, the role
-ignored, and two Malaysian and Chinese loadings swept in by a stale code.
+*A wrong answer looks like:* "a consignee on 6 emails". Or treating the sentence as a fourth
+company. Or summing 11 + 6 + 5 + 17 into one number for "39 emails about Vital Solutions".
 
 ---
 
-## What these are really testing
+## 3. "Which of our customers has gone quietest since January?"
 
-All three punish the same instinct: trusting that a name resolved once is the whole of a thing.
-The 520 is small enough that the agent can reach everything, so none of them is hard for lack of
-data. They are hard because the right answer needs the agent to notice that its own lookup
-returned several rows for one thing, and to say which of them it took.
+*Shows:* a question the data cannot answer as asked, and the difference between saying so and
+inventing a ranking. This is the one most likely to produce a confident, fluent, wrong answer.
+
+*Expected:* four separate problems, and the answer has to survive all of them.
+
+**There is no date.** The organisers' email record is five keys and none is a time. What exists
+is `mail_date`, the date a mail states in its own text, and **only 116 of the 215 shipments read
+carry one — 99 state none.** `core.emails.first_seen_at` is when we ingested it, which is a fact
+about us and not about the mail. An answer must say which of the two it filtered on, and that
+nearly half the shipments are invisible to the first.
+
+**"Our customers" is not what the mailbox is.** **353 of the 520 emails are from us**:
+`aprilasia.com` 277 and `april.com.my` 76. Customer domains are the small remainder —
+`fujitogrp.com` 37, `psabdp.com` 21, `algurg.ae` 16, `ifpla.com` 16, `safqa.co.ke` 14. Ranking
+"quiet" over a mailbox that is two thirds our own outbound mail measures the wrong thing.
+
+**The coverage is thin.** Only **3 of the 125 SI_REQUEST emails** have a shipment reading, so any
+per-customer count drawn from shipments is a lower bound and has to be worded as one.
+
+**"Quietest" is in no column.** It needs a stated reading before a number: fewest emails, longest
+gap since the last one, or fewest shipments.
+
+The answer worth having states its reading of "quietest", says which date it used and how many
+rows have none, gives its figures as a lower bound, or asks back once with real candidates. Any
+of those is right. A ranked list of customers with no caveat is the failure this question exists
+to catch.
+
+*A wrong answer looks like:* "Roxcel Trading, down 40% since January." Fluent, specific, and
+resting on a date column that does not exist.
+
+---
+
+## What these are testing
+
+Not retrieval. The 520 is small enough that everything is reachable. They test whether the agent
+will **contradict its own lookup**: throw away sixteen rows that look perfectly good, refuse to
+add four true numbers together, and decline to rank anything on a column that is not there.
+
+*Verified against the local database on 2026-09-22. To recompute after a replay: the ghost ports
+are entities of kind `port` with no undisputed row in `core.entity_appearances`; the Vital
+Solutions figures are that table grouped by role, plus `core.emails.sender_domain`; the date
+coverage is `count(mail_date)` against `count(*)` on `core.email_shipments`.*
