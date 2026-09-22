@@ -19,6 +19,7 @@ import { RunSummary } from "@/lib/api/runs-schemas";
 import { parsedFetcher } from "@/lib/poll";
 
 import { degraded, runSummaryLine } from "./reading";
+import { useAutoScore } from "./use-auto-score";
 import { useRunActions } from "./use-run-actions";
 
 /**
@@ -107,6 +108,7 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
   );
 
   const actions = useRunActions(id, () => void mutate());
+  useAutoScore(run, actions.submit, actions.pending);
   const status = statusWord(run, degraded(health, queues ?? null));
   // A paused run is still polled, because someone else may resume it, but
   // nothing on it may go on moving: every sweep and every lit card is a claim
@@ -163,7 +165,7 @@ export function RunPage({ initialRun }: { initialRun: RunSummary }) {
             />
             {/* Always, now the queues have no panel of their own: while a run
                 works this is the only thing on the page whose numbers climb. */}
-            <MachineryPanel run={run} className="w-[372px] shrink-0" />
+            <MachineryPanel run={run} scoring={actions.pending === "submit"} className="w-[372px] shrink-0" />
           </div>
 
           {/*

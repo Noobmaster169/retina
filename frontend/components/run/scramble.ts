@@ -1,7 +1,7 @@
 /**
  * A number on its way to being a number.
  *
- * The cost is the one figure on this panel nobody expects, and a figure nobody
+ * The score is the one figure on this panel nobody expects, and a figure nobody
  * expects is worth a moment's attention before it settles. Rolling the digits
  * and locking them left to right buys that moment without saying anything: by
  * the time a reader has noticed it moving it has stopped, and what is left is
