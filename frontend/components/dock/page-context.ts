@@ -31,6 +31,11 @@ export function offered(page: OfferedRef[], pinned: OfferedRef[]): OfferedRef[] 
   return out;
 }
 
+/** What the harness shows. Run scope is the conversation default and is not drawn. */
+export function displayed(page: OfferedRef[], pinned: OfferedRef[]): OfferedRef[] {
+  return offered(page, pinned).filter((ref) => ref.kind !== "run");
+}
+
 export function attached(page: OfferedRef[], pinned: OfferedRef[], off: string[]): OfferedRef[] {
   return offered(page, pinned)
     .filter((ref) => !off.includes(keyOf(ref)))

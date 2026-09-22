@@ -5,17 +5,18 @@ import { HUE_CLASSES, kindOf } from "@/components/business/kind";
 import { Icon } from "@/components/ui/icons";
 
 import { useDock } from "./dock-state";
-import { attached, keyOf, offered, type OfferedRef } from "./page-context";
+import { attached, displayed, keyOf, type OfferedRef } from "./page-context";
 
 /**
  * The harness. Each chip is one thing the page is about, in its kind's hue;
  * a filled chip goes with the next question, an outlined one stays behind.
  * The pin keeps a chip after the page changes, which is how a company is
- * compared with another one.
+ * compared with another one. Run scope is not drawn; the conversation already
+ * carries it.
  */
 export function ContextStrip() {
   const dock = useDock();
-  const chips = offered(dock.page, dock.pinned);
+  const chips = displayed(dock.page, dock.pinned);
   const sent = new Set(attached(dock.page, dock.pinned, dock.off).map(keyOf));
   if (chips.length === 0) return null;
 

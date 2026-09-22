@@ -99,6 +99,7 @@ function DockThread({ initial, title, runId }: { initial: ChatTurn[]; title: str
   }, [chat.turns.length]);
 
   const refs = attached(dock.page, dock.pinned, dock.off).map(({ kind, id }) => ({ kind, id }));
+  const visibleRefs = refs.filter((ref) => ref.kind !== "run");
 
   const wide = runId ? `/runs/${runId}/chat${dock.conversationId ? `?c=${dock.conversationId}` : ""}` : null;
 
@@ -152,7 +153,7 @@ function DockThread({ initial, title, runId }: { initial: ChatTurn[]; title: str
         onAsk={(question, skills) => chat.ask(question, skills, refs)}
         onStop={chat.stop}
         pending={chat.pending}
-        placeholder={refs.length ? "Ask about what you are looking at" : "Ask about the inbox"}
+        placeholder={visibleRefs.length ? "Ask about what you are looking at" : "Ask about the inbox"}
         dense
       />
     </>
