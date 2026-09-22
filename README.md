@@ -90,6 +90,18 @@ In `frontend/.env.local` set `BACKEND_URL=https://fineness-getting-crusader.ngro
 and `API_SHARED_SECRET` to the production value (ask the box owner). Then you
 only need terminal 3.
 
+### Starting a run needs a password
+
+Every new run asks for one, every time. It is `clanker` unless `RUN_PASSWORD` names another, and
+unlike the site gate it has a default rather than being off when unset: a guard against an
+expensive accident must not be disabled by forgetting to configure it. There is no cookie and no
+session, because the point is that a run of the whole inbox is thousands of model calls and
+starting one should be typed rather than clicked.
+
+Checked in the route handler (`app/api/runs/route.ts`) and not in the form, so it cannot be
+skipped by sending the request yourself. It gates the browser's door only: a teammate calling the
+backend directly with `TEAM_API_KEY`, and the eval CLIs, are unchanged.
+
 ### Run a different inbox
 
 The email server takes its dataset as configuration, and the api only ever reaches it

@@ -15,7 +15,10 @@ import type { PromptStep } from "@/lib/api/runs-schemas";
 import { panel } from "@/lib/motion";
 
 import { countsFor, grouped, ORGANISERS, priceOf, scopesFor } from "./inbox-scope";
+import { RUN_PASSWORD_HEADER } from "@/lib/run-gate.header";
+
 import { PACES, STEPS } from "./new-run-choices";
+import { RunPassword } from "./run-password";
 import { Field } from "./labelled-select";
 import { DEFAULT, useRunOptions } from "./use-run-options";
 
@@ -62,6 +65,9 @@ export function NewRunForm({ onCreated }: { onCreated: () => void }) {
   const [prompts, setPrompts] = useState<Partial<Record<PromptStep, string>>>({});
   const [model, setModel] = useState(DEFAULT);
   const [pinning, setPinning] = useState(false);
+  // Never kept between runs: the gate exists to make starting one deliberate,
+  // and a remembered password is the opposite of that.
+  const [secret, setSecret] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -91,7 +97,9 @@ export function NewRunForm({ onCreated }: { onCreated: () => void }) {
     try {
       const response = await fetch("/api/runs", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        // The route checks it, not this form: a check the browser does is one
+        // anyone can skip by sending the request themselves.
+        headers: { "content-type": "application/json", [RUN_PASSWORD_HEADER]: secret },
         body: JSON.stringify(body()),
       });
       const answer: unknown = await response.json().catch(() => null);
@@ -101,6 +109,7 @@ export function NewRunForm({ onCreated }: { onCreated: () => void }) {
         setPending(false);
         return;
       }
+      setSecret("");
       onCreated();
       // Starting a run is asking to watch it, so this goes straight to the
       // overview rather than leaving someone on a list to find the row that
@@ -125,7 +134,8 @@ export function NewRunForm({ onCreated }: { onCreated: () => void }) {
         <Field name="scope" label="Emails" choices={scopes} value={scope} onChange={(v) => setScope(v as Scope)} />
         {scope === "first" ? <Field name="count" label="How many" choices={counts} value={count} onChange={setCount} /> : null}
         <Field name="pace" label="Pace" choices={PACES} value={pace} onChange={setPace} />
-        <Button type="submit" variant="primary" disabled={pending} className="h-9">
+        <RunPassword value={secret} onChange={setSecret} />
+        <Button type="submit" variant="primary" disabled={pending || secret.trim() === ""} className="h-9">
           {pending ? "Starting" : "New run"}
         </Button>
         <span className="grow" />
