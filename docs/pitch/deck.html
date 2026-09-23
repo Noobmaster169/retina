@@ -1,0 +1,1136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Retina, pitch deck</title>
+<meta name="viewport" content="width=1920">
+<style>
+  @font-face { font-family: "Inter"; font-weight: 400; src: url(assets/fonts/inter-400.ttf) format("truetype"); }
+  @font-face { font-family: "Inter"; font-weight: 500; src: url(assets/fonts/inter-500.ttf) format("truetype"); }
+  @font-face { font-family: "Inter"; font-weight: 600; src: url(assets/fonts/inter-600.ttf) format("truetype"); }
+  @font-face { font-family: "Newsreader"; font-weight: 400; src: url(assets/fonts/newsreader-400.ttf) format("truetype"); }
+  @font-face { font-family: "Newsreader"; font-weight: 500; src: url(assets/fonts/newsreader-500.ttf) format("truetype"); }
+  @font-face { font-family: "JetBrains Mono"; font-weight: 400; src: url(assets/fonts/jetbrains-mono-400.ttf) format("truetype"); }
+  @font-face { font-family: "JetBrains Mono"; font-weight: 500; src: url(assets/fonts/jetbrains-mono-500.ttf) format("truetype"); }
+  @font-face { font-family: "Noto Sans SC Subset"; src: url(assets/fonts/noto-sans-sc-subset.woff2) format("woff2"); }
+
+  :root {
+    --canvas: #ffffff;
+    --surface: #fcfcfd;
+    --sunken: #f6f8fa;
+    --hairline: #eceff3;
+    --hairline-strong: #dde3ea;
+    --ink: #111827;
+    --ink-2: #4b5563;
+    --ink-3: #6b7280;
+    --accent: #175cd3;
+    --accent-deep: #0f3f96;
+    --tint: #eff4ff;
+    --tint-2: #e3ecfc;
+    --line: #bbd2f5;
+    --differ: #b54708;
+    --review: #6941c6;
+    --match: #067647;
+  }
+
+  @page { size: 1920px 1080px; margin: 0; }
+  html, body { margin: 0; padding: 0; background: #e5e7eb; }
+  body { font-family: "Inter", "Noto Sans SC Subset", Arial, sans-serif; color: var(--ink); font-variant-numeric: tabular-nums; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  * { box-sizing: border-box; }
+  p, h1, h2, h3 { margin: 0; }
+
+  section.slide {
+    width: 1920px; height: 1080px; position: relative; overflow: hidden;
+    background: linear-gradient(180deg, #ffffff 0%, #eaf2fd 22%, #f6f9fe 60%, #ffffff 100%); padding: 104px 128px 150px;
+    display: flex; flex-direction: column; gap: 36px;
+    page-break-after: always; break-after: page;
+  }
+  section.slide:last-child { page-break-after: auto; break-after: auto; }
+  @media screen { section.slide { margin: 24px auto; box-shadow: 0 8px 24px -8px rgba(17,24,39,.18); } }
+
+  .tint { background: linear-gradient(180deg, #ffffff 0%, #eaf2fd 22%, #f6f9fe 60%, #ffffff 100%); }
+  .band { position: absolute; left: 0; top: 0; width: 1920px; height: 12px; background: var(--accent); }
+
+  .eyebrow { font-size: 22px; font-weight: 600; letter-spacing: 3px; text-transform: uppercase; color: var(--accent); }
+  h2.title { font-family: "Newsreader", Georgia, serif; font-weight: 400; font-size: 62px; line-height: 1.1; letter-spacing: -1px; margin-top: 10px; }
+  .head { display: flex; flex-direction: column; }
+  .lede { font-size: 26px; line-height: 1.45; color: var(--ink-2); }
+  .foot { position: absolute; left: 128px; bottom: 56px; font-size: 20px; color: var(--ink-3); font-family: "JetBrains Mono", monospace; }
+  .foot b { color: var(--accent); font-weight: 500; }
+
+  .row { display: flex; gap: 40px; align-items: flex-start; }
+  .col { display: flex; flex-direction: column; gap: 20px; }
+  .grow { flex: 1; }
+  .panel { background: var(--surface); border: 1px solid var(--hairline); border-radius: 10px; padding: 32px 36px; }
+  .panel.blue { background: var(--tint); border-color: var(--line); }
+  .shot { background: #fff; border: 1px solid var(--hairline-strong); border-radius: 10px; padding: 12px; display: inline-flex; }
+  .shot img { display: block; object-fit: contain; }
+  .cap { font-size: 22px; line-height: 1.4; color: var(--ink-2); }
+  .cap b { color: var(--ink); }
+  h3 { font-size: 28px; font-weight: 600; line-height: 1.25; }
+  .body { font-size: 24px; line-height: 1.45; color: var(--ink-2); }
+  .mono { font-family: "JetBrains Mono", monospace; }
+  .big { font-family: "Newsreader", Georgia, serif; font-weight: 400; line-height: 1; }
+  .kpi { display: flex; flex-direction: column; gap: 6px; }
+  .kpi .big { font-size: 64px; }
+  .kpi .cap { font-size: 22px; color: var(--ink-3); }
+  .chip { font-family: "JetBrains Mono", monospace; font-size: 22px; background: var(--sunken); border: 1px solid var(--hairline-strong); border-radius: 6px; padding: 8px 14px; }
+  .chip.blue { background: var(--tint); border-color: var(--line); color: var(--accent); }
+
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--hairline); font-size: 24px; vertical-align: top; }
+  th { font-size: 20px; font-weight: 600; color: var(--ink-3); letter-spacing: 1px; text-transform: uppercase; background: var(--sunken); }
+  td.mono { font-family: "JetBrains Mono", monospace; font-size: 22px; }
+
+  /* flow diagrams */
+  .flow { display: flex; align-items: center; gap: 12px; }
+  .flow .lbl { width: 140px; font-size: 20px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; color: var(--ink-3); }
+  .node { width: 236px; border-radius: 8px; padding: 14px 18px; display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--hairline-strong); background: var(--sunken); }
+  .node .n { font-size: 24px; font-weight: 600; }
+  .node .r { font-size: 20px; color: var(--ink-3); line-height: 1.3; }
+  .node.model { background: var(--tint); border-color: var(--line); }
+  .node.model .r { color: var(--accent); }
+  .node.end { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .node.end .r { color: #dbe7fb; }
+  .arrow { width: 0; height: 0; border-top: 9px solid transparent; border-bottom: 9px solid transparent; border-left: 22px solid var(--hairline-strong); flex: none; }
+  .arrow.line { position: relative; }
+  .legend { display: flex; gap: 36px; align-items: center; font-size: 21px; color: var(--ink-2); }
+  .legend .sw { display: inline-block; width: 24px; height: 24px; border-radius: 6px; vertical-align: middle; margin-right: 10px; border: 1px solid var(--hairline-strong); background: var(--sunken); }
+  .legend .sw.model { background: var(--tint); border-color: var(--line); }
+
+  .layer { display: flex; gap: 16px; align-items: center; }
+  .layer .lbl { width: 180px; font-size: 20px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; color: var(--ink-3); }
+  .layer .cells { flex: 1; display: flex; gap: 12px; }
+  .cell { flex: 1; font-size: 22px; text-align: center; background: #fff; border: 1px solid var(--hairline-strong); border-radius: 8px; padding: 14px 12px; line-height: 1.3; }
+  .cell.blue { background: var(--tint); border-color: var(--line); }
+  .cell.deep { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .cell.grey { background: var(--sunken); }
+
+  .callout { border-left: 3px solid var(--hairline-strong); padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
+  .callout.blue { border-left-color: var(--accent); }
+  .callout.amber { border-left-color: var(--differ); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .card { background: var(--surface); border: 1px solid var(--hairline); border-radius: 10px; padding: 32px 36px; display: flex; flex-direction: column; gap: 12px; }
+  .card.blue { background: var(--tint); border-color: var(--line); }
+  .card h3 { font-size: 30px; }
+  .card .body { font-size: 24px; }
+  .steps { display: flex; gap: 18px; }
+  .step { flex: 1; background: var(--surface); border: 1px solid var(--hairline); border-radius: 10px; padding: 28px 26px; display: flex; flex-direction: column; gap: 12px; }
+  .step .num { font-family: "JetBrains Mono", monospace; font-size: 22px; color: var(--accent); }
+  .step h3 { font-size: 32px; }
+  .step .body { font-size: 22px; }
+  .step.blue { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .step.blue .num { color: #bbd2f5; }
+  .step.blue .body { color: #dbe7fb; }
+  .pill { display: inline-block; font-family: "JetBrains Mono", monospace; font-size: 20px; padding: 4px 10px; border-radius: 6px; }
+  .pill.review { background: #f4f3ff; color: var(--review); border: 1px solid #e9d7fe; }
+  .pill.differ { background: #fffaeb; color: var(--differ); border: 1px solid #f5d9ae; }
+  .hr { height: 1px; background: var(--hairline); }
+</style>
+</head>
+<body>
+
+<!-- 01 cover -->
+<section class="slide tint" style="justify-content:space-between; padding-top:112px">
+  <div class="band"></div>
+  <img src="assets/world.png" alt="" style="position:absolute; right:-300px; top:150px; width:1000px; height:1000px; pointer-events:none">
+  <div style="display:flex; gap:18px; align-items:center">
+    <p class="eyebrow">Averis x Monash Hackathon</p>
+    <p style="font-size:22px; color:var(--ink-3)">·</p>
+    <p class="mono" style="font-size:22px; color:var(--ink-3)">Shipping document verification</p>
+  </div>
+  <div class="col" style="gap:40px">
+    <h1 class="big" style="font-size:220px; letter-spacing:-6px; line-height:.95; color:var(--ink)">Retina</h1>
+    <p style="font-size:42px; line-height:1.3; width:1060px; position:relative; text-wrap:balance">Data Ontology Layer that reads and understands your business data.</p>
+  </div>
+  <div style="display:flex; gap:64px; font-size:24px; color:var(--ink-3)">
+    <p style="color:var(--ink); font-weight:500">Max and a Dream</p><p class="mono">retina-silk.vercel.app</p>
+  </div>
+</section>
+
+<!-- 02 problem -->
+<section class="slide" style="gap:96px">
+  <div class="head">
+    <p class="eyebrow">Problem statement</p>
+    <h2 class="title">Business operations' friction remains in manual work</h2>
+  </div>
+  <div class="row" style="gap:32px; align-items:stretch">
+    <div class="card grow" style="gap:20px; padding:44px 40px">
+      <div style="width:72px; height:72px; border-radius:14px; background:var(--tint); border:1px solid var(--line); display:flex; align-items:center; justify-content:center"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12.5V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12c0 1.1.9 2 2 2h7.5"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/><circle cx="18" cy="18" r="3"/><path d="m22 22-1.5-1.5"/></svg></div>
+      <h3 style="font-size:36px">Finding data is hard</h3>
+      <p class="body" style="font-size:26px">Staff search the inbox email by email to find one shipment's documents.</p>
+    </div>
+    <div class="card grow" style="gap:20px; padding:44px 40px">
+      <div style="width:72px; height:72px; border-radius:14px; background:var(--tint); border:1px solid var(--line); display:flex; align-items:center; justify-content:center"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg></div>
+      <h3 style="font-size:36px">Manual processes</h3>
+      <p class="body" style="font-size:26px">Every Bill of Lading is checked by hand, one by one. One miss costs amendment fees or demurrage.</p>
+    </div>
+    <div class="card grow" style="gap:20px; padding:44px 40px">
+      <div style="width:72px; height:72px; border-radius:14px; background:var(--tint); border:1px solid var(--line); display:flex; align-items:center; justify-content:center"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M12 10v4"/><path d="M12 18h.01"/></svg></div>
+      <h3 style="font-size:36px">Unstructured, inconsistent data</h3>
+      <p class="body" style="font-size:26px">Values arrive missing or not matching, in different formats and wording.</p>
+    </div>
+  </div>
+  <p class="foot"><b>Retina</b> · 02</p>
+</section>
+
+<!-- 03 statement -->
+<section class="slide tint" style="justify-content:center; gap:36px">
+  <svg width="1920" height="1080" viewBox="0 0 1920 1080" style="position:absolute; left:0; top:0">
+<defs><linearGradient id="wash" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".22" stop-color="#eaf2fd"/><stop offset=".6" stop-color="#f6f9fe"/><stop offset="1" stop-color="#ffffff"/></linearGradient><linearGradient id="pipe" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#d6e6fc"/><stop offset=".5" stop-color="#f4f8ff"/><stop offset="1" stop-color="#d6e6fc"/></linearGradient><linearGradient id="pipev" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d6e6fc"/><stop offset=".5" stop-color="#f4f8ff"/><stop offset="1" stop-color="#d6e6fc"/></linearGradient><radialGradient id="glow" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#fff"/><stop offset=".7" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient><filter id="sh" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#175CD3" flood-opacity=".18"/></filter></defs>
+<rect x="0" y="0" width="1920" height="1080" fill="url(#wash)"/>
+<rect x="1010.4" y="224" width="279.20000000000005" height="52" rx="26" fill="#fff" stroke="#b2ccf5" stroke-width="1.4" filter="url(#sh)"/>
+<text x="1150" y="257" font-family="Inter" font-size="20" font-weight="500" fill="#101828" text-anchor="middle" letter-spacing="0">Who ships to Conakry?</text>
+<rect x="1313.6" y="274" width="312.8" height="52" rx="26" fill="#fff" stroke="#b2ccf5" stroke-width="1.4" filter="url(#sh)"/>
+<text x="1470" y="307" font-family="Inter" font-size="20" font-weight="500" fill="#101828" text-anchor="middle" letter-spacing="0">Which draft BL is wrong?</text>
+<rect x="1073.6" y="364" width="312.8" height="52" rx="26" fill="#fff" stroke="#b2ccf5" stroke-width="1.4" filter="url(#sh)"/>
+<text x="1230" y="397" font-family="Inter" font-size="20" font-weight="500" fill="#101828" text-anchor="middle" letter-spacing="0">Is the weight filled in?</text>
+<circle cx="1080" cy="463" r="7" fill="#84adec"/><path d="M1068 484 Q1068 471 1080 471 Q1092 471 1092 484 Z" fill="#84adec"/>
+<circle cx="1116" cy="463" r="7" fill="#175CD3"/><path d="M1104 484 Q1104 471 1116 471 Q1128 471 1128 484 Z" fill="#175CD3"/>
+<circle cx="1152" cy="463" r="7" fill="#84adec"/><path d="M1140 484 Q1140 471 1152 471 Q1164 471 1164 484 Z" fill="#84adec"/>
+<circle cx="1600" cy="463" r="7" fill="#84adec"/><path d="M1588 484 Q1588 471 1600 471 Q1612 471 1612 484 Z" fill="#84adec"/>
+<circle cx="1636" cy="463" r="7" fill="#175CD3"/><path d="M1624 484 Q1624 471 1636 471 Q1648 471 1648 484 Z" fill="#175CD3"/>
+<circle cx="1672" cy="463" r="7" fill="#84adec"/><path d="M1660 484 Q1660 471 1672 471 Q1684 471 1684 484 Z" fill="#84adec"/>
+<path d="M1200 500 V548" stroke="#98a2b3" stroke-width="2.5" stroke-dasharray="6 6"/>
+<circle cx="1200" cy="566" r="16" fill="#fff" stroke="#d92d20" stroke-width="2"/><path d="M1194 560 L1206 572 M1206 560 L1194 572" stroke="#d92d20" stroke-width="2.4" stroke-linecap="round"/>
+<path d="M1380 500 V548" stroke="#98a2b3" stroke-width="2.5" stroke-dasharray="6 6"/>
+<circle cx="1380" cy="566" r="16" fill="#fff" stroke="#d92d20" stroke-width="2"/><path d="M1374 560 L1386 572 M1386 560 L1374 572" stroke="#d92d20" stroke-width="2.4" stroke-linecap="round"/>
+<path d="M1560 500 V548" stroke="#98a2b3" stroke-width="2.5" stroke-dasharray="6 6"/>
+<circle cx="1560" cy="566" r="16" fill="#fff" stroke="#d92d20" stroke-width="2"/><path d="M1554 560 L1566 572 M1566 560 L1554 572" stroke="#d92d20" stroke-width="2.4" stroke-linecap="round"/>
+<line x1="1030" y1="600" x2="1790" y2="600" stroke="#d0d5dd" stroke-width="2" stroke-dasharray="10 8"/>
+<text x="1790" y="628" font-family="JetBrains Mono" font-size="18" font-weight="600" fill="#98a2b3" text-anchor="end" letter-spacing="0">no tool to read it</text>
+<polygon points="1030,940 1790,940 1790,954 1030,954" fill="#dbe7fb" stroke="#5b9bf0" stroke-width="1.5"/>
+<polygon points="1070,800 1750,800 1790,940 1030,940" fill="#fff" stroke="#5b9bf0" stroke-width="1.5"/>
+<g transform="rotate(-8 1122 730)">
+<path d="M1090 690 H1140 L1154 704 V770 H1090 Z" fill="#fff" stroke="#98a2b3" stroke-width="1.3"/>
+<path d="M1140 690 V704 H1154" fill="none" stroke="#98a2b3" stroke-width="1.3"/>
+<rect x="1100" y="712" width="38" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1100" y="722" width="32" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1100" y="732" width="26" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1096" y="748" width="52" height="16" rx="3" fill="#175CD3" stroke="#175CD3" stroke-width="1.2" />
+<text x="1122.0" y="760" font-family="JetBrains Mono" font-size="11" font-weight="600" fill="#fff" text-anchor="middle" letter-spacing="0">PDF</text>
+</g>
+<g transform="rotate(6 1212 700)">
+<path d="M1180 660 H1230 L1244 674 V740 H1180 Z" fill="#fff" stroke="#98a2b3" stroke-width="1.3"/>
+<path d="M1230 660 V674 H1244" fill="none" stroke="#98a2b3" stroke-width="1.3"/>
+<rect x="1190" y="682" width="38" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1190" y="692" width="32" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1190" y="702" width="26" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1186" y="718" width="52" height="16" rx="3" fill="#12b76a" stroke="#12b76a" stroke-width="1.2" />
+<text x="1212.0" y="730" font-family="JetBrains Mono" font-size="11" font-weight="600" fill="#fff" text-anchor="middle" letter-spacing="0">XLS</text>
+</g>
+<g transform="rotate(-4 1322 740)">
+<path d="M1290 700 H1340 L1354 714 V780 H1290 Z" fill="#fff" stroke="#98a2b3" stroke-width="1.3"/>
+<path d="M1340 700 V714 H1354" fill="none" stroke="#98a2b3" stroke-width="1.3"/>
+<rect x="1300" y="722" width="38" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1300" y="732" width="32" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1300" y="742" width="26" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1296" y="758" width="52" height="16" rx="3" fill="#667085" stroke="#667085" stroke-width="1.2" />
+<text x="1322.0" y="770" font-family="JetBrains Mono" font-size="11" font-weight="600" fill="#fff" text-anchor="middle" letter-spacing="0">SCAN</text>
+</g>
+<g transform="rotate(8 1432 702)">
+<path d="M1400 662 H1450 L1464 676 V742 H1400 Z" fill="#fff" stroke="#98a2b3" stroke-width="1.3"/>
+<path d="M1450 662 V676 H1464" fill="none" stroke="#98a2b3" stroke-width="1.3"/>
+<rect x="1410" y="684" width="38" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1410" y="694" width="32" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1410" y="704" width="26" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1406" y="720" width="52" height="16" rx="3" fill="#6172f3" stroke="#6172f3" stroke-width="1.2" />
+<text x="1432.0" y="732" font-family="JetBrains Mono" font-size="11" font-weight="600" fill="#fff" text-anchor="middle" letter-spacing="0">DOC</text>
+</g>
+<g transform="rotate(-6 1532 740)">
+<path d="M1500 700 H1550 L1564 714 V780 H1500 Z" fill="#fff" stroke="#98a2b3" stroke-width="1.3"/>
+<path d="M1550 700 V714 H1564" fill="none" stroke="#98a2b3" stroke-width="1.3"/>
+<rect x="1510" y="722" width="38" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1510" y="732" width="32" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1510" y="742" width="26" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1506" y="758" width="52" height="16" rx="3" fill="#344054" stroke="#344054" stroke-width="1.2" />
+<text x="1532.0" y="770" font-family="JetBrains Mono" font-size="11" font-weight="600" fill="#fff" text-anchor="middle" letter-spacing="0">TXT</text>
+</g>
+<g transform="rotate(5 1642 712)">
+<path d="M1610 672 H1660 L1674 686 V752 H1610 Z" fill="#fff" stroke="#98a2b3" stroke-width="1.3"/>
+<path d="M1660 672 V686 H1674" fill="none" stroke="#98a2b3" stroke-width="1.3"/>
+<rect x="1620" y="694" width="38" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1620" y="704" width="32" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1620" y="714" width="26" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1616" y="730" width="52" height="16" rx="3" fill="#175CD3" stroke="#175CD3" stroke-width="1.2" />
+<text x="1642.0" y="742" font-family="JetBrains Mono" font-size="11" font-weight="600" fill="#fff" text-anchor="middle" letter-spacing="0">PDF</text>
+</g>
+<rect x="1120" y="832" width="92" height="60" rx="5" fill="#fff" stroke="#98a2b3" stroke-width="1.4" />
+<path d="M1122 835 L1166.0 865.0 L1210 835" fill="none" stroke="#98a2b3" stroke-width="1.4"/>
+<rect x="1260" y="846" width="92" height="60" rx="5" fill="#fff" stroke="#98a2b3" stroke-width="1.4" />
+<path d="M1262 849 L1306.0 879.0 L1350 849" fill="none" stroke="#98a2b3" stroke-width="1.4"/>
+<rect x="1400" y="830" width="92" height="60" rx="5" fill="#fff" stroke="#98a2b3" stroke-width="1.4" />
+<path d="M1402 833 L1446.0 863.0 L1490 833" fill="none" stroke="#98a2b3" stroke-width="1.4"/>
+<rect x="1540" y="848" width="92" height="60" rx="5" fill="#fff" stroke="#98a2b3" stroke-width="1.4" />
+<path d="M1542 851 L1586.0 881.0 L1630 851" fill="none" stroke="#98a2b3" stroke-width="1.4"/>
+<text x="1410" y="975" font-family="Inter" font-size="20" font-weight="600" fill="#344054" text-anchor="middle" letter-spacing="3">COMPANY INBOX</text>
+  </svg>
+  <div class="band"></div>
+  <p class="eyebrow" style="position:relative">The bigger problem</p>
+  <h2 class="big" style="position:relative; font-size:72px; line-height:1.1; letter-spacing:-1.5px; width:820px">Data already sits in inbox &amp; information, No tool to process and understand it</h2>
+  <p class="lede" style="position:relative; font-size:28px; width:780px">Companies want zero friction managing their business data. The friction is that most of it never leaves the inbox.</p>
+</section>
+
+<!-- 04 what retina does -->
+<section class="slide" style="justify-content:space-between; gap:28px">
+  <div class="head">
+    <p class="eyebrow">The product</p>
+    <h2 class="title">What Retina does</h2>
+  </div>
+  <div class="row" style="gap:40px; align-items:stretch">
+  <div class="col" style="width:800px; gap:14px">
+    <div class="card" style="flex:1; flex-direction:row; gap:24px; padding:20px 26px; align-items:center">
+      <div style="flex:none; width:60px; height:60px; border-radius:12px; background:var(--tint); border:1px solid var(--line); display:flex; align-items:center; justify-content:center"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg></div>
+      <div class="col" style="gap:4px">
+        <h3 style="font-size:27px; color:var(--ink)"><span class="mono" style="font-size:22px; font-weight:400; color:var(--accent); margin-right:14px">01</span>Observe</h3>
+        <p class="body" style="font-size:21px; color:var(--ink-2)">Reads every email and attachment, and keeps the original.</p>
+      </div>
+    </div>
+    <div class="card" style="flex:1; flex-direction:row; gap:24px; padding:20px 26px; align-items:center">
+      <div style="flex:none; width:60px; height:60px; border-radius:12px; background:var(--tint); border:1px solid var(--line); display:flex; align-items:center; justify-content:center"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg></div>
+      <div class="col" style="gap:4px">
+        <h3 style="font-size:27px; color:var(--ink)"><span class="mono" style="font-size:22px; font-weight:400; color:var(--accent); margin-right:14px">02</span>Understand</h3>
+        <p class="body" style="font-size:21px; color:var(--ink-2)">Works out what each email is asking for.</p>
+      </div>
+    </div>
+    <div class="card" style="flex:1; flex-direction:row; gap:24px; padding:20px 26px; align-items:center">
+      <div style="flex:none; width:60px; height:60px; border-radius:12px; background:var(--tint); border:1px solid var(--line); display:flex; align-items:center; justify-content:center"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M12 3v18"/></svg></div>
+      <div class="col" style="gap:4px">
+        <h3 style="font-size:27px; color:var(--ink)"><span class="mono" style="font-size:22px; font-weight:400; color:var(--accent); margin-right:14px">03</span>Structure</h3>
+        <p class="body" style="font-size:21px; color:var(--ink-2)">Turns documents into fields, each linked to its source line.</p>
+      </div>
+    </div>
+    <div class="card" style="flex:1; flex-direction:row; gap:24px; padding:20px 26px; align-items:center">
+      <div style="flex:none; width:60px; height:60px; border-radius:12px; background:var(--tint); border:1px solid var(--line); display:flex; align-items:center; justify-content:center"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg></div>
+      <div class="col" style="gap:4px">
+        <h3 style="font-size:27px; color:var(--ink)"><span class="mono" style="font-size:22px; font-weight:400; color:var(--accent); margin-right:14px">04</span>Verify</h3>
+        <p class="body" style="font-size:21px; color:var(--ink-2)">Compares documents and flags what differs or is missing.</p>
+      </div>
+    </div>
+    <div class="card" style="flex:1; flex-direction:row; gap:24px; padding:20px 26px; align-items:center; background:var(--accent); border-color:var(--accent)">
+      <div style="flex:none; width:60px; height:60px; border-radius:12px; background:#fff; border:1px solid #fff; display:flex; align-items:center; justify-content:center"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/><path d="M8 12h.01"/><path d="M12 12h.01"/><path d="M16 12h.01"/></svg></div>
+      <div class="col" style="gap:4px">
+        <h3 style="font-size:27px; color:#fff"><span class="mono" style="font-size:22px; font-weight:400; color:#bbd2f5; margin-right:14px">05</span>Answer</h3>
+        <p class="body" style="font-size:21px; color:#dbe7fb">Builds a map of companies, ports and shipments anyone can ask.</p>
+      </div>
+    </div>
+  </div>
+  <div class="shot" style="flex:none"><img src="assets/ask-draft-reply.png" alt="Ask Retina drafting a reply from the shipment record" style="width:800px; height:659px"></div>
+  </div>
+  <p class="foot"><b>Retina</b> · 04</p>
+</section>
+
+<!-- 05 pipeline -->
+<section class="slide">
+  <svg width="1920" height="1080" viewBox="0 0 1920 1080" style="position:absolute; left:0; top:0">
+<defs><linearGradient id="wash" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".22" stop-color="#eaf2fd"/><stop offset=".6" stop-color="#f6f9fe"/><stop offset="1" stop-color="#ffffff"/></linearGradient><linearGradient id="pipe" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#d6e6fc"/><stop offset=".5" stop-color="#f4f8ff"/><stop offset="1" stop-color="#d6e6fc"/></linearGradient><linearGradient id="pipev" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d6e6fc"/><stop offset=".5" stop-color="#f4f8ff"/><stop offset="1" stop-color="#d6e6fc"/></linearGradient><radialGradient id="glow" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#fff"/><stop offset=".7" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient><filter id="sh" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#175CD3" flood-opacity=".18"/></filter></defs>
+<rect x="0" y="0" width="1920" height="1080" fill="url(#wash)"/>
+<rect x="306.85" y="270" width="122.3" height="24" rx="12" fill="#667085" stroke="#667085" stroke-width="1.2" />
+<text x="368.0" y="287" font-family="Inter" font-size="15" font-weight="400" fill="#fff" text-anchor="middle" letter-spacing="0">every email</text>
+<polygon points="128,730 608,730 608,744 128,744" fill="#e8eef7" stroke="#b9c6d8" stroke-width="1.5"/>
+<polygon points="162,330 574,330 608,730 128,730" fill="#fff" stroke="#b9c6d8" stroke-width="1.5"/>
+<circle cx="208" cy="380" r="22" fill="#175CD3"/>
+<text x="208" y="388" font-family="Inter" font-size="22" font-weight="600" fill="#fff" text-anchor="middle" letter-spacing="0">1</text>
+<text x="242" y="389" font-family="Inter" font-size="27" font-weight="600" fill="#101828" text-anchor="start" letter-spacing="0">Classification</text>
+<text x="368.0" y="666" font-family="Inter" font-size="19" font-weight="400" fill="#475467" text-anchor="middle" letter-spacing="0">Reads each email and sorts it</text>
+<text x="368.0" y="692" font-family="Inter" font-size="19" font-weight="400" fill="#475467" text-anchor="middle" letter-spacing="0">into one of five categories.</text>
+<rect x="838.4" y="270" width="243.2" height="24" rx="12" fill="#667085" stroke="#667085" stroke-width="1.2" />
+<text x="960.0" y="287" font-family="Inter" font-size="15" font-weight="400" fill="#fff" text-anchor="middle" letter-spacing="0">comparison requests only</text>
+<polygon points="720,730 1200,730 1200,744 720,744" fill="#e8eef7" stroke="#b9c6d8" stroke-width="1.5"/>
+<polygon points="754,330 1166,330 1200,730 720,730" fill="#fff" stroke="#b9c6d8" stroke-width="1.5"/>
+<circle cx="800" cy="380" r="22" fill="#175CD3"/>
+<text x="800" y="388" font-family="Inter" font-size="22" font-weight="600" fill="#fff" text-anchor="middle" letter-spacing="0">2</text>
+<text x="834" y="389" font-family="Inter" font-size="27" font-weight="600" fill="#101828" text-anchor="start" letter-spacing="0">Comparison &amp; Extraction</text>
+<text x="960.0" y="666" font-family="Inter" font-size="19" font-weight="400" fill="#475467" text-anchor="middle" letter-spacing="0">Extracts seven fields from the SI</text>
+<text x="960.0" y="692" font-family="Inter" font-size="19" font-weight="400" fill="#475467" text-anchor="middle" letter-spacing="0">and draft BL, then compares them.</text>
+<rect x="1472.25" y="270" width="159.5" height="24" rx="12" fill="#667085" stroke="#667085" stroke-width="1.2" />
+<text x="1552.0" y="287" font-family="Inter" font-size="15" font-weight="400" fill="#fff" text-anchor="middle" letter-spacing="0">everything read</text>
+<polygon points="1312,730 1792,730 1792,744 1312,744" fill="#dbe7fb" stroke="#5b9bf0" stroke-width="1.5"/>
+<polygon points="1346,330 1758,330 1792,730 1312,730" fill="#f5f9ff" stroke="#5b9bf0" stroke-width="1.5"/>
+<circle cx="1392" cy="380" r="22" fill="#175CD3"/>
+<text x="1392" y="388" font-family="Inter" font-size="22" font-weight="600" fill="#fff" text-anchor="middle" letter-spacing="0">3</text>
+<text x="1426" y="389" font-family="Inter" font-size="27" font-weight="600" fill="#101828" text-anchor="start" letter-spacing="0">Ontology Extraction</text>
+<text x="1552.0" y="666" font-family="Inter" font-size="19" font-weight="400" fill="#475467" text-anchor="middle" letter-spacing="0">Turns unstructured mail into</text>
+<text x="1552.0" y="692" font-family="Inter" font-size="19" font-weight="400" fill="#475467" text-anchor="middle" letter-spacing="0">structured, linked records.</text>
+<rect x="188" y="460" width="96" height="64" rx="5" fill="#fff" stroke="#98a2b3" stroke-width="1.4" />
+<path d="M190 463 L236.0 495.2 L282 463" fill="none" stroke="#98a2b3" stroke-width="1.4"/>
+<path d="M294 492 H334" stroke="#98a2b3" stroke-width="2.5"/><path d="M328 485 L336 492 L328 499" fill="none" stroke="#98a2b3" stroke-width="2.5"/>
+<rect x="350" y="430" width="190" height="26" rx="13" fill="#175CD3" stroke="#175CD3" stroke-width="1.2" />
+<text x="445.0" y="448" font-family="JetBrains Mono" font-size="13" font-weight="400" fill="#fff" text-anchor="middle" letter-spacing="0">BL_COMPARISON</text>
+<rect x="350" y="464" width="190" height="26" rx="13" fill="#fff" stroke="#d0d5dd" stroke-width="1.2" />
+<text x="445.0" y="482" font-family="JetBrains Mono" font-size="13" font-weight="400" fill="#475467" text-anchor="middle" letter-spacing="0">SI_REQUEST</text>
+<rect x="350" y="498" width="190" height="26" rx="13" fill="#fff" stroke="#d0d5dd" stroke-width="1.2" />
+<text x="445.0" y="516" font-family="JetBrains Mono" font-size="13" font-weight="400" fill="#475467" text-anchor="middle" letter-spacing="0">INVOICE_QUERY</text>
+<rect x="350" y="532" width="190" height="26" rx="13" fill="#fff" stroke="#d0d5dd" stroke-width="1.2" />
+<text x="445.0" y="550" font-family="JetBrains Mono" font-size="13" font-weight="400" fill="#475467" text-anchor="middle" letter-spacing="0">GENERAL</text>
+<rect x="350" y="566" width="190" height="26" rx="13" fill="#fff" stroke="#d0d5dd" stroke-width="1.2" />
+<text x="445.0" y="584" font-family="JetBrains Mono" font-size="13" font-weight="400" fill="#475467" text-anchor="middle" letter-spacing="0">SPAM</text>
+<rect x="790" y="430" width="150" height="190" rx="6" fill="#fff" stroke="#98a2b3" stroke-width="1.2" />
+<rect x="790" y="430" width="150" height="28" rx="6" fill="#eaecf0" stroke="#98a2b3" stroke-width="1.2" />
+<text x="865" y="450" font-family="JetBrains Mono" font-size="15" font-weight="600" fill="#101828" text-anchor="middle" letter-spacing="0">SI</text>
+<rect x="804" y="470" width="110" height="8" rx="4" fill="#d0d5dd"/>
+<rect x="804" y="491" width="92" height="8" rx="4" fill="#d0d5dd"/>
+<rect x="804" y="512" width="74" height="8" rx="4" fill="#d0d5dd"/>
+<rect x="804" y="533" width="110" height="8" rx="4" fill="#d0d5dd"/>
+<rect x="804" y="554" width="92" height="8" rx="4" fill="#d0d5dd"/>
+<rect x="804" y="575" width="74" height="8" rx="4" fill="#d0d5dd"/>
+<rect x="804" y="596" width="110" height="8" rx="4" fill="#d0d5dd"/>
+<rect x="980" y="430" width="150" height="190" rx="6" fill="#fff" stroke="#98a2b3" stroke-width="1.2" />
+<rect x="980" y="430" width="150" height="28" rx="6" fill="#eaecf0" stroke="#98a2b3" stroke-width="1.2" />
+<text x="1055" y="450" font-family="JetBrains Mono" font-size="15" font-weight="600" fill="#101828" text-anchor="middle" letter-spacing="0">BL</text>
+<rect x="994" y="470" width="110" height="8" rx="4" fill="#d0d5dd"/>
+<rect x="994" y="491" width="92" height="8" rx="4" fill="#d0d5dd"/>
+<rect x="994" y="512" width="74" height="8" rx="4" fill="#fec84b"/>
+<rect x="994" y="533" width="110" height="8" rx="4" fill="#d0d5dd"/>
+<rect x="994" y="554" width="92" height="8" rx="4" fill="#d0d5dd"/>
+<rect x="994" y="575" width="74" height="8" rx="4" fill="#d0d5dd"/>
+<rect x="994" y="596" width="110" height="8" rx="4" fill="#d0d5dd"/>
+<path d="M955 474 l3 4 l7 -8" fill="none" stroke="#12b76a" stroke-width="2.2" stroke-linecap="round"/>
+<path d="M955 495 l3 4 l7 -8" fill="none" stroke="#12b76a" stroke-width="2.2" stroke-linecap="round"/>
+<text x="960" y="521" font-family="Inter" font-size="18" font-weight="600" fill="#dc6803" text-anchor="middle" letter-spacing="0">&#8800;</text>
+<path d="M955 537 l3 4 l7 -8" fill="none" stroke="#12b76a" stroke-width="2.2" stroke-linecap="round"/>
+<path d="M955 558 l3 4 l7 -8" fill="none" stroke="#12b76a" stroke-width="2.2" stroke-linecap="round"/>
+<path d="M955 579 l3 4 l7 -8" fill="none" stroke="#12b76a" stroke-width="2.2" stroke-linecap="round"/>
+<path d="M955 600 l3 4 l7 -8" fill="none" stroke="#12b76a" stroke-width="2.2" stroke-linecap="round"/>
+<line x1="1552.0" y1="520" x2="1432.0" y2="450" stroke="#9cc0f2" stroke-width="2.5"/>
+<line x1="1552.0" y1="520" x2="1672.0" y2="450" stroke="#9cc0f2" stroke-width="2.5"/>
+<line x1="1552.0" y1="520" x2="1672.0" y2="592" stroke="#9cc0f2" stroke-width="2.5"/>
+<line x1="1552.0" y1="520" x2="1432.0" y2="592" stroke="#9cc0f2" stroke-width="2.5"/>
+<rect x="1487.0" y="503.0" width="130" height="34" rx="17.0" fill="#0f3f94" stroke="#0f3f94" stroke-width="1.2" filter="url(#sh)"/>
+<text x="1552.0" y="525.76" font-family="Inter" font-size="16" font-weight="500" fill="#fff" text-anchor="middle" letter-spacing="0">Shipment</text>
+<rect x="1372.0" y="433.0" width="120" height="34" rx="17.0" fill="#175CD3" stroke="#175CD3" stroke-width="1.2" filter="url(#sh)"/>
+<text x="1432.0" y="455.76" font-family="Inter" font-size="16" font-weight="500" fill="#fff" text-anchor="middle" letter-spacing="0">Company</text>
+<rect x="1612.0" y="433.0" width="120" height="34" rx="17.0" fill="#175CD3" stroke="#175CD3" stroke-width="1.2" filter="url(#sh)"/>
+<text x="1672.0" y="455.76" font-family="Inter" font-size="16" font-weight="500" fill="#fff" text-anchor="middle" letter-spacing="0">Port</text>
+<rect x="1612.0" y="575.0" width="120" height="34" rx="17.0" fill="#175CD3" stroke="#175CD3" stroke-width="1.2" filter="url(#sh)"/>
+<text x="1672.0" y="597.76" font-family="Inter" font-size="16" font-weight="500" fill="#fff" text-anchor="middle" letter-spacing="0">Vessel</text>
+<rect x="1372.0" y="575.0" width="120" height="34" rx="17.0" fill="#175CD3" stroke="#175CD3" stroke-width="1.2" filter="url(#sh)"/>
+<text x="1432.0" y="597.76" font-family="Inter" font-size="16" font-weight="500" fill="#fff" text-anchor="middle" letter-spacing="0">Email</text>
+<polygon points="612,515 696,515 696,501 716,530 696,559 696,545 612,545" fill="url(#pipev)" stroke="#5b9bf0" stroke-width="1.5" stroke-linejoin="round"/>
+<polygon points="1204,515 1288,515 1288,501 1308,530 1288,559 1288,545 1204,545" fill="url(#pipev)" stroke="#5b9bf0" stroke-width="1.5" stroke-linejoin="round"/>
+<polygon points="357,748 357,780 346,780 368,794 390,780 379,780 379,748" fill="url(#pipe)" stroke="#5b9bf0" stroke-width="1.5" stroke-linejoin="round"/>
+<rect x="293.0" y="806.0" width="150" height="36" rx="18.0" fill="#fff" stroke="#98a2b3" stroke-width="1.4" />
+<text x="368.0" y="830.12" font-family="Inter" font-size="17" font-weight="500" fill="#101828" text-anchor="middle" letter-spacing="0">category</text>
+<polygon points="949,748 949,780 938,780 960,794 982,780 971,780 971,748" fill="url(#pipe)" stroke="#5b9bf0" stroke-width="1.5" stroke-linejoin="round"/>
+<rect x="770.0" y="806" width="70" height="36" rx="18" fill="#fff" stroke="#12b76a" stroke-width="1.6" />
+<text x="805.0" y="830" font-family="JetBrains Mono" font-size="15" font-weight="500" fill="#12b76a" text-anchor="middle" letter-spacing="0">OK</text>
+<rect x="855.0" y="806" width="120" height="36" rx="18" fill="#fff" stroke="#dc6803" stroke-width="1.6" />
+<text x="915.0" y="830" font-family="JetBrains Mono" font-size="15" font-weight="500" fill="#dc6803" text-anchor="middle" letter-spacing="0">MISMATCH</text>
+<rect x="995.0" y="806" width="160" height="36" rx="18" fill="#fff" stroke="#7a5af8" stroke-width="1.6" />
+<text x="1075.0" y="830" font-family="JetBrains Mono" font-size="15" font-weight="500" fill="#7a5af8" text-anchor="middle" letter-spacing="0">NEEDS_REVIEW</text>
+<polygon points="1541,748 1541,780 1530,780 1552,794 1574,780 1563,780 1563,748" fill="url(#pipe)" stroke="#5b9bf0" stroke-width="1.5" stroke-linejoin="round"/>
+<rect x="1452.0" y="806.0" width="200" height="36" rx="18.0" fill="#0f3f94" stroke="#0f3f94" stroke-width="1.2" filter="url(#sh)"/>
+<text x="1552.0" y="830.12" font-family="Inter" font-size="17" font-weight="500" fill="#fff" text-anchor="middle" letter-spacing="0">knowledge layer</text>
+<text x="128" y="910" font-family="Inter" font-size="21" font-weight="400" fill="#667085" text-anchor="start" letter-spacing="0">The result of every step is stored, and every value keeps the line it was read from.</text>
+  </svg>
+  <div class="head" style="position:relative">
+    <p class="eyebrow">How it works</p>
+    <h2 class="title">The email pipeline, in three steps</h2>
+  </div>
+  <p class="foot"><b>Retina</b> · 05</p>
+</section>
+
+<!-- 06 stack -->
+<section class="slide">
+  <svg width="1920" height="1080" viewBox="0 0 1920 1080" style="position:absolute; left:0; top:0">
+<defs><linearGradient id="wash" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".22" stop-color="#eaf2fd"/><stop offset=".6" stop-color="#f6f9fe"/><stop offset="1" stop-color="#ffffff"/></linearGradient><linearGradient id="pipe" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#d6e6fc"/><stop offset=".5" stop-color="#f4f8ff"/><stop offset="1" stop-color="#d6e6fc"/></linearGradient><linearGradient id="pipev" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d6e6fc"/><stop offset=".5" stop-color="#f4f8ff"/><stop offset="1" stop-color="#d6e6fc"/></linearGradient><radialGradient id="glow" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#fff"/><stop offset=".7" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient><filter id="sh" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#175CD3" flood-opacity=".18"/></filter></defs>
+<rect x="0" y="0" width="1920" height="1080" fill="url(#wash)"/>
+<polygon points="900,258 1720,258 1720,266 900,266" fill="#dbe7fb" stroke="#5b9bf0" stroke-width="1.5"/>
+<polygon points="920,214 1700,214 1720,258 900,258" fill="#fff" stroke="#5b9bf0" stroke-width="1.5"/>
+<circle cx="1020" cy="229" r="7" fill="#84adec"/><path d="M1008 250 Q1008 237 1020 237 Q1032 237 1032 250 Z" fill="#84adec"/>
+<circle cx="1056" cy="229" r="7" fill="#175CD3"/><path d="M1044 250 Q1044 237 1056 237 Q1068 237 1068 250 Z" fill="#175CD3"/>
+<circle cx="1092" cy="229" r="7" fill="#84adec"/><path d="M1080 250 Q1080 237 1092 237 Q1104 237 1104 250 Z" fill="#84adec"/>
+<circle cx="1528" cy="229" r="7" fill="#84adec"/><path d="M1516 250 Q1516 237 1528 237 Q1540 237 1540 250 Z" fill="#84adec"/>
+<circle cx="1564" cy="229" r="7" fill="#175CD3"/><path d="M1552 250 Q1552 237 1564 237 Q1576 237 1576 250 Z" fill="#175CD3"/>
+<circle cx="1600" cy="229" r="7" fill="#84adec"/><path d="M1588 250 Q1588 237 1600 237 Q1612 237 1612 250 Z" fill="#84adec"/>
+<text x="1310.0" y="247" font-family="Inter" font-size="22" font-weight="600" fill="#101828" text-anchor="middle" letter-spacing="3">THE TEAM</text>
+<polygon points="1299,266 1299,282 1288,282 1310,296 1332,282 1321,282 1321,266" fill="url(#pipe)" stroke="#5b9bf0" stroke-width="1.5" stroke-linejoin="round"/>
+<polygon points="900,396 1720,396 1720,406 900,406" fill="#e8eef7" stroke="#b9c6d8" stroke-width="1.5"/>
+<polygon points="924,300 1696,300 1720,396 900,396" fill="#fff" stroke="#b9c6d8" stroke-width="1.5"/>
+<path transform="translate(940 322) scale(0.7500)" d="m12 1.608 12 20.784H0Z" fill="#101828"/>
+<text x="968" y="336" font-family="Inter" font-size="18" font-weight="600" fill="#344054" text-anchor="start" letter-spacing="2">FRONTEND · VERCEL</text>
+<rect x="940" y="353.0" width="148.0" height="34" rx="17.0" fill="#fff" stroke="#98a2b3" stroke-width="1.4" />
+<path transform="translate(954 361) scale(0.7500)" d="M18.665 21.978C16.758 23.255 14.465 24 12 24 5.377 24 0 18.623 0 12S5.377 0 12 0s12 5.377 12 12c0 3.583-1.574 6.801-4.067 9.001L9.219 7.2H7.2v9.596h1.615V9.251l9.85 12.727Zm-3.332-8.533 1.6 2.061V7.2h-1.6v6.245Z" fill="#101828"/>
+<text x="982" y="376" font-family="Inter" font-size="16" font-weight="500" fill="#101828" text-anchor="start" letter-spacing="0">Next.js 16</text>
+<rect x="1102.0" y="353.0" width="105.0" height="34" rx="17.0" fill="#fff" stroke="#98a2b3" stroke-width="1.4" />
+<path transform="translate(1116.0 361) scale(0.7500)" d="M14.23 12.004a2.236 2.236 0 0 1-2.235 2.236 2.236 2.236 0 0 1-2.236-2.236 2.236 2.236 0 0 1 2.235-2.236 2.236 2.236 0 0 1 2.236 2.236zm2.648-10.69c-1.346 0-3.107.96-4.888 2.622-1.78-1.653-3.542-2.602-4.887-2.602-.41 0-.783.093-1.106.278-1.375.793-1.683 3.264-.973 6.365C1.98 8.917 0 10.42 0 12.004c0 1.59 1.99 3.097 5.043 4.03-.704 3.113-.39 5.588.988 6.38.32.187.69.275 1.102.275 1.345 0 3.107-.96 4.888-2.624 1.78 1.654 3.542 2.603 4.887 2.603.41 0 .783-.09 1.106-.275 1.374-.792 1.683-3.263.973-6.365C22.02 15.096 24 13.59 24 12.004c0-1.59-1.99-3.097-5.043-4.032.704-3.11.39-5.587-.988-6.38-.318-.184-.688-.277-1.092-.278zm-.005 1.09v.006c.225 0 .406.044.558.127.666.382.955 1.835.73 3.704-.054.46-.142.945-.25 1.44-.96-.236-2.006-.417-3.107-.534-.66-.905-1.345-1.727-2.035-2.447 1.592-1.48 3.087-2.292 4.105-2.295zm-9.77.02c1.012 0 2.514.808 4.11 2.28-.686.72-1.37 1.537-2.02 2.442-1.107.117-2.154.298-3.113.538-.112-.49-.195-.964-.254-1.42-.23-1.868.054-3.32.714-3.707.19-.09.4-.127.563-.132zm4.882 3.05c.455.468.91.992 1.36 1.564-.44-.02-.89-.034-1.345-.034-.46 0-.915.01-1.36.034.44-.572.895-1.096 1.345-1.565zM12 8.1c.74 0 1.477.034 2.202.093.406.582.802 1.203 1.183 1.86.372.64.71 1.29 1.018 1.946-.308.655-.646 1.31-1.013 1.95-.38.66-.773 1.288-1.18 1.87-.728.063-1.466.098-2.21.098-.74 0-1.477-.035-2.202-.093-.406-.582-.802-1.204-1.183-1.86-.372-.64-.71-1.29-1.018-1.946.303-.657.646-1.313 1.013-1.954.38-.66.773-1.286 1.18-1.868.728-.064 1.466-.098 2.21-.098zm-3.635.254c-.24.377-.48.763-.704 1.16-.225.39-.435.782-.635 1.174-.265-.656-.49-1.31-.676-1.947.64-.15 1.315-.283 2.015-.386zm7.26 0c.695.103 1.365.23 2.006.387-.18.632-.405 1.282-.66 1.933-.2-.39-.41-.783-.64-1.174-.225-.392-.465-.774-.705-1.146zm3.063.675c.484.15.944.317 1.375.498 1.732.74 2.852 1.708 2.852 2.476-.005.768-1.125 1.74-2.857 2.475-.42.18-.88.342-1.355.493-.28-.958-.646-1.956-1.1-2.98.45-1.017.81-2.01 1.085-2.964zm-13.395.004c.278.96.645 1.957 1.1 2.98-.45 1.017-.812 2.01-1.086 2.964-.484-.15-.944-.318-1.37-.5-1.732-.737-2.852-1.706-2.852-2.474 0-.768 1.12-1.742 2.852-2.476.42-.18.88-.342 1.356-.494zm11.678 4.28c.265.657.49 1.312.676 1.948-.64.157-1.316.29-2.016.39.24-.375.48-.762.705-1.158.225-.39.435-.788.636-1.18zm-9.945.02c.2.392.41.783.64 1.175.23.39.465.772.705 1.143-.695-.102-1.365-.23-2.006-.386.18-.63.406-1.282.66-1.933zM17.92 16.32c.112.493.2.968.254 1.423.23 1.868-.054 3.32-.714 3.708-.147.09-.338.128-.563.128-1.012 0-2.514-.807-4.11-2.28.686-.72 1.37-1.536 2.02-2.44 1.107-.118 2.154-.3 3.113-.54zm-11.83.01c.96.234 2.006.415 3.107.532.66.905 1.345 1.727 2.035 2.446-1.595 1.483-3.092 2.295-4.11 2.295-.22-.005-.406-.05-.553-.132-.666-.38-.955-1.834-.73-3.703.054-.46.142-.944.25-1.438zm4.56.64c.44.02.89.034 1.345.034.46 0 .915-.01 1.36-.034-.44.572-.895 1.095-1.345 1.565-.455-.47-.91-.993-1.36-1.565z" fill="#149ECA"/>
+<text x="1144.0" y="376" font-family="Inter" font-size="16" font-weight="500" fill="#101828" text-anchor="start" letter-spacing="0">React</text>
+<rect x="1221.0" y="353.0" width="87.8" height="34" rx="17.0" fill="#fff" stroke="#98a2b3" stroke-width="1.4" />
+<path transform="translate(1235.0 361) scale(0.7500)" d="M0 12.187a2.659 2.659 0 0 0 2.648 2.647 2.662 2.662 0 0 0 2.647-2.646v-.376a1.097 1.097 0 0 1 1.092-1.086c.326 0 .636.147.844.399h1.712a2.66 2.66 0 0 0-2.558-1.959 2.664 2.664 0 0 0-2.647 2.647v.374c0 .598-.493 1.09-1.091 1.09a1.096 1.096 0 0 1-1.09-1.09.314.314 0 0 0-.312-.312H.311a.313.313 0 0 0-.311.312Zm10.131 2.647a2.664 2.664 0 0 1-2.555-1.96h1.71a1.088 1.088 0 0 0 1.935-.683v-.379a2.663 2.663 0 0 1 2.648-2.646 2.65 2.65 0 0 1 2.647 2.591l.008.43a1.097 1.097 0 0 0 1.092 1.086c.326 0 .636-.146.843-.399h1.712a2.657 2.657 0 0 1-2.556 1.96 2.66 2.66 0 0 1-2.648-2.646l-.008-.389v-.017a1.096 1.096 0 0 0-1.09-1.059 1.096 1.096 0 0 0-1.09 1.09v.374a2.663 2.663 0 0 1-2.648 2.647Zm10.376-3.708a1.09 1.09 0 0 1 1.936.683v.004c0 .171.14.312.311.312h.935a.313.313 0 0 0 .311-.312 2.663 2.663 0 0 0-2.648-2.647 2.659 2.659 0 0 0-2.557 1.96h1.712Z" fill="#101828"/>
+<text x="1263.0" y="376" font-family="Inter" font-size="16" font-weight="500" fill="#101828" text-anchor="start" letter-spacing="0">SWR</text>
+<rect x="1322.8" y="353.0" width="130.8" height="34" rx="17.0" fill="#fff" stroke="#98a2b3" stroke-width="1.4" />
+<path transform="translate(1336.8 361) scale(0.7500)" d="M12.001,4.8c-3.2,0-5.2,1.6-6,4.8c1.2-1.6,2.6-2.2,4.2-1.8c0.913,0.228,1.565,0.89,2.288,1.624 C13.666,10.618,15.027,12,18.001,12c3.2,0,5.2-1.6,6-4.8c-1.2,1.6-2.6,2.2-4.2,1.8c-0.913-0.228-1.565-0.89-2.288-1.624 C16.337,6.182,14.976,4.8,12.001,4.8z M6.001,12c-3.2,0-5.2,1.6-6,4.8c1.2-1.6,2.6-2.2,4.2-1.8c0.913,0.228,1.565,0.89,2.288,1.624 c1.177,1.194,2.538,2.576,5.512,2.576c3.2,0,5.2-1.6,6-4.8c-1.2,1.6-2.6,2.2-4.2,1.8c-0.913-0.228-1.565-0.89-2.288-1.624 C10.337,13.382,8.976,12,6.001,12z" fill="#06B6D4"/>
+<text x="1364.8" y="376" font-family="Inter" font-size="16" font-weight="500" fill="#101828" text-anchor="start" letter-spacing="0">Tailwind</text>
+<text x="1680" y="340" font-family="Inter" font-size="16" font-weight="400" fill="#667085" text-anchor="end" letter-spacing="0">cases · ontology browser · Ask Retina chat</text>
+<polygon points="520,900 1792,900 1792,914 520,914" fill="#dbe7fb" stroke="#5b9bf0" stroke-width="1.5"/>
+<polygon points="564,470 1748,470 1792,900 520,900" fill="#f5f9ff" stroke="#5b9bf0" stroke-width="1.5"/>
+<path transform="translate(600 493) scale(1.0000)" d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954-5.43h2.118a.186.186 0 00.186-.186V3.574a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.185m0 2.716h2.118a.187.187 0 00.186-.186V6.29a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.887c0 .102.082.185.185.186m-2.93 0h2.12a.186.186 0 00.184-.186V6.29a.185.185 0 00-.185-.185H8.1a.185.185 0 00-.185.185v1.887c0 .102.083.185.185.186m-2.964 0h2.119a.186.186 0 00.185-.186V6.29a.185.185 0 00-.185-.185H5.136a.186.186 0 00-.186.185v1.887c0 .102.084.185.186.186m5.893 2.715h2.118a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.185m-2.93 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185m-2.964 0h2.119a.185.185 0 00.185-.185V9.006a.185.185 0 00-.184-.186h-2.12a.186.186 0 00-.186.186v1.887c0 .102.084.185.186.185m-2.92 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.082.185.185.185M23.763 9.89c-.065-.051-.672-.51-1.954-.51-.338.001-.676.03-1.01.087-.248-1.7-1.653-2.53-1.716-2.566l-.344-.199-.226.327c-.284.438-.49.922-.612 1.43-.23.97-.09 1.882.403 2.661-.595.332-1.55.413-1.744.42H.751a.751.751 0 00-.75.748 11.376 11.376 0 00.692 4.062c.545 1.428 1.355 2.48 2.41 3.124 1.18.723 3.1 1.137 5.275 1.137.983.003 1.963-.086 2.93-.266a12.248 12.248 0 003.823-1.389c.98-.567 1.86-1.288 2.61-2.136 1.252-1.418 1.998-2.997 2.553-4.4h.221c1.372 0 2.215-.549 2.68-1.009.309-.293.55-.65.707-1.046l.098-.288Z" fill="#2496ED"/>
+<text x="634" y="510" font-family="Inter" font-size="18" font-weight="600" fill="#344054" text-anchor="start" letter-spacing="2">VPS · DOCKER COMPOSE</text>
+<polygon points="1528,428 1528,518 1512,518 1545,540 1578,518 1562,518 1562,428 1578,428 1545,406 1512,428" fill="url(#pipe)" stroke="#5b9bf0" stroke-width="1.5" stroke-linejoin="round"/>
+<rect x="1482.61" y="458" width="124.78" height="24" rx="12" fill="#fff" stroke="#98a2b3" stroke-width="1.2" />
+<text x="1545" y="475" font-family="JetBrains Mono" font-size="13" font-weight="400" fill="#344054" text-anchor="middle" letter-spacing="0">HTTPS · ngrok</text>
+<rect x="600" y="540" width="330" height="84" rx="8" fill="#eef4fd" stroke="#b2ccf5" stroke-width="1.4" />
+<text x="620" y="574" font-family="Inter" font-size="23" font-weight="600" fill="#101828" text-anchor="start" letter-spacing="0">Worker</text>
+<text x="620" y="602" font-family="Inter" font-size="17" font-weight="400" fill="#175CD3" text-anchor="start" letter-spacing="0">classify · compare · ontology</text>
+<path transform="translate(884 554) scale(1.1667)" d="M1.125 0C.502 0 0 .502 0 1.125v21.75C0 23.498.502 24 1.125 24h21.75c.623 0 1.125-.502 1.125-1.125V1.125C24 .502 23.498 0 22.875 0zm17.363 9.75c.612 0 1.154.037 1.627.111a6.38 6.38 0 0 1 1.306.34v2.458a3.95 3.95 0 0 0-.643-.361 5.093 5.093 0 0 0-.717-.26 5.453 5.453 0 0 0-1.426-.2c-.3 0-.573.028-.819.086a2.1 2.1 0 0 0-.623.242c-.17.104-.3.229-.393.374a.888.888 0 0 0-.14.49c0 .196.053.373.156.529.104.156.252.304.443.444s.423.276.696.41c.273.135.582.274.926.416.47.197.892.407 1.266.628.374.222.695.473.963.753.268.279.472.598.614.957.142.359.214.776.214 1.253 0 .657-.125 1.21-.373 1.656a3.033 3.033 0 0 1-1.012 1.085 4.38 4.38 0 0 1-1.487.596c-.566.12-1.163.18-1.79.18a9.916 9.916 0 0 1-1.84-.164 5.544 5.544 0 0 1-1.512-.493v-2.63a5.033 5.033 0 0 0 3.237 1.2c.333 0 .624-.03.872-.09.249-.06.456-.144.623-.25.166-.108.29-.234.373-.38a1.023 1.023 0 0 0-.074-1.089 2.12 2.12 0 0 0-.537-.5 5.597 5.597 0 0 0-.807-.444 27.72 27.72 0 0 0-1.007-.436c-.918-.383-1.602-.852-2.053-1.405-.45-.553-.676-1.222-.676-2.005 0-.614.123-1.141.369-1.582.246-.441.58-.804 1.004-1.089a4.494 4.494 0 0 1 1.47-.629 7.536 7.536 0 0 1 1.77-.201zm-15.113.188h9.563v2.166H9.506v9.646H6.789v-9.646H3.375z" fill="#3178C6"/>
+<path transform="translate(844 554) scale(1.1667)" d="M11.998,24c-0.321,0-0.641-0.084-0.922-0.247l-2.936-1.737c-0.438-0.245-0.224-0.332-0.08-0.383 c0.585-0.203,0.703-0.25,1.328-0.604c0.065-0.037,0.151-0.023,0.218,0.017l2.256,1.339c0.082,0.045,0.197,0.045,0.272,0l8.795-5.076 c0.082-0.047,0.134-0.141,0.134-0.238V6.921c0-0.099-0.053-0.192-0.137-0.242l-8.791-5.072c-0.081-0.047-0.189-0.047-0.271,0 L3.075,6.68C2.99,6.729,2.936,6.825,2.936,6.921v10.15c0,0.097,0.054,0.189,0.139,0.235l2.409,1.392 c1.307,0.654,2.108-0.116,2.108-0.89V7.787c0-0.142,0.114-0.253,0.256-0.253h1.115c0.139,0,0.255,0.112,0.255,0.253v10.021 c0,1.745-0.95,2.745-2.604,2.745c-0.508,0-0.909,0-2.026-0.551L2.28,18.675c-0.57-0.329-0.922-0.945-0.922-1.604V6.921 c0-0.659,0.353-1.275,0.922-1.603l8.795-5.082c0.557-0.315,1.296-0.315,1.848,0l8.794,5.082c0.57,0.329,0.924,0.944,0.924,1.603 v10.15c0,0.659-0.354,1.273-0.924,1.604l-8.794,5.078C12.643,23.916,12.324,24,11.998,24z M19.099,13.993 c0-1.9-1.284-2.406-3.987-2.763c-2.731-0.361-3.009-0.548-3.009-1.187c0-0.528,0.235-1.233,2.258-1.233 c1.807,0,2.473,0.389,2.747,1.607c0.024,0.115,0.129,0.199,0.247,0.199h1.141c0.071,0,0.138-0.031,0.186-0.081 c0.048-0.054,0.074-0.123,0.067-0.196c-0.177-2.098-1.571-3.076-4.388-3.076c-2.508,0-4.004,1.058-4.004,2.833 c0,1.925,1.488,2.457,3.895,2.695c2.88,0.282,3.103,0.703,3.103,1.269c0,0.983-0.789,1.402-2.642,1.402 c-2.327,0-2.839-0.584-3.011-1.742c-0.02-0.124-0.126-0.215-0.253-0.215h-1.137c-0.141,0-0.254,0.112-0.254,0.253 c0,1.482,0.806,3.248,4.655,3.248C17.501,17.007,19.099,15.91,19.099,13.993z" fill="#5FA04E"/>
+<rect x="990" y="540" width="330" height="84" rx="8" fill="#fff" stroke="#98a2b3" stroke-width="1.2" />
+<text x="1010" y="574" font-family="Inter" font-size="23" font-weight="600" fill="#101828" text-anchor="start" letter-spacing="0">Queues</text>
+<text x="1010" y="602" font-family="Inter" font-size="17" font-weight="400" fill="#475467" text-anchor="start" letter-spacing="0">BullMQ on Redis</text>
+<path transform="translate(1274 554) scale(1.1667)" d="M22.71 13.145c-1.66 2.092-3.452 4.483-7.038 4.483-3.203 0-4.397-2.825-4.48-5.12.701 1.484 2.073 2.685 4.214 2.63 4.117-.133 6.94-3.852 6.94-7.239 0-4.05-3.022-6.972-8.268-6.972-3.752 0-8.4 1.428-11.455 3.685C2.59 6.937 3.885 9.958 4.35 9.626c2.648-1.904 4.748-3.13 6.784-3.744C8.12 9.244.886 17.05 0 18.425c.1 1.261 1.66 4.648 2.424 4.648.232 0 .431-.133.664-.365a100.49 100.49 0 0 0 5.54-6.765c.222 3.104 1.748 6.898 6.014 6.898 3.819 0 7.604-2.756 9.33-8.965.2-.764-.73-1.361-1.261-.73zm-4.349-5.013c0 1.959-1.926 2.922-3.685 2.922-.941 0-1.664-.247-2.235-.568 1.051-1.592 2.092-3.225 3.21-4.973 1.972.334 2.71 1.43 2.71 2.619z" fill="#FF4438"/>
+<rect x="1380" y="540" width="330" height="84" rx="8" fill="#fff" stroke="#98a2b3" stroke-width="1.2" />
+<text x="1400" y="574" font-family="Inter" font-size="23" font-weight="600" fill="#101828" text-anchor="start" letter-spacing="0">API</text>
+<text x="1400" y="602" font-family="Inter" font-size="17" font-weight="400" fill="#475467" text-anchor="start" letter-spacing="0">Express · TypeScript · zod</text>
+<path transform="translate(1664 554) scale(1.1667)" d="M1.125 0C.502 0 0 .502 0 1.125v21.75C0 23.498.502 24 1.125 24h21.75c.623 0 1.125-.502 1.125-1.125V1.125C24 .502 23.498 0 22.875 0zm17.363 9.75c.612 0 1.154.037 1.627.111a6.38 6.38 0 0 1 1.306.34v2.458a3.95 3.95 0 0 0-.643-.361 5.093 5.093 0 0 0-.717-.26 5.453 5.453 0 0 0-1.426-.2c-.3 0-.573.028-.819.086a2.1 2.1 0 0 0-.623.242c-.17.104-.3.229-.393.374a.888.888 0 0 0-.14.49c0 .196.053.373.156.529.104.156.252.304.443.444s.423.276.696.41c.273.135.582.274.926.416.47.197.892.407 1.266.628.374.222.695.473.963.753.268.279.472.598.614.957.142.359.214.776.214 1.253 0 .657-.125 1.21-.373 1.656a3.033 3.033 0 0 1-1.012 1.085 4.38 4.38 0 0 1-1.487.596c-.566.12-1.163.18-1.79.18a9.916 9.916 0 0 1-1.84-.164 5.544 5.544 0 0 1-1.512-.493v-2.63a5.033 5.033 0 0 0 3.237 1.2c.333 0 .624-.03.872-.09.249-.06.456-.144.623-.25.166-.108.29-.234.373-.38a1.023 1.023 0 0 0-.074-1.089 2.12 2.12 0 0 0-.537-.5 5.597 5.597 0 0 0-.807-.444 27.72 27.72 0 0 0-1.007-.436c-.918-.383-1.602-.852-2.053-1.405-.45-.553-.676-1.222-.676-2.005 0-.614.123-1.141.369-1.582.246-.441.58-.804 1.004-1.089a4.494 4.494 0 0 1 1.47-.629 7.536 7.536 0 0 1 1.77-.201zm-15.113.188h9.563v2.166H9.506v9.646H6.789v-9.646H3.375z" fill="#3178C6"/>
+<path transform="translate(1624 554) scale(1.1667)" d="M12.262 16.666h1.146l6.975-9.325H19.22zm9.778 1.441v.004l-4.334-5.706-.557.74 4.873 6.682H.945V4.173h9.505l5.026 6.7.574-.772-4.374-5.928h.003l-.719-.945H0v17.544h24zM10.917 8.705a3.8 3.8 0 0 0-1.292-1.183q-.796-.45-1.916-.45c-.746 0-1.37.14-1.906.424a3.76 3.76 0 0 0-1.31 1.12 4.9 4.9 0 0 0-.75 1.581 7.17 7.17 0 0 0 0 3.696c.148.567.402 1.101.75 1.573a3.5 3.5 0 0 0 1.31 1.066q.803.39 1.906.389 1.77 0 2.739-.868.966-.867 1.328-2.457h-1.139q-.271 1.084-.977 1.734-.704.651-1.952.65-.812 0-1.392-.342a3.1 3.1 0 0 1-.957-.869 3.5 3.5 0 0 1-.551-1.182 5 5 0 0 1-.17-1.133 9 9 0 0 0-.015-.286 4.5 4.5 0 0 1 .015-.829c.047-.418.147-.83.296-1.223A3.7 3.7 0 0 1 5.54 9.05a2.9 2.9 0 0 1 .922-.742q.541-.28 1.246-.28c.47 0 .869.093 1.23.28q.541.281.922.742.379.461.587 1.057t.225 1.246H5.625l.004.957h6.182a7.3 7.3 0 0 0-.18-1.924 4.9 4.9 0 0 0-.715-1.68z" fill="#101828"/>
+<path d="M1376 582 H1330" stroke="#98a2b3" stroke-width="2.5"/><path d="M1336 575 L1326 582 L1336 589" fill="none" stroke="#98a2b3" stroke-width="2.5"/>
+<path d="M986 582 H940" stroke="#98a2b3" stroke-width="2.5"/><path d="M946 575 L936 582 L946 589" fill="none" stroke="#98a2b3" stroke-width="2.5"/>
+<rect x="600" y="660" width="330" height="84" rx="8" fill="#eef4fd" stroke="#b2ccf5" stroke-width="1.4" />
+<text x="620" y="694" font-family="Inter" font-size="23" font-weight="600" fill="#101828" text-anchor="start" letter-spacing="0">LLM proxy</text>
+<text x="620" y="722" font-family="Inter" font-size="17" font-weight="400" fill="#175CD3" text-anchor="start" letter-spacing="0">Python · claude CLI</text>
+<path transform="translate(884 674) scale(1.1667)" d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z" fill="#D97757"/>
+<path transform="translate(844 674) scale(1.1667)" d="M14.25.18l.9.2.73.26.59.3.45.32.34.34.25.34.16.33.1.3.04.26.02.2-.01.13V8.5l-.05.63-.13.55-.21.46-.26.38-.3.31-.33.25-.35.19-.35.14-.33.1-.3.07-.26.04-.21.02H8.77l-.69.05-.59.14-.5.22-.41.27-.33.32-.27.35-.2.36-.15.37-.1.35-.07.32-.04.27-.02.21v3.06H3.17l-.21-.03-.28-.07-.32-.12-.35-.18-.36-.26-.36-.36-.35-.46-.32-.59-.28-.73-.21-.88-.14-1.05-.05-1.23.06-1.22.16-1.04.24-.87.32-.71.36-.57.4-.44.42-.33.42-.24.4-.16.36-.1.32-.05.24-.01h.16l.06.01h8.16v-.83H6.18l-.01-2.75-.02-.37.05-.34.11-.31.17-.28.25-.26.31-.23.38-.2.44-.18.51-.15.58-.12.64-.1.71-.06.77-.04.84-.02 1.27.05zm-6.3 1.98l-.23.33-.08.41.08.41.23.34.33.22.41.09.41-.09.33-.22.23-.34.08-.41-.08-.41-.23-.33-.33-.22-.41-.09-.41.09zm13.09 3.95l.28.06.32.12.35.18.36.27.36.35.35.47.32.59.28.73.21.88.14 1.04.05 1.23-.06 1.23-.16 1.04-.24.86-.32.71-.36.57-.4.45-.42.33-.42.24-.4.16-.36.09-.32.05-.24.02-.16-.01h-8.22v.82h5.84l.01 2.76.02.36-.05.34-.11.31-.17.29-.25.25-.31.24-.38.2-.44.17-.51.15-.58.13-.64.09-.71.07-.77.04-.84.01-1.27-.04-1.07-.14-.9-.2-.73-.25-.59-.3-.45-.33-.34-.34-.25-.34-.16-.33-.1-.3-.04-.25-.02-.2.01-.13v-5.34l.05-.64.13-.54.21-.46.26-.38.3-.32.33-.24.35-.2.35-.14.33-.1.3-.06.26-.04.21-.02.13-.01h5.84l.69-.05.59-.14.5-.21.41-.28.33-.32.27-.35.2-.36.15-.36.1-.35.07-.32.04-.28.02-.21V6.07h2.09l.14.01zm-6.47 14.25l-.23.33-.08.41.08.41.23.33.33.23.41.08.41-.08.33-.23.23-.33.08-.41-.08-.41-.23-.33-.33-.23-.41-.08-.41.08z" fill="#3776AB"/>
+<rect x="990" y="660" width="330" height="84" rx="8" fill="#fff" stroke="#98a2b3" stroke-width="1.2" />
+<text x="1010" y="694" font-family="Inter" font-size="23" font-weight="600" fill="#101828" text-anchor="start" letter-spacing="0">doc-extract</text>
+<text x="1010" y="722" font-family="Inter" font-size="17" font-weight="400" fill="#475467" text-anchor="start" letter-spacing="0">Python · FastAPI · PyMuPDF · OCR</text>
+<path transform="translate(1274 674) scale(1.1667)" d="M12 .0387C5.3729.0384.0003 5.3931 0 11.9988c-.001 6.6066 5.372 11.9628 12 11.9625 6.628.0003 12.001-5.3559 12-11.9625-.0003-6.6057-5.3729-11.9604-12-11.96m-.829 5.4153h7.55l-7.5805 5.3284h5.1828L5.279 18.5436q2.9466-6.5444 5.892-13.0896" fill="#009688"/>
+<rect x="1380" y="660" width="330" height="84" rx="8" fill="#fff" stroke="#98a2b3" stroke-width="1.2" />
+<text x="1400" y="694" font-family="Inter" font-size="23" font-weight="600" fill="#101828" text-anchor="start" letter-spacing="0">MinIO</text>
+<text x="1400" y="722" font-family="Inter" font-size="17" font-weight="400" fill="#475467" text-anchor="start" letter-spacing="0">original files, unchanged</text>
+<path transform="translate(1664 674) scale(1.1667)" d="M13.2072.006c-.6216-.0478-1.2.1943-1.6211.582a2.15 2.15 0 0 0-.0938 3.0352l3.4082 3.5507a3.042 3.042 0 0 1-.664 4.6875l-.463.2383V7.2853a15.4198 15.4198 0 0 0-8.0174 10.4862v.0176l6.5487-3.3281v7.621L13.7794 24V13.6817l.8965-.4629a4.4432 4.4432 0 0 0 1.2207-7.0292l-3.371-3.5254a.7489.7489 0 0 1 .037-1.0547.7522.7522 0 0 1 1.0567.0371l.4668.4863-.006.0059 4.0704 4.2441a.0566.0566 0 0 0 .082 0 .06.06 0 0 0 0-.0703l-3.1406-5.1425-.1484.1425.1484-.1445C14.4945.3926 13.8287.0538 13.2072.006Zm-.9024 9.8652v2.9941l-4.1523 2.1484a13.9787 13.9787 0 0 1 2.7676-3.9277 14.1784 14.1784 0 0 1 1.3847-1.2148z" fill="#C72E49"/>
+<path d="M765.0 624 V642 H1545.0 V660 M1155.0 642 V660 M765.0 642 V660" stroke="#98a2b3" stroke-width="2.5" fill="none"/>
+<rect x="600" y="780" width="1110" height="92" rx="8" fill="#175CD3" stroke="#175CD3" stroke-width="1.2" filter="url(#sh)"/>
+<text x="620" y="814" font-family="Inter" font-size="23" font-weight="600" fill="#fff" text-anchor="start" letter-spacing="0">Ontology · PostgreSQL</text>
+<text x="620" y="842" font-family="Inter" font-size="17" font-weight="400" fill="#dbe7fb" text-anchor="start" letter-spacing="0">emails, documents, checks, shipments, companies, ports, vessels</text>
+<path transform="translate(1642 804.0) scale(1.8333)" d="M23.5594 14.7228a.5269.5269 0 0 0-.0563-.1191c-.139-.2632-.4768-.3418-1.0074-.2321-1.6533.3411-2.2935.1312-2.5256-.0191 1.342-2.0482 2.445-4.522 3.0411-6.8297.2714-1.0507.7982-3.5237.1222-4.7316a1.5641 1.5641 0 0 0-.1509-.235C21.6931.9086 19.8007.0248 17.5099.0005c-1.4947-.0158-2.7705.3461-3.1161.4794a9.449 9.449 0 0 0-.5159-.0816 8.044 8.044 0 0 0-1.3114-.1278c-1.1822-.0184-2.2038.2642-3.0498.8406-.8573-.3211-4.7888-1.645-7.2219.0788C.9359 2.1526.3086 3.8733.4302 6.3043c.0409.818.5069 3.334 1.2423 5.7436.4598 1.5065.9387 2.7019 1.4334 3.582.553.9942 1.1259 1.5933 1.7143 1.7895.4474.1491 1.1327.1441 1.8581-.7279.8012-.9635 1.5903-1.8258 1.9446-2.2069.4351.2355.9064.3625 1.39.3772a.0569.0569 0 0 0 .0004.0041 11.0312 11.0312 0 0 0-.2472.3054c-.3389.4302-.4094.5197-1.5002.7443-.3102.064-1.1344.2339-1.1464.8115-.0025.1224.0329.2309.0919.3268.2269.4231.9216.6097 1.015.6331 1.3345.3335 2.5044.092 3.3714-.6787-.017 2.231.0775 4.4174.3454 5.0874.2212.5529.7618 1.9045 2.4692 1.9043.2505 0 .5263-.0291.8296-.0941 1.7819-.3821 2.5557-1.1696 2.855-2.9059.1503-.8707.4016-2.8753.5388-4.1012.0169-.0703.0357-.1207.057-.1362.0007-.0005.0697-.0471.4272.0307a.3673.3673 0 0 0 .0443.0068l.2539.0223.0149.001c.8468.0384 1.9114-.1426 2.5312-.4308.6438-.2988 1.8057-1.0323 1.5951-1.6698zM2.371 11.8765c-.7435-2.4358-1.1779-4.8851-1.2123-5.5719-.1086-2.1714.4171-3.6829 1.5623-4.4927 1.8367-1.2986 4.8398-.5408 6.108-.13-.0032.0032-.0066.0061-.0098.0094-2.0238 2.044-1.9758 5.536-1.9708 5.7495-.0002.0823.0066.1989.0162.3593.0348.5873.0996 1.6804-.0735 2.9184-.1609 1.1504.1937 2.2764.9728 3.0892.0806.0841.1648.1631.2518.2374-.3468.3714-1.1004 1.1926-1.9025 2.1576-.5677.6825-.9597.5517-1.0886.5087-.3919-.1307-.813-.5871-1.2381-1.3223-.4796-.839-.9635-2.0317-1.4155-3.5126zm6.0072 5.0871c-.1711-.0428-.3271-.1132-.4322-.1772.0889-.0394.2374-.0902.4833-.1409 1.2833-.2641 1.4815-.4506 1.9143-1.0002.0992-.126.2116-.2687.3673-.4426a.3549.3549 0 0 0 .0737-.1298c.1708-.1513.2724-.1099.4369-.0417.156.0646.3078.26.3695.4752.0291.1016.0619.2945-.0452.4444-.9043 1.2658-2.2216 1.2494-3.1676 1.0128zm2.094-3.988-.0525.141c-.133.3566-.2567.6881-.3334 1.003-.6674-.0021-1.3168-.2872-1.8105-.8024-.6279-.6551-.9131-1.5664-.7825-2.5004.1828-1.3079.1153-2.4468.079-3.0586-.005-.0857-.0095-.1607-.0122-.2199.2957-.2621 1.6659-.9962 2.6429-.7724.4459.1022.7176.4057.8305.928.5846 2.7038.0774 3.8307-.3302 4.7363-.084.1866-.1633.3629-.2311.5454zm7.3637 4.5725c-.0169.1768-.0358.376-.0618.5959l-.146.4383a.3547.3547 0 0 0-.0182.1077c-.0059.4747-.054.6489-.115.8693-.0634.2292-.1353.4891-.1794 1.0575-.11 1.4143-.8782 2.2267-2.4172 2.5565-1.5155.3251-1.7843-.4968-2.0212-1.2217a6.5824 6.5824 0 0 0-.0769-.2266c-.2154-.5858-.1911-1.4119-.1574-2.5551.0165-.5612-.0249-1.9013-.3302-2.6462.0044-.2932.0106-.5909.019-.8918a.3529.3529 0 0 0-.0153-.1126 1.4927 1.4927 0 0 0-.0439-.208c-.1226-.4283-.4213-.7866-.7797-.9351-.1424-.059-.4038-.1672-.7178-.0869.067-.276.1831-.5875.309-.9249l.0529-.142c.0595-.16.134-.3257.213-.5012.4265-.9476 1.0106-2.2453.3766-5.1772-.2374-1.0981-1.0304-1.6343-2.2324-1.5098-.7207.0746-1.3799.3654-1.7088.5321a5.6716 5.6716 0 0 0-.1958.1041c.0918-1.1064.4386-3.1741 1.7357-4.4823a4.0306 4.0306 0 0 1 .3033-.276.3532.3532 0 0 0 .1447-.0644c.7524-.5706 1.6945-.8506 2.802-.8325.4091.0067.8017.0339 1.1742.081 1.939.3544 3.2439 1.4468 4.0359 2.3827.8143.9623 1.2552 1.9315 1.4312 2.4543-1.3232-.1346-2.2234.1268-2.6797.779-.9926 1.4189.543 4.1729 1.2811 5.4964.1353.2426.2522.4522.2889.5413.2403.5825.5515.9713.7787 1.2552.0696.087.1372.1714.1885.245-.4008.1155-1.1208.3825-1.0552 1.717-.0123.1563-.0423.4469-.0834.8148-.0461.2077-.0702.4603-.0994.7662zm.8905-1.6211c-.0405-.8316.2691-.9185.5967-1.0105a2.8566 2.8566 0 0 0 .135-.0406 1.202 1.202 0 0 0 .1342.103c.5703.3765 1.5823.4213 3.0068.1344-.2016.1769-.5189.3994-.9533.6011-.4098.1903-1.0957.333-1.7473.3636-.7197.0336-1.0859-.0807-1.1721-.151zm.5695-9.2712c-.0059.3508-.0542.6692-.1054 1.0017-.055.3576-.112.7274-.1264 1.1762-.0142.4368.0404.8909.0932 1.3301.1066.887.216 1.8003-.2075 2.7014a3.5272 3.5272 0 0 1-.1876-.3856c-.0527-.1276-.1669-.3326-.3251-.6162-.6156-1.1041-2.0574-3.6896-1.3193-4.7446.3795-.5427 1.3408-.5661 2.1781-.463zm.2284 7.0137a12.3762 12.3762 0 0 0-.0853-.1074l-.0355-.0444c.7262-1.1995.5842-2.3862.4578-3.4385-.0519-.4318-.1009-.8396-.0885-1.2226.0129-.4061.0666-.7543.1185-1.0911.0639-.415.1288-.8443.1109-1.3505.0134-.0531.0188-.1158.0118-.1902-.0457-.4855-.5999-1.938-1.7294-3.253-.6076-.7073-1.4896-1.4972-2.6889-2.0395.5251-.1066 1.2328-.2035 2.0244-.1859 2.0515.0456 3.6746.8135 4.8242 2.2824a.908.908 0 0 1 .0667.1002c.7231 1.3556-.2762 6.2751-2.9867 10.5405zm-8.8166-6.1162c-.025.1794-.3089.4225-.6211.4225a.5821.5821 0 0 1-.0809-.0056c-.1873-.026-.3765-.144-.5059-.3156-.0458-.0605-.1203-.178-.1055-.2844.0055-.0401.0261-.0985.0925-.1488.1182-.0894.3518-.1226.6096-.0867.3163.0441.6426.1938.6113.4186zm7.9305-.4114c.0111.0792-.049.201-.1531.3102-.0683.0717-.212.1961-.4079.2232a.5456.5456 0 0 1-.075.0052c-.2935 0-.5414-.2344-.5607-.3717-.024-.1765.2641-.3106.5611-.352.297-.0414.6111.0088.6356.1851z" fill="#fff"/>
+<path d="M582 582 H586 M586 582 V826 H596" stroke="#98a2b3" stroke-width="2.5" fill="none"/>
+<path d="M1710 582 H1728 V826 H1714" stroke="#98a2b3" stroke-width="2.5" fill="none"/>
+<path d="M1720 819 L1712 826 L1720 833" fill="none" stroke="#98a2b3" stroke-width="2.5"/><path d="M588 819 L598 826 L588 833" fill="none" stroke="#98a2b3" stroke-width="2.5"/>
+<polygon points="128,630 428,630 428,640 128,640" fill="#e8eef7" stroke="#b9c6d8" stroke-width="1.5"/>
+<polygon points="152,520 404,520 428,630 128,630" fill="#fff" stroke="#b9c6d8" stroke-width="1.5"/>
+<text x="278" y="512" font-family="Inter" font-size="18" font-weight="600" fill="#344054" text-anchor="middle" letter-spacing="2">COMPANY INBOX</text>
+<rect x="160" y="550" width="70" height="48" rx="5" fill="#fff" stroke="#98a2b3" stroke-width="1.4" />
+<path d="M162 553 L195.0 576.4 L228 553" fill="none" stroke="#98a2b3" stroke-width="1.4"/>
+<path d="M248 536 H282 L296 550 V598 H248 Z" fill="#fff" stroke="#98a2b3" stroke-width="1.3"/>
+<path d="M282 536 V550 H296" fill="none" stroke="#98a2b3" stroke-width="1.3"/>
+<rect x="258" y="558" width="22" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="258" y="568" width="16" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="258" y="578" width="10" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="254" y="576" width="36" height="16" rx="3" fill="#175CD3" stroke="#175CD3" stroke-width="1.2" />
+<text x="272.0" y="588" font-family="JetBrains Mono" font-size="11" font-weight="600" fill="#fff" text-anchor="middle" letter-spacing="0">PDF</text>
+<path d="M306 544 H340 L354 558 V606 H306 Z" fill="#fff" stroke="#98a2b3" stroke-width="1.3"/>
+<path d="M340 544 V558 H354" fill="none" stroke="#98a2b3" stroke-width="1.3"/>
+<rect x="316" y="566" width="22" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="316" y="576" width="16" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="316" y="586" width="10" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="312" y="584" width="36" height="16" rx="3" fill="#12b76a" stroke="#12b76a" stroke-width="1.2" />
+<text x="330.0" y="596" font-family="JetBrains Mono" font-size="11" font-weight="600" fill="#fff" text-anchor="middle" letter-spacing="0">XLS</text>
+<polygon points="440,565 538,565 538,549 560,582 538,615 538,599 440,599" fill="url(#pipev)" stroke="#5b9bf0" stroke-width="1.5" stroke-linejoin="round"/>
+<polygon points="128,782 428,782 428,792 128,792" fill="#dbe7fb" stroke="#5b9bf0" stroke-width="1.5"/>
+<polygon points="152,672 404,672 428,782 128,782" fill="#fff" stroke="#5b9bf0" stroke-width="1.5"/>
+<path transform="translate(210 645) scale(1.0000)" d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z" fill="#D97757"/>
+<text x="290" y="664" font-family="Inter" font-size="18" font-weight="600" fill="#344054" text-anchor="middle" letter-spacing="2">CLAUDE</text>
+<rect x="178.0" y="708.0" width="200" height="38" rx="19.0" fill="#175CD3" stroke="#175CD3" stroke-width="1.2" filter="url(#sh)"/>
+<text x="278" y="733.84" font-family="Inter" font-size="19" font-weight="500" fill="#fff" text-anchor="middle" letter-spacing="0">Sonnet · Opus</text>
+<polygon points="462,710 538,710 538,694 560,727 538,760 538,744 462,744 462,760 440,727 462,694" fill="url(#pipev)" stroke="#5b9bf0" stroke-width="1.5" stroke-linejoin="round"/>
+<rect x="128" y="946" width="44" height="28" rx="8" fill="#eef4fd" stroke="#b2ccf5" stroke-width="1.2" />
+<text x="184" y="966" font-family="Inter" font-size="19" font-weight="400" fill="#344054" text-anchor="start" letter-spacing="0">where a model reads</text>
+<rect x="420" y="946" width="44" height="28" rx="8" fill="#fff" stroke="#98a2b3" stroke-width="1.2" />
+<text x="476" y="966" font-family="Inter" font-size="19" font-weight="400" fill="#344054" text-anchor="start" letter-spacing="0">code and infrastructure</text>
+<text x="760" y="966" font-family="Inter" font-size="19" font-weight="400" fill="#667085" text-anchor="start" letter-spacing="0">Only the API leaves the server. Every external system sits behind one interface.</text>
+  </svg>
+  <div class="head" style="position:relative">
+    <p class="eyebrow">Architecture</p>
+    <h2 class="title">Tech stack and architecture</h2>
+  </div>
+  <p class="foot"><b>Retina</b> · 06</p>
+</section>
+
+<!-- 07 ontology layer -->
+<section class="slide" style="padding-top:72px">
+  <svg width="1920" height="1080" viewBox="0 0 1920 1080" style="position:absolute; left:0; top:0">
+<defs><linearGradient id="wash" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".22" stop-color="#eaf2fd"/><stop offset=".6" stop-color="#f6f9fe"/><stop offset="1" stop-color="#ffffff"/></linearGradient><radialGradient id="glow" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#ffffff"/><stop offset=".7" stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient><filter id="sh" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#175CD3" flood-opacity=".18"/></filter></defs>
+<rect x="0" y="0" width="1920" height="1080" fill="url(#wash)"/>
+<defs><linearGradient id="pipe" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#d6e6fc"/><stop offset=".5" stop-color="#f4f8ff"/><stop offset="1" stop-color="#d6e6fc"/></linearGradient></defs>
+<polygon points="540,244 1740,244 1740,252 540,252" fill="#dbe7fb" stroke="#5b9bf0" stroke-width="1.5"/>
+<polygon points="560,196 1720,196 1740,244 540,244" fill="#ffffff" stroke="#5b9bf0" stroke-width="1.5"/>
+<circle cx="700" cy="211" r="7" fill="#84adec"/><path d="M688 232 Q688 219 700 219 Q712 219 712 232 Z" fill="#84adec"/>
+<circle cx="736" cy="211" r="7" fill="#175CD3"/><path d="M724 232 Q724 219 736 219 Q748 219 748 232 Z" fill="#175CD3"/>
+<circle cx="772" cy="211" r="7" fill="#84adec"/><path d="M760 232 Q760 219 772 219 Q784 219 784 232 Z" fill="#84adec"/>
+<circle cx="1508" cy="211" r="7" fill="#84adec"/><path d="M1496 232 Q1496 219 1508 219 Q1520 219 1520 232 Z" fill="#84adec"/>
+<circle cx="1544" cy="211" r="7" fill="#175CD3"/><path d="M1532 232 Q1532 219 1544 219 Q1556 219 1556 232 Z" fill="#175CD3"/>
+<circle cx="1580" cy="211" r="7" fill="#84adec"/><path d="M1568 232 Q1568 219 1580 219 Q1592 219 1592 232 Z" fill="#84adec"/>
+<text x="1140" y="229" font-family="Inter" font-size="22" font-weight="600" fill="#101828" text-anchor="middle" letter-spacing="3">MANAGERS &amp; EMPLOYEES</text>
+<polygon points="709,254 709,272 698,272 720,286 742,272 731,272 731,254" fill="url(#pipe)" stroke="#5b9bf0" stroke-width="1.5" stroke-linejoin="round"/>
+<polygon points="1129,254 1129,272 1118,272 1140,286 1162,272 1151,272 1151,254" fill="url(#pipe)" stroke="#5b9bf0" stroke-width="1.5" stroke-linejoin="round"/>
+<polygon points="1549,254 1549,272 1538,272 1560,286 1582,272 1571,272 1571,254" fill="url(#pipe)" stroke="#5b9bf0" stroke-width="1.5" stroke-linejoin="round"/>
+<g transform="translate(0,56)">
+<text x="720.0" y="248" font-family="Inter" font-size="19" font-weight="600" fill="#344054" text-anchor="middle" letter-spacing="2">REVIEW + REPORTS</text>
+<polygon points="540,392 900,392 900,402 540,402" fill="#e8eef7" stroke="#b9c6d8" stroke-width="1.5"/>
+<polygon points="570,262 870,262 900,392 540,392" fill="#ffffff" stroke="#b9c6d8" stroke-width="1.5"/>
+<rect x="590" y="276" width="130" height="96" rx="4" fill="#fff" stroke="#98a2b3" stroke-width="1.2" />
+<line x1="590" y1="290" x2="720" y2="290" stroke="#d0d5dd"/>
+<circle cx="710" cy="283" r="2" fill="#d0d5dd"/>
+<circle cx="702" cy="283" r="2" fill="#d0d5dd"/>
+<circle cx="694" cy="283" r="2" fill="#d0d5dd"/>
+<rect x="600" y="300" width="8" height="8" rx="2" fill="#175CD3"/>
+<rect x="614" y="301" width="80" height="6" rx="3" fill="#d0d5dd"/>
+<rect x="600" y="316" width="8" height="8" rx="2" fill="#dc6803"/>
+<rect x="614" y="317" width="71" height="6" rx="3" fill="#d0d5dd"/>
+<rect x="600" y="332" width="8" height="8" rx="2" fill="#175CD3"/>
+<rect x="614" y="333" width="62" height="6" rx="3" fill="#d0d5dd"/>
+<rect x="600" y="348" width="8" height="8" rx="2" fill="#175CD3"/>
+<rect x="614" y="349" width="53" height="6" rx="3" fill="#d0d5dd"/>
+<rect x="735" y="286" width="130" height="96" rx="4" fill="#fff" stroke="#98a2b3" stroke-width="1.2" />
+<line x1="735" y1="300" x2="865" y2="300" stroke="#d0d5dd"/>
+<circle cx="855" cy="293" r="2" fill="#d0d5dd"/>
+<circle cx="847" cy="293" r="2" fill="#d0d5dd"/>
+<circle cx="839" cy="293" r="2" fill="#d0d5dd"/>
+<rect x="745" y="310" width="48" height="8" rx="2" fill="#d0d5dd"/><rect x="801" y="310" width="48" height="8" rx="2" fill="#d0d5dd"/>
+<rect x="745" y="326" width="48" height="8" rx="2" fill="#d0d5dd"/><rect x="801" y="326" width="48" height="8" rx="2" fill="#fec84b"/>
+<rect x="745" y="342" width="48" height="8" rx="2" fill="#d0d5dd"/><rect x="801" y="342" width="48" height="8" rx="2" fill="#d0d5dd"/>
+<rect x="745" y="358" width="48" height="8" rx="2" fill="#d0d5dd"/><rect x="801" y="358" width="48" height="8" rx="2" fill="#fec84b"/>
+<text x="1140.0" y="248" font-family="Inter" font-size="19" font-weight="600" fill="#344054" text-anchor="middle" letter-spacing="2">ASK RETINA + AGENTS</text>
+<polygon points="960,392 1320,392 1320,402 960,402" fill="#e8eef7" stroke="#b9c6d8" stroke-width="1.5"/>
+<polygon points="990,262 1290,262 1320,392 960,392" fill="#ffffff" stroke="#b9c6d8" stroke-width="1.5"/>
+<rect x="1010" y="276" width="130" height="96" rx="4" fill="#fff" stroke="#98a2b3" stroke-width="1.2" />
+<line x1="1010" y1="290" x2="1140" y2="290" stroke="#d0d5dd"/>
+<circle cx="1130" cy="283" r="2" fill="#d0d5dd"/>
+<circle cx="1122" cy="283" r="2" fill="#d0d5dd"/>
+<circle cx="1114" cy="283" r="2" fill="#d0d5dd"/>
+<rect x="1050" y="300" width="80" height="16" rx="8" fill="#175CD3"/>
+<rect x="1020" y="322" width="96" height="16" rx="8" fill="#e4ecf9"/>
+<rect x="1020" y="344" width="70" height="16" rx="8" fill="#e4ecf9"/>
+<rect x="1155" y="286" width="130" height="96" rx="4" fill="#fff" stroke="#98a2b3" stroke-width="1.2" />
+<line x1="1155" y1="300" x2="1285" y2="300" stroke="#d0d5dd"/>
+<circle cx="1275" cy="293" r="2" fill="#d0d5dd"/>
+<circle cx="1267" cy="293" r="2" fill="#d0d5dd"/>
+<circle cx="1259" cy="293" r="2" fill="#d0d5dd"/>
+<text x="1165" y="320" font-family="JetBrains Mono" font-size="11" fill="#667085">run_sql</text>
+<text x="1165" y="340" font-family="JetBrains Mono" font-size="11" fill="#667085">find_entity</text>
+<text x="1165" y="360" font-family="JetBrains Mono" font-size="11" fill="#667085">search_emails</text>
+<text x="1560.0" y="248" font-family="Inter" font-size="19" font-weight="600" fill="#344054" text-anchor="middle" letter-spacing="2">BROWSE + ANALYTICS</text>
+<polygon points="1380,392 1740,392 1740,402 1380,402" fill="#e8eef7" stroke="#b9c6d8" stroke-width="1.5"/>
+<polygon points="1410,262 1710,262 1740,392 1380,392" fill="#ffffff" stroke="#b9c6d8" stroke-width="1.5"/>
+<rect x="1430" y="276" width="130" height="96" rx="4" fill="#fff" stroke="#98a2b3" stroke-width="1.2" />
+<line x1="1430" y1="290" x2="1560" y2="290" stroke="#d0d5dd"/>
+<circle cx="1550" cy="283" r="2" fill="#d0d5dd"/>
+<circle cx="1542" cy="283" r="2" fill="#d0d5dd"/>
+<circle cx="1534" cy="283" r="2" fill="#d0d5dd"/>
+<ellipse cx="1495" cy="332" rx="46" ry="30" fill="#e4ecf9"/>
+<path d="M1460 336 Q1495 302 1530 326" stroke="#175CD3" stroke-width="2" fill="none"/>
+<circle cx="1460" cy="336" r="4" fill="#175CD3"/><circle cx="1530" cy="326" r="4" fill="#175CD3"/>
+<rect x="1575" y="286" width="130" height="96" rx="4" fill="#fff" stroke="#98a2b3" stroke-width="1.2" />
+<line x1="1575" y1="300" x2="1705" y2="300" stroke="#d0d5dd"/>
+<circle cx="1695" cy="293" r="2" fill="#d0d5dd"/>
+<circle cx="1687" cy="293" r="2" fill="#d0d5dd"/>
+<circle cx="1679" cy="293" r="2" fill="#d0d5dd"/>
+<rect x="1589" y="342" width="14" height="30" rx="2" fill="#b2ccf5"/>
+<rect x="1611" y="324" width="14" height="48" rx="2" fill="#b2ccf5"/>
+<rect x="1633" y="350" width="14" height="22" rx="2" fill="#b2ccf5"/>
+<rect x="1655" y="316" width="14" height="56" rx="2" fill="#175CD3"/>
+<rect x="1677" y="332" width="14" height="40" rx="2" fill="#b2ccf5"/>
+</g>
+<polygon points="703,484 703,502 687,502 720,524 753,502 737,502 737,484 753,484 720,462 687,484" fill="url(#pipe)" stroke="#5b9bf0" stroke-width="1.5" stroke-linejoin="round"/>
+<rect x="690.0" y="481" width="60" height="24" rx="12" fill="#fff" stroke="#98a2b3" stroke-width="1.2" />
+<text x="720.0" y="498" font-family="JetBrains Mono" font-size="13" font-weight="400" fill="#344054" text-anchor="middle" letter-spacing="0">APP</text>
+<polygon points="1123,484 1123,502 1107,502 1140,524 1173,502 1157,502 1157,484 1173,484 1140,462 1107,484" fill="url(#pipe)" stroke="#5b9bf0" stroke-width="1.5" stroke-linejoin="round"/>
+<rect x="1110.0" y="481" width="60" height="24" rx="12" fill="#fff" stroke="#98a2b3" stroke-width="1.2" />
+<text x="1140.0" y="498" font-family="JetBrains Mono" font-size="13" font-weight="400" fill="#344054" text-anchor="middle" letter-spacing="0">MCP</text>
+<polygon points="1543,484 1543,502 1527,502 1560,524 1593,502 1577,502 1577,484 1593,484 1560,462 1527,484" fill="url(#pipe)" stroke="#5b9bf0" stroke-width="1.5" stroke-linejoin="round"/>
+<rect x="1530.0" y="481" width="60" height="24" rx="12" fill="#fff" stroke="#98a2b3" stroke-width="1.2" />
+<text x="1560.0" y="498" font-family="JetBrains Mono" font-size="13" font-weight="400" fill="#344054" text-anchor="middle" letter-spacing="0">API</text>
+<polygon points="703,858 703,830 687,830 720,808 753,830 737,830 737,858" fill="url(#pipe)" stroke="#5b9bf0" stroke-width="1.5" stroke-linejoin="round"/>
+<polygon points="1123,858 1123,843 1107,843 1140,821 1173,843 1157,843 1157,858" fill="url(#pipe)" stroke="#5b9bf0" stroke-width="1.5" stroke-linejoin="round"/>
+<polygon points="1543,858 1543,830 1527,830 1560,808 1593,830 1577,830 1577,858" fill="url(#pipe)" stroke="#5b9bf0" stroke-width="1.5" stroke-linejoin="round"/>
+<polygon points="520,790 1800,790 1800,804 520,804" fill="#dbe7fb" stroke="#5b9bf0" stroke-width="1.5"/>
+<polygon points="610,524 1720,524 1800,790 520,790" fill="#f5f9ff" stroke="#5b9bf0" stroke-width="1.5"/>
+<path d="M1160 655 L660 655 L660 690" stroke="#9cc0f2" stroke-width="2" fill="none" opacity=".7"/>
+<path d="M1160 655 L770 655 L770 575" stroke="#9cc0f2" stroke-width="2" fill="none" opacity=".7"/>
+<path d="M1160 655 L890 655 L890 735" stroke="#9cc0f2" stroke-width="2" fill="none" opacity=".7"/>
+<path d="M1160 655 L1010 655 L1010 575" stroke="#9cc0f2" stroke-width="2" fill="none" opacity=".7"/>
+<path d="M1160 655 L1060 655 L1060 745" stroke="#9cc0f2" stroke-width="2" fill="none" opacity=".7"/>
+<path d="M1160 655 L1380 655 L1380 575" stroke="#9cc0f2" stroke-width="2" fill="none" opacity=".7"/>
+<path d="M1160 655 L1590 630" stroke="#9cc0f2" stroke-width="2" fill="none"/>
+<path d="M1160 655 L1440 655 L1440 740" stroke="#9cc0f2" stroke-width="2" fill="none" opacity=".7"/>
+<path d="M1160 655 L1250 655 L1250 748" stroke="#9cc0f2" stroke-width="2" fill="none" opacity=".7"/>
+<line x1="660" y1="690" x2="770" y2="575" stroke="#175CD3" stroke-width="2" opacity=".55"/>
+<rect x="671.8" y="620.5" width="86.39999999999999" height="24" rx="12" fill="#667085" stroke="#667085" stroke-width="1.2" />
+<text x="715.0" y="637.5" font-family="Inter" font-size="13" font-weight="400" fill="#fff" text-anchor="middle" letter-spacing="0">stated in</text>
+<line x1="770" y1="575" x2="890" y2="735" stroke="#175CD3" stroke-width="2" opacity=".55"/>
+<rect x="779.2" y="643.0" width="101.6" height="24" rx="12" fill="#667085" stroke="#667085" stroke-width="1.2" />
+<text x="830.0" y="660.0" font-family="Inter" font-size="13" font-weight="400" fill="#fff" text-anchor="middle" letter-spacing="0">attached to</text>
+<line x1="1010" y1="575" x2="1380" y2="575" stroke="#175CD3" stroke-width="2" opacity=".55"/>
+<rect x="1155.6" y="563.0" width="78.8" height="24" rx="12" fill="#667085" stroke="#667085" stroke-width="1.2" />
+<text x="1195.0" y="580.0" font-family="Inter" font-size="13" font-weight="400" fill="#fff" text-anchor="middle" letter-spacing="0">ships to</text>
+<line x1="1440" y1="740" x2="1590" y2="630" stroke="#175CD3" stroke-width="2" opacity=".55"/>
+<rect x="1475.6" y="673.0" width="78.8" height="24" rx="12" fill="#667085" stroke="#667085" stroke-width="1.2" />
+<text x="1515.0" y="690.0" font-family="Inter" font-size="13" font-weight="400" fill="#fff" text-anchor="middle" letter-spacing="0">operates</text>
+<line x1="1590" y1="630" x2="1380" y2="575" stroke="#175CD3" stroke-width="2" opacity=".55"/>
+<rect x="1445.6" y="590.5" width="78.8" height="24" rx="12" fill="#667085" stroke="#667085" stroke-width="1.2" />
+<text x="1485.0" y="607.5" font-family="Inter" font-size="13" font-weight="400" fill="#fff" text-anchor="middle" letter-spacing="0">calls at</text>
+<ellipse cx="1160" cy="655" rx="190" ry="72" fill="url(#glow)"/>
+<rect x="1030" y="613" width="260" height="84" rx="42" fill="#ffffff" stroke="#b2ccf5" stroke-width="1.5" filter="url(#sh)"/>
+<text x="1160" y="645" font-family="JetBrains Mono" font-size="14" font-weight="400" fill="#175CD3" text-anchor="middle" letter-spacing="0">01</text>
+<text x="1160" y="675" font-family="Inter" font-size="28" font-weight="600" fill="#175CD3" text-anchor="middle" letter-spacing="0">Business data</text>
+<rect x="590.25" y="670" width="139.5" height="40" rx="20" fill="#175CD3" stroke="#175CD3" stroke-width="1.2" filter="url(#sh)"/>
+<text x="660" y="697" font-family="Inter" font-size="19" font-weight="500" fill="#fff" text-anchor="middle" letter-spacing="0">Shipments</text>
+<rect x="700.25" y="555" width="139.5" height="40" rx="20" fill="#175CD3" stroke="#175CD3" stroke-width="1.2" filter="url(#sh)"/>
+<text x="770" y="582" font-family="Inter" font-size="19" font-weight="500" fill="#fff" text-anchor="middle" letter-spacing="0">Documents</text>
+<rect x="837.5" y="715" width="105.0" height="40" rx="20" fill="#175CD3" stroke="#175CD3" stroke-width="1.2" filter="url(#sh)"/>
+<text x="890" y="742" font-family="Inter" font-size="19" font-weight="500" fill="#fff" text-anchor="middle" letter-spacing="0">Emails</text>
+<rect x="940.25" y="555" width="139.5" height="40" rx="20" fill="#175CD3" stroke="#175CD3" stroke-width="1.2" filter="url(#sh)"/>
+<text x="1010" y="582" font-family="Inter" font-size="19" font-weight="500" fill="#fff" text-anchor="middle" letter-spacing="0">Companies</text>
+<rect x="978.75" y="725" width="162.5" height="40" rx="20" fill="#175CD3" stroke="#175CD3" stroke-width="1.2" filter="url(#sh)"/>
+<text x="1060" y="752" font-family="Inter" font-size="19" font-weight="500" fill="#fff" text-anchor="middle" letter-spacing="0">Commodities</text>
+<rect x="1333.25" y="555" width="93.5" height="40" rx="20" fill="#175CD3" stroke="#175CD3" stroke-width="1.2" filter="url(#sh)"/>
+<text x="1380" y="582" font-family="Inter" font-size="19" font-weight="500" fill="#fff" text-anchor="middle" letter-spacing="0">Ports</text>
+<rect x="1531.75" y="610" width="116.5" height="40" rx="20" fill="#175CD3" stroke="#175CD3" stroke-width="1.2" filter="url(#sh)"/>
+<text x="1590" y="637" font-family="Inter" font-size="19" font-weight="500" fill="#fff" text-anchor="middle" letter-spacing="0">Vessels</text>
+<rect x="1376.0" y="720" width="128.0" height="40" rx="20" fill="#175CD3" stroke="#175CD3" stroke-width="1.2" filter="url(#sh)"/>
+<text x="1440" y="747" font-family="Inter" font-size="19" font-weight="500" fill="#fff" text-anchor="middle" letter-spacing="0">Carriers</text>
+<rect x="1197.5" y="728" width="105.0" height="40" rx="20" fill="#175CD3" stroke="#175CD3" stroke-width="1.2" filter="url(#sh)"/>
+<text x="1250" y="755" font-family="Inter" font-size="19" font-weight="500" fill="#fff" text-anchor="middle" letter-spacing="0">People</text>
+<rect x="1060" y="784" width="200" height="34" rx="4" fill="#fff" stroke="#344054" stroke-width="1.4" />
+<text x="1160" y="807" font-family="Inter" font-size="16" font-weight="600" fill="#101828" text-anchor="middle" letter-spacing="1.5">ONTOLOGY SYSTEM</text>
+<polygon points="540,968 900,968 900,978 540,978" fill="#e8eef7" stroke="#b9c6d8" stroke-width="1.5"/>
+<polygon points="560,858 880,858 900,968 540,968" fill="#ffffff" stroke="#b9c6d8" stroke-width="1.5"/>
+<rect x="576.0" y="870" width="140.0" height="26" rx="3" fill="#eef4fd" stroke="#b2ccf5" stroke-width="1.2" />
+<text x="646.0" y="888" font-family="Inter" font-size="13" font-weight="400" fill="#175CD3" text-anchor="middle" letter-spacing="0.5">EMAILS</text>
+<rect x="724.0" y="870" width="140.0" height="26" rx="3" fill="#eef4fd" stroke="#b2ccf5" stroke-width="1.2" />
+<text x="794.0" y="888" font-family="Inter" font-size="13" font-weight="400" fill="#175CD3" text-anchor="middle" letter-spacing="0.5">PDF</text>
+<rect x="576.0" y="902" width="140.0" height="26" rx="3" fill="#eef4fd" stroke="#b2ccf5" stroke-width="1.2" />
+<text x="646.0" y="920" font-family="Inter" font-size="13" font-weight="400" fill="#175CD3" text-anchor="middle" letter-spacing="0.5">WORD</text>
+<rect x="724.0" y="902" width="140.0" height="26" rx="3" fill="#eef4fd" stroke="#b2ccf5" stroke-width="1.2" />
+<text x="794.0" y="920" font-family="Inter" font-size="13" font-weight="400" fill="#175CD3" text-anchor="middle" letter-spacing="0.5">EXCEL</text>
+<rect x="576.0" y="934" width="140.0" height="26" rx="3" fill="#eef4fd" stroke="#b2ccf5" stroke-width="1.2" />
+<text x="646.0" y="952" font-family="Inter" font-size="13" font-weight="400" fill="#175CD3" text-anchor="middle" letter-spacing="0.5">SCANS</text>
+<rect x="724.0" y="934" width="140.0" height="26" rx="3" fill="#eef4fd" stroke="#b2ccf5" stroke-width="1.2" />
+<text x="794.0" y="952" font-family="Inter" font-size="13" font-weight="400" fill="#175CD3" text-anchor="middle" letter-spacing="0.5">THREADS</text>
+<text x="720.0" y="1008" font-family="Inter" font-size="19" font-weight="600" fill="#344054" text-anchor="middle" letter-spacing="2">DATA SOURCES</text>
+<polygon points="960,968 1320,968 1320,978 960,978" fill="#e8eef7" stroke="#b9c6d8" stroke-width="1.5"/>
+<polygon points="980,858 1300,858 1320,968 960,968" fill="#ffffff" stroke="#b9c6d8" stroke-width="1.5"/>
+<rect x="996" y="870" width="288" height="26" rx="3" fill="#fff" stroke="#d0d5dd" stroke-width="1.2" />
+<text x="1140.0" y="888" font-family="Inter" font-size="13" font-weight="400" fill="#344054" text-anchor="middle" letter-spacing="0.5">1 · CLASSIFICATION</text>
+<rect x="996" y="902" width="288" height="26" rx="3" fill="#fff" stroke="#d0d5dd" stroke-width="1.2" />
+<text x="1140.0" y="920" font-family="Inter" font-size="13" font-weight="400" fill="#344054" text-anchor="middle" letter-spacing="0.5">2 · COMPARISON &AMP; EXTRACTION</text>
+<rect x="996" y="934" width="288" height="26" rx="3" fill="#fff" stroke="#d0d5dd" stroke-width="1.2" />
+<text x="1140.0" y="952" font-family="Inter" font-size="13" font-weight="400" fill="#344054" text-anchor="middle" letter-spacing="0.5">3 · ONTOLOGY EXTRACTION</text>
+<text x="1140.0" y="1008" font-family="Inter" font-size="19" font-weight="600" fill="#344054" text-anchor="middle" letter-spacing="2">PIPELINE</text>
+<polygon points="1380,968 1740,968 1740,978 1380,978" fill="#e8eef7" stroke="#b9c6d8" stroke-width="1.5"/>
+<polygon points="1400,858 1720,858 1740,968 1380,968" fill="#ffffff" stroke="#b9c6d8" stroke-width="1.5"/>
+<rect x="1416.0" y="878" width="140.0" height="26" rx="3" fill="#fff" stroke="#d0d5dd" stroke-width="1.2" />
+<text x="1486.0" y="896" font-family="Inter" font-size="13" font-weight="400" fill="#344054" text-anchor="middle" letter-spacing="0.5">UN/LOCODE</text>
+<rect x="1564.0" y="878" width="140.0" height="26" rx="3" fill="#fff" stroke="#d0d5dd" stroke-width="1.2" />
+<text x="1634.0" y="896" font-family="Inter" font-size="13" font-weight="400" fill="#344054" text-anchor="middle" letter-spacing="0.5">ISO 3166</text>
+<rect x="1416.0" y="910" width="140.0" height="26" rx="3" fill="#fff" stroke="#d0d5dd" stroke-width="1.2" />
+<text x="1486.0" y="928" font-family="Inter" font-size="13" font-weight="400" fill="#344054" text-anchor="middle" letter-spacing="0.5">UN GEOSCHEME</text>
+<rect x="1564.0" y="910" width="140.0" height="26" rx="3" fill="#fff" stroke="#d0d5dd" stroke-width="1.2" />
+<text x="1634.0" y="928" font-family="Inter" font-size="13" font-weight="400" fill="#344054" text-anchor="middle" letter-spacing="0.5">WORLD PORTS</text>
+<text x="1560.0" y="1008" font-family="Inter" font-size="19" font-weight="600" fill="#344054" text-anchor="middle" letter-spacing="2">REFERENCE DATA</text>
+  </svg>
+  <div class="head" style="position:relative">
+    <h2 class="title">Where the Ontology Layer sits</h2>
+  </div>
+  <p style="position:absolute; left:128px; top:540px; font-size:38px; line-height:1.15; font-weight:500; letter-spacing:-.5px; width:440px">Ontology&#8209;powered<br><span style="white-space:nowrap">insights &amp; decisions&nbsp;&rarr;</span></p>
+  <p class="foot"><b>Retina</b> · 07</p>
+</section>
+
+<!-- 08 run -->
+<section class="slide" style="justify-content:space-between; gap:28px">
+  <div class="head">
+    <p class="eyebrow">The product · 1 of 7</p>
+    <h2 class="title">A run replays the inbox, and the page shows the work moving</h2>
+  </div>
+  <div class="shot" style="width:1664px"><img src="assets/screens/run-lanemap.png" alt="Run overview lane map" style="width:1638px; height:auto"></div>
+  <div class="row" style="gap:32px">
+    <div class="col grow" style="gap:6px"><h3>Two queues, watched live</h3><p class="body" style="font-size:22px">Every email is sorted. Only a comparison request crosses into the second queue to have its documents checked.</p></div>
+    <div class="col grow" style="gap:6px"><h3>Every run is its own experiment</h3><p class="body" style="font-size:22px">A run pins a prompt version and a model per step, so two prompts are compared on the same 520 emails.</p></div>
+    <div class="col grow" style="gap:6px"><h3>What it took, on the page</h3><p class="body" style="font-size:22px">520 emails in 30 minutes, 1,601 model calls, 15 percent settled by the verifier, and what it would have cost.</p></div>
+  </div>
+  <p class="foot"><b>Retina</b> · 08</p>
+</section>
+
+<!-- 09 check -->
+<section class="slide" style="gap:36px">
+  <div class="head">
+    <p class="eyebrow">The product · 2 of 7</p>
+    <h2 class="title">One email, checked: the verdict unfolds back to the quoted line</h2>
+  </div>
+  <div class="row" style="gap:40px">
+    <div class="shot"><img src="assets/screens/email-check.png" alt="The check for email_025" style="height:660px"></div>
+    <div class="col grow" style="gap:26px">
+      <div class="callout"><h3>A seam between the sender and Retina</h3><p class="body" style="font-size:22px">Above the line is the mail as it arrived. Below it is what Retina made of the two documents, in one plain sentence.</p></div>
+      <div class="callout amber"><h3>The differing words, on both sides</h3><p class="body" style="font-size:22px">Fremantle in the instruction, Busan in the draft, both under the same stale code AUFRE. The judge names the place, with its confidence.</p></div>
+      <div class="callout blue"><h3>The other five agree, folded away</h3><p class="body" style="font-size:22px">A tab shows both documents field by field, and another lists every model call behind this verdict with its prompt version, latency and tokens.</p></div>
+    </div>
+  </div>
+  <p class="foot"><b>Retina</b> · 09</p>
+</section>
+
+<!-- 10 cases -->
+<section class="slide" style="justify-content:space-between; gap:28px">
+  <div class="head">
+    <p class="eyebrow">The product · 3 of 7</p>
+    <h2 class="title">A difference and an uncertainty are never the same event</h2>
+  </div>
+  <div class="row" style="gap:36px">
+    <div class="col" style="gap:14px; width:640px">
+      <div class="shot"><img src="assets/screens/case-unreadable-top.png" alt="email_513 parked as unreadable" style="width:614px"></div>
+      <p class="cap"><span class="pill review">unreadable</span> &nbsp;A scanned page came back from OCR under the floor. Retina stops, says why, and asks for a readable copy.</p>
+    </div>
+    <div class="col" style="gap:14px; width:640px">
+      <div class="shot"><img src="assets/screens/case-missing-top.png" alt="email_516 parked as missing_value" style="width:614px"></div>
+      <p class="cap"><span class="pill review">missing_value</span> &nbsp;A field left blank by the customer. A blank is not a mismatch, so the pair is not judged on it.</p>
+    </div>
+    <div class="col grow" style="gap:18px">
+      <h3>What a person can do</h3>
+      <p class="body" style="font-size:22px">Confirm. Correct a value. Reclassify. Upload a missing or readable file. Retry a failed job. Add a note.</p>
+      <p class="body" style="font-size:22px">A correction sits beside the model's reading, never over it, and the pair is judged again from both sides.</p>
+      <p class="body" style="font-size:22px">Every action is an append-only, labelled record of what a person decided and why.</p>
+    </div>
+  </div>
+  <p class="foot"><b>Retina</b> · 10</p>
+</section>
+
+<!-- 11 ontology -->
+<section class="slide" style="justify-content:space-between; gap:28px">
+  <div class="head">
+    <p class="eyebrow">The product · 4 of 7</p>
+    <h2 class="title">The mail becomes things, and every value says who wrote it</h2>
+  </div>
+  <div class="row" style="gap:32px">
+    <div class="col" style="gap:12px">
+      <div class="shot"><img src="assets/screens/ontology-record-top.png" alt="Ontology record of email_004" style="height:500px"></div>
+      <p class="cap" style="width:772px">The record: <b>the source</b> wrote the sender, <b style="color:var(--accent)">a model</b> wrote the category, <b>code</b> wrote the status.</p>
+    </div>
+    <div class="col" style="gap:12px">
+      <div class="shot"><img src="assets/screens/ontology-links.png" alt="Links graph of email_004" style="height:500px"></div>
+      <p class="cap" style="width:494px">The links: who sent it, who ships, which port, which documents, two hops out.</p>
+    </div>
+    <div class="col grow" style="gap:14px">
+      <p class="eyebrow" style="color:var(--ink-3)">What Retina knows, this run</p>
+      <table class="mono" style="font-size:22px">
+        <tr><td>Emails</td><td style="text-align:right">520</td></tr>
+        <tr><td>Shipments</td><td style="text-align:right">208</td></tr>
+        <tr><td>Ports</td><td style="text-align:right">33</td></tr>
+        <tr><td>Parties</td><td style="text-align:right">31</td></tr>
+        <tr><td>People</td><td style="text-align:right">36</td></tr>
+        <tr><td>Vessels</td><td style="text-align:right">10</td></tr>
+        <tr><td>Carriers</td><td style="text-align:right">8</td></tr>
+      </table>
+      <p class="cap">Nobody typed any of them in.</p>
+    </div>
+  </div>
+  <p class="foot"><b>Retina</b> · 11</p>
+</section>
+
+<!-- 12 business data -->
+<section class="slide" style="justify-content:space-between; gap:28px">
+  <div class="head">
+    <p class="eyebrow">The product · 5 of 7</p>
+    <h2 class="title">Companies, ports and shipments get their own pages</h2>
+  </div>
+  <div class="row" style="gap:32px">
+    <div class="col" style="gap:12px; width:786px">
+      <div class="shot"><img src="assets/screens/company-top.png" alt="Company page for April Fine Paper Trading" style="width:760px"></div>
+      <p class="cap">A company: what our mail shows, kept apart from general knowledge marked <b>unverified</b>. Roles, lanes, the people on its mail.</p>
+    </div>
+    <div class="col" style="gap:12px; width:786px">
+      <div class="shot"><img src="assets/screens/port-top.png" alt="Port page for Port Klang" style="width:760px"></div>
+      <p class="cap">A port: its 18 lanes on a map, placed by the world's port list, and the companies that ship through it.</p>
+    </div>
+  </div>
+  <p class="cap" style="width:1500px; color:var(--ink-3)">Two spellings of one port are one port, joined only by a judge's verdict or a shared UN/LOCODE, never by string matching. A person can rename, merge or edit any of them, and the edit outlives every rebuild.</p>
+  <p class="foot"><b>Retina</b> · 12</p>
+</section>
+
+<!-- 13 chat -->
+<section class="slide" style="justify-content:space-between; gap:28px">
+  <div class="head">
+    <p class="eyebrow">The product · 6 of 7</p>
+    <h2 class="title">Ask Retina answers over the ontology and shows its work</h2>
+  </div>
+  <div class="row" style="gap:28px">
+    <div class="shot"><img src="assets/screens/chat-top.png" alt="Ask Retina answering a question about US shipments" style="height:560px"></div>
+    <div class="shot"><img src="assets/screens/dock-answer.png" alt="The chat dock beside the inbox" style="height:560px"></div>
+    <div class="col grow" style="gap:20px">
+      <div class="col" style="gap:6px"><h3>Grounded, then answered</h3><p class="body" style="font-size:22px">Twelve tools over a read-only role: find a thing, run a recipe, run guarded SQL, explain a decision. The queries and their rows sit under every answer.</p></div>
+      <div class="col" style="gap:6px"><h3>Honest about coverage</h3><p class="body" style="font-size:22px">"Part of it. Looked in: resolved ports, both spellings, subject lines." A total it could not finish is stated as a lower bound.</p></div>
+      <div class="col" style="gap:6px"><h3>It follows you</h3><p class="body" style="font-size:22px">The dock is open on every page and reads what the page is about: this email, this company, this port. "Why did this need a person?" is one click.</p></div>
+    </div>
+  </div>
+  <p class="foot"><b>Retina</b> · 13</p>
+</section>
+
+<!-- 14 measured -->
+<section class="slide" style="justify-content:space-between; gap:28px">
+  <div class="head">
+    <p class="eyebrow">The product · 7 of 7</p>
+    <h2 class="title">Every call on record, every run scored the way the judges do</h2>
+  </div>
+  <div class="row" style="gap:32px">
+    <div class="col" style="gap:12px; width:800px">
+      <div class="shot"><img src="assets/screens/model-calls.png" alt="Model calls behind one email" style="width:774px"></div>
+      <p class="cap">Seven calls behind one email: step, prompt version, model, latency, tokens. Every attempt is a row, whether or not it parsed.</p>
+    </div>
+    <div class="col" style="gap:12px; width:832px">
+      <div class="shot"><img src="assets/screens/scoreboard.png" alt="Local scoreboard for the full run" style="width:806px"></div>
+      <p class="cap">The organisers' formula, ported line for line and proven equal to their scorer. A train and holdout split, read last.</p>
+    </div>
+  </div>
+  <div class="row" style="gap:48px">
+    <p class="body grow" style="font-size:22px"><b>A gate in front of the pipeline</b> prices every email from counts, sizes and sender history before a model sees it, and holds what a budget cannot pay for. It never reads the words.</p>
+    <p class="body grow" style="font-size:22px"><b>Priority by client tier</b>, with tonnage as the tiebreaker and aging so a small client is never starved. A tier decides no category and reaches no prompt.</p>
+  </div>
+  <p class="foot"><b>Retina</b> · 14</p>
+</section>
+
+<!-- 15 moat -->
+<section class="slide" style="justify-content:space-between">
+  <div class="head">
+    <p class="eyebrow">Why this is the right solution</p>
+    <h2 class="title">Four things a script, a rule set, or a plain chatbot cannot do</h2>
+  </div>
+  <div class="grid2">
+    <div class="card"><h3>It reads. It has no rules to break.</h3><p class="body">No sender lists, no keyword tables, no regex over a body, no label map, no string matching between spellings. A fresh inbox with a different seed works the same, because nothing was fitted to this one.</p></div>
+    <div class="card"><h3>Every verdict walks back to the line.</h3><p class="body">A value without a quote in the document is dropped, not stored. A join between spellings needs a verdict. A profile separates what the mail shows from what a model believes. Trust on a document of title needs exactly this.</p></div>
+    <div class="card"><h3>The check is the entry. The ontology is the product.</h3><p class="body">Checking documents produces typed companies, ports, lanes, vessels and shipments as a side effect. The same reading answers "who ships to Savannah" without another integration.</p></div>
+    <div class="card blue"><h3>It is measured, priced and gated.</h3><p class="body">A prompt change is a run with a score. A call is a row with a cost. An email is priced before a model reads it. A person can see every decision and reverse it. That is what makes it deployable, not a demo.</p></div>
+  </div>
+  <p class="foot"><b>Retina</b> · 15</p>
+</section>
+
+<!-- 16 results -->
+<section class="slide tint">
+  <svg width="1920" height="1080" viewBox="0 0 1920 1080" style="position:absolute; left:0; top:0">
+<defs><linearGradient id="wash" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".22" stop-color="#eaf2fd"/><stop offset=".6" stop-color="#f6f9fe"/><stop offset="1" stop-color="#ffffff"/></linearGradient><linearGradient id="pipe" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#d6e6fc"/><stop offset=".5" stop-color="#f4f8ff"/><stop offset="1" stop-color="#d6e6fc"/></linearGradient><linearGradient id="pipev" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d6e6fc"/><stop offset=".5" stop-color="#f4f8ff"/><stop offset="1" stop-color="#d6e6fc"/></linearGradient><radialGradient id="glow" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#fff"/><stop offset=".7" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient><filter id="sh" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#175CD3" flood-opacity=".18"/></filter></defs>
+<rect x="0" y="0" width="1920" height="1080" fill="url(#wash)"/>
+<rect x="128" y="262" width="1080" height="640" rx="12" fill="#fff" stroke="#d0d5dd" stroke-width="1.2" />
+<text x="164" y="314" font-family="Inter" font-size="24" font-weight="600" fill="#101828" text-anchor="start" letter-spacing="0">Scores against the answer key, 0 to 1</text>
+<text x="164" y="344" font-family="Inter" font-size="18" font-weight="400" fill="#667085" text-anchor="start" letter-spacing="0">the organisers' formula, run on all 520 emails</text>
+<line x1="428" y1="378" x2="428" y2="844" stroke="#eaecf0" stroke-width="1"/>
+<text x="428" y="872" font-family="JetBrains Mono" font-size="15" font-weight="400" fill="#98a2b3" text-anchor="middle" letter-spacing="0">0</text>
+<line x1="586" y1="378" x2="586" y2="844" stroke="#eaecf0" stroke-width="1"/>
+<text x="585.5" y="872" font-family="JetBrains Mono" font-size="15" font-weight="400" fill="#98a2b3" text-anchor="middle" letter-spacing="0">0.25</text>
+<line x1="743" y1="378" x2="743" y2="844" stroke="#eaecf0" stroke-width="1"/>
+<text x="743.0" y="872" font-family="JetBrains Mono" font-size="15" font-weight="400" fill="#98a2b3" text-anchor="middle" letter-spacing="0">0.5</text>
+<line x1="900" y1="378" x2="900" y2="844" stroke="#eaecf0" stroke-width="1"/>
+<text x="900.5" y="872" font-family="JetBrains Mono" font-size="15" font-weight="400" fill="#98a2b3" text-anchor="middle" letter-spacing="0">0.75</text>
+<line x1="1058" y1="378" x2="1058" y2="844" stroke="#eaecf0" stroke-width="1"/>
+<text x="1058" y="872" font-family="JetBrains Mono" font-size="15" font-weight="400" fill="#98a2b3" text-anchor="middle" letter-spacing="0">1.0</text>
+<text x="408" y="415.0" font-family="Inter" font-size="19" font-weight="600" fill="#101828" text-anchor="end" letter-spacing="0">Final score</text>
+<path d="M428 392 H1052.4250000000002 Q1056.4250000000002 392 1056.4250000000002 396 V422 Q1056.4250000000002 426 1052.4250000000002 426 H428 Z" fill="#175CD3"/>
+<text x="1068.4250000000002" y="416.0" font-family="JetBrains Mono" font-size="20" font-weight="600" fill="#101828" text-anchor="start" letter-spacing="0">0.9975</text>
+<text x="408" y="461.0" font-family="Inter" font-size="19" font-weight="400" fill="#667085" text-anchor="end" letter-spacing="0">Baseline in the kit</text>
+<path d="M428 442 H770.5 Q774.5 442 774.5 446 V464 Q774.5 468 770.5 468 H428 Z" fill="#98a2b3"/>
+<text x="786.5" y="462.0" font-family="JetBrains Mono" font-size="18" font-weight="500" fill="#101828" text-anchor="start" letter-spacing="0">0.55</text>
+<text x="408" y="567.0" font-family="Inter" font-size="18" font-weight="400" fill="#101828" text-anchor="end" letter-spacing="0">End to end</text>
+<path d="M428 548 H1054.0 Q1058.0 548 1058.0 552 V570 Q1058.0 574 1054.0 574 H428 Z" fill="#175CD3"/>
+<text x="1070.0" y="568.0" font-family="JetBrains Mono" font-size="18" font-weight="500" fill="#101828" text-anchor="start" letter-spacing="0">1.0000</text>
+<text x="408" y="643.0" font-family="Inter" font-size="18" font-weight="400" fill="#101828" text-anchor="end" letter-spacing="0">Right category</text>
+<path d="M428 624 H1052.7884615384614 Q1056.7884615384614 624 1056.7884615384614 628 V646 Q1056.7884615384614 650 1052.7884615384614 650 H428 Z" fill="#175CD3"/>
+<text x="1068.7884615384614" y="644.0" font-family="JetBrains Mono" font-size="18" font-weight="500" fill="#101828" text-anchor="start" letter-spacing="0">519 / 520</text>
+<text x="408" y="719.0" font-family="Inter" font-size="18" font-weight="400" fill="#101828" text-anchor="end" letter-spacing="0">Defect F1</text>
+<path d="M428 700 H1047.196 Q1051.196 700 1051.196 704 V722 Q1051.196 726 1047.196 726 H428 Z" fill="#175CD3"/>
+<text x="1063.196" y="720.0" font-family="JetBrains Mono" font-size="18" font-weight="500" fill="#101828" text-anchor="start" letter-spacing="0">0.9892</text>
+<text x="408" y="795.0" font-family="Inter" font-size="18" font-weight="400" fill="#101828" text-anchor="end" letter-spacing="0">Edge cases parked</text>
+<path d="M428 776 H1022.5 Q1026.5 776 1026.5 780 V798 Q1026.5 802 1022.5 802 H428 Z" fill="#175CD3"/>
+<text x="1038.5" y="796.0" font-family="JetBrains Mono" font-size="18" font-weight="500" fill="#101828" text-anchor="start" letter-spacing="0">19 / 20</text>
+<line x1="428" y1="378" x2="428" y2="844" stroke="#98a2b3" stroke-width="1.5"/>
+  </svg>
+  <div class="band"></div>
+  <div class="head" style="position:relative">
+    <p class="eyebrow">Results</p>
+    <h2 class="title">The full 520-email inbox, scored with the organisers' formula</h2>
+  </div>
+  <div class="col" style="position:absolute; left:1256px; top:262px; width:536px; gap:24px">
+    <div class="card" style="background:#fff; border-color:var(--line); padding:30px 34px"><p class="big" style="font-size:112px; color:var(--accent)">0.9975</p><p class="body">final score, against a 0.55 baseline shipped with the kit</p></div>
+    <div class="col" style="gap:6px; border-top:1px solid var(--line); padding-top:18px"><p class="mono" style="font-size:34px">30 min · 1,601 calls</p><p class="cap">for 520 emails, 8 and 4 in parallel, $57 at list price</p></div>
+    <div class="col" style="gap:6px; border-top:1px solid var(--line); padding-top:18px"><p class="mono" style="font-size:34px">0 rules</p><p class="cap">fitted to the dataset, so a fresh seed is the same job</p></div>
+  </div>
+  <p class="foot"><b>Retina</b> · 16 · run bcb018bf, scored locally with the organisers' scoring code; scoreboard submission [pending]</p>
+</section>
+
+<!-- 17 next -->
+<section class="slide">
+  <svg width="1920" height="1080" viewBox="0 0 1920 1080" style="position:absolute; left:0; top:0">
+<defs><linearGradient id="wash" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".22" stop-color="#eaf2fd"/><stop offset=".6" stop-color="#f6f9fe"/><stop offset="1" stop-color="#ffffff"/></linearGradient><linearGradient id="pipe" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#d6e6fc"/><stop offset=".5" stop-color="#f4f8ff"/><stop offset="1" stop-color="#d6e6fc"/></linearGradient><linearGradient id="pipev" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d6e6fc"/><stop offset=".5" stop-color="#f4f8ff"/><stop offset="1" stop-color="#d6e6fc"/></linearGradient><radialGradient id="glow" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#fff"/><stop offset=".7" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient><filter id="sh" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#175CD3" flood-opacity=".18"/></filter></defs>
+<rect x="0" y="0" width="1920" height="1080" fill="url(#wash)"/>
+<polygon points="700,638 1220,638 1220,652 700,652" fill="#dbe7fb" stroke="#5b9bf0" stroke-width="1.5"/>
+<polygon points="740,468 1180,468 1220,638 700,638" fill="#f5f9ff" stroke="#5b9bf0" stroke-width="1.5"/>
+<rect x="835.0" y="491.0" width="250" height="42" rx="21.0" fill="#0f3f94" stroke="#0f3f94" stroke-width="1.2" filter="url(#sh)"/>
+<text x="960" y="519.56" font-family="Inter" font-size="21" font-weight="500" fill="#fff" text-anchor="middle" letter-spacing="0">Retina ontology</text>
+<rect x="740.0" y="570.0" width="140" height="32" rx="16.0" fill="#175CD3" stroke="#175CD3" stroke-width="1.2" filter="url(#sh)"/>
+<text x="810" y="591.76" font-family="Inter" font-size="16" font-weight="500" fill="#fff" text-anchor="middle" letter-spacing="0">Review inbox</text>
+<rect x="890.0" y="570.0" width="140" height="32" rx="16.0" fill="#175CD3" stroke="#175CD3" stroke-width="1.2" filter="url(#sh)"/>
+<text x="960" y="591.76" font-family="Inter" font-size="16" font-weight="500" fill="#fff" text-anchor="middle" letter-spacing="0">Ask Retina</text>
+<rect x="1040.0" y="570.0" width="140" height="32" rx="16.0" fill="#175CD3" stroke="#175CD3" stroke-width="1.2" filter="url(#sh)"/>
+<text x="1110" y="591.76" font-family="Inter" font-size="16" font-weight="500" fill="#fff" text-anchor="middle" letter-spacing="0">BL vs SI check</text>
+<text x="820" y="674" font-family="Inter" font-size="16" font-weight="600" fill="#175CD3" text-anchor="middle" letter-spacing="3">BUILT TODAY</text>
+<polygon points="600,340 1320,340 1320,350 600,350" fill="#e8eef7" stroke="#98a2b3" stroke-width="1.5" stroke-dasharray="8 6"/>
+<polygon points="630,236 1290,236 1320,340 600,340" fill="#fff" stroke="#98a2b3" stroke-width="1.5" stroke-dasharray="8 6"/>
+<rect x="680" y="256" width="250" height="66" rx="6" fill="#fff" stroke="#98a2b3" stroke-width="1.2" />
+<text x="696" y="280" font-family="Inter" font-size="15" font-weight="600" fill="#101828" text-anchor="start" letter-spacing="0">Proposed action</text>
+<rect x="696" y="292" width="90" height="22" rx="4" fill="#eaecf0" stroke="#d0d5dd" stroke-width="1.2" />
+<text x="741" y="308" font-family="Inter" font-size="12" font-weight="400" fill="#98a2b3" text-anchor="middle" letter-spacing="0">Approve</text>
+<rect x="794" y="292" width="90" height="22" rx="4" fill="#eaecf0" stroke="#d0d5dd" stroke-width="1.2" />
+<text x="839" y="308" font-family="Inter" font-size="12" font-weight="400" fill="#98a2b3" text-anchor="middle" letter-spacing="0">Reject</text>
+<text x="990" y="284" font-family="Inter" font-size="18" font-weight="600" fill="#101828" text-anchor="start" letter-spacing="1.5">A CHAT THAT CAN ACT</text>
+<text x="990" y="310" font-family="Inter" font-size="17" font-weight="400" fill="#475467" text-anchor="start" letter-spacing="0">behind a person's approval</text>
+<polygon points="943,374 943,438 927,438 960,460 993,438 977,438 977,374 993,374 960,352 927,374" fill="url(#pipe)" stroke="#5b9bf0" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="6 5"/>
+<polygon points="600,876 1320,876 1320,886 600,886" fill="#e8eef7" stroke="#98a2b3" stroke-width="1.5" stroke-dasharray="8 6"/>
+<polygon points="630,772 1290,772 1320,876 600,876" fill="#fff" stroke="#98a2b3" stroke-width="1.5" stroke-dasharray="8 6"/>
+<rect x="680" y="794" width="120" height="50" rx="5" fill="#fff" stroke="#98a2b3" stroke-width="1.2" />
+<rect x="724" y="800" width="120" height="50" rx="5" fill="#fff" stroke="#98a2b3" stroke-width="1.2" />
+<rect x="768" y="806" width="120" height="50" rx="5" fill="#fff" stroke="#98a2b3" stroke-width="1.2" />
+<path d="M760 812 h60 M760 824 h40" stroke="#d0d5dd" stroke-width="4" stroke-linecap="round" transform="translate(26 12)"/>
+<text x="940" y="818" font-family="Inter" font-size="18" font-weight="600" fill="#101828" text-anchor="start" letter-spacing="1.5">LESSONS FROM CORRECTIONS</text>
+<text x="940" y="844" font-family="Inter" font-size="17" font-weight="400" fill="#475467" text-anchor="start" letter-spacing="0">approved, and checked on a holdout</text>
+<polygon points="943,762 943,674 927,674 960,652 993,674 977,674 977,762" fill="url(#pipe)" stroke="#5b9bf0" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="6 5"/>
+<polygon points="128,628 568,628 568,638 128,638" fill="#e8eef7" stroke="#98a2b3" stroke-width="1.5" stroke-dasharray="8 6"/>
+<polygon points="158,478 538,478 568,628 128,628" fill="#fff" stroke="#98a2b3" stroke-width="1.5" stroke-dasharray="8 6"/>
+<rect x="206" y="510" width="84" height="56" rx="5" fill="#fff" stroke="#98a2b3" stroke-width="1.4" />
+<path d="M208 513 L248.0 540.8 L288 513" fill="none" stroke="#98a2b3" stroke-width="1.4"/>
+<rect x="306" y="520" width="84" height="56" rx="5" fill="#fff" stroke="#98a2b3" stroke-width="1.4" />
+<path d="M308 523 L348.0 550.8 L388 523" fill="none" stroke="#98a2b3" stroke-width="1.4"/>
+<rect x="406" y="510" width="84" height="56" rx="5" fill="#fff" stroke="#98a2b3" stroke-width="1.4" />
+<path d="M408 513 L448.0 540.8 L488 513" fill="none" stroke="#98a2b3" stroke-width="1.4"/>
+<text x="348" y="668" font-family="Inter" font-size="20" font-weight="600" fill="#101828" text-anchor="middle" letter-spacing="2">A REAL MAILBOX</text>
+<text x="348" y="696" font-family="Inter" font-size="18" font-weight="400" fill="#475467" text-anchor="middle" letter-spacing="0">Gmail or Exchange, one adapter</text>
+<polygon points="580,536 668,536 668,520 690,553 668,586 668,570 580,570" fill="url(#pipev)" stroke="#5b9bf0" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="6 5"/>
+<polygon points="1352,628 1792,628 1792,638 1352,638" fill="#e8eef7" stroke="#98a2b3" stroke-width="1.5" stroke-dasharray="8 6"/>
+<polygon points="1382,478 1762,478 1792,628 1352,628" fill="#fff" stroke="#98a2b3" stroke-width="1.5" stroke-dasharray="8 6"/>
+<path d="M1400 500 H1444 L1458 514 V574 H1400 Z" fill="#fff" stroke="#98a2b3" stroke-width="1.3"/>
+<path d="M1444 500 V514 H1458" fill="none" stroke="#98a2b3" stroke-width="1.3"/>
+<rect x="1410" y="522" width="32" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1410" y="532" width="26" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1410" y="542" width="20" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1406" y="552" width="46" height="16" rx="3" fill="#6172f3" stroke="#6172f3" stroke-width="1.2" />
+<text x="1429.0" y="564" font-family="JetBrains Mono" font-size="11" font-weight="600" fill="#fff" text-anchor="middle" letter-spacing="0">INV</text>
+<path d="M1466 514 H1510 L1524 528 V588 H1466 Z" fill="#fff" stroke="#98a2b3" stroke-width="1.3"/>
+<path d="M1510 514 V528 H1524" fill="none" stroke="#98a2b3" stroke-width="1.3"/>
+<rect x="1476" y="536" width="32" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1476" y="546" width="26" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1476" y="556" width="20" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1472" y="566" width="46" height="16" rx="3" fill="#6172f3" stroke="#6172f3" stroke-width="1.2" />
+<text x="1495.0" y="578" font-family="JetBrains Mono" font-size="11" font-weight="600" fill="#fff" text-anchor="middle" letter-spacing="0">PO</text>
+<path d="M1600 500 H1644 L1658 514 V574 H1600 Z" fill="#fff" stroke="#98a2b3" stroke-width="1.3"/>
+<path d="M1644 500 V514 H1658" fill="none" stroke="#98a2b3" stroke-width="1.3"/>
+<rect x="1610" y="522" width="32" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1610" y="532" width="26" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1610" y="542" width="20" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1606" y="552" width="46" height="16" rx="3" fill="#12b76a" stroke="#12b76a" stroke-width="1.2" />
+<text x="1629.0" y="564" font-family="JetBrains Mono" font-size="11" font-weight="600" fill="#fff" text-anchor="middle" letter-spacing="0">PACK</text>
+<path d="M1666 514 H1710 L1724 528 V588 H1666 Z" fill="#fff" stroke="#98a2b3" stroke-width="1.3"/>
+<path d="M1710 514 V528 H1724" fill="none" stroke="#98a2b3" stroke-width="1.3"/>
+<rect x="1676" y="536" width="32" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1676" y="546" width="26" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1676" y="556" width="20" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1672" y="566" width="46" height="16" rx="3" fill="#12b76a" stroke="#12b76a" stroke-width="1.2" />
+<text x="1695.0" y="578" font-family="JetBrains Mono" font-size="11" font-weight="600" fill="#fff" text-anchor="middle" letter-spacing="0">BKG</text>
+<line x1="1563" y1="504" x2="1563" y2="590" stroke="#d0d5dd" stroke-width="2"/>
+<text x="1572" y="668" font-family="Inter" font-size="20" font-weight="600" fill="#101828" text-anchor="middle" letter-spacing="2">OTHER DOCUMENT PAIRS</text>
+<text x="1572" y="696" font-family="Inter" font-size="18" font-weight="400" fill="#475467" text-anchor="middle" letter-spacing="0">invoice vs PO, packing list vs booking</text>
+<polygon points="1342,536 1254,536 1254,520 1232,553 1254,586 1254,570 1342,570" fill="url(#pipev)" stroke="#5b9bf0" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="6 5"/>
+<rect x="128" y="236" width="40" height="24" rx="4" fill="#f5f9ff" stroke="#5b9bf0" stroke-width="1.2" />
+<text x="180" y="254" font-family="Inter" font-size="18" font-weight="400" fill="#344054" text-anchor="start" letter-spacing="0">built</text>
+<rect x="128" y="276" width="40" height="24" rx="4" fill="#fff" stroke="#98a2b3" stroke-dasharray="6 5"/>
+<text x="180" y="294" font-family="Inter" font-size="18" font-weight="400" fill="#344054" text-anchor="start" letter-spacing="0">next</text>
+  </svg>
+  <div class="head" style="position:relative">
+    <p class="eyebrow">What is next</p>
+    <h2 class="title">Built for one inbox. Designed for any</h2>
+  </div>
+  <p class="lede" style="position:absolute; left:128px; top:922px; width:1664px; font-size:22px">The ontology, the chat and the review inbox stay the same for any company communication. Only the document pair and the enums are shipping.</p>
+  <p class="foot"><b>Retina</b> · 17</p>
+</section>
+
+<!-- 18 close -->
+<section class="slide tint" style="justify-content:space-between; padding-top:112px">
+  <svg width="1920" height="1080" viewBox="0 0 1920 1080" style="position:absolute; left:0; top:0">
+<defs><linearGradient id="pipe" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#d6e6fc"/><stop offset=".5" stop-color="#f4f8ff"/><stop offset="1" stop-color="#d6e6fc"/></linearGradient><filter id="sh" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#175CD3" flood-opacity=".18"/></filter></defs>
+<polygon points="1330,356 1800,356 1800,366 1330,366" fill="#e8eef7" stroke="#b9c6d8" stroke-width="1.5"/>
+<polygon points="1364,236 1766,236 1800,356 1330,356" fill="#fff" stroke="#b9c6d8" stroke-width="1.5"/>
+<rect x="1390" y="252" width="350" height="90" rx="4" fill="#fff" stroke="#98a2b3" stroke-width="1.2" />
+<line x1="1390" y1="266" x2="1740" y2="266" stroke="#d0d5dd"/>
+<circle cx="1730" cy="259" r="2" fill="#d0d5dd"/>
+<circle cx="1722" cy="259" r="2" fill="#d0d5dd"/>
+<circle cx="1714" cy="259" r="2" fill="#d0d5dd"/>
+<rect x="1550" y="276" width="170" height="20" rx="10" fill="#175CD3" stroke="#175CD3" stroke-width="1.2" />
+<rect x="1410" y="304" width="220" height="20" rx="10" fill="#e4ecf9" stroke="#e4ecf9" stroke-width="1.2" />
+<rect x="1410" y="328" width="150" height="8" rx="4" fill="#d0d5dd" stroke="#d0d5dd" stroke-width="1.2" />
+<text x="1565.0" y="222" font-family="Inter" font-size="18" font-weight="600" fill="#344054" text-anchor="middle" letter-spacing="3">ANSWERS</text>
+<polygon points="1552,452 1552,394 1540,394 1565,378 1590,394 1578,394 1578,452" fill="url(#pipe)" stroke="#5b9bf0" stroke-width="1.5" stroke-linejoin="round"/>
+<polygon points="1330,602 1800,602 1800,616 1330,616" fill="#dbe7fb" stroke="#5b9bf0" stroke-width="1.5"/>
+<polygon points="1368,462 1762,462 1800,602 1330,602" fill="#f5f9ff" stroke="#5b9bf0" stroke-width="1.5"/>
+<line x1="1565.0" y1="532" x2="1440" y2="500" stroke="#9cc0f2" stroke-width="2.5"/>
+<line x1="1565.0" y1="532" x2="1700" y2="500" stroke="#9cc0f2" stroke-width="2.5"/>
+<line x1="1565.0" y1="532" x2="1690" y2="572" stroke="#9cc0f2" stroke-width="2.5"/>
+<line x1="1565.0" y1="532" x2="1450" y2="572" stroke="#9cc0f2" stroke-width="2.5"/>
+<rect x="1499.0" y="516.0" width="132" height="32" rx="16.0" fill="#0f3f94" stroke="#0f3f94" stroke-width="1.2" filter="url(#sh)"/>
+<text x="1565.0" y="537.4" font-family="Inter" font-size="15" font-weight="500" fill="#fff" text-anchor="middle" letter-spacing="0">Shipments</text>
+<rect x="1379.0" y="484.0" width="122" height="32" rx="16.0" fill="#175CD3" stroke="#175CD3" stroke-width="1.2" filter="url(#sh)"/>
+<text x="1440" y="505.4" font-family="Inter" font-size="15" font-weight="500" fill="#fff" text-anchor="middle" letter-spacing="0">Companies</text>
+<rect x="1639.0" y="484.0" width="122" height="32" rx="16.0" fill="#175CD3" stroke="#175CD3" stroke-width="1.2" filter="url(#sh)"/>
+<text x="1700" y="505.4" font-family="Inter" font-size="15" font-weight="500" fill="#fff" text-anchor="middle" letter-spacing="0">Ports</text>
+<rect x="1629.0" y="556.0" width="122" height="32" rx="16.0" fill="#175CD3" stroke="#175CD3" stroke-width="1.2" filter="url(#sh)"/>
+<text x="1690" y="577.4" font-family="Inter" font-size="15" font-weight="500" fill="#fff" text-anchor="middle" letter-spacing="0">Vessels</text>
+<rect x="1389.0" y="556.0" width="122" height="32" rx="16.0" fill="#175CD3" stroke="#175CD3" stroke-width="1.2" filter="url(#sh)"/>
+<text x="1450" y="577.4" font-family="Inter" font-size="15" font-weight="500" fill="#fff" text-anchor="middle" letter-spacing="0">Documents</text>
+<text x="1565.0" y="650" font-family="Inter" font-size="18" font-weight="600" fill="#175CD3" text-anchor="middle" letter-spacing="3">RETINA</text>
+<polygon points="1552,722 1552,680 1540,680 1565,664 1590,680 1578,680 1578,722" fill="url(#pipe)" stroke="#5b9bf0" stroke-width="1.5" stroke-linejoin="round"/>
+<polygon points="1330,862 1800,862 1800,872 1330,872" fill="#e8eef7" stroke="#b9c6d8" stroke-width="1.5"/>
+<polygon points="1364,732 1766,732 1800,862 1330,862" fill="#fff" stroke="#b9c6d8" stroke-width="1.5"/>
+<rect x="1380" y="770" width="82" height="54" rx="5" fill="#fff" stroke="#98a2b3" stroke-width="1.4" />
+<path d="M1382 773 L1421.0 799.7 L1460 773" fill="none" stroke="#98a2b3" stroke-width="1.4"/>
+<rect x="1480" y="778" width="82" height="54" rx="5" fill="#fff" stroke="#98a2b3" stroke-width="1.4" />
+<path d="M1482 781 L1521.0 807.7 L1560 781" fill="none" stroke="#98a2b3" stroke-width="1.4"/>
+<path d="M1590 752 H1626 L1640 766 V818 H1590 Z" fill="#fff" stroke="#98a2b3" stroke-width="1.3"/>
+<path d="M1626 752 V766 H1640" fill="none" stroke="#98a2b3" stroke-width="1.3"/>
+<rect x="1600" y="774" width="24" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1600" y="784" width="18" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1600" y="794" width="12" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1596" y="796" width="38" height="16" rx="3" fill="#175CD3" stroke="#175CD3" stroke-width="1.2" />
+<text x="1615.0" y="808" font-family="JetBrains Mono" font-size="11" font-weight="600" fill="#fff" text-anchor="middle" letter-spacing="0">PDF</text>
+<path d="M1650 762 H1686 L1700 776 V828 H1650 Z" fill="#fff" stroke="#98a2b3" stroke-width="1.3"/>
+<path d="M1686 762 V776 H1700" fill="none" stroke="#98a2b3" stroke-width="1.3"/>
+<rect x="1660" y="784" width="24" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1660" y="794" width="18" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1660" y="804" width="12" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1656" y="806" width="38" height="16" rx="3" fill="#12b76a" stroke="#12b76a" stroke-width="1.2" />
+<text x="1675.0" y="818" font-family="JetBrains Mono" font-size="11" font-weight="600" fill="#fff" text-anchor="middle" letter-spacing="0">XLS</text>
+<path d="M1710 752 H1746 L1760 766 V818 H1710 Z" fill="#fff" stroke="#98a2b3" stroke-width="1.3"/>
+<path d="M1746 752 V766 H1760" fill="none" stroke="#98a2b3" stroke-width="1.3"/>
+<rect x="1720" y="774" width="24" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1720" y="784" width="18" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1720" y="794" width="12" height="4" rx="2" fill="#d0d5dd"/>
+<rect x="1716" y="796" width="38" height="16" rx="3" fill="#6172f3" stroke="#6172f3" stroke-width="1.2" />
+<text x="1735.0" y="808" font-family="JetBrains Mono" font-size="11" font-weight="600" fill="#fff" text-anchor="middle" letter-spacing="0">DOC</text>
+<text x="1565.0" y="900" font-family="Inter" font-size="18" font-weight="600" fill="#344054" text-anchor="middle" letter-spacing="3">YOUR INBOX</text>
+  </svg>
+  <div class="band"></div>
+  <p class="eyebrow" style="position:relative">Retina</p>
+  <div class="col" style="position:relative; gap:48px">
+    <h2 class="big" style="font-size:76px; line-height:1.08; letter-spacing:-2px; width:1080px">Your mail already holds your business data. Retina makes it readable, checkable and askable.</h2>
+    <div style="display:flex; gap:22px">
+    <div style="display:flex; align-items:center; gap:18px; background:#fff; border:1px solid var(--line); border-radius:14px; padding:18px 26px 18px 18px; box-shadow:0 10px 24px -14px rgba(23,92,211,.45)">
+      <div style="width:64px; height:64px; border-radius:12px; background:var(--tint); border:1px solid var(--line); display:flex; align-items:center; justify-content:center"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg></div>
+      <div><p style="font-size:28px; font-weight:600">Readable</p><p style="font-size:19px; color:var(--ink-3)">every email and attachment</p></div>
+    </div><div style="display:flex; align-items:center; gap:18px; background:#fff; border:1px solid var(--line); border-radius:14px; padding:18px 26px 18px 18px; box-shadow:0 10px 24px -14px rgba(23,92,211,.45)">
+      <div style="width:64px; height:64px; border-radius:12px; background:var(--tint); border:1px solid var(--line); display:flex; align-items:center; justify-content:center"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg></div>
+      <div><p style="font-size:28px; font-weight:600">Checkable</p><p style="font-size:19px; color:var(--ink-3)">every field, back to its line</p></div>
+    </div><div style="display:flex; align-items:center; gap:18px; background:#fff; border:1px solid var(--line); border-radius:14px; padding:18px 26px 18px 18px; box-shadow:0 10px 24px -14px rgba(23,92,211,.45)">
+      <div style="width:64px; height:64px; border-radius:12px; background:var(--accent); border:1px solid var(--line); display:flex; align-items:center; justify-content:center"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/><path d="M8 12h.01"/><path d="M12 12h.01"/><path d="M16 12h.01"/></svg></div>
+      <div><p style="font-size:28px; font-weight:600">Askable</p><p style="font-size:19px; color:var(--ink-3)">by anyone, in plain words</p></div>
+    </div>
+    </div>
+  </div>
+  <div style="position:relative; display:flex; gap:56px"><div style="display:flex; align-items:center; gap:12px; font-size:24px; color:var(--ink-2)"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--ink-3)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg><a href="https://retina-silk.vercel.app" style="color:inherit; text-decoration:none">retina-silk.vercel.app</a></div><div style="display:flex; align-items:center; gap:12px; font-size:24px; color:var(--ink-2)"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--ink-3)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg><a href="https://github.com/Noobmaster169/retina" style="color:inherit; text-decoration:none">github.com/Noobmaster169/retina</a></div></div>
+</section>
+
+<!-- 19 blank template -->
+<section class="slide"></section>
+
+</body>
+</html>
