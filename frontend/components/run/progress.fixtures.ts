@@ -27,6 +27,7 @@ export function run(over: Partial<RunSummary> = {}): RunSummary {
   return {
     id: "044367f9-109f-4766-9c65-df4a30b2bc11",
     name: null,
+    source: "averis",
     status: "running",
     ratePerSecond: 2,
     totalEmails: 520,

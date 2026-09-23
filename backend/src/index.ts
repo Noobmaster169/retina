@@ -12,6 +12,7 @@ import { lastBeat } from "./queues/heartbeat";
 import { redisPriorityCache } from "./queues/priority-cache";
 import { closeQueues } from "./queues/queues";
 import { bullRunQueues } from "./queues/run-queues";
+import { inboxUrl } from "./inboxes";
 import { inboxScorer } from "./scorer/scorer";
 import { createMinioStore, type ObjectStore } from "./storage";
 
@@ -42,6 +43,11 @@ const app = createApp({
   runQueues,
   store,
   scorer: inboxScorer(config.EMAIL_SERVER_URL),
+  // Each inbox is the same server with its own answer key behind /submit.
+  scorerFor: (source) => {
+    const url = inboxUrl(source);
+    return url ? inboxScorer(url) : null;
+  },
   priority: redisPriorityCache(getRedis()),
   redis: getRedis(),
   roPool,

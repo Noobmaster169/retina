@@ -8,11 +8,25 @@ and merged into 13 afterwards.
 `docs/phases/phase-13-business-data.md` and phase 7's two `[~]` items are still under "Deferred"
 below.
 
-**2026-09-22: the stack can serve an inbox other than the organisers' 520.** The email server
-already took its dataset as configuration and the api only reaches it over HTTP, so this is one
-variable in `compose.local.yaml` and no code anywhere: `INBOX_DATA=../emails/data_5k docker compose
--f compose.local.yaml up -d inbox`. Unset, it is the 520, which is what every published number was
-measured against.
+**2026-09-23: a run chooses its inbox.** The new-run form offers the organisers' 520 and the
+5,000-email synthetic set side by side, and a run carries which it read in `core.runs.source`,
+a column that always existed and had only ever held `averis`. The synthetic set is a second
+copy of the same email server image (`inbox-5k`, compose profile `synthetic`), so it ingests,
+submits and scores through exactly the code path the 520 does, against its own answer key.
+`inboxes.ts` is the one place a source becomes a URL, and the worker's ingest, the api's
+scorer, the email pane and the email-by-email grading all ask it. Verified end to end on the
+local stack: a five-email synthetic run finished with no failures, its submission was scored
+over 5,000 emails by the synthetic key, and its email-by-email view graded all five against
+that key, five categories right and the planted mismatch on `email_0045` caught.
+
+This replaces the `INBOX_DATA` swap of a day earlier, which could only ever serve one set at
+a time and made the dataset a property of the deployment rather than of a run.
+
+**Local images were stale.** `doc-extract` and `llm-proxy` had been built before the 21 Sep
+changes to both, so every email with attachments failed with "doc-extract answered /extract
+with an unexpected shape" whichever inbox it came from. Rebuilt with `--build`; the box
+rebuilds both on change, so it was only ever a local fault. Two synthetic runs from before the
+rebuild are left in the local database, one with three failed emails.
 
 `emails/data_5k` is a 5,000-email set of the same shape, one year of threaded mail over 1,398
 shipments, 414 mismatches and 104 cases for a person, dropped in as `sdoc-synth-5k-data.zip`. It is

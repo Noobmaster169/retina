@@ -237,22 +237,26 @@ yourself, and it gates the browser's door only: a teammate calling the backend d
 `TEAM_API_KEY`, and the eval CLIs, are unchanged.
 
 <details>
-<summary><b>Running a different inbox</b></summary>
+<summary><b>The synthetic inbox (5,000 emails)</b></summary>
 
-The email server takes its dataset as configuration and the api only ever reaches it over HTTP,
-so a different set is a mount and never a code change. `INBOX_DATA` says which:
+The new-run form on `/runs` has an **Inbox** choice: the organisers' 520, and the 5,000-email
+synthetic set. The second is the same email server with the other dataset mounted (`inbox-5k`),
+so a run of it ingests, submits and scores exactly as the 520 does, against its own answer key.
+Each run carries which inbox it read, and the ingest, the scorer, the email pane and the
+email-by-email grading all follow it.
+
+It needs the data unpacked at `emails/data_5k` and the `synthetic` compose profile:
 
 ```bash
 cd backend
-INBOX_DATA=../emails/data_5k docker compose -f compose.local.yaml up -d inbox
-curl -s 127.0.0.1:8080/health          # {"status":"ok","emails":5000,"scoring_available":true}
-docker compose -f compose.local.yaml up -d inbox    # unset: back to the organisers' 520
+docker compose -f compose.local.yaml --profile synthetic up -d
+curl -s 127.0.0.1:8081/health          # {"status":"ok","emails":5000,"scoring_available":true}
 ```
 
-Nothing else moves. The api picks the new count up on its next health check without a restart,
-ingest lists what the server lists, and `POST /runs/:id/submit` scores against whichever answer
-key that set mounted. The `dev` and `holdout` subsets are offered only against the organisers'
-520, because the split under `eval/` names that set's ids and no other's.
+and `EMAIL_SERVER_5K_URL=http://127.0.0.1:8081` in `backend/.env`. Without either, the form
+offers only the organisers' inbox. On the box, `deploy/README.md` has the copy and the switch.
+The `dev` and `holdout` subsets are offered only against the 520, because the split under
+`eval/` names that set's ids and no other's.
 
 `emails/data_5k` is a 5,000-email set built in the same shape as the organisers' kit: one year of
 threaded mail over 1,398 shipments, with 414 mismatches and 104 cases for a person. It is **not in

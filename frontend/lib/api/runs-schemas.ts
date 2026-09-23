@@ -93,10 +93,28 @@ export const PromptSet = z.object({
 });
 export type PromptSet = z.infer<typeof PromptSet>;
 
+/** Which inbox a run reads. Mirrors RunSource in backend/src/contracts.ts. */
+export const RunSource = z.enum(["averis", "synthetic_5k"]);
+export type RunSource = z.infer<typeof RunSource>;
+
+/** One inbox a new run may read, as the deployment finds it now. Mirrors InboxView. */
+export const InboxView = z.object({
+  source: RunSource,
+  label: z.string(),
+  reachable: z.boolean(),
+  emails: z.number().nullable(),
+  scoringAvailable: z.boolean(),
+});
+export type InboxView = z.infer<typeof InboxView>;
+export const InboxList = z.object({ inboxes: z.array(InboxView) });
+export type InboxList = z.infer<typeof InboxList>;
+
 export const RunSummary = z.object({
   id: z.string(),
   /** What a person called this run. Null when nobody has, and `runName` names it by when it started. */
   name: z.string().nullable(),
+  /** Which inbox it read; the two carry different answer keys. Defaulted for a backend that predates it. */
+  source: RunSource.default("averis"),
   /** `completed` means ingestion finished. Processing is finished when done + failed + review = totalEmails. */
   status: RunStatus,
   ratePerSecond: z.number(),

@@ -1,17 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import useSWR from "swr";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 
 import { Button } from "@/components/ui/button";
-import { HealthReport } from "@/lib/api/queues-schemas";
-import { parsedFetcher } from "@/lib/poll";
 import { Icon } from "@/components/ui/icons";
 import { z } from "zod";
 
-import type { PromptStep } from "@/lib/api/runs-schemas";
+import type { PromptStep, RunSource } from "@/lib/api/runs-schemas";
 import { panel } from "@/lib/motion";
 
 import { countsFor, grouped, ORGANISERS, priceOf, scopesFor } from "./inbox-scope";
@@ -19,6 +16,7 @@ import { RUN_PASSWORD_HEADER } from "@/lib/run-gate.header";
 
 import { PACES, STEPS } from "./new-run-choices";
 import { RunPassword } from "./run-password";
+import { useInboxChoice } from "./use-inbox-choice";
 import { Field } from "./labelled-select";
 import { DEFAULT, useRunOptions } from "./use-run-options";
 
@@ -48,16 +46,9 @@ type Scope = "dev" | "holdout" | "all" | "first";
 export function NewRunForm({ onCreated }: { onCreated: () => void }) {
   const router = useRouter();
   const options = useRunOptions();
-  // How many emails the inbox actually serves. Read once, never polled: it
-  // changes when somebody remounts the email server with another dataset, not
-  // while a form is open. Null until it answers, and then the form says "the
-  // whole inbox" without a number rather than a number that may be wrong.
-  const { data: health } = useSWR("/api/health", parsedFetcher(HealthReport), {
-    revalidateOnFocus: false,
-    keepPreviousData: true,
-  });
-  const inbox = health?.checks.inbox.emails ?? null;
-  const scopes = scopesFor(inbox);
+  const choice = useInboxChoice();
+  const inbox = choice.size;
+  const scopes = scopesFor(inbox, choice.organisers);
   const counts = countsFor(inbox);
   const [scope, setScope] = useState<Scope>("first");
   const [count, setCount] = useState("20");
@@ -74,7 +65,7 @@ export function NewRunForm({ onCreated }: { onCreated: () => void }) {
   const pinned = STEPS.filter(({ step }) => prompts[step] && prompts[step] !== options.active(step)).length;
 
   function body(): Record<string, unknown> {
-    const out: Record<string, unknown> = { ratePerSecond: Number(pace) };
+    const out: Record<string, unknown> = { ratePerSecond: Number(pace), source: choice.source };
     if (scope === "dev" || scope === "holdout") out.subset = scope;
     if (scope === "first") out.limit = Number(count);
     // Only a version other than the active one is pinned; the active one is what a run gets anyway.
@@ -131,6 +122,20 @@ export function NewRunForm({ onCreated }: { onCreated: () => void }) {
   return (
     <form onSubmit={submit} className="border-y border-hairline py-4">
       <div className="flex flex-wrap items-end gap-3">
+        {choice.choices.length > 1 ? (
+          <Field
+            name="inbox"
+            label="Inbox"
+            choices={choice.choices}
+            value={choice.source}
+            onChange={(v) => {
+              choice.setSource(v as RunSource);
+              // The eval subsets belong to one inbox; leaving one selected
+              // while switching to the other would ask for emails not there.
+              if (scope === "dev" || scope === "holdout") setScope("first");
+            }}
+          />
+        ) : null}
         <Field name="scope" label="Emails" choices={scopes} value={scope} onChange={(v) => setScope(v as Scope)} />
         {scope === "first" ? <Field name="count" label="How many" choices={counts} value={count} onChange={setCount} /> : null}
         <Field name="pace" label="Pace" choices={PACES} value={pace} onChange={setPace} />

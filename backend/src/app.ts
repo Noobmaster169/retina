@@ -8,6 +8,7 @@ import { transactor } from "./db";
 import type { HealthReport } from "./contracts";
 import { RetryableError, UpstreamError } from "./lib/errors";
 import { childLogger } from "./lib/logger";
+import type { RunSource } from "./contracts";
 import type { Scorer } from "./scorer/scorer";
 import type { ObjectStore } from "./storage";
 import type { PriorityCache } from "./queues/priority-cache";
@@ -31,6 +32,7 @@ import { runQueuesRouter } from "./routes/run-queues.routes";
 import { runTraceRouter } from "./routes/run-trace.routes";
 import { runStreamRouter } from "./routes/run-stream.routes";
 import { runsRouter } from "./routes/runs.routes";
+import { inboxesRouter } from "./routes/inboxes.routes";
 import { submissionsRouter } from "./routes/submissions.routes";
 
 const log = childLogger({ module: "api" });
@@ -42,6 +44,11 @@ export interface AppDeps {
   /** Null where object storage is not configured; submitting a run then answers 503. */
   store: ObjectStore | null;
   scorer: Scorer;
+  /**
+   * The scorer for the inbox a run read, so a run is scored against the answer
+   * key of the dataset it came from. Absent, every run is scored by `scorer`.
+   */
+  scorerFor?(source: RunSource): Scorer | null;
   health: () => Promise<HealthReport>;
   /** Where a tier change is written through, so the next email queued reads it. */
   priority: PriorityCache;
@@ -102,6 +109,7 @@ export function createApp(deps: AppDeps): express.Express {
   app.use("/runs", runStreamRouter({ ...deps, queuesFor: queues.viewFor }));
   app.use("/runs", runTraceRouter(deps));
   app.use("/runs", submissionsRouter(deps));
+  app.use("/inboxes", inboxesRouter());
   app.use("/review", reviewRouter({ db: deps.pool, tx: transactor(deps.pool), store: deps.store, queues: deps.runQueues }));
   app.use("/files", filesRouter(deps));
   app.use("/eval", evalRouter(deps));

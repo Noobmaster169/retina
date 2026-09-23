@@ -34,6 +34,9 @@ export function RunRow({ run, onDeleted }: { run: RunSummary; onDeleted: () => v
           <span className="block text-strong group-hover:underline">{runName(run)}</span>
           <span className="mt-0.5 block font-mono text-mono-sm text-ink-tertiary">
             {run.id.slice(0, 8)} · {started(run)}
+            {/* Said only where it is not the organisers' inbox: the two carry
+                different answer keys, so a score here means nothing without it. */}
+            {run.source === "synthetic_5k" ? " · synthetic inbox" : null}
           </span>
         </Link>
       </Cell>

@@ -42,6 +42,12 @@ const Env = z.object({
     .transform((value) => value === "true"),
 
   EMAIL_SERVER_URL: z.url(),
+  // A second inbox: the 5,000-email synthetic set, served by the same email
+  // server image with a different dataset mounted, so it ingests and scores
+  // exactly as the organisers' one does. Optional, because it is too big for
+  // git and a deployment that was not given it simply does not offer it: the
+  // new-run form lists an inbox only when this answers.
+  EMAIL_SERVER_5K_URL: optionalString,
   // The llm-proxy service of the compose stack. 4001 is where compose.local.yaml
   // publishes it on the host; inside compose it is http://llm-proxy:4000.
   LLM_PROXY_URL: z.url().default("http://127.0.0.1:4001"),

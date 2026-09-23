@@ -2,6 +2,8 @@ import { Router } from "express";
 import type { Pool } from "pg";
 import { z } from "zod";
 
+import { RunSource } from "../contracts";
+
 import { hasGroundTruth } from "../eval/ground-truth";
 import { evaluateRun } from "../eval/report";
 import { runs } from "../ontology/repositories";
@@ -15,11 +17,14 @@ export function evalRouter(deps: { pool: Pool }): Router {
 
   router.get("/runs/:id", async (req, res) => {
     const id = z.uuid().safeParse(req.params.id);
-    if (!hasGroundTruth() || !id.success || (await runs.status(deps.pool, id.data)) === null) {
+    const run = id.success ? await runs.get(deps.pool, id.data) : null;
+    // Graded against the key of the inbox this run read, never another's.
+    const inbox = RunSource.catch("averis").parse(run?.source);
+    if (!run || !hasGroundTruth(inbox)) {
       res.status(404).json({ error: "not found" });
       return;
     }
-    res.json(await evaluateRun(deps.pool, id.data));
+    res.json(await evaluateRun(deps.pool, run.id, inbox));
   });
 
   return router;

@@ -3,6 +3,8 @@ import { config } from "./config";
 import { closePool, getPool } from "./db";
 import { httpDocExtractClient } from "./doc-extract";
 import { AverisSource } from "./ingest";
+import { inboxUrl } from "./inboxes";
+import { TerminalError } from "./lib/errors";
 import { childLogger } from "./lib/logger";
 import { redisGateMeter } from "./ingest";
 import { redisLiveCalls } from "./live";
@@ -30,6 +32,14 @@ const workers = startWorkers(
   {
     pool,
     source: new AverisSource(config.EMAIL_SERVER_URL),
+    // A run that names an inbox this deployment was not given fails its ingest
+    // loudly rather than quietly reading the organisers' one: the api refuses
+    // to create such a run, so this is only ever a misconfiguration.
+    sourceFor: (source) => {
+      const url = inboxUrl(source);
+      if (!url) throw new TerminalError(`this deployment serves no ${source} inbox; set EMAIL_SERVER_5K_URL`);
+      return new AverisSource(url);
+    },
     store,
     llm,
     ontologyLlm,

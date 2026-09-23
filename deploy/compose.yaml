@@ -35,6 +35,9 @@ x-backend-env: &backend-env
   LLM_PROXY_URL: http://llm-proxy:4000
   DOC_EXTRACT_URL: http://doc-extract:8000
   EMAIL_SERVER_URL: http://inbox:8000
+  # The synthetic inbox, when its profile is on. Named whether or not it is:
+  # an inbox that does not answer is left off the new-run form, not an error.
+  EMAIL_SERVER_5K_URL: http://inbox-5k:8000
 
 services:
   postgres:
@@ -147,27 +150,41 @@ services:
   # nowhere else. JUDGE_TOKEN guards it anyway where .env names one; left empty
   # the server skips the check, which keeps a deploy from failing over a secret
   # that auto-deploy.sh cannot copy.
-  #
-  # `INBOX_DATA` in .env is which dataset it serves, relative to this file, so
-  # ~/retina. Unset it is the organisers' 520 from the clone, which is what
-  # every published number was measured against. A larger set is too big for
-  # git and carries an answer key of its own, so it is copied to the box by
-  # hand and lives beside this file rather than inside the clone: a `git pull`
-  # then never touches it and auto-deploy never has to carry it.
-  #
-  #   scp -r emails/data_5k student@<box>:~/retina/data_5k
-  #   echo 'INBOX_DATA=./data_5k' >> ~/retina/.env
-  #   cd ~/retina && docker compose up -d inbox
-  #
-  # Nothing else moves: the api reads the inbox over HTTP and picks the new
-  # count up on its next health check, and EVAL_GROUND_TRUTH_URL still points
-  # at this container, so local scoring follows the set it is serving.
   inbox:
     build: ../projects/retina/emails/server
     restart: unless-stopped
     volumes:
-      - ${INBOX_DATA:-../projects/retina/emails/data_v2}:/data:ro
-      - ${INBOX_DATA:-../projects/retina/emails/data_v2}/ground_truth.json:/secrets/ground_truth.json:ro
+      - ../projects/retina/emails/data_v2:/data:ro
+      - ../projects/retina/emails/data_v2/ground_truth.json:/secrets/ground_truth.json:ro
+    environment:
+      DATA_DIR: /data
+      GROUND_TRUTH: /secrets/ground_truth.json
+      REVEAL_GT: "1"
+      JUDGE_TOKEN: ${EVAL_JUDGE_TOKEN:-}
+
+  # The 5,000-email synthetic inbox: the same server image with the other set
+  # mounted, so a run chosen against it on the new-run form ingests, submits and
+  # scores exactly as the organisers' does, against its own answer key.
+  #
+  # Behind the `synthetic` profile, because the data is not in git (145 MB and a
+  # key of its own) and has to be copied here by hand. Until it is, leave the
+  # profile off: the api asks this service at EMAIL_SERVER_5K_URL, gets no
+  # answer, and the form simply does not offer the inbox. To turn it on:
+  #
+  #   rsync -az emails/data_5k/ student@<box>:~/retina/data_5k/     # from a dev machine
+  #   echo 'COMPOSE_PROFILES=synthetic' >> ~/retina/.env              # on the box
+  #   cd ~/retina && docker compose up -d
+  #
+  # auto-deploy.sh runs `docker compose up -d`, which reads COMPOSE_PROFILES from
+  # .env, so every later deploy keeps it up. It lives beside this file and not in
+  # the clone, so a `git pull` never touches it.
+  inbox-5k:
+    build: ../projects/retina/emails/server
+    restart: unless-stopped
+    profiles: ["synthetic"]
+    volumes:
+      - ./data_5k:/data:ro
+      - ./data_5k/ground_truth.json:/secrets/ground_truth.json:ro
     environment:
       DATA_DIR: /data
       GROUND_TRUTH: /secrets/ground_truth.json

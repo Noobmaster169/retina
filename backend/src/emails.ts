@@ -11,6 +11,7 @@
 import { z } from "zod";
 
 import { config } from "./config";
+import { INBOXES, inboxUrl } from "./inboxes";
 import { EmailRecord } from "./ingest";
 import { relayStatus, UpstreamError } from "./lib/errors";
 
@@ -64,10 +65,10 @@ function baseUrl(): string {
  * retryable/terminal language instead. The record shape is shared; only the
  * error model differs.
  */
-async function fetchFromServer(path: string): Promise<Response> {
+async function fetchFromServer(path: string, base = baseUrl()): Promise<Response> {
   let response: Response;
   try {
-    response = await fetch(`${baseUrl()}${path}`, { signal: AbortSignal.timeout(15_000) });
+    response = await fetch(`${base}${path}`, { signal: AbortSignal.timeout(15_000) });
   } catch (error) {
     throw new UpstreamError(503, `email server unreachable: ${String(error)}`, { cause: error, retryable: true });
   }
@@ -138,13 +139,45 @@ export async function listEmails(query: ListQuery): Promise<EmailPage> {
   };
 }
 
+/**
+ * The other inboxes a run may have read, asked only for what the organisers'
+ * one does not hold. A run of the synthetic inbox opens its emails through the
+ * same routes as any other, so the email pane cannot tell which it came from;
+ * this is where that stays true. Asked one record at a time rather than loaded
+ * whole, because that inbox is ten times the size and is read an email at a time.
+ */
+async function fromOtherInboxes(path: string): Promise<Response | null> {
+  for (const { source } of INBOXES) {
+    const base = source === "averis" ? null : inboxUrl(source);
+    if (!base) continue;
+    try {
+      return await fetchFromServer(path, base);
+    } catch (error) {
+      if (error instanceof UpstreamError && error.status === 404) continue;
+      throw error;
+    }
+  }
+  return null;
+}
+
 export async function getEmail(id: string): Promise<Email> {
   const email = (await loadInbox()).find((e) => e.email_id === id);
-  if (!email) throw new UpstreamError(404, `no such email: ${id}`);
-  return email;
+  if (email) return email;
+  const elsewhere = await fromOtherInboxes(`/emails/${encodeURIComponent(id)}`);
+  const parsed = elsewhere ? EmailRecord.safeParse(await elsewhere.json().catch(() => null)) : null;
+  if (!parsed?.success) throw new UpstreamError(404, `no such email: ${id}`);
+  return parsed.data;
 }
 
 /** The raw response from the email server, for streaming through. */
 export async function fetchAttachment(name: string): Promise<Response> {
-  return fetchFromServer(`/attachments/${encodeURIComponent(name)}`);
+  const path = `/attachments/${encodeURIComponent(name)}`;
+  try {
+    return await fetchFromServer(path);
+  } catch (error) {
+    if (!(error instanceof UpstreamError && error.status === 404)) throw error;
+    const elsewhere = await fromOtherInboxes(path);
+    if (!elsewhere) throw error;
+    return elsewhere;
+  }
 }

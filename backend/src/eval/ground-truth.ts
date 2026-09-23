@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import { z } from "zod";
 
 import { config } from "../config";
+import type { RunSource } from "../contracts";
+import { inboxUrl } from "../inboxes";
 import { TruthRow } from "../contracts";
 import { RetryableError, TerminalError, UpstreamError } from "../lib/errors";
 import type { Truth } from "./score";
@@ -28,13 +30,25 @@ export function pickSource(env: {
   return null;
 }
 
-export function hasGroundTruth(): boolean {
-  return pickSource(config) !== null;
+/**
+ * Where the answer key for one inbox is read from. The organisers' comes from
+ * the environment as it always has. Any other inbox is the same email server
+ * with its own key behind the same judge endpoint, so it is read from there,
+ * and a run is only ever graded against the key of the mail it read.
+ */
+function sourceFor(inbox: RunSource): TruthSource | null {
+  if (inbox === "averis") return pickSource(config);
+  const url = inboxUrl(inbox);
+  return url ? { kind: "http", url: `${url}/ground_truth`, token: config.EVAL_JUDGE_TOKEN } : null;
+}
+
+export function hasGroundTruth(inbox: RunSource = "averis"): boolean {
+  return sourceFor(inbox) !== null;
 }
 
 /** The answer key. Only eval/ may call this; the pipeline never sees a label. */
-export async function loadGroundTruth(): Promise<Truth> {
-  const source = pickSource(config);
+export async function loadGroundTruth(inbox: RunSource = "averis"): Promise<Truth> {
+  const source = sourceFor(inbox);
   if (!source) {
     throw new TerminalError("neither EVAL_GROUND_TRUTH_PATH nor EVAL_GROUND_TRUTH_URL is set: this backend holds no answer key");
   }

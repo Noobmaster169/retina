@@ -1,4 +1,4 @@
-import type { RunSummary } from "../contracts";
+import { RunSource, type RunSummary } from "../contracts";
 import type { Run, StoredSubmission } from "../ontology/repositories";
 
 export type QueueSnapshot = RunSummary["queues"];
@@ -32,6 +32,9 @@ export function toSummary(run: Run, parts: SummaryParts): RunSummary {
   return {
     id: run.id,
     name: run.name,
+    // A run stored before there was a second inbox names `averis`, so this only
+    // falls back for a value nothing writes.
+    source: RunSource.catch("averis").parse(run.source),
     status: run.status,
     ratePerSecond: run.ratePerSecond,
     totalEmails: run.totalEmails,

@@ -1,4 +1,4 @@
-import type { EvalReport } from "../contracts";
+import type { EvalReport, RunSource } from "../contracts";
 import type { Queryable } from "../db";
 import { chainsForRun } from "../ontology/repositories/classifications.eval";
 import { buildSubmission } from "../ontology/submission";
@@ -32,9 +32,11 @@ function wrongIds(truth: Truth, sub: Submission, ids: string[]): EvalReport["wro
  * hold only part of the inbox: `run` is over the emails it holds, `holdout`
  * over the held-out fifth, `full` over all 520 as the organisers' scorer sees it.
  */
-export async function evaluateRun(db: Queryable, runId: string): Promise<EvalReport> {
+export async function evaluateRun(db: Queryable, runId: string, inbox: RunSource = "averis"): Promise<EvalReport> {
   const [truth, split, built, chains] = await Promise.all([
-    loadGroundTruth(),
+    // The key of the inbox this run read. The split is the organisers' and names
+    // their ids, so against another inbox the holdout board is simply empty.
+    loadGroundTruth(inbox),
     loadSplit(),
     buildSubmission(db, runId),
     chainsForRun(db, runId),

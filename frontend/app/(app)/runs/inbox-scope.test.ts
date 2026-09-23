@@ -13,12 +13,12 @@ const values = (choices: { value: string }[]) => choices.map((one) => one.value)
 describe("scopesFor", () => {
   it("names the whole inbox by what it holds", () => {
     expect(labels(scopesFor(ORGANISERS))).toContain("The whole inbox, 520");
-    expect(labels(scopesFor(5000))).toContain("The whole inbox, 5,000");
+    expect(labels(scopesFor(5000, false))).toContain("The whole inbox, 5,000");
   });
 
-  it("offers the eval subsets only against the set their split was made from", () => {
+  it("offers the eval subsets only against the inbox their split was made from", () => {
     expect(values(scopesFor(ORGANISERS))).toEqual(["dev", "holdout", "all", "first"]);
-    expect(values(scopesFor(5000))).toEqual(["all", "first"]);
+    expect(values(scopesFor(5000, false))).toEqual(["all", "first"]);
   });
 
   it("says the whole inbox without a number before the server has answered", () => {

@@ -2,8 +2,8 @@ import { type Request, type Response, Router } from "express";
 import type { Pool } from "pg";
 import { z } from "zod";
 
-import type { SubmissionSummary, SubmitRefused, SubmitResult } from "../contracts";
-import { RetryableError } from "../lib/errors";
+import { RunSource, type SubmissionSummary, type SubmitRefused, type SubmitResult } from "../contracts";
+import { RetryableError, TerminalError } from "../lib/errors";
 import { runs, type StoredSubmission, submissions } from "../ontology/repositories";
 import { buildSubmission } from "../ontology/submission";
 import type { Scorer } from "../scorer/scorer";
@@ -13,6 +13,8 @@ export interface SubmissionsDeps {
   pool: Pool;
   store: ObjectStore | null;
   scorer: Scorer;
+  /** The scorer for the inbox a run read. See AppDeps.scorerFor. */
+  scorerFor?(source: RunSource): Scorer | null;
 }
 
 const SubmitQuery = z.object({ force: z.enum(["true", "false"]).default("false") });
@@ -25,7 +27,20 @@ function toSummary(row: StoredSubmission): SubmissionSummary {
 /** Mounted beside the run routes: what a run sends to the organisers' scorer, and what came back. */
 export function submissionsRouter(deps: SubmissionsDeps): Router {
   const router = Router();
-  const { pool, store, scorer } = deps;
+  const { pool, store } = deps;
+
+  /**
+   * The scorer holding the answer key of the dataset this run read. A run of
+   * the synthetic inbox scored against the organisers' key would produce a
+   * confident number about emails that key has never heard of.
+   */
+  function scorerOf(source: string): Scorer {
+    if (!deps.scorerFor) return deps.scorer;
+    const parsed = RunSource.safeParse(source);
+    const scorer = parsed.success ? deps.scorerFor(parsed.data) : null;
+    if (!scorer) throw new TerminalError(`this deployment has no scorer for the ${source} inbox`);
+    return scorer;
+  }
   // The api is one process, so this is enough to stop two tabs, or a retried
   // request, from scoring the same run twice at once.
   const submitting = new Set<string>();
@@ -90,7 +105,7 @@ export function submissionsRouter(deps: SubmissionsDeps): Router {
     await store.put(payloadKey, Buffer.from(JSON.stringify(payload)), "application/json");
     const stored = await submissions.insert(pool, { runId, payloadKey, nEmails, forced });
 
-    const scoreboard = await scorer.score(payload);
+    const scoreboard = await scorerOf(run?.source ?? "averis").score(payload);
     await submissions.recordScore(pool, stored.id, scoreboard);
     const result: SubmitResult = { submissionId: stored.id, finalScore: scoreboard.final_score, scoreboard };
     res.status(201).json(result);

@@ -87,6 +87,7 @@ export {
   type RunSummary,
   Stage,
   streamRun,
+  listInboxes,
 } from "./api/runs-client";
 export {
   Category,

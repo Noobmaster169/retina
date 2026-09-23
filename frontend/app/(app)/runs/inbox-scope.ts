@@ -42,9 +42,8 @@ export function countsFor(inbox: number | null): Choice[] {
  * Hidden rather than disabled: a choice that cannot be chosen is a question
  * about why, and the answer is of no interest to anyone not running the eval.
  */
-export function scopesFor(inbox: number | null): Choice[] {
+export function scopesFor(inbox: number | null, organisers = true): Choice[] {
   const size = inbox ?? ORGANISERS;
-  const organisers = size === ORGANISERS;
   return [
     ...(organisers
       ? [

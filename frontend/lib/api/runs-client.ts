@@ -5,6 +5,8 @@ import {
   type RunAction,
   type RunSubset,
   RunSummary,
+  InboxList,
+  type RunSource,
 } from "./runs-schemas";
 import { cached, RUN_SECONDS, RUNS } from "./cached";
 import { get, parseAs, refusalMessage, request } from "./transport";
@@ -25,6 +27,8 @@ export * from "./runs-schemas";
  * arrives.
  */
 export interface CreateRunInput {
+  /** Which inbox to read. Else the organisers'. */
+  source?: RunSource;
   /** 0 is a burst: everything is enqueued at once. */
   ratePerSecond?: number;
   limit?: number;
@@ -123,4 +127,9 @@ export async function streamRun(id: string, signal?: AbortSignal): Promise<Respo
     timeoutMs: STREAM_TIMEOUT_MS,
     signal,
   });
+}
+
+/** The inboxes a new run may read, each with its size, probed now. Never cached: it is what the form offers. */
+export async function listInboxes(): Promise<InboxList> {
+  return get(InboxList, "/inboxes", { timeoutMs: 10_000 });
 }

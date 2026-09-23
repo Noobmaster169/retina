@@ -49,9 +49,30 @@ export type PromptSet = z.infer<typeof PromptSet>;
 export const RunSubset = z.enum(["dev", "holdout"]);
 export type RunSubset = z.infer<typeof RunSubset>;
 
+/**
+ * Which inbox a run reads. `averis` is the organisers' 520, which every
+ * published number was measured on; `synthetic_5k` is the 5,000-email set of
+ * the same shape. Ours, not an organiser enum: it names where the mail came
+ * from, and nothing a run submits carries it.
+ */
+export const RunSource = z.enum(["averis", "synthetic_5k"]);
+export type RunSource = z.infer<typeof RunSource>;
+
+/** One inbox a new run may read, as this deployment finds it right now. */
+export const InboxView = z.object({
+  source: RunSource,
+  label: z.string(),
+  /** False where it was configured and did not answer. An inbox that was never configured is not listed at all. */
+  reachable: z.boolean(),
+  emails: z.number().nullable(),
+  /** Whether its `/submit` has an answer key behind it, so a run of it can be scored. */
+  scoringAvailable: z.boolean(),
+});
+export type InboxView = z.infer<typeof InboxView>;
+
 export const CreateRunBody = z
   .object({
-    source: z.literal("averis").default("averis"),
+    source: RunSource.default("averis"),
     /** 0 is a burst: everything is enqueued at once. */
     ratePerSecond: z.number().min(0).max(50).default(2),
     limit: z.number().int().positive().optional(),
@@ -90,6 +111,8 @@ export const RunSummary = z.object({
   id: z.string(),
   /** What a person called this run. Null when nobody has, and the client names it by when it started. */
   name: z.string().nullable(),
+  /** Which inbox it read. A score means nothing without it: the two inboxes carry different answer keys. */
+  source: RunSource,
   /** `completed` means ingestion finished, not processing; `processingDone` says that. */
   status: RunStatus,
   ratePerSecond: z.number(),

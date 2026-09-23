@@ -191,20 +191,18 @@ recovered by hand over SSH, and the recovery is `deploy/README.md` and nothing
 else. Read a change to these files twice, keep it small, and watch
 `~/retina/deploy.log` after it lands.
 
-## Serving a different inbox
+## Serving the synthetic inbox
 
-The email server takes its dataset as configuration and the api only ever reaches it over
-HTTP, so this is a mount and a variable, never a code change or a new image.
+The new-run form offers every inbox this deployment can reach. The organisers' 520 rides
+in the clone and is always there. The 5,000-email synthetic set is a second copy of the
+same email server with the other dataset mounted (`inbox-5k` in `compose.yaml`), so a run
+of it ingests, submits and scores exactly as the 520 does, against its own answer key.
 
-The organisers' 520 rides in the clone and is the default. A larger set does not: 145 MB
-is too much for git, and it carries an answer key of its own. So it is copied to the box
-once, by hand, and kept **beside** `compose.yaml` rather than inside the clone. A `git
-pull` then never touches it, and `auto-deploy.sh` never has to carry it.
-
-From the dev machine, with the set unpacked at `emails/data_5k`:
+It is not in git (145 MB, and a key of its own), so it is copied here once and kept
+**beside** `compose.yaml`, where a `git pull` never touches it. From a dev machine with
+the set unpacked at `emails/data_5k`:
 
 ```bash
-# 145 MB over the tunnel-less path; rsync so a broken copy resumes rather than restarts.
 rsync -az --info=progress2 emails/data_5k/ student@118.139.133.14:~/retina/data_5k/
 ```
 
@@ -212,28 +210,21 @@ Then on the box:
 
 ```bash
 cd ~/retina
-df -h .                                    # 145 MB, but check before writing it
-echo 'INBOX_DATA=./data_5k' >> .env
-docker compose up -d inbox
-curl -s 127.0.0.1:8091/health | jq .checks.inbox
-# {"status":"up","emails":5000,"scoringAvailable":true}
+echo 'COMPOSE_PROFILES=synthetic' >> .env
+docker compose up -d
+docker compose exec api wget -qO- http://inbox-5k:8000/health
+# {"status":"ok","emails":5000,"scoring_available":true}
 ```
 
-Nothing else moves. The api picks the new count up on its next health check without a
-restart, ingest lists what the server lists, `POST /runs/:id/submit` scores against
-whichever answer key that set mounted, and `EVAL_GROUND_TRUTH_URL` still names this
-container, so local scoring follows the set it is serving. The new-run form on `/runs`
-reads the same count and offers "The whole inbox, 5,000".
+`auto-deploy.sh` runs `docker compose up -d`, which reads `COMPOSE_PROFILES` from `.env`,
+so every later deploy keeps it up. The api already names it (`EMAIL_SERVER_5K_URL`);
+until the profile is on it gets no answer and the form simply does not offer it. To take
+it away again, drop the line and `docker compose up -d --remove-orphans`.
 
-Back to the 520: drop the `INBOX_DATA` line from `.env` and `docker compose up -d inbox`.
-
-Two things to know first:
-
-- **A run of 5,000 is about ten times the 520.** Near 13,000 model calls against its 1,351,
-  so on the measured rate roughly two hours and ten times the cost. The form says as much
-  before it starts one. Use a smaller `The first N` to check the set behaves first.
-- **`dev` and `holdout` are not offered against it.** The split under `eval/` names the
-  520's ids and against another inbox would ask for emails that are not there.
+A run carries which inbox it read (`source` on the run), and the ingest, the scorer, the
+email pane and the email-by-email grading all follow it, so a synthetic run is never
+scored against the organisers' key. `dev` and `holdout` are not offered against it: the
+split under `eval/` names the 520's ids.
 
 ## Calling the API as a teammate
 

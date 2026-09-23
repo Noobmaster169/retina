@@ -6,7 +6,8 @@ import type { LlmClient } from "../agents";
 import { config } from "../config";
 import { transactor } from "../db";
 import type { DocExtractClient } from "../doc-extract";
-import { type IngestDeps, ingestEmail, replayRun } from "../ingest";
+import { RunSource } from "../contracts";
+import { type IngestDeps, ingestEmail, replayRun, type Source } from "../ingest";
 import { TerminalError } from "../lib/errors";
 import { childLogger } from "../lib/logger";
 import type { LiveCalls } from "../live";
@@ -39,6 +40,13 @@ export interface WorkerDeps extends IngestDeps {
   compare: JobAdder<CompareJob> & QueuePauser;
   /** The semantic layer's own queue. Absent, the compare leg simply never enqueues one. */
   ontology?: JobAdder<OntologyJob> & QueuePauser;
+  /**
+   * The inbox a run reads, by the run's own `source`. Absent, every run reads
+   * `source`, which is what a test that is not about inboxes wants. The two
+   * jobs that touch an inbox are ingest and release; everything after them
+   * reads what ingest stored, so nothing else needs to know which it was.
+   */
+  sourceFor?(source: RunSource): Source;
 }
 
 // LLM calls are slow, so an email job may hold its lock for a while. A job
@@ -129,6 +137,13 @@ export function startWorkers(deps: WorkerDeps, connection: Redis): RunningWorker
   // work for, so the cost is one query a second and not one per job.
   const pauses = pauseGate(deps.pool);
 
+  /** The deps for one run's ingest work, reading the inbox that run named. */
+  async function forRun(runId: string): Promise<WorkerDeps> {
+    if (!deps.sourceFor) return deps;
+    const run = await runs.get(deps.pool, runId);
+    return run ? { ...deps, source: deps.sourceFor(RunSource.catch("averis").parse(run.source)) } : deps;
+  }
+
   const ingest = new Worker(
     QUEUES.ingest,
     (job, token) =>
@@ -137,10 +152,11 @@ export function startWorkers(deps: WorkerDeps, connection: Redis): RunningWorker
         // asked again: it already reached a verdict and was overruled.
         if (job.name === JOB_NAMES.release) {
           const { runId, emailId } = parse(ReleaseJob, job);
-          await ingestEmail(deps, runId, emailId, true);
+          await ingestEmail(await forRun(runId), runId, emailId, true);
           return;
         }
-        const outcome = await replayRun(deps, parse(IngestJob, job), {
+        const target = parse(IngestJob, job);
+        const outcome = await replayRun(await forRun(target.runId), target, {
           stopping: () => stopping,
           onProgress: (fraction) => job.updateProgress(Math.round(fraction * 100)),
         });
