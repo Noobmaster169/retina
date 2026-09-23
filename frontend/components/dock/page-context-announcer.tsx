@@ -10,17 +10,24 @@ export function PageContext({
   refs,
   suggestions = [],
   note = null,
+  loading = false,
 }: {
   refs: OfferedRef[];
   suggestions?: string[];
   note?: string | null;
+  loading?: boolean;
 }) {
   const { announce } = useDock();
-  const key = JSON.stringify([refs, suggestions, note]);
+  const key = JSON.stringify([refs, suggestions, note, loading]);
   useEffect(() => {
-    const [nextRefs, nextSuggestions, nextNote] = JSON.parse(key) as [OfferedRef[], string[], string | null];
-    announce(nextRefs, nextSuggestions, nextNote);
-    return () => announce([], [], null);
+    const [nextRefs, nextSuggestions, nextNote, nextLoading] = JSON.parse(key) as [
+      OfferedRef[],
+      string[],
+      string | null,
+      boolean,
+    ];
+    announce(nextRefs, nextSuggestions, nextNote, nextLoading);
+    return () => announce([], [], null, false);
   }, [key, announce]);
   return null;
 }

@@ -111,7 +111,11 @@ export function Composer({ onAsk, onStop, pending, placeholder, dense = false, s
         </p>
       ) : null}
 
-      <div className="flex items-end gap-2 rounded-lg border border-hairline-strong bg-canvas px-3 py-2.5">
+      <div
+        className={`flex items-end gap-2 rounded-lg border bg-canvas px-3 py-2.5 ${
+          pending ? "border-hairline-strong/80 bg-sunken/40" : "border-hairline-strong"
+        }`}
+      >
         <label htmlFor="chat-question" className="sr-only">
           Ask a question
         </label>
@@ -131,7 +135,7 @@ export function Composer({ onAsk, onStop, pending, placeholder, dense = false, s
               ask(text);
             }
           }}
-          placeholder={pending ? "Reading" : placeholder}
+          placeholder={pending ? "" : placeholder}
           className="max-h-32 min-h-[22px] grow resize-none overflow-y-auto bg-transparent text-strong leading-[22px] text-ink outline-none placeholder:text-ink-faint disabled:cursor-wait"
         />
 

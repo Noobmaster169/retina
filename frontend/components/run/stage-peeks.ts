@@ -1,6 +1,7 @@
 import type { RunQueuesView } from "@/lib/api/queues-schemas";
 
 import type { PeekRow } from "./stage-peek";
+import { busy } from "./progress";
 
 /**
  * Which emails each stage card can name, and what to say about each.
@@ -31,7 +32,10 @@ function waiting(files: string): string {
   return files === "" ? "just arrived" : files;
 }
 
-export function stagePeeks(queues: RunQueuesView): Record<string, StagePeek> {
+export function stagePeeks(
+  queues: RunQueuesView,
+  stages: { classifying: number; comparing: number },
+): Record<string, StagePeek> {
   return {
     arriving: {
       title: "Waiting to be sorted",
@@ -41,7 +45,7 @@ export function stagePeeks(queues: RunQueuesView): Record<string, StagePeek> {
     classifying: {
       title: "Being sorted now",
       rows: queues.classify.slots.slice(0, SHOWN).map((slot) => ({ emailId: slot.emailId, says: slot.step, since: slot.startedAt })),
-      total: queues.classify.active,
+      total: busy(stages.classifying, queues.classify.active),
     },
     waiting: {
       title: "Waiting to be checked",
@@ -51,7 +55,7 @@ export function stagePeeks(queues: RunQueuesView): Record<string, StagePeek> {
     checking: {
       title: "Being checked now",
       rows: queues.compare.slots.slice(0, SHOWN).map((slot) => ({ emailId: slot.emailId, says: slot.step, since: slot.startedAt })),
-      total: queues.compare.active,
+      total: busy(stages.comparing, queues.compare.active),
     },
   };
 }

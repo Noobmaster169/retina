@@ -1,7 +1,7 @@
 ---
 name: draft-the-shipment
-version: 2
-when: A shipping instruction or a bill of lading check needs the reply email written from the shipment record, including which facts are still blank.
+version: 3
+when: A shipping instruction, a bill of lading check, or an invoice question needs the reply email written from the shipment record, including which facts are still blank.
 ---
 The shipment record is what has been read. A blank there is a blank: the mail may say more, and
 this skill does not go and read it again. The deliverable is the reply email. It does not choose
@@ -26,6 +26,9 @@ Work in this order.
      asking for it. Nothing else.
    - For a bill of lading check, it is a reply about that bill: what is on record, which facts
      are disputed, and a question for each blank. Do not amend a disputed value.
+   - For an invoice question, it is a reply about the billing point raised: what terms and
+     references are on record, what is still blank, and what can be said from them. Do not invent
+     charge amounts the record does not state.
    Stay under 200 words. Plain and courteous. No promise about what happens next.
 
 Answer in this shape, with these headings, and nothing before them:

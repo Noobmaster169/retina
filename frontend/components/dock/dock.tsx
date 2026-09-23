@@ -4,10 +4,9 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import useSWR from "swr";
 import { z } from "zod";
 
+import { PendingBody } from "@/components/chat/pending-body";
 import { Composer } from "@/components/chat/composer";
-import { LiveCalls } from "@/components/chat/live-calls";
-import { Markdown } from "@/components/chat/markdown";
-import { StatusLine } from "@/components/chat/status-line";
+import { PendingFoot } from "@/components/chat/pending-foot";
 import { Suggestions } from "@/components/chat/suggestions";
 import { Turn } from "@/components/chat/turn";
 import { useChat } from "@/components/chat/use-chat";
@@ -100,6 +99,7 @@ function DockThread({ initial, title, runId }: { initial: ChatTurn[]; title: str
   }, [chat.turns.length]);
 
   const refs = attached(dock.page, dock.pinned, dock.off).map(({ kind, id }) => ({ kind, id }));
+  const visibleRefs = refs.filter((ref) => ref.kind !== "run");
 
   const wide = runId ? `/runs/${runId}/chat${dock.conversationId ? `?c=${dock.conversationId}` : ""}` : null;
 
@@ -133,13 +133,7 @@ function DockThread({ initial, title, runId }: { initial: ChatTurn[]; title: str
             answered={index < chat.turns.length - 1 || chat.pending}
           />
         ))}
-        {chat.pending ? (
-          <div className="space-y-3">
-            <StatusLine progress={chat.progress} since={chat.since} />
-            <LiveCalls calls={chat.calls} />
-            {chat.progress?.answer ? <Markdown text={chat.progress.answer} /> : <div className="h-4 w-2/3 rounded-xs bg-sunken" />}
-          </div>
-        ) : null}
+        {chat.pending ? <PendingBody progress={chat.progress} calls={chat.calls} /> : null}
         {chat.error ? (
           <p className="rounded-md border border-fault-tint bg-fault-tint px-3 py-2 text-small text-fault">{chat.error}</p>
         ) : null}
@@ -153,12 +147,13 @@ function DockThread({ initial, title, runId }: { initial: ChatTurn[]; title: str
         onAsk={(question) => chat.ask(question, [], refs)}
         dense
       />
+      {chat.pending ? <PendingFoot progress={chat.progress} since={chat.since} /> : null}
       <ContextStrip />
       <Composer
         onAsk={(question, skills) => chat.ask(question, skills, refs)}
         onStop={chat.stop}
         pending={chat.pending}
-        placeholder={refs.length ? "Ask about what you are looking at" : "Ask about the inbox"}
+        placeholder={visibleRefs.length ? "Ask about what you are looking at" : "Ask about the inbox"}
         dense
       />
     </>

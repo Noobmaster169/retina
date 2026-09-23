@@ -108,12 +108,11 @@ export function RunHeader({ run, summary, actions }: RunHeaderProps) {
 }
 
 /**
- * The one thing left to do with a finished run, and the only place on the page
- * that offers it. A run still moving does not offer it at all: there is nothing
- * to score until every email has landed, and a button that refuses itself is
- * worse than no button.
+ * Where a finished run goes to read its score in full, or tries again when the
+ * automatic submission refused. A run still moving does not offer it at all:
+ * there is nothing to score until every email has landed.
  *
- * Scoring and reading the score are the same button in its two states. The
+ * Submitting and reading the score are the same button in its two states. The
  * scorer's answer is a page and not a panel, so either way this ends on the
  * results, which is where the three components and the answer key live.
  */

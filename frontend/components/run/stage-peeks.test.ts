@@ -5,6 +5,7 @@ import type { RunQueuesView } from "@/lib/api/queues-schemas";
 import { stagePeeks } from "./stage-peeks";
 
 const EMPTY = { concurrency: 10, waiting: 0, active: 0, failed: 0, heldUntil: null, slots: [], next: [] };
+const STAGES = { classifying: 0, comparing: 0 };
 
 function queues(over: Partial<RunQueuesView> = {}): RunQueuesView {
   return {
@@ -30,6 +31,7 @@ describe("stagePeeks", () => {
           ],
         },
       }),
+      STAGES,
     );
     expect(peeks.classifying.rows).toEqual([
       { emailId: "email_1", says: "reading the subject", since: null },
@@ -48,6 +50,7 @@ describe("stagePeeks", () => {
           next: [{ emailId: "email_9", files: "two files, txt and pdf", queuedAt: "2026-09-22T00:00:00Z" }],
         },
       }),
+      STAGES,
     );
     // The instant it joined the line is carried through, because the card
     // counts up from it and a count cannot say how long something has waited.
@@ -61,23 +64,24 @@ describe("stagePeeks", () => {
   it("says an email has just arrived rather than leaving the line blank", () => {
     const peeks = stagePeeks(
       queues({ classify: { name: "classify", ...EMPTY, waiting: 1, next: [{ emailId: "email_3", files: "", queuedAt: "x" }] } }),
+      STAGES,
     );
     expect(peeks.arriving.rows).toEqual([{ emailId: "email_3", says: "just arrived", since: "x" }]);
   });
 
   it("shows five and leaves the rest to the count, whatever the queue hands over", () => {
     const next = Array.from({ length: 9 }, (_, at) => ({ emailId: `email_${at}`, files: "one file", queuedAt: "x" }));
-    const peeks = stagePeeks(queues({ classify: { name: "classify", ...EMPTY, waiting: 200, next } }));
+    const peeks = stagePeeks(queues({ classify: { name: "classify", ...EMPTY, waiting: 200, next } }), STAGES);
     expect(peeks.arriving.rows).toHaveLength(5);
     expect(peeks.arriving.total).toBe(200);
   });
 
   it("gives the two totals no list, because the run keeps none for them", () => {
-    expect(Object.keys(stagePeeks(queues()))).toEqual(["arriving", "classifying", "waiting", "checking"]);
+    expect(Object.keys(stagePeeks(queues(), STAGES))).toEqual(["arriving", "classifying", "waiting", "checking"]);
   });
 
   it("is empty on a drained queue, so those cards do not open on nothing", () => {
-    const peeks = stagePeeks(queues());
+    const peeks = stagePeeks(queues(), STAGES);
     expect(peeks.classifying.rows).toEqual([]);
     expect(peeks.waiting.rows).toEqual([]);
   });

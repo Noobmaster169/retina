@@ -40,7 +40,7 @@ function Elapsed({ from }: { from: number }) {
  * information and read as a thing thinking rather than a thing waiting, which
  * is what the wait actually is.
  */
-function Mark() {
+export function ThinkingMark() {
   return (
     <span className="flex shrink-0 items-center gap-[3px]" aria-hidden>
       <span className="size-[5px] animate-pulse rounded-full bg-ink-tertiary [animation-duration:1100ms]" />
@@ -63,7 +63,7 @@ export function phaseWords(progress: ChatProgress | null): string {
 export function StatusLine({ progress, since }: { progress: ChatProgress | null; since: number }) {
   return (
     <div className="flex max-w-[72ch] items-center gap-2">
-      <Mark />
+      <ThinkingMark />
       <span className="min-w-0 truncate text-caption text-ink-tertiary" aria-live="polite">
         {phaseWords(progress)}
       </span>

@@ -4,26 +4,26 @@ import { Panel, PanelHead } from "@/components/ui/panel";
 import { RunSummary } from "@/lib/api/runs-schemas";
 import { formatDuration } from "@/lib/duration";
 
-import { CostReveal } from "./cost-reveal";
-import { planCost } from "./plan-cost";
+import { ScoreReveal } from "./score-reveal";
 
 /**
  * What the run took. This is the run page's own machinery view and the one
- * place in the product where a model name, a token count and a dollar cost are
+ * place in the product where a model name, a token count and a score are
  * allowed to appear: docs/05-design.md section 11 keeps them off every working
  * screen because they are true and they are not what a documentation clerk
  * needs.
  *
  * Tiles rather than a list of rows. Six rows of label-dots-number filled the
  * top third of the panel and left the rest of it blank, which read as a panel
- * still loading; the same six as tiles fill the width, and the cost takes what
+ * still loading; the same six as tiles fill the width, and the score takes what
  * is left instead of the panel ending in air.
  *
- * The cost is the one worth looking at, so it is the only one that opens.
+ * The score is the one worth looking at, so it is the only one that opens.
  */
 
 interface MachineryPanelProps {
   run: RunSummary;
+  scoring: boolean;
   className?: string;
 }
 
@@ -34,10 +34,9 @@ function short(value: number): string {
   return value.toLocaleString();
 }
 
-export function MachineryPanel({ run, className = "" }: MachineryPanelProps) {
+export function MachineryPanel({ run, scoring, className = "" }: MachineryPanelProps) {
   const { llm } = run;
   const perEmail = run.finishedEmails > 0 ? llm.calls / run.finishedEmails : 0;
-  const cost = planCost(llm.inputTokens + llm.outputTokens, llm.costUsd, run.finishedEmails);
 
   const tiles: { key: string; value: string; note?: string; exact?: string }[] = [
     { key: "Model calls", value: llm.calls.toLocaleString(), note: `${perEmail.toFixed(1)} an email` },
@@ -63,7 +62,7 @@ export function MachineryPanel({ run, className = "" }: MachineryPanelProps) {
             </div>
           ))}
         </div>
-        <CostReveal cost={cost} />
+        <ScoreReveal scoring={scoring} submission={run.lastSubmission} />
       </div>
     </Panel>
   );

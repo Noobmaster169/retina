@@ -48,16 +48,29 @@ function pct(part: number, whole: number): number {
 }
 
 /**
+ * How many emails hold a slot right now. Postgres counts every email in the
+ * stage; BullMQ counts jobs it still has marked active. Either can move on the
+ * summary stream before the queues frame catches up, so the card reads both
+ * and takes the higher.
+ */
+export function busy(stage: number, active: number): number {
+  return Math.max(stage, active);
+}
+
+/**
  * A paused run is never live, whatever a slot still holds. The last jobs of a
  * pause finish the model call they were in the middle of, and a card that went
  * on sweeping through that was telling a person the button had not worked.
+ *
+ * A held queue is not empty: rate limiting stops new work, not the calls
+ * already in flight. Showing zero there read as the stage having stopped when
+ * it had only been told to wait.
  */
 function slots(active: number, concurrency: number, held: boolean, paused: boolean): Pick<StageCard, "value" | "pct" | "state"> {
-  if (held) return { value: `0 / ${concurrency}`, pct: 0, state: "held" };
   return {
     value: `${active} / ${concurrency}`,
     pct: pct(active, concurrency),
-    state: active > 0 && !paused ? "live" : "idle",
+    state: held ? "held" : active > 0 && !paused ? "live" : "idle",
   };
 }
 
@@ -98,7 +111,7 @@ export function laneMap(run: RunSummary, queues: RunQueuesView): LaneMap {
         label: "Classifying",
         icon: "eye",
         unit: paused ? "paused" : classifyHeld ? "held" : null,
-        ...slots(queues.classify.active, queues.classify.concurrency, classifyHeld, paused),
+        ...slots(busy(stages.classifying, queues.classify.active), queues.classify.concurrency, classifyHeld, paused),
       },
       {
         key: "sorted",
@@ -123,7 +136,7 @@ export function laneMap(run: RunSummary, queues: RunQueuesView): LaneMap {
         label: "Checking",
         icon: "scale",
         unit: paused ? "paused" : compareHeld ? "held" : null,
-        ...slots(queues.compare.active, queues.compare.concurrency, compareHeld, paused),
+        ...slots(busy(stages.comparing, queues.compare.active), queues.compare.concurrency, compareHeld, paused),
       },
       {
         key: "checked",

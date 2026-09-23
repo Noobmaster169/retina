@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { attached, keyOf, offered, type OfferedRef } from "./page-context";
+import { attached, displayed, keyOf, offered, type OfferedRef } from "./page-context";
 
 const acme: OfferedRef = { kind: "party", id: "1", title: "ACME" };
 const beta: OfferedRef = { kind: "port", id: "2", title: "BETA" };
@@ -19,5 +19,9 @@ describe("the context strip", () => {
     const many = Array.from({ length: 6 }, (_, n) => ({ kind: "party" as const, id: String(n), title: `p${n}` }));
     expect(attached(many, [beta], [])).toHaveLength(5);
     expect(attached(many, [beta], [])[0]).toEqual(beta);
+  });
+
+  it("does not draw run scope on the harness", () => {
+    expect(displayed([acme, run], [beta]).map(keyOf)).toEqual(["port:2", "party:1"]);
   });
 });

@@ -226,6 +226,16 @@ full inbox to take around half an hour. If the proxy goes down mid-run the worke
 queue for 30 seconds and puts the job back with its attempts untouched, so the run carries on
 once the proxy is back.
 
+### Starting a run needs a password
+
+Every new run asks for one, every time. The phrase is `RUN_PASSWORD`, it is not written down in
+this repository, and there is no cookie and no session: a run of the whole inbox is thousands of
+model calls, so starting one should be typed rather than clicked. The gate fails closed, so where
+`RUN_PASSWORD` is unset nothing starts a run at all and the page says so. It is checked in the
+route handler (`app/api/runs/route.ts`) and not in the form, so it cannot be skipped by sending
+the request yourself, and it gates the browser's door only: a teammate calling the backend
+directly with `TEAM_API_KEY`, and the eval CLIs, are unchanged.
+
 <details>
 <summary><b>Running a different inbox</b></summary>
 
@@ -360,9 +370,9 @@ curl -s 127.0.0.1:8091/ai/chat -H "authorization: Bearer $TEAM_API_KEY" \
 
 Push to `main`.
 
-- Vercel builds `frontend/`. Set `BACKEND_URL`, `API_SHARED_SECRET` and `SITE_PASSWORD` in the
-  Vercel project. The inbox is public; `SITE_PASSWORD` is the one shared password for `/chat` and
-  `/runs`.
+- Vercel builds `frontend/`. Set `BACKEND_URL`, `API_SHARED_SECRET`, `SITE_PASSWORD` and
+  `RUN_PASSWORD` in the Vercel project. The inbox is public; `SITE_PASSWORD` is the one shared
+  password for `/chat` and `/runs`, and `RUN_PASSWORD` is asked for again every time a run starts.
 - GitHub Actions type-checks both packages, runs the backend suite against a Postgres service
   container, builds the frontend, runs the proxy's tests and publishes the backend image. The same
   gates run on a pull request.
