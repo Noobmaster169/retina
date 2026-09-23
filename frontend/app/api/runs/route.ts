@@ -3,7 +3,7 @@ import { revalidateTag } from "next/cache";
 import { createRun, type CreateRunInput, listRuns } from "@/lib/api-client";
 import { RUNS } from "@/lib/api/cached";
 import { gatedRead } from "@/lib/api-route";
-import { checkRunPassword, RUN_PASSWORD_HEADER, runGateConfigured } from "@/lib/run-gate";
+import { checkRunPassword, RUN_PASSWORD_HEADER } from "@/lib/run-gate";
 import { hasSiteAccess } from "@/lib/site-gate";
 
 function refused(status: number, error: string): Response {
@@ -24,11 +24,6 @@ export async function GET() {
  */
 export async function POST(request: Request) {
   if (!(await hasSiteAccess())) return refused(401, "Signed out. Reload the page to sign in.");
-  // Unset is refused too, and named apart: a gate nobody configured must not
-  // read as a password somebody mistyped.
-  if (!runGateConfigured()) {
-    return refused(403, "No run password is set on this deployment, so no run can start. Set RUN_PASSWORD.");
-  }
   if (!checkRunPassword(request.headers.get(RUN_PASSWORD_HEADER))) {
     return refused(403, "Wrong password. A run costs real model calls, so it asks every time.");
   }

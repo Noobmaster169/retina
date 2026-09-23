@@ -228,13 +228,13 @@ once the proxy is back.
 
 ### Starting a run needs a password
 
-Every new run asks for one, every time. The phrase is `RUN_PASSWORD`, it is not written down in
-this repository, and there is no cookie and no session: a run of the whole inbox is thousands of
-model calls, so starting one should be typed rather than clicked. The gate fails closed, so where
-`RUN_PASSWORD` is unset nothing starts a run at all and the page says so. It is checked in the
-route handler (`app/api/runs/route.ts`) and not in the form, so it cannot be skipped by sending
-the request yourself, and it gates the browser's door only: a teammate calling the backend
-directly with `TEAM_API_KEY`, and the eval CLIs, are unchanged.
+Every new run asks for one, every time. Ask the team for the phrase, or set your own with
+`RUN_PASSWORD`; unset, a default in the code applies, so a deployment nobody configured can still
+start a run. There is no cookie and no session: a run of the whole inbox is thousands of model
+calls, so starting one should be typed rather than clicked. It is checked in the route handler
+(`app/api/runs/route.ts`) and not in the form, so it cannot be skipped by sending the request
+yourself, and it gates the browser's door only: a teammate calling the backend directly with
+`TEAM_API_KEY`, and the eval CLIs, are unchanged.
 
 <details>
 <summary><b>Running a different inbox</b></summary>

@@ -1,12 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { checkRunPassword, RUN_PASSWORD_HEADER, runGateConfigured } from "@/lib/run-gate";
+import { checkRunPassword, DEFAULT_RUN_PASSWORD, RUN_PASSWORD_HEADER } from "@/lib/run-gate";
 
 /**
- * The real phrase is `RUN_PASSWORD` and is not in this repository, so these
- * set one of their own. Reading the answer out of the environment at call time
- * is what makes that possible, and is also what lets the phrase be changed
- * without a deploy.
+ * Most of these set a phrase of their own through the environment, which works
+ * because the answer is read at call time, which is also what lets the phrase
+ * be changed without a deploy.
  */
 
 const PHRASE = "a-phrase-only-this-test-uses";
@@ -31,21 +30,15 @@ describe("the run password", () => {
     expect(checkRunPassword(undefined)).toBe(false);
   });
 
-  /**
-   * The gate fails closed. An earlier version defaulted to a phrase written in
-   * the source, which published the password to anyone who could read the
-   * repository; refusing everything is the failure worth having.
-   */
-  it("starts nothing at all when no phrase is configured", () => {
+  it("falls back to the default phrase when none is configured", () => {
     vi.stubEnv("RUN_PASSWORD", "");
-    expect(runGateConfigured()).toBe(false);
-    expect(checkRunPassword("")).toBe(false);
-    expect(checkRunPassword("anything")).toBe(false);
+    expect(checkRunPassword(DEFAULT_RUN_PASSWORD)).toBe(true);
+    expect(checkRunPassword("anything else")).toBe(false);
   });
 
-  it("says a phrase is configured when one is", () => {
+  it("uses the configured phrase instead of the default when one is set", () => {
     vi.stubEnv("RUN_PASSWORD", PHRASE);
-    expect(runGateConfigured()).toBe(true);
+    expect(checkRunPassword(DEFAULT_RUN_PASSWORD)).toBe(false);
   });
 
   it("names the header the route reads it from", () => {
